@@ -19,6 +19,12 @@ const PROFILES={
       wheelbase:2.77,
       maxSteerLow:0.43,
       maxSteerHigh:0.115,
+
+      // On-road handling personality.
+      roadGripMultiplier:1.00,
+      lateralAccelLimit:7.0,
+      steeringResponseHigh:3.8,
+
       offroadGrip:0.58,
       offroadDrag:1.15
     },
@@ -33,6 +39,49 @@ const PROFILES={
       profile:'id4',
       rideHeight:0.38,
       bodyStyle:'compact-electric-crossover'
+    }
+  },
+  wrx:{
+    id:'wrx',
+    name:'WRX',
+    description:'Berline sport AWD · Boxer Turbo',
+
+    physics:{
+      // More immediate than ID4, but not supercar-like.
+      accel:7.15,
+      brake:10.6,
+      reverseAccel:3.5,
+      rolling:0.34,
+      aero:0.0010,
+      wheelbase:2.65,
+      maxSteerLow:0.46,
+
+      // More front-end bite than ID4 in fast bends without making it twitchy.
+      maxSteerHigh:0.155,
+      roadGripMultiplier:1.08,
+      lateralAccelLimit:9.2,
+      steeringResponseHigh:5.0,
+
+      offroadGrip:0.70,
+      offroadDrag:0.95
+    },
+
+    audio:{
+      type:'combustion',
+      profile:'boxer-turbo',
+      idleRpm:850,
+      redlineRpm:6700,
+      gearCount:6
+    },
+
+    visual:{
+      type:'sport-sedan',
+      profile:'wrx',
+      rideHeight:0.31,
+      bodyStyle:'rally-sport-sedan',
+      color:'rally-blue',
+      hoodScoop:true,
+      rearWing:true
     }
   }
 };

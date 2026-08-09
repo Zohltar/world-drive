@@ -18,6 +18,7 @@ import { createWaterDataService } from './water-data.js';
 import { createWaterRenderer } from './water-renderer.js';
 import { createWorldStreaming } from './world-streaming.js';
 import { createVehicleSystem } from './vehicle-system.js';
+import { buildWrxVisual } from './wrx-visual.js';
 
 // Default test route. V4 can replace these coordinates at runtime.
 const MANIC2={lat:49.3213,lon:-68.3467,name:'Manic‑2'};
@@ -397,6 +398,10 @@ const rebuildLocalScenery=()=>sceneryRenderer.rebuild();
 
 
 // ---------- Car ----------
+const vehicleSystem=createVehicleSystem({
+  initialId:'id4'
+});
+
 const car=new THREE.Group();
 
 // ID.4-inspired compact electric crossover proportions — generic, no brand marks.
@@ -548,6 +553,51 @@ car.add(bodyGroup);
 // Lower the sprung body relative to wheel centers for compact-crossover proportions.
 // Keeps a modest wheel-arch gap instead of an off-road / lifted stance.
 bodyGroup.position.y=-.22;
+
+// Tag the original visual as ID4 before adding other vehicle models.
+for(const child of bodyGroup.children){
+  child.userData.vehicleId='id4';
+}
+for(const wheel of wheels){
+  wheel.vehicleId='id4';
+  wheel.pivot.userData.vehicleId='id4';
+}
+
+const wrxVisual=buildWrxVisual({
+  THREE,
+  car,
+  bodyGroup,
+  wheels,
+  brakeLampMaterial:brakeLampMat
+});
+
+function applyVehicleVisualProfile(){
+  const id=vehicleSystem.activeId;
+
+  for(const child of bodyGroup.children){
+    const vehicleId=child.userData?.vehicleId;
+    if(vehicleId){
+      child.visible=vehicleId===id;
+    }
+  }
+
+  for(const wheel of wheels){
+    if(wheel.vehicleId){
+      wheel.pivot.visible=wheel.vehicleId===id;
+    }
+  }
+
+  // Lower sport-sedan stance, crossover height for ID4.
+  bodyGroup.position.y=id==='wrx' ? -.31 : -.22;
+}
+
+applyVehicleVisualProfile();
+
+function activeVehicleWheels(){
+  return wheels.filter(
+    wheel=>!wheel.vehicleId||wheel.vehicleId===vehicleSystem.activeId
+  );
+}
 
 // Suspension visual state
 let suspensionRoll=0;
@@ -1502,10 +1552,6 @@ let longitudinalAccel=0;
 let visualSteer=0;
 let bodyHeave=0;
 let currentSteerAngle=0; // shared with audio / visual systems
-const vehicleSystem=createVehicleSystem({
-  initialId:'id4'
-});
-
 // Mutable object identity is intentional: audio/physics keep the same reference
 // when future vehicles are selected.
 const VEHICLE=vehicleSystem.physics;
@@ -1515,6 +1561,7 @@ const vehicleAudio=createVehicleAudio({
   statusEl:$('audioStatus'),
   enableButton:$('audioEnableBtn'),
   vehicle:VEHICLE,
+  getProfile:()=>vehicleSystem.active.audio,
   getState:()=>({
     speed,
     longitudinalAccel,
@@ -1666,8 +1713,18 @@ function updateSuspensionVisuals(dt,onRoad,currentSteerAngle){
   const wheelRadius=.38;
   const contacts=[];
 
-  for(let i=0;i<wheels.length;i++){
-    const w=wheels[i];
+  const suspensionWheels=activeVehicleWheels();
+  if(suspensionWheels.length!==4){
+    console.warn(
+      'Vehicle wheel configuration invalid',
+      vehicleSystem.activeId,
+      suspensionWheels.length
+    );
+    return;
+  }
+
+  for(let i=0;i<suspensionWheels.length;i++){
+    const w=suspensionWheels[i];
     const lx=w.pivot.position.x;
     const lz=w.pivot.position.z;
 
@@ -1692,7 +1749,7 @@ function updateSuspensionVisuals(dt,onRoad,currentSteerAngle){
   const leftAvg=(frontL+rearL)*.5;
   const rightAvg=(frontR+rearR)*.5;
 
-  const wheelbase=2.84;
+  const wheelbase=VEHICLE.wheelbase||2.77;
   const track=2.00;
 
   // Static road pitch/roll from wheel contact plane.
@@ -1721,7 +1778,8 @@ function updateSuspensionVisuals(dt,onRoad,currentSteerAngle){
 
   bodyGroup.rotation.x=suspensionPitch;
   bodyGroup.rotation.z=suspensionRoll;
-  bodyGroup.position.y=-.22+suspensionHeave;
+  const bodyBaseY=vehicleSystem.activeId==='wrx' ? -.31 : -.22;
+  bodyGroup.position.y=bodyBaseY+suspensionHeave;
 }
 
 function updateDrive(dt){
@@ -1798,7 +1856,10 @@ function updateDrive(dt){
  if(Math.abs(steerTarget)<.08)steerTarget=0;
 
  // Slower steering buildup around low speed; faster return to center.
- const steeringInRate=speedAbs<5?3.7:(speedAbs>25?3.8:4.5);
+ const highSpeedSteerResponse=VEHICLE.steeringResponseHigh??3.8;
+ const steeringInRate=speedAbs<5
+   ?3.7
+   :(speedAbs>25?highSpeedSteerResponse:4.5);
  const steeringOutRate=speedAbs<5?6.5:7.5;
  const steerResponse=steerTarget===0?steeringOutRate:steeringInRate;
  steer+=(steerTarget-steer)*(1-Math.exp(-dt*steerResponse));
@@ -1811,14 +1872,27 @@ function updateDrive(dt){
  // Off-road should behave like pavement at manoeuvring speeds. Grip loss becomes
  // progressively relevant only as speed rises.
  const offroadGripBlend=Math.min(1,Math.max(0,(speedAbs-8)/18));
- const effectiveGrip=onPavement?surfaceGrip:(1+(VEHICLE.offroadGrip-1)*offroadGripBlend);
+
+ // Each vehicle can now have a distinct paved-road cornering personality.
+ // ID4 remains at 1.00; WRX gets slightly more front-end authority.
+ const roadGripMultiplier=VEHICLE.roadGripMultiplier??1;
+ const effectiveGrip=onPavement
+   ?surfaceGrip*roadGripMultiplier
+   :(1+(VEHICLE.offroadGrip-1)*offroadGripBlend);
+
  let yawRate=(speed/VEHICLE.wheelbase)*Math.tan(steerAngle)*effectiveGrip;
 
- // Limit lateral acceleration so the car doesn't rotate unrealistically at speed.
+ // Vehicle-specific lateral acceleration ceiling.
+ // This was previously hard-coded to 7.0 m/s² for every vehicle, which made
+ // the WRX understeer like the heavier ID4 in high-speed bends.
  const latAccel=Math.abs(speed*yawRate);
  const offroadLatLimit=speedAbs<10?7.0:3.8;
- const latLimit=onPavement?7.0:offroadLatLimit;
- if(latAccel>latLimit&&latAccel>0)yawRate*=latLimit/latAccel;
+ const roadLatLimit=VEHICLE.lateralAccelLimit??7.0;
+ const latLimit=onPavement?roadLatLimit:offroadLatLimit;
+
+ if(latAccel>latLimit&&latAccel>0){
+   yawRate*=latLimit/latAccel;
+ }
  heading+=yawRate*dt;
 
  // Road assist is now a gentle lane-centering force, not a hidden steering snap.
@@ -1870,6 +1944,8 @@ function updateDrive(dt){
  // Steering pivot and wheel spin are now independent transforms.
  visualSteer+=(steerAngle-visualSteer)*(1-Math.exp(-dt*7));
  for(const w of wheels){
+   if(w.vehicleId&&w.vehicleId!==vehicleSystem.activeId)continue;
+
    // Tire/rim roll independently inside the steering/suspension pivot.
    w.tire.rotation.x-=speed*dt/.38;
    w.rim.rotation.x-=speed*dt/.38;
@@ -1894,8 +1970,8 @@ function toggleAssist(){
  $('assist').textContent='Assist: '+(assist?'ON':'OFF');
  toast('Assistance '+(assist?'activée':'désactivée'));
 }
-function placeAt(frac){const p=routePointAt(frac);absX=p.x;absZ=p.z;heading=p.angle;speed=0;steer=0;visualSteer=0;currentSteerAngle=0;longitudinalAccel=0;suspensionRoll=0;suspensionPitch=0;suspensionHeave=0;bodyGroup.rotation.set(0,0,0);bodyGroup.position.y=-.22;roadContact=true;recenterIfNeeded(absX,absZ,true);ensureRoadProfileNear(absX,absZ);car.position.set(0,roadHeightAt(absX,absZ)+.38,0);drawMap(p.cum)}
-function resetToRoad(){const n=nearestRoute(absX,absZ);if(n){absX=n.px;absZ=n.pz;heading=n.angle;speed=0;steer=0;visualSteer=0;currentSteerAngle=0;longitudinalAccel=0;suspensionRoll=0;suspensionPitch=0;suspensionHeave=0;bodyGroup.rotation.set(0,0,0);bodyGroup.position.y=-.22;roadContact=true;recenterIfNeeded(absX,absZ,true);ensureRoadProfileNear(absX,absZ)}}
+function placeAt(frac){const p=routePointAt(frac);absX=p.x;absZ=p.z;heading=p.angle;speed=0;steer=0;visualSteer=0;currentSteerAngle=0;longitudinalAccel=0;suspensionRoll=0;suspensionPitch=0;suspensionHeave=0;bodyGroup.rotation.set(0,0,0);bodyGroup.position.y=(vehicleSystem.activeId==='wrx'?-.31:-.22);roadContact=true;recenterIfNeeded(absX,absZ,true);ensureRoadProfileNear(absX,absZ);car.position.set(0,roadHeightAt(absX,absZ)+.38,0);drawMap(p.cum)}
+function resetToRoad(){const n=nearestRoute(absX,absZ);if(n){absX=n.px;absZ=n.pz;heading=n.angle;speed=0;steer=0;visualSteer=0;currentSteerAngle=0;longitudinalAccel=0;suspensionRoll=0;suspensionPitch=0;suspensionHeave=0;bodyGroup.rotation.set(0,0,0);bodyGroup.position.y=(vehicleSystem.activeId==='wrx'?-.31:-.22);roadContact=true;recenterIfNeeded(absX,absZ,true);ensureRoadProfileNear(absX,absZ)}}
 
 const maxSpeedSlider=$('maxSpeedSlider'),maxSpeedLabel=$('maxSpeedLabel');
 const speedLimitModeBtn=$('speedLimitModeBtn');
@@ -1945,14 +2021,20 @@ if(vehicleSelect){
     const changed=vehicleSystem.select(event.target.value);
 
     if(changed){
-      // 15A only exposes ID4, but this reset path is already ready for WRX.
       if(autopilot)setAutopilot(false,'Pilote auto désactivé');
+
       speed=0;
       steer=0;
       visualSteer=0;
       currentSteerAngle=0;
       longitudinalAccel=0;
-      toast(`Véhicule: ${vehicleSystem.active.name}`);
+
+      applyVehicleVisualProfile();
+      vehicleAudio.setProfile(vehicleSystem.active.audio);
+
+      toast(
+        `Véhicule: ${vehicleSystem.active.name} · ${vehicleSystem.active.description}`
+      );
     }
   });
 }
