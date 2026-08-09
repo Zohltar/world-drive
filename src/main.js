@@ -17,6 +17,7 @@ import { createSceneryRenderer } from './scenery-renderer.js';
 import { createWaterDataService } from './water-data.js';
 import { createWaterRenderer } from './water-renderer.js';
 import { createWorldStreaming } from './world-streaming.js';
+import { createVehicleSystem } from './vehicle-system.js';
 
 // Default test route. V4 can replace these coordinates at runtime.
 const MANIC2={lat:49.3213,lon:-68.3467,name:'Manic‑2'};
@@ -1501,20 +1502,13 @@ let longitudinalAccel=0;
 let visualSteer=0;
 let bodyHeave=0;
 let currentSteerAngle=0; // shared with audio / visual systems
-const VEHICLE={
-  accel:6.2,          // EV-like acceleration, m/s²
-  brake:9.2,          // service braking
-  reverseAccel:3.2,
-  rolling:0.32,
-  // Simulation drag coefficient. The previous .0038 created an unintended
-  // terminal speed near 120 km/h even when Max was set higher.
-  aero:0.0009,
-  wheelbase:2.77,
-  maxSteerLow:0.43,   // ~25° at parking speed: tighter control, less twitchy
-  maxSteerHigh:0.115, // ~6.6° at highway speed
-  offroadGrip:.58,
-  offroadDrag:1.15
-};
+const vehicleSystem=createVehicleSystem({
+  initialId:'id4'
+});
+
+// Mutable object identity is intentional: audio/physics keep the same reference
+// when future vehicles are selected.
+const VEHICLE=vehicleSystem.physics;
 const autopilotStatus=$('autopilotStatus');
 
 const vehicleAudio=createVehicleAudio({
@@ -1942,6 +1936,27 @@ function setMaxSpeed(kmh){
 maxSpeedSlider.addEventListener('input',e=>setMaxSpeed(e.target.value));
 if(speedLimitModeBtn)speedLimitModeBtn.onclick=toggleRoadSpeedLimits;
 updateSpeedLimitModeUI();
+
+const vehicleSelect=$('vehicleSelect');
+if(vehicleSelect){
+  vehicleSystem.populateSelect(vehicleSelect);
+
+  vehicleSelect.addEventListener('change',event=>{
+    const changed=vehicleSystem.select(event.target.value);
+
+    if(changed){
+      // 15A only exposes ID4, but this reset path is already ready for WRX.
+      if(autopilot)setAutopilot(false,'Pilote auto désactivé');
+      speed=0;
+      steer=0;
+      visualSteer=0;
+      currentSteerAngle=0;
+      longitudinalAccel=0;
+      toast(`Véhicule: ${vehicleSystem.active.name}`);
+    }
+  });
+}
+
 $('autopilotBtn').onclick=toggleAutopilot;
 $('assist').onclick=toggleAssist;$('camera').onclick=()=>cameraController.cycle();$('reset').onclick=resetToRoad;$('jump').oninput=e=>$('jumpPct').textContent=(+e.target.value).toFixed(1)+' %';$('jumpBtn').onclick=()=>placeAt(+$('jump').value/100);$('northBtn').onclick=()=>{$('jump').value=99.8;$('jumpPct').textContent='99.8 %';placeAt(.998)};
 

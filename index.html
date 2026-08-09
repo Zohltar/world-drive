@@ -32,7 +32,13 @@
        <div class="label">Vitesse</div>
        <div class="value"><span id="speed">0</span> km/h</div>
        <div id="speedControl">
-         <div class="top"><span>Max</span><span><b id="maxSpeedLabel">100</b> km/h</span></div>
+            <div class="row">
+     <label for="vehicleSelect">Véhicule</label>
+     <select id="vehicleSelect">
+       <option value="id4">ID4</option>
+     </select>
+   </div>
+<div class="top"><span>Max</span><span><b id="maxSpeedLabel">100</b> km/h</span></div>
          <input type="range" id="maxSpeedSlider" min="20" max="200" step="5" value="100" aria-label="Vitesse maximale">
        </div>
      </div>
@@ -152,6 +158,7 @@
    <div class="row">
      <button id="reset">↻ Route</button>
      <button id="imageryToggle">Photo: ON</button>
+     <button id="speedLimitModeBtn">Limites route: ON</button>
    </div>
  </div>
 </div>
@@ -162,7 +169,7 @@
   </div>
   <canvas id="minimap"></canvas>
 </div>
-<div id="help"><b>Clavier</b> WASD / flèches · Espace frein à main · C caméra<br><b>GuliKit / Xbox</b> stick G direction · stick D caméra · RT accélérer · LT freiner/reculer · A frein à main<br>Y caméra · X assistance · B pilote auto · Menu replacer<br><b>Vitesse max</b> réglable 20–200 km/h</div>
+<div id="help"><b>Clavier</b> WASD / flèches · Espace frein à main · C caméra<br><b>GuliKit / Xbox</b> stick G direction · stick D caméra · RT accélérer · LT freiner/reculer · A frein à main<br>Y caméra · X assistance · B pilote auto · Menu replacer<br><b>Véhicule</b> sélectionnable · <b>Vitesse max</b> réglable 20–200 km/h · <b>Limites route</b> applique les limites OSM au pilote auto seulement</div>
 <div id="notice"></div>
 
 <script>
