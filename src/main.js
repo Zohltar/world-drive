@@ -6,6 +6,7 @@ import { createRoutingGeometry, angleDelta, nearestPointOnPolyline } from './rou
 import { createRoutingService } from './routing-service.js';
 import { createGeocodingService, validLatLon } from './geocoding.js';
 import { WorldCache, OsmCache } from './cache.js';
+import { createOverpassClient } from './overpass.js';
 
 // Default test route. V4 can replace these coordinates at runtime.
 const MANIC2={lat:49.3213,lon:-68.3467,name:'Manic‑2'};
@@ -49,6 +50,11 @@ const geocodingService=createGeocodingService({
   timeoutMs:7000
 });
 
+const overpassClient=createOverpassClient({
+  cache:OsmCache,
+  keyFor:(namespace,lat,lon)=>WorldCache.osmKey(namespace,lat,lon)
+});
+
 function toast(t){notice.textContent=t;notice.classList.add('show');clearTimeout(toast.t);toast.t=setTimeout(()=>notice.classList.remove('show'),1700)}
 function llToXZ(lat,lon){return {x:(lon-origin.lon)*Math.PI/180*EARTH*Math.cos(origin.lat*Math.PI/180),z:-(lat-origin.lat)*Math.PI/180*EARTH}}
 function xzToLL(x,z){return {lat:origin.lat+(-z/EARTH)*180/Math.PI,lon:origin.lon+(x/(EARTH*Math.cos(origin.lat*Math.PI/180)))*180/Math.PI}}
@@ -86,41 +92,21 @@ let worldOffset={x:0,z:0};
 function toRender(x,z){return new THREE.Vector3(x-worldOffset.x,0,z-worldOffset.z)}
 
 // ---------- V5.2 unified streaming cache ----------
-async function fetchOverpassCached(namespace,ll,query,timeoutMs=7500,ttlMs=1000*60*60*24*14){
-  const key=WorldCache.osmKey(namespace,ll.lat,ll.lon);
-  const cached=await OsmCache.get(namespace,ll.lat,ll.lon,ttlMs);
-  if(cached)return {data:cached,cached:true};
-
-  // Deduplicate prefetch + visible requests for the same geographic cell.
-  if(OsmCache.pending.has(key))return OsmCache.pending.get(key);
-
-  const task=(async()=>{
-    const endpoints=[
-      'https://overpass-api.de/api/interpreter',
-      'https://overpass.kumi.systems/api/interpreter'
-    ];
-    for(const endpoint of endpoints){
-      const ctl=new AbortController(),timer=setTimeout(()=>ctl.abort(),timeoutMs);
-      try{
-        const r=await fetch(endpoint,{
-          method:'POST',body:new URLSearchParams({data:query}),
-          signal:ctl.signal,cache:'no-store'
-        });
-        if(!r.ok)throw new Error('HTTP '+r.status);
-        const data=await r.json();
-        if(data){
-          await OsmCache.set(namespace,ll.lat,ll.lon,data);
-          return {data,cached:false};
-        }
-      }catch(e){console.warn(`OSM ${namespace} failed`,endpoint,e)}
-      finally{clearTimeout(timer)}
-    }
-    return {data:null,cached:false};
-  })();
-
-  OsmCache.pending.set(key,task);
-  try{return await task}
-  finally{OsmCache.pending.delete(key)}
+async function fetchOverpassCached(
+  namespace,
+  ll,
+  query,
+  timeoutMs=7500,
+  ttlMs=1000*60*60*24*14
+){
+  return overpassClient.fetchCached({
+    namespace,
+    lat:ll.lat,
+    lon:ll.lon,
+    query,
+    timeoutMs,
+    ttlMs
+  });
 }
 
 // ---------- elevation streaming ----------
@@ -1697,39 +1683,16 @@ async function loadWaterAround(absx,absz){
 
   const q=hydroQuery(ll);
 
-  const endpoints=[
-    'https://overpass-api.de/api/interpreter',
-    'https://overpass.kumi.systems/api/interpreter'
-  ];
-
   let data=cached;
-  if(!data)for(const endpoint of endpoints){
-    if(generation!==hydroGeneration)break;
-
-    const ctl=new AbortController();
-    waterAbortControllers.add(ctl);
-    const timer=setTimeout(()=>ctl.abort(),9000);
-
-    try{
-      const r=await fetch(endpoint,{
-        method:'POST',
-        body:new URLSearchParams({data:q}),
-        signal:ctl.signal,
-        cache:'no-store'
-      });
-      if(!r.ok)throw new Error('HTTP '+r.status);
-      const candidate=await r.json();
-
-      if(generation!==hydroGeneration)return false;
-
-      data=candidate;
-      if(data)break;
-    }catch(e){
-      if(generation===hydroGeneration)console.warn('Hydro Overpass failed',endpoint,e);
-    }finally{
-      clearTimeout(timer);
-      waterAbortControllers.delete(ctl);
-    }
+  if(!data){
+    data=await overpassClient.fetchRaw({
+      query:q,
+      timeoutMs:9000,
+      label:'Hydro',
+      shouldContinue:()=>generation===hydroGeneration,
+      onControllerStart:controller=>waterAbortControllers.add(controller),
+      onControllerEnd:controller=>waterAbortControllers.delete(controller)
+    });
   }
 
   if(generation!==hydroGeneration)return false;
