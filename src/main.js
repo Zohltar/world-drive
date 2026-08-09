@@ -9,6 +9,7 @@ import { WorldCache, OsmCache } from './cache.js';
 import { createOverpassClient } from './overpass.js';
 import { createSignDataService } from './signs.js';
 import { createBridgeManager } from './bridges.js';
+import { createImageryService } from './imagery.js';
 
 // Default test route. V4 can replace these coordinates at runtime.
 const MANIC2={lat:49.3213,lon:-68.3467,name:'Manic‑2'};
@@ -478,161 +479,24 @@ let lastSceneryCenter={x:Infinity,z:Infinity};
 
 // ---------- streamed aerial/satellite imagery ----------
 const imageryStatus=$('imageryStatus');
-let imageryEnabled=true;
-const IMAGERY_Z=16;
-const imageryTileCache=new Map(); // key -> HTMLImageElement
-const imageryPending=new Map();
-let imageryTexture=null;
-let imageryLoading=false;
-let lastImageryCenter={x:Infinity,z:Infinity};
-let currentImageryBounds=null;
-
-function lonLatToSlippy(lon,lat,z){
-  const n=2**z,latRad=lat*Math.PI/180;
-  return {
-    x:(lon+180)/360*n,
-    y:(1-Math.asinh(Math.tan(latRad))/Math.PI)/2*n
-  };
-}
-function slippyToLonLat(x,y,z){
-  const n=2**z;
-  return {
-    lon:x/n*360-180,
-    lat:Math.atan(Math.sinh(Math.PI*(1-2*y/n)))*180/Math.PI
-  };
-}
-function imageryKey(x,y){ return `${IMAGERY_Z}/${x}/${y}`; }
-
-function loadImageryTile(tx,ty,timeoutMs=5000){
-  const key=imageryKey(tx,ty);
-  const hit=WorldCache.get(imageryTileCache,key);
-  if(hit)return Promise.resolve(hit);
-  if(imageryPending.has(key))return imageryPending.get(key);
-
-  const p=new Promise((resolve,reject)=>{
-    const img=new Image();
-    img.crossOrigin='anonymous';
-    let done=false;
-    const finish=(ok,val)=>{
-      if(done)return; done=true; clearTimeout(timer); imageryPending.delete(key);
-      if(ok){
-        WorldCache.touch(imageryTileCache,key,val);
-        WorldCache.trim(imageryTileCache,WorldCache.limits.imagery);
-        resolve(val)
-      } else reject(val);
-    };
-    const timer=setTimeout(()=>finish(false,new Error('imagery timeout')),timeoutMs);
-    img.onload=()=>finish(true,img);
-    img.onerror=()=>finish(false,new Error('imagery load error'));
-    // ArcGIS World Imagery, public tiled map service.
-    img.src=`https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/${IMAGERY_Z}/${ty}/${tx}`;
-  });
-  imageryPending.set(key,p);
-  return p;
-}
-
-async function buildImageryMosaic(absx,absz){
-  if(imageryLoading)return false;
-  imageryLoading=true;
-  imageryStatus.textContent='Chargement…';
-
-  const ll=xzToLL(absx,absz);
-  const t=lonLatToSlippy(ll.lon,ll.lat,IMAGERY_Z);
-  const cx=Math.floor(t.x),cy=Math.floor(t.y);
-
-  // 5x5 around vehicle: enough for the 1.8 km detailed ground patch at z16.
-  const radius=2,count=5;
-  const cv=document.createElement('canvas');
-  cv.width=cv.height=count*256;
-  const ctx=cv.getContext('2d');
-  ctx.fillStyle='#627a4e';ctx.fillRect(0,0,cv.width,cv.height);
-
-  let loaded=0;
-  const jobs=[];
-  for(let dx=-radius;dx<=radius;dx++)for(let dy=-radius;dy<=radius;dy++){
-    const tx=cx+dx,ty=cy+dy;
-    jobs.push(
-      loadImageryTile(tx,ty).then(img=>{
-        ctx.drawImage(img,(dx+radius)*256,(dy+radius)*256,256,256);
-        loaded++;
-      }).catch(()=>{})
-    );
-  }
-
-  // Never stall the game waiting for imagery.
-  await Promise.race([
-    Promise.all(jobs),
-    new Promise(resolve=>setTimeout(resolve,5600))
-  ]);
-
-  if(loaded<4){
-    imageryStatus.textContent='Fallback';
-    imageryLoading=false;
-    return false;
-  }
-
-  if(imageryTexture)imageryTexture.dispose();
-  imageryTexture=new THREE.CanvasTexture(cv);
-  imageryTexture.colorSpace=THREE.SRGBColorSpace;
-  imageryTexture.anisotropy=Math.min(8,renderer.capabilities.getMaxAnisotropy());
-  imageryTexture.wrapS=THREE.ClampToEdgeWrapping;
-  imageryTexture.wrapT=THREE.ClampToEdgeWrapping;
-
-  const left=cx-radius,top=cy-radius,right=cx+radius+1,bottom=cy+radius+1;
-  const nw=slippyToLonLat(left,top,IMAGERY_Z);
-  const se=slippyToLonLat(right,bottom,IMAGERY_Z);
-
-  const west=llToXZ(ll.lat,nw.lon).x;
-  const east=llToXZ(ll.lat,se.lon).x;
-  const north=llToXZ(nw.lat,ll.lon).z;
-  const south=llToXZ(se.lat,ll.lon).z;
-
-  currentImageryBounds={west,east,north,south};
-  lastImageryCenter={x:absx,z:absz};
-
-  applyImageryToGround();
-  imageryStatus.textContent=`Réelle · ${loaded}/25`;
-  imageryLoading=false;
-  return true;
-}
-
-function applyImageryToGround(){
-  if(!imageryEnabled||!imageryTexture||!currentImageryBounds){
-    groundMat.map=null;
-    groundMat.color.set(0x627a4e);
-    groundMat.needsUpdate=true;
-    return;
-  }
-  groundMat.map=imageryTexture;
-  groundMat.color.set(0xffffff);
-
-  // Ground is 2000m square centered on current floating origin.
-  const size=2000, half=size/2;
-  const b=currentImageryBounds;
-  const spanX=b.east-b.west;
-  const spanZ=b.south-b.north;
-
-  const absWest=worldOffset.x-half, absEast=worldOffset.x+half;
-  const absNorth=worldOffset.z-half, absSouth=worldOffset.z+half;
-
-  const u0=(absWest-b.west)/spanX;
-  const u1=(absEast-b.west)/spanX;
-  const vTop=(absNorth-b.north)/spanZ;
-  const vBottom=(absSouth-b.north)/spanZ;
-
-  imageryTexture.offset.set(u0,1-vBottom);
-  imageryTexture.repeat.set(u1-u0,vBottom-vTop);
-  imageryTexture.needsUpdate=true;
-  groundMat.needsUpdate=true;
-}
-
-$('imageryToggle').addEventListener('click',()=>{
-  imageryEnabled=!imageryEnabled;
-  $('imageryToggle').textContent='Photo: '+(imageryEnabled?'ON':'OFF');
-  imageryStatus.textContent=imageryEnabled?(imageryTexture?'Réelle':'Attente'):'OFF';
-  applyImageryToGround();
+const imageryService=createImageryService({
+  THREE,
+  renderer,
+  cache:WorldCache,
+  groundMaterial:groundMat,
+  statusEl:imageryStatus,
+  toggleButton:$('imageryToggle'),
+  toLatLon:(x,z)=>xzToLL(x,z),
+  toWorld:(lat,lon)=>llToXZ(lat,lon),
+  getWorldOffset:()=>worldOffset,
+  zoom:16,
+  groundSize:2000
 });
 
+const buildImageryMosaic=(x,z)=>imageryService.buildMosaic(x,z);
+const applyImageryToGround=()=>imageryService.applyToGround();
+const loadImageryTile=(tx,ty,timeoutMs=5000)=>
+  imageryService.loadTile(tx,ty,timeoutMs);
 
 const buildingWallMat=new THREE.MeshStandardMaterial({color:0xa9a49a,roughness:.90,metalness:.01});
 const roofMat=new THREE.MeshStandardMaterial({color:0x686c70,roughness:.84});
@@ -2043,14 +1907,11 @@ function resetWorldCaches(){
   // Keep completed elevation/imagery LRU caches across route changes.
   // Only in-flight operations and route-relative state are reset.
   elevPending.clear();elevBase=null;
-  imageryPending.clear();
-  if(imageryTexture){imageryTexture.dispose();imageryTexture=null;}
-  currentImageryBounds=null;
+  imageryService.reset();
   lastElevCenter={x:Infinity,z:Infinity};
   elevationBatchLoading=false;
   lastWaterCenter={x:Infinity,z:Infinity};
   lastSceneryCenter={x:Infinity,z:Infinity};
-  lastImageryCenter={x:Infinity,z:Infinity};
   bridgeManager.resetCounter();
   activeRoadMeta={highway:null,surface:'asphalt',maxspeed:null,lanes:null,width:null,name:null,ref:null,confidence:0};
   signData.reset();
@@ -2613,8 +2474,11 @@ function updateDrive(dt){
  const sx=absX-lastSceneryCenter.x,sz=absZ-lastSceneryCenter.z;
  if(sx*sx+sz*sz>2600*2600&&!sceneryLoading)loadSceneryAround(absX,absZ);
 
- const ix=absX-lastImageryCenter.x,iz=absZ-lastImageryCenter.z;
- if(ix*ix+iz*iz>700*700&&!imageryLoading)buildImageryMosaic(absX,absZ);
+ const imageryCenter=imageryService.center;
+ const ix=absX-imageryCenter.x,iz=absZ-imageryCenter.z;
+ if(ix*ix+iz*iz>700*700&&!imageryService.loading){
+   buildImageryMosaic(absX,absZ);
+ }
 
  const mx=absX-lastRoadMetaCenter.x,mz=absZ-lastRoadMetaCenter.z;
  if(mx*mx+mz*mz>700*700&&!roadMetaLoading)loadRoadMetadataAround(absX,absZ);
@@ -2945,10 +2809,7 @@ async function prefetchElevationAt(x,z){
 }
 
 async function prefetchImageryAt(x,z){
-  const ll=xzToLL(x,z),t=lonLatToSlippy(ll.lon,ll.lat,IMAGERY_Z);
-  const cx=Math.floor(t.x),cy=Math.floor(t.y),jobs=[];
-  for(let dx=-1;dx<=1;dx++)for(let dy=-1;dy<=1;dy++)jobs.push(loadImageryTile(cx+dx,cy+dy));
-  await Promise.allSettled(jobs);
+  return imageryService.prefetchAt(x,z);
 }
 
 async function prefetchOsmAt(x,z){
