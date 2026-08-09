@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { createVehicleAudio } from './audio.js';
 
 // Default test route. V4 can replace these coordinates at runtime.
 const MANIC2={lat:49.3213,lon:-68.3467,name:'Manic‑2'};
@@ -2651,109 +2652,6 @@ async function loadRoute(){
 }
 
 // ---------- Driving ----------
-// ---------- V5.2.4 vehicle audio ----------
-let audioCtx=null,audioMaster=null,motorOsc1=null,motorOsc2=null,motorGain=null;
-let tireNoise=null,tireGain=null,audioReady=false;
-const audioStatus=$('audioStatus');
-
-function makeNoiseBuffer(ctx,seconds=2){
-  const n=Math.floor(ctx.sampleRate*seconds);
-  const b=ctx.createBuffer(1,n,ctx.sampleRate),d=b.getChannelData(0);
-  let last=0;
-  for(let i=0;i<n;i++){
-    const white=Math.random()*2-1;
-    last=last*.72+white*.28;
-    d[i]=last;
-  }
-  return b;
-}
-async function initVehicleAudio(){
-  if(audioReady){
-    if(audioCtx?.state==='suspended'){
-      try{await audioCtx.resume()}catch(e){console.warn('Audio resume failed',e)}
-    }
-    audioStatus.textContent=audioCtx?.state==='running'?'ON':'Suspendu';
-    return;
-  }
-  const AC=window.AudioContext||window.webkitAudioContext;
-  if(!AC){audioStatus.textContent='Non supporté';return}
-  audioCtx=new AC();
-
-  audioMaster=audioCtx.createGain();
-  audioMaster.gain.value=.32;
-  audioMaster.connect(audioCtx.destination);
-
-  // EV-like drivetrain whine: two soft oscillators rather than a combustion engine.
-  motorOsc1=audioCtx.createOscillator();
-  motorOsc2=audioCtx.createOscillator();
-  motorOsc1.type='sine';motorOsc2.type='triangle';
-  motorGain=audioCtx.createGain();motorGain.gain.value=.0001;
-  const motorFilter=audioCtx.createBiquadFilter();
-  motorFilter.type='lowpass';motorFilter.frequency.value=1200;
-  motorOsc1.connect(motorGain);motorOsc2.connect(motorGain);
-  motorGain.connect(motorFilter);motorFilter.connect(audioMaster);
-  motorOsc1.start();motorOsc2.start();
-
-  // Tire scrub is filtered noise, activated progressively by lateral demand.
-  tireNoise=audioCtx.createBufferSource();
-  tireNoise.buffer=makeNoiseBuffer(audioCtx,2);
-  tireNoise.loop=true;
-  tireGain=audioCtx.createGain();tireGain.gain.value=.0001;
-  const tireFilter=audioCtx.createBiquadFilter();
-  tireFilter.type='bandpass';tireFilter.frequency.value=1450;tireFilter.Q.value=.75;
-  tireNoise.connect(tireFilter);tireFilter.connect(tireGain);tireGain.connect(audioMaster);
-  tireNoise.start();
-
-  audioReady=true;
-  try{await audioCtx.resume()}catch(e){console.warn('Audio start failed',e)}
-  audioStatus.textContent=audioCtx.state==='running'?'ON':'Suspendu';
-}
-function updateVehicleAudio(){
-  if(!audioReady||!audioCtx)return;
-  if(audioCtx.state!=='running'){
-    audioStatus.textContent='Suspendu';
-    return;
-  }
-  const now=audioCtx.currentTime;
-  const kmh=Math.abs(speed)*3.6;
-
-  // Speed and acceleration drive pitch/volume; remains subtle at cruise.
-  const accelLoad=Math.min(1,Math.abs(longitudinalAccel)/6.5);
-  const f1=72+kmh*3.0;
-  const f2=f1*2.04;
-  motorOsc1.frequency.setTargetAtTime(f1,now,.055);
-  motorOsc2.frequency.setTargetAtTime(f2,now,.055);
-  const motorVol=kmh<1?.0001:Math.min(.11,.018+kmh/1900+accelLoad*.035);
-  motorGain.gain.setTargetAtTime(motorVol,now,.07);
-
-  // Approximate lateral acceleration from bicycle model.
-  const yawRate=(speed/VEHICLE.wheelbase)*Math.tan(currentSteerAngle||0);
-  const lateralG=Math.abs(speed*yawRate)/9.81;
-  const nr=nearestRoute(absX,absZ);
-  const onPavement=!!(nr&&nr.d<8.5);
-  const gripThreshold=onPavement?.43:.30;
-
-  // Progressive scrub begins near the grip limit; hard cornering becomes a squeal.
-  const scrub=Math.max(0,Math.min(1,(lateralG-gripThreshold)/.48));
-  const speedGate=Math.max(0,Math.min(1,(kmh-18)/28));
-  const tireVol=scrub*speedGate*.24;
-  tireGain.gain.setTargetAtTime(Math.max(.0001,tireVol),now,tireVol>.01?.035:.12);
-}
-function wakeAudio(){initVehicleAudio().catch(e=>console.warn('Audio activation failed',e))}
-$('audioEnableBtn').addEventListener('click',e=>{
-  e.stopPropagation();
-  wakeAudio();
-});
-addEventListener('pointerdown',()=>{
-  if(!audioReady||audioCtx?.state!=='running')wakeAudio();
-},{passive:true});
-addEventListener('keydown',()=>{
-  if(!audioReady||audioCtx?.state!=='running')wakeAudio();
-},{passive:true});
-addEventListener('gamepadconnected',()=>{
-  audioStatus.textContent=audioReady&&audioCtx?.state==='running'?'ON':'OFF';
-});
-
 let absX=0,absZ=0,heading=0,speed=0,steer=0,assist=true,camMode=0,last=performance.now();
 let autopilot=false;
 let autopilotSteer=0;
@@ -2776,6 +2674,20 @@ const VEHICLE={
   offroadDrag:1.15
 };
 const autopilotStatus=$('autopilotStatus');
+
+const vehicleAudio=createVehicleAudio({
+  statusEl:$('audioStatus'),
+  enableButton:$('audioEnableBtn'),
+  vehicle:VEHICLE,
+  getState:()=>({
+    speed,
+    longitudinalAccel,
+    currentSteerAngle,
+    absX,
+    absZ
+  }),
+  getNearestRoute:()=>nearestRoute(absX,absZ)
+});
 
 const gamepadStatus=$('gamepadStatus');
 const gamepadState={
@@ -2877,8 +2789,8 @@ function updateGamepad(){
   gamepadState.throttle=Math.max(0,Math.min(1,rt));
   gamepadState.hand=gamepadButton(gp,0);
 
-  if(!audioReady||audioCtx?.state!=='running'){
-    audioStatus.textContent='Clique Activer';
+  if(!vehicleAudio.isRunning()){
+    vehicleAudio.showActivationHint();
   }
 
   if(gamepadPressedEdge(gp,3))cycleCam();        // Y
@@ -3667,9 +3579,9 @@ function animate(now){
  try{
    updateGamepad();
    updateDrive(dt);
-   try{updateVehicleAudio()}catch(audioErr){
+   try{vehicleAudio.update()}catch(audioErr){
      console.warn('Audio frame error',audioErr);
-     if(audioStatus)audioStatus.textContent='Erreur audio';
+     vehicleAudio.showError();
    }
    updateCam(dt);
    prefetchAhead();
