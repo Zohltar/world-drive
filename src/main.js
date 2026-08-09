@@ -14,6 +14,7 @@ import { createElevationService } from './elevation.js';
 import { createTerrainService } from './terrain.js';
 import { createSceneryDataService } from './scenery-data.js';
 import { createSceneryRenderer } from './scenery-renderer.js';
+import { createWaterDataService } from './water-data.js';
 
 // Default test route. V4 can replace these coordinates at runtime.
 const MANIC2={lat:49.3213,lon:-68.3467,name:'Manic‑2'};
@@ -279,8 +280,19 @@ function updateRoadMetaHUD(){
   osmSpeedStatus.textContent=activeRoadMeta.maxspeed?`${Math.round(activeRoadMeta.maxspeed)} km/h`:'—';
 }
 
-const waterFeatures=[]; // hydrography for the CURRENT generated route
-const bridgeFeatures=[]; // bridges for the CURRENT generated route
+const waterData=createWaterDataService({
+  statusEl:waterStatus,
+  cacheStatusEl:hydroCacheStatus,
+  cache:OsmCache,
+  overpass:overpassClient,
+  toLatLon:(x,z)=>xzToLL(x,z),
+  toWorld:(lat,lon)=>llToXZ(lat,lon)
+});
+
+const waterFeatures=waterData.waterFeatures;
+const bridgeFeatures=waterData.bridgeFeatures;
+const coastlineFeatures=waterData.coastlineFeatures;
+
 const bridgeStatus=$('bridgeStatus');
 
 const bridgeManager=createBridgeManager({
@@ -292,47 +304,7 @@ const bridgeManager=createBridgeManager({
   terrainHeight:(x,z)=>terrainAbs(x,z)
 });
 const bridgeSpans=bridgeManager.spans;
-let lastWaterCenter={x:Infinity,z:Infinity};
-let waterLoading=false;
-let hydroGeneration=0;
-let hydroRequestSerial=0;
-const waterAbortControllers=new Set();
-const coastlineFeatures=[];
 
-// ---------- V5.1.3 persistent hydro cache ----------
-const HYDRO_CACHE_PREFIX='worlddrive_hydro_v1:';
-const HYDRO_CACHE_TTL=1000*60*60*24*30; // 30 days
-const HYDRO_CACHE_CELL=.04; // ~4 km latitude cells, coarse enough for route reuse
-
-function hydroCellKey(lat,lon){
-  const a=Math.floor(lat/HYDRO_CACHE_CELL);
-  const b=Math.floor(lon/HYDRO_CACHE_CELL);
-  return `${a}:${b}`;
-}
-function hydroCacheKey(lat,lon){return WorldCache.osmKey('hydro',lat,lon)}
-async function readHydroCache(lat,lon){
-  return OsmCache.get('hydro',lat,lon,HYDRO_CACHE_TTL);
-}
-async function writeHydroCache(lat,lon,data){
-  return OsmCache.set('hydro',lat,lon,data);
-}
-async function hydroCacheCount(){
-  return OsmCache.count('hydro');
-}
-
-
-function hydroQuery(ll){
-  return `[out:json][timeout:14];(
-    way(around:7000,${ll.lat},${ll.lon})["waterway"~"river|stream|canal|ditch"];
-    way(around:7000,${ll.lat},${ll.lon})["waterway"="riverbank"];
-    way(around:7000,${ll.lat},${ll.lon})["natural"="water"];
-    relation(around:7000,${ll.lat},${ll.lon})["natural"="water"];
-    way(around:7000,${ll.lat},${ll.lon})["landuse"="reservoir"];
-    relation(around:7000,${ll.lat},${ll.lon})["landuse"="reservoir"];
-    way(around:7000,${ll.lat},${ll.lon})["natural"="coastline"];
-    way(around:7000,${ll.lat},${ll.lon})["highway"]["bridge"];
-  );out geom;`;
-}
 function roadMetaQuery(ll){
   return `[out:json][timeout:10];(
     way(around:90,${ll.lat},${ll.lon})["highway"];
@@ -1132,125 +1104,25 @@ function rebuildLocalWater(){
 }
 
 async function updateHydroCacheHUD(){
-  if(!hydroCacheStatus)return;
-  const n=await hydroCacheCount();
-  hydroCacheStatus.textContent=`Cache IDB: ${n} zone${n!==1?'s':''}`;
+  return waterData.updateCacheHUD();
 }
 updateHydroCacheHUD().catch(()=>{});
 
 async function loadWaterAround(absx,absz){
-  if(waterLoading)return false;
+  const result=await waterData.loadAround(absx,absz);
+  if(!result.ok)return false;
 
-  const generation=hydroGeneration;
-  const requestId=++hydroRequestSerial;
-  waterLoading=true;
+  // Geometry/render orchestration deliberately stays in main.js for 13A.
+  rebuildBridgeSpans();
 
-  const ll=xzToLL(absx,absz);
+  // Hydro may arrive after vegetation.
+  removeTreesOverWater();
+  sceneryRenderer.removeTreesOverWater();
 
-  // Persistent cache first: no network if this geographic cell was already loaded.
-  const cached=await readHydroCache(ll.lat,ll.lon);
-  if(cached){
-    waterStatus.textContent='Cache IDB…';
-  }else{
-    waterStatus.textContent='Chargement OSM…';
-  }
+  bridgeManager.updateStatus();
+  rebuildLocalWorld();
 
-  const q=hydroQuery(ll);
-
-  let data=cached;
-  if(!data){
-    data=await overpassClient.fetchRaw({
-      query:q,
-      timeoutMs:9000,
-      label:'Hydro',
-      shouldContinue:()=>generation===hydroGeneration,
-      onControllerStart:controller=>waterAbortControllers.add(controller),
-      onControllerEnd:controller=>waterAbortControllers.delete(controller)
-    });
-  }
-
-  if(generation!==hydroGeneration)return false;
-
-  if(data && !cached){
-    await writeHydroCache(ll.lat,ll.lon,data);
-    updateHydroCacheHUD().catch(()=>{});
-  }
-
-  if(data){
-    const knownWater=new Set(waterFeatures.map(f=>`${f.type||'way'}/${f.id}`));
-    const knownBridge=new Set(bridgeFeatures.map(f=>`${f.type||'way'}/${f.id}`));
-
-    for(const e of data.elements||[]){
-      if(!e.geometry||e.geometry.length<2)continue;
-
-      const pts=e.geometry.map(p=>{
-        const q=llToXZ(p.lat,p.lon);
-        return{x:q.x,z:q.z};
-      });
-
-      const featureKey=`${e.type||'way'}/${e.id}`;
-
-      if(e.tags?.highway && e.tags?.bridge){
-        if(!knownBridge.has(featureKey)){
-          bridgeFeatures.push({id:e.id,type:e.type||'way',points:pts,tags:e.tags||{},generation});
-          knownBridge.add(featureKey);
-        }
-        continue;
-      }
-
-      if(e.tags?.natural==='coastline'){
-        coastlineFeatures.push({
-          id:e.id,type:e.type||'way',points:pts,tags:e.tags||{},generation
-        });
-        continue;
-      }
-
-      const isWater=
-        !!e.tags?.waterway ||
-        e.tags?.natural==='water' ||
-        e.tags?.landuse==='reservoir';
-
-      if(!isWater||knownWater.has(featureKey))continue;
-
-      const isArea=
-        e.tags?.natural==='water' ||
-        e.tags?.landuse==='reservoir' ||
-        e.tags?.waterway==='riverbank';
-
-      waterFeatures.push({
-        id:e.id,
-        type:e.type||'way',
-        kind:isArea&&pts.length>=3?'polygon':'line',
-        points:pts,
-        tags:e.tags||{},
-        generation
-      });
-      knownWater.add(featureKey);
-    }
-
-    if(generation!==hydroGeneration)return false;
-
-    rebuildBridgeSpans();
-    lastWaterCenter={x:absx,z:absz};
-
-    // Hydro can arrive after vegetation. Purge trees that were generated before
-    // the shoreline/water geometry was known.
-    removeTreesOverWater();
-    sceneryRenderer.removeTreesOverWater();
-
-    const waterCount=waterFeatures.length;
-    const coastCount=coastlineFeatures.length;
-    waterStatus.textContent=`${cached?'Cache':'OSM'} · ${waterCount} eau${waterCount!==1?'x':''}${coastCount?` · côte ${coastCount}`:''}`;
-    bridgeManager.updateStatus();
-
-    rebuildLocalWorld();
-    waterLoading=false;
-    return true;
-  }
-
-  waterStatus.textContent='Indisponible';
-  waterLoading=false;
-  return false;
+  return true;
 }
 
 
@@ -1564,15 +1436,10 @@ function recenterIfNeeded(absx,absz,force=false){
 
 
 function resetWorldCaches(){
-  hydroGeneration++;
-  for(const ctl of waterAbortControllers){try{ctl.abort()}catch(e){}}
-  waterAbortControllers.clear();
-  waterLoading=false;
+  waterData.reset();
 
   route.length=0;segments.length=0;routeLength=0;
-  waterFeatures.length=0;bridgeFeatures.length=0;bridgeManager.reset();
-  coastlineFeatures.length=0;
-  waterStatus.textContent='Réinitialisé';
+  bridgeManager.reset();
   bridgeStatus.textContent='0';
   clearGroup(waterGroup);
 
@@ -1581,7 +1448,6 @@ function resetWorldCaches(){
   // Only in-flight operations and route-relative state are reset.
   elevationService.reset();
   imageryService.reset();
-  lastWaterCenter={x:Infinity,z:Infinity};
   bridgeManager.resetCounter();
   activeRoadMeta={highway:null,surface:'asphalt',maxspeed:null,lanes:null,width:null,name:null,ref:null,confidence:0};
   signData.reset();
@@ -1600,19 +1466,23 @@ function resetWorldCaches(){
 
 function preloadHydroAlongRoute(){
   if(routeLength<=0)return;
-  const generation=hydroGeneration;
+  const generation=waterData.generation;
 
   // Load only the current visible zone immediately.
   loadWaterAround(absX,absZ).catch(()=>{});
 
-  // Remaining route points are CACHE-ONLY and staggered.
-  // They never rebuild the visible water scene.
+  // Remaining route points are cache/prefetch only and never rebuild the visible scene.
   const fractions=[.20,.40,.60,.80];
   fractions.forEach((f,i)=>{
     setTimeout(async()=>{
-      if(generation!==hydroGeneration||waterLoading||sceneryData.loading)return;
-      const p=routePointAt(f),ll=xzToLL(p.x,p.z);
-      await fetchOverpassCached('hydro',ll,hydroQuery(ll),7000,HYDRO_CACHE_TTL);
+      if(
+        generation!==waterData.generation ||
+        waterData.loading ||
+        sceneryData.loading
+      )return;
+
+      const p=routePointAt(f);
+      await waterData.prefetchAt(p.x,p.z,7000);
     },3500+i*3500);
   });
 }
@@ -2143,8 +2013,11 @@ function updateDrive(dt){
    loadElevationAround(absX,absZ);
  }
 
- const wx=absX-lastWaterCenter.x,wz=absZ-lastWaterCenter.z;
- if(wx*wx+wz*wz>2200*2200&&!waterLoading)loadWaterAround(absX,absZ);
+ const waterCenter=waterData.center;
+ const wx=absX-waterCenter.x,wz=absZ-waterCenter.z;
+ if(wx*wx+wz*wz>2200*2200&&!waterData.loading){
+   loadWaterAround(absX,absZ);
+ }
 
  const sceneryCenter=sceneryData.center;
  const sx=absX-sceneryCenter.x,sz=absZ-sceneryCenter.z;
@@ -2495,10 +2368,10 @@ async function prefetchImageryAt(x,z){
 
 async function prefetchOsmAt(x,z){
   // Visible world always wins over background caching.
-  if(waterLoading||sceneryData.loading)return;
+  if(waterData.loading||sceneryData.loading)return;
   const ll=xzToLL(x,z);
   await Promise.allSettled([
-    fetchOverpassCached('hydro',ll,hydroQuery(ll),7000,HYDRO_CACHE_TTL),
+    waterData.prefetchAt(x,z,7000),
     fetchOverpassCached('scenery',ll,sceneryData.query(ll),7000,1000*60*60*24*10),
     fetchOverpassCached('signs',ll,signQuery(ll),5500,1000*60*60*24*10)
   ]);
