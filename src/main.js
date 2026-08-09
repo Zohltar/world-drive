@@ -4,6 +4,7 @@ import { createGamepadController } from './gamepad.js';
 import { createCameraController } from './camera.js';
 import { createRoutingGeometry, angleDelta, nearestPointOnPolyline } from './routing.js';
 import { createRoutingService } from './routing-service.js';
+import { createGeocodingService, validLatLon } from './geocoding.js';
 
 // Default test route. V4 can replace these coordinates at runtime.
 const MANIC2={lat:49.3213,lon:-68.3467,name:'Manic‑2'};
@@ -39,6 +40,12 @@ const routingService=createRoutingService({
   onStatus:label=>{routingStatus.textContent=label},
   onLoadingText:text=>{loadingText.textContent=text},
   distance:geoDist
+});
+
+const geocodingService=createGeocodingService({
+  language:'fr',
+  minIntervalMs:1050,
+  timeoutMs:7000
 });
 
 function toast(t){notice.textContent=t;notice.classList.add('show');clearTimeout(toast.t);toast.t=setTimeout(()=>notice.classList.remove('show'),1700)}
@@ -2421,59 +2428,6 @@ function preloadHydroAlongRoute(){
   });
 }
 
-function parseCoordinateWaypoint(line){
-  const parts=String(line||'').trim().split(/[,\s;]+/).map(Number);
-  if(parts.length>=2&&validLatLon(parts[0],parts[1])){
-    return {lat:parts[0],lon:parts[1],name:'Waypoint'};
-  }
-  return null;
-}
-
-async function geocodePlace(query,limit=5){
-  const q=String(query||'').trim();
-  if(!q)return [];
-
-  const url='https://nominatim.openstreetmap.org/search?'+new URLSearchParams({
-    q,
-    format:'jsonv2',
-    limit:String(Math.max(1,Math.min(5,limit))),
-    addressdetails:'1',
-    'accept-language':'fr'
-  });
-
-  const ctl=new AbortController();
-  const timer=setTimeout(()=>ctl.abort(),7000);
-  try{
-    const r=await fetch(url,{signal:ctl.signal,headers:{'Accept':'application/json'}});
-    if(!r.ok)throw new Error('Géocodage HTTP '+r.status);
-    const data=await r.json();
-    return (data||[]).map(x=>({
-      lat:Number(x.lat),
-      lon:Number(x.lon),
-      name:x.display_name||q,
-      type:x.type||x.category||''
-    })).filter(x=>validLatLon(x.lat,x.lon));
-  }finally{clearTimeout(timer)}
-}
-
-async function resolveWaypointLines(text){
-  const lines=String(text||'').split(/\n+/).map(x=>x.trim()).filter(Boolean).slice(0,8);
-  const out=[];
-  for(const line of lines){
-    const direct=parseCoordinateWaypoint(line);
-    if(direct){out.push(direct);continue;}
-    try{
-      const r=await geocodePlace(line,1);
-      if(r[0])out.push({...r[0],name:line});
-    }catch(e){console.warn('Waypoint geocode failed',line,e)}
-    await new Promise(resolve=>setTimeout(resolve,1050)); // public Nominatim policy friendliness
-  }
-  return out;
-}
-
-function validLatLon(lat,lon){
-  return Number.isFinite(lat)&&Number.isFinite(lon)&&Math.abs(lat)<=85&&Math.abs(lon)<=180;
-}
 async function createRequestedRoute(start,end,waypoints=[]){
   bumpRouteGeneration();
   if(!validLatLon(start.lat,start.lon)||!validLatLon(end.lat,end.lon)){
@@ -3023,15 +2977,6 @@ $('assist').onclick=toggleAssist;$('camera').onclick=()=>cameraController.cycle(
 // ---------- human-friendly place search ----------
 let selectedStart={...MANIC2};
 let selectedEnd={...MANIC5};
-let lastGeocodeAt=0;
-
-async function politeGeocode(query,limit=5){
-  const wait=Math.max(0,1050-(Date.now()-lastGeocodeAt));
-  if(wait)await new Promise(r=>setTimeout(r,wait));
-  lastGeocodeAt=Date.now();
-  return geocodePlace(query,limit);
-}
-
 function setSelectedPlace(which,p){
   if(which==='start'){
     selectedStart={lat:p.lat,lon:p.lon,name:p.name||$('startPlace').value};
@@ -3067,7 +3012,7 @@ async function searchPlaceField(which){
   const btn=$(which==='start'?'findStartBtn':'findEndBtn');
   const old=btn.textContent;btn.textContent='…';btn.disabled=true;
   try{
-    const items=await politeGeocode(input.value,5);
+    const items=await geocodingService.search(input.value,5);
     renderSearchResults(which,items);
   }catch(e){
     console.warn(e);toast('Recherche de lieu indisponible');
@@ -3088,17 +3033,17 @@ $('buildRouteBtn').addEventListener('click',async()=>{
     const endText=$('endPlace').value.trim();
 
     if(startText && startText!==selectedStart.name){
-      const r=await politeGeocode(startText,1);
+      const r=await geocodingService.search(startText,1);
       if(!r[0]){toast('Départ introuvable');return}
       setSelectedPlace('start',{...r[0],name:startText});
     }
     if(endText && endText!==selectedEnd.name){
-      const r=await politeGeocode(endText,1);
+      const r=await geocodingService.search(endText,1);
       if(!r[0]){toast('Destination introuvable');return}
       setSelectedPlace('end',{...r[0],name:endText});
     }
 
-    const waypoints=await resolveWaypointLines($('waypointsInput').value);
+    const waypoints=await geocodingService.resolveWaypointLines($('waypointsInput').value);
     createRequestedRoute({...selectedStart},{...selectedEnd},waypoints);
   }catch(e){
     console.error(e);toast('Impossible de préparer le trajet');
