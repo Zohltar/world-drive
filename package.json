@@ -1,0 +1,17 @@
+{
+  "name": "world-drive",
+  "private": true,
+  "version": "5.2.8",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "devDependencies": {
+    "vite": "^7.0.0"
+  },
+  "dependencies": {
+    "three": "^0.185.1"
+  }
+}

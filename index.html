@@ -1,0 +1,188 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
+<title>World Drive V5.2.8 — VS Code Edition</title>
+<link rel="stylesheet" href="/src/styles.css">
+<script type="importmap">
+{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.179.1/build/three.module.js"}}
+</script>
+</head>
+<body>
+<div id="app"></div>
+<div id="compassWrap">
+  <canvas id="compass"></canvas>
+  <div id="compassPointer"></div>
+  <div id="compassHeading">N · 000°</div>
+</div>
+<div id="loading"><div class="box"><div class="spin"></div><h1>World Drive V4.0</h1><p id="loadingText">Récupération de la géométrie réelle de la route…</p></div></div>
+<div id="hud">
+ <div class="panelHeader">
+   <div id="brand"><b>V5.2.8</b> WORLD DRIVE · VS CODE</div>
+   <button id="hudToggle" class="panelToggle" aria-label="Minimiser les détails" title="Minimiser">−</button>
+ </div>
+
+ <div id="hudBody">
+   <div id="status">Chargement de la route…</div>
+   <div style="font-size:10px;color:#8fa6bf;margin-top:4px">V5 alpha · architecture en évolution</div>
+
+   <div class="compactStats">
+     <div class="card">
+       <div class="label">Vitesse</div>
+       <div class="value"><span id="speed">0</span> km/h</div>
+       <div id="speedControl">
+         <div class="top"><span>Max</span><span><b id="maxSpeedLabel">100</b> km/h</span></div>
+         <input type="range" id="maxSpeedSlider" min="20" max="200" step="5" value="100" aria-label="Vitesse maximale">
+       </div>
+     </div>
+     <div class="card"><div class="label">Progression</div><div class="value"><span id="progress">0.0</span> %</div></div>
+     <div class="card"><div class="label">Restant</div><div class="value"><span id="remainKm">—</span> km</div></div>
+     <div class="card"><div class="label">Altitude</div><div class="value"><span id="altitude">—</span> m</div></div>
+   </div>
+
+   <div class="section" id="driveSection">
+     <button class="sectionHead" data-section="driveSection"><span>Conduite</span><span>−</span></button>
+     <div class="sectionBody">
+       <div class="stats">
+         <div class="card"><div class="label">Parcouru</div><div class="value"><span id="doneKm">0.0</span> km</div></div>
+         <div class="card"><div class="label">Distance route</div><div class="value"><span id="roadDist">0</span> m</div></div>
+         <div class="card"><div class="label">Caméra</div><div class="value" id="camMode">Chase</div></div>
+         <div class="card"><div class="label">Pente route</div><div class="value"><span id="grade">0.0</span> %</div></div>
+         <div class="card"><div class="label">Contact</div><div class="value" id="contactMode">Route</div></div>
+         <div class="card"><div class="label">Pilote auto</div><div class="value" id="autopilotStatus">OFF</div></div>
+         <div class="card"><div class="label">Manette</div><div class="value" id="gamepadStatus">—</div></div>
+         <div class="card">
+           <div class="label">Audio</div>
+           <div class="value" id="audioStatus">OFF</div>
+           <button id="audioEnableBtn" class="smallBtn">Activer audio</button>
+         </div>
+       </div>
+     </div>
+   </div>
+
+   <div class="section collapsed" id="worldSection">
+     <button class="sectionHead" data-section="worldSection"><span>Monde</span><span>+</span></button>
+     <div class="sectionBody">
+       <div class="stats">
+         <div class="card"><div class="label">Relief</div><div class="value" id="elevStatus">Démo</div></div>
+         <div class="card"><div class="label">Hydrographie</div><div class="value" id="waterStatus">Chargement…</div><div class="searchMeta" id="hydroCacheStatus">Cache: 0</div></div>
+         <div class="card"><div class="label">Ponts OSM</div><div class="value" id="bridgeStatus">0</div></div>
+         <div class="card"><div class="label">Décor réel</div><div class="value" id="sceneryStatus">Chargement…</div></div>
+         <div class="card"><div class="label">Imagerie sol</div><div class="value" id="imageryStatus">Chargement…</div></div>
+         <div class="card"><div class="label">Routage</div><div class="value" id="routingStatus">Prêt</div></div>
+         <div class="card"><div class="label">Route active</div><div class="value" id="roadTypeStatus">—</div></div>
+         <div class="card"><div class="label">Surface</div><div class="value" id="roadSurfaceStatus">—</div></div>
+         <div class="card"><div class="label">Limite OSM</div><div class="value"><span id="osmSpeedStatus">—</span></div></div>         <div class="card"><div class="label">Panneaux OSM</div><div class="value" id="signStatus">0</div></div>
+         <div class="card">
+           <div class="label">Heure</div>
+           <div class="value"><span id="timeLabel">12:00</span></div>
+           <input type="range" id="timeSlider" min="0" max="24" step="0.25" value="12">
+         </div>
+         <div class="card">
+           <div class="label">Cache OSM / IndexedDB</div>
+           <button id="clearHydroCacheBtn" class="smallBtn">Vider cache OSM</button>
+         </div>
+       </div>
+     </div>
+   </div>
+
+   <div class="section collapsed" id="routeSection">
+     <button class="sectionHead" data-section="routeSection"><span>Trajet</span><span>+</span></button>
+     <div class="sectionBody">
+       <div id="plannerBox">
+         <div class="plannerTitle">Créer un trajet</div>
+
+         <label class="placeLabel">Départ
+           <div class="placeRow">
+             <input id="startPlace" type="text" value="Manic‑2" placeholder="Ex. Matane, Québec">
+             <button id="findStartBtn" class="smallBtn">Chercher</button>
+           </div>
+         </label>
+         <div id="startSearchResults" class="searchResults"></div>
+
+         <label class="placeLabel">Destination
+           <div class="placeRow">
+             <input id="endPlace" type="text" value="Manic‑5" placeholder="Ex. Percé, Québec">
+             <button id="findEndBtn" class="smallBtn">Chercher</button>
+           </div>
+         </label>
+         <div id="endSearchResults" class="searchResults"></div>
+
+         <div class="plannerTitle" style="margin-top:8px">Points de passage optionnels</div>
+         <textarea id="waypointsInput" rows="2" placeholder="Ex. Alma, Québec&#10;Roberval, Québec"></textarea>
+
+         <div class="row plannerActions">
+           <button id="buildRouteBtn">Créer le trajet</button>
+         </div>
+
+         <div class="presetGrid">
+           <button id="preset389Btn">389 · Manic‑2 → Manic‑5</button>
+           <button id="preset169Btn">169 · Hébertville → Saint‑Félicien</button>
+           <button id="preset132Btn">132 · Matane → Percé</button>
+         </div>
+
+         <div class="section collapsed" id="advancedCoordsSection" style="margin-top:8px">
+           <button class="sectionHead" data-section="advancedCoordsSection"><span>Avancé · coordonnées</span><span>+</span></button>
+           <div class="sectionBody">
+             <div class="plannerGrid">
+               <label>Départ lat<input id="startLat" type="number" step="0.000001" value="49.3213"></label>
+               <label>Départ lon<input id="startLon" type="number" step="0.000001" value="-68.3467"></label>
+               <label>Arrivée lat<input id="endLat" type="number" step="0.000001" value="50.6451065"></label>
+               <label>Arrivée lon<input id="endLon" type="number" step="0.000001" value="-68.7271214"></label>
+             </div>
+           </div>
+         </div>
+       </div>
+       <div id="jumpBox">
+         <div class="top"><span>Inspecter le trajet</span><span id="jumpPct">0 %</span></div>
+         <input type="range" id="jump" min="0" max="100" step="0.1" value="0">
+         <div class="row"><button id="jumpBtn">Téléporter</button><button id="northBtn">Arrivée</button></div>
+       </div>
+     </div>
+   </div>
+ </div>
+
+ <div id="actionBar">
+   <div class="row">
+     <button id="autopilotBtn">Pilote auto: OFF</button>
+     <button id="assist">Assist: ON</button>
+     <button id="camera">Caméra</button>
+   </div>
+   <div class="row">
+     <button id="reset">↻ Route</button>
+     <button id="imageryToggle">Photo: ON</button>
+   </div>
+ </div>
+</div>
+<div id="mapbox">
+  <div class="panelHeader">
+    <div id="mapboxTitle">CARTE DU TRAJET</div>
+    <button id="mapToggle" class="panelToggle" aria-label="Minimiser la carte" title="Minimiser">−</button>
+  </div>
+  <canvas id="minimap"></canvas>
+</div>
+<div id="help"><b>Clavier</b> WASD / flèches · Espace frein à main · C caméra<br><b>GuliKit / Xbox</b> stick G direction · stick D caméra · RT accélérer · LT freiner/reculer · A frein à main<br>Y caméra · X assistance · B pilote auto · Menu replacer<br><b>Vitesse max</b> réglable 20–200 km/h</div>
+<div id="notice"></div>
+
+<script>
+window.addEventListener('error',function(e){
+  const l=document.getElementById('loading');
+  const t=document.getElementById('loadingText');
+  if(t)t.innerHTML='Erreur JavaScript au démarrage.<br><small>'+String(e.message||'Erreur inconnue')+'</small>';
+  setTimeout(()=>{if(l)l.classList.add('hidden')},3500);
+});
+window.addEventListener('unhandledrejection',function(e){
+  console.error('Unhandled promise rejection',e.reason);
+});
+setTimeout(function(){
+  const l=document.getElementById('loading');
+  const t=document.getElementById('loadingText');
+  if(l && !l.classList.contains('hidden') && t && /Récupération de la géométrie réelle/.test(t.textContent||'')){
+    t.innerHTML='Le moteur JavaScript n’a pas démarré correctement.<br><small>Vérifie l’accès au CDN Three.js puis recharge.</small>';
+  }
+},6000);
+</script>
+<script type="module" src="/src/main.js"></script>
+</body>
+</html>
