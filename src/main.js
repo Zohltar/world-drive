@@ -12,6 +12,7 @@ import { createBridgeManager } from './bridges.js';
 import { createImageryService } from './imagery.js';
 import { createElevationService } from './elevation.js';
 import { createTerrainService } from './terrain.js';
+import { createSceneryDataService } from './scenery-data.js';
 
 // Default test route. V4 can replace these coordinates at runtime.
 const MANIC2={lat:49.3213,lon:-68.3467,name:'Manic‑2'};
@@ -319,18 +320,6 @@ function hydroQuery(ll){
     way(around:7000,${ll.lat},${ll.lon})["highway"]["bridge"];
   );out geom;`;
 }
-function sceneryQuery(ll){
-  return `[out:json][timeout:16];(
-    way(around:4500,${ll.lat},${ll.lon})["building"];
-    way(around:4500,${ll.lat},${ll.lon})["landuse"~"forest|meadow"];
-    way(around:4500,${ll.lat},${ll.lon})["natural"~"wood|scrub|bare_rock|scree|cliff"];
-    node(around:4500,${ll.lat},${ll.lon})["power"~"tower|pole"];
-    way(around:4500,${ll.lat},${ll.lon})["power"~"line|minor_line"];
-    way(around:4500,${ll.lat},${ll.lon})["man_made"="dam"];
-    way(around:4500,${ll.lat},${ll.lon})["waterway"="dam"];
-    way(around:4500,${ll.lat},${ll.lon})["barrier"="guard_rail"];
-  );out geom;`;
-}
 function roadMetaQuery(ll){
   return `[out:json][timeout:10];(
     way(around:90,${ll.lat},${ll.lon})["highway"];
@@ -339,10 +328,16 @@ function roadMetaQuery(ll){
 
 // ---------- V3 geographic scenery ----------
 const sceneryStatus=$('sceneryStatus');
-const sceneryFeatures=[];
-let sceneryLoading=false;
 
-let lastSceneryCenter={x:Infinity,z:Infinity};
+const sceneryData=createSceneryDataService({
+  statusEl:sceneryStatus,
+  toLatLon:(x,z)=>xzToLL(x,z),
+  toWorld:(lat,lon)=>llToXZ(lat,lon),
+  fetchCached:(namespace,ll,query,timeoutMs,ttlMs)=>
+    fetchOverpassCached(namespace,ll,query,timeoutMs,ttlMs),
+  getGeneration:()=>WorldDrive?.route?.generation??0
+});
+const sceneryFeatures=sceneryData.features;
 
 // ---------- streamed aerial/satellite imagery ----------
 const imageryStatus=$('imageryStatus');
@@ -952,49 +947,22 @@ function rebuildLocalScenery(){
 }
 
 async function loadSceneryAround(absx,absz){
-  if(sceneryLoading)return;
-  sceneryLoading=true;
-  sceneryStatus.textContent='Chargement…';
+  const result=await sceneryData.loadAround(absx,absz);
 
-  try{
-    const ll=xzToLL(absx,absz);
-    const q=sceneryQuery(ll);
-    const {data,cached}=await fetchOverpassCached('scenery',ll,q,8500,1000*60*60*24*10);
+  if(!result.ok)return false;
 
-    if(data){
-      const known=new Set(sceneryFeatures.map(f=>`${f.type}/${f.id}`));
-      for(const e of data.elements||[]){
-        const key=`${e.type}/${e.id}`;if(known.has(key))continue;
-        let pts=[];
-        if(e.geometry?.length){
-          pts=e.geometry.map(p=>{const q=llToXZ(p.lat,p.lon);return{x:q.x,z:q.z}});
-        }else if(Number.isFinite(e.lat)&&Number.isFinite(e.lon)){
-          const q=llToXZ(e.lat,e.lon);pts=[{x:q.x,z:q.z}];
-        }
-        if(!pts.length)continue;
-        sceneryFeatures.push({id:e.id,type:e.type,points:pts,tags:e.tags||{}});
-        known.add(key);
-      }
-      lastSceneryCenter={x:absx,z:absz};
+  // Rendering stays in main.js for step 12A.
+  // rebuildLocalScenery() clears infrastructureGroup, so bridge furniture and
+  // signs must be restored immediately after each async scenery refresh.
+  rebuildLocalScenery();
+  addEnhancedBridgeFurniture();
+  addCurrentRoadSigns();
+  addGeographicRoadSigns();
 
-      // rebuildLocalScenery() clears infrastructureGroup because that group also
-      // hosts OSM towers/dams/guardrails. Bridge furniture and road signs share
-      // the same group, so they must be restored immediately afterward.
-      rebuildLocalScenery();
-      addEnhancedBridgeFurniture();
-      addCurrentRoadSigns();
-      addGeographicRoadSigns();
+  sceneryStatus.textContent=
+    `${result.cached?'Cache':'OSM'} · ${sceneryFeatures.length} objets`;
 
-      sceneryStatus.textContent=`${cached?'Cache':'OSM'} · ${sceneryFeatures.length} objets`;
-    }else{
-      sceneryStatus.textContent='Indisponible';
-    }
-  }catch(e){
-    console.warn('Scenery load failed',e);
-    sceneryStatus.textContent='Indisponible';
-  }finally{
-    sceneryLoading=false;
-  }
+  return true;
 }
 
 // ---------- bridge logic ----------
@@ -1738,13 +1706,12 @@ function resetWorldCaches(){
   bridgeStatus.textContent='0';
   clearGroup(waterGroup);
 
-  sceneryFeatures.length=0;
+  sceneryData.reset();
   // Keep completed elevation/imagery LRU caches across route changes.
   // Only in-flight operations and route-relative state are reset.
   elevationService.reset();
   imageryService.reset();
   lastWaterCenter={x:Infinity,z:Infinity};
-  lastSceneryCenter={x:Infinity,z:Infinity};
   bridgeManager.resetCounter();
   activeRoadMeta={highway:null,surface:'asphalt',maxspeed:null,lanes:null,width:null,name:null,ref:null,confidence:0};
   signData.reset();
@@ -1771,7 +1738,7 @@ function preloadHydroAlongRoute(){
   const fractions=[.20,.40,.60,.80];
   fractions.forEach((f,i)=>{
     setTimeout(async()=>{
-      if(generation!==hydroGeneration||waterLoading||sceneryLoading)return;
+      if(generation!==hydroGeneration||waterLoading||sceneryData.loading)return;
       const p=routePointAt(f),ll=xzToLL(p.x,p.z);
       await fetchOverpassCached('hydro',ll,hydroQuery(ll),7000,HYDRO_CACHE_TTL);
     },3500+i*3500);
@@ -2307,8 +2274,11 @@ function updateDrive(dt){
  const wx=absX-lastWaterCenter.x,wz=absZ-lastWaterCenter.z;
  if(wx*wx+wz*wz>2200*2200&&!waterLoading)loadWaterAround(absX,absZ);
 
- const sx=absX-lastSceneryCenter.x,sz=absZ-lastSceneryCenter.z;
- if(sx*sx+sz*sz>2600*2600&&!sceneryLoading)loadSceneryAround(absX,absZ);
+ const sceneryCenter=sceneryData.center;
+ const sx=absX-sceneryCenter.x,sz=absZ-sceneryCenter.z;
+ if(sx*sx+sz*sz>2600*2600&&!sceneryData.loading){
+   loadSceneryAround(absX,absZ);
+ }
 
  const imageryCenter=imageryService.center;
  const ix=absX-imageryCenter.x,iz=absZ-imageryCenter.z;
@@ -2653,11 +2623,11 @@ async function prefetchImageryAt(x,z){
 
 async function prefetchOsmAt(x,z){
   // Visible world always wins over background caching.
-  if(waterLoading||sceneryLoading)return;
+  if(waterLoading||sceneryData.loading)return;
   const ll=xzToLL(x,z);
   await Promise.allSettled([
     fetchOverpassCached('hydro',ll,hydroQuery(ll),7000,HYDRO_CACHE_TTL),
-    fetchOverpassCached('scenery',ll,sceneryQuery(ll),7000,1000*60*60*24*10),
+    fetchOverpassCached('scenery',ll,sceneryData.query(ll),7000,1000*60*60*24*10),
     fetchOverpassCached('signs',ll,signQuery(ll),5500,1000*60*60*24*10)
   ]);
 }
