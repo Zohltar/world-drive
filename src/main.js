@@ -3,6 +3,7 @@ import { createVehicleAudio } from './audio.js';
 import { createGamepadController } from './gamepad.js';
 import { createCameraController } from './camera.js';
 import { createRoutingGeometry, angleDelta, nearestPointOnPolyline } from './routing.js';
+import { createRoutingService } from './routing-service.js';
 
 // Default test route. V4 can replace these coordinates at runtime.
 const MANIC2={lat:49.3213,lon:-68.3467,name:'Manic‑2'};
@@ -33,6 +34,12 @@ const routePointAtCum=cum=>routingGeometry.routePointAtCum(cum);
 
 const $=id=>document.getElementById(id);
 const loading=$('loading'),loadingText=$('loadingText'),statusEl=$('status'),notice=$('notice'),routingStatus=$('routingStatus');
+
+const routingService=createRoutingService({
+  onStatus:label=>{routingStatus.textContent=label},
+  onLoadingText:text=>{loadingText.textContent=text},
+  distance:geoDist
+});
 
 function toast(t){notice.textContent=t;notice.classList.add('show');clearTimeout(toast.t);toast.t=setTimeout(()=>notice.classList.remove('show'),1700)}
 function llToXZ(lat,lon){return {x:(lon-origin.lon)*Math.PI/180*EARTH*Math.cos(origin.lat*Math.PI/180),z:-(lat-origin.lat)*Math.PI/180*EARTH}}
@@ -2541,83 +2548,50 @@ function bumpRouteGeneration(){
 }
 
 // ---------- route fetch ----------
-async function fetchJSON(url,ms=8500,label='routeur'){
-  const c=new AbortController(),t=setTimeout(()=>c.abort(),ms);
-  try{
-    const r=await fetch(url,{signal:c.signal,cache:'no-store'});
-    if(!r.ok)throw new Error(`${label}: HTTP ${r.status}`);
-    const j=await r.json();
-    if(!j?.routes?.[0]?.geometry?.coordinates?.length)throw new Error(`${label}: réponse invalide`);
-    return j;
-  }finally{
-    clearTimeout(t);
-  }
-}
-
 async function loadRoute(){
- const routePoints=[ROUTE_START,...ROUTE_WAYPOINTS,ROUTE_END];
- const coords=routePoints.map(p=>`${p.lon},${p.lat}`).join(';');
- const endpoints=[
-   {
-     label:'OSRM Project',
-     url:`https://router.project-osrm.org/route/v1/driving/${coords}?overview=full&geometries=geojson&steps=false`
-   },
-   {
-     label:'OSM Routing',
-     url:`https://routing.openstreetmap.de/routed-car/route/v1/driving/${coords}?overview=full&geometries=geojson&steps=false`
-   }
- ];
+  const routePoints=[ROUTE_START,...ROUTE_WAYPOINTS,ROUTE_END];
 
- routingStatus.textContent='Connexion…';
- loadingText.textContent='Récupération du tracé routier…';
+  const {coordinates,provider}=await routingService.fetchRoute({
+    points:routePoints,
+    start:ROUTE_START
+  });
 
- // Launch both demo routers simultaneously: first valid response wins.
- const attempts=endpoints.map(ep=>(async()=>{
-   try{
-     const data=await fetchJSON(ep.url,8500,ep.label);
-     return {ep,data};
-   }catch(e){
-     console.warn(ep.label,e);
-     throw e;
-   }
- })());
+  routingStatus.textContent=provider;
+  const coordsGeo=coordinates;
 
- let winner;
- try{
-   winner=await Promise.any(attempts);
- }catch(groupError){
-   routingStatus.textContent='Échec';
-   throw new Error('Aucun serveur de routage n’a répondu dans le délai prévu');
- }
+  route.length=0;
+  segments.length=0;
+  routeLength=0;
 
- const data=winner.data;
- routingStatus.textContent=winner.ep.label;
- let coordsGeo=data.routes[0].geometry.coordinates.slice();
+  for(let i=0;i<coordsGeo.length;i++){
+    const [lon,lat]=coordsGeo[i];
+    const p=llToXZ(lat,lon);
+    let cum=routeLength;
 
- // Always orient geometry from requested start to requested destination.
- const first={lon:coordsGeo[0][0],lat:coordsGeo[0][1]};
- const last={lon:coordsGeo[coordsGeo.length-1][0],lat:coordsGeo[coordsGeo.length-1][1]};
- const firstToStart=geoDist(first,ROUTE_START), lastToStart=geoDist(last,ROUTE_START);
- if(lastToStart < firstToStart)coordsGeo.reverse();
+    if(i){
+      const prev=route[i-1];
+      const len=Math.hypot(p.x-prev.x,p.z-prev.z);
+      if(len>.02){
+        segments.push({
+          ax:prev.x,az:prev.z,
+          bx:p.x,bz:p.z,
+          len,
+          cum:routeLength
+        });
+        routeLength+=len;
+      }
+      cum=routeLength;
+    }
 
- route.length=0;segments.length=0;routeLength=0;
- for(let i=0;i<coordsGeo.length;i++){
-   const [lon,lat]=coordsGeo[i],p=llToXZ(lat,lon);
-   let cum=routeLength;
-   if(i){
-     const prev=route[i-1],len=Math.hypot(p.x-prev.x,p.z-prev.z);
-     if(len>.02){
-       segments.push({ax:prev.x,az:prev.z,bx:p.x,bz:p.z,len,cum:routeLength});
-       routeLength+=len;
-     }
-     cum=routeLength;
-   }
-   route.push({x:p.x,z:p.z,lat,lon,cum});
- }
- if(segments.length<2||routeLength<100)throw new Error('Tracé routier trop court ou invalide');
+    route.push({x:p.x,z:p.z,lat,lon,cum});
+  }
 
- statusEl.textContent=`Trajet chargé · ${(routeLength/1000).toFixed(1)} km · ${route.length.toLocaleString('fr-CA')} points`;
- return true;
+  if(segments.length<2||routeLength<100){
+    throw new Error('Tracé routier trop court ou invalide');
+  }
+
+  statusEl.textContent=`Trajet chargé · ${(routeLength/1000).toFixed(1)} km · ${route.length.toLocaleString('fr-CA')} points`;
+  return true;
 }
 
 // ---------- Driving ----------
