@@ -994,7 +994,15 @@ async function loadSceneryAround(absx,absz){
         known.add(key);
       }
       lastSceneryCenter={x:absx,z:absz};
+
+      // rebuildLocalScenery() clears infrastructureGroup because that group also
+      // hosts OSM towers/dams/guardrails. Bridge furniture and road signs share
+      // the same group, so they must be restored immediately afterward.
       rebuildLocalScenery();
+      addEnhancedBridgeFurniture();
+      addCurrentRoadSigns();
+      addGeographicRoadSigns();
+
       sceneryStatus.textContent=`${cached?'Cache':'OSM'} · ${sceneryFeatures.length} objets`;
     }else{
       sceneryStatus.textContent='Indisponible';
