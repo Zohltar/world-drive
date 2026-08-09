@@ -8,6 +8,7 @@ import { createGeocodingService, validLatLon } from './geocoding.js';
 import { WorldCache, OsmCache } from './cache.js';
 import { createOverpassClient } from './overpass.js';
 import { createSignDataService } from './signs.js';
+import { createBridgeManager } from './bridges.js';
 
 // Default test route. V4 can replace these coordinates at runtime.
 const MANIC2={lat:49.3213,lon:-68.3467,name:'Manic‑2'};
@@ -398,9 +399,17 @@ function updateRoadMetaHUD(){
 
 const waterFeatures=[]; // hydrography for the CURRENT generated route
 const bridgeFeatures=[]; // bridges for the CURRENT generated route
-let bridgeSpans=[];      // spans projected onto the current route cumulative distance
-let bridgeRebuildCount=0;
 const bridgeStatus=$('bridgeStatus');
+
+const bridgeManager=createBridgeManager({
+  statusEl:bridgeStatus,
+  getBridgeFeatures:()=>bridgeFeatures,
+  getRouteLength:()=>routeLength,
+  nearestRoute:(x,z)=>nearestRoute(x,z),
+  routePointAtCum:cum=>routePointAtCum(cum),
+  terrainHeight:(x,z)=>terrainAbs(x,z)
+});
+const bridgeSpans=bridgeManager.spans;
 let lastWaterCenter={x:Infinity,z:Infinity};
 let waterLoading=false;
 let hydroGeneration=0;
@@ -1250,52 +1259,8 @@ async function loadSceneryAround(absx,absz){
 }
 
 // ---------- bridge logic ----------
-function projectPointToRoute(x,z){
-  const n=nearestRoute(x,z);
-  return n?{cum:n.cum,d:n.d,x:n.px,z:n.pz}:null;
-}
-function rebuildBridgeSpans(){
-  const spans=[];
-  for(const b of bridgeFeatures){
-    if(!b.points||b.points.length<2)continue;
-    const projections=b.points.map(p=>projectPointToRoute(p.x,p.z)).filter(Boolean);
-    if(!projections.length)continue;
-    // Ignore unrelated bridges that happen to be inside the Overpass radius.
-    const close=projections.filter(p=>p.d<22);
-    if(close.length<2)continue;
-    let c0=Math.min(...close.map(p=>p.cum)), c1=Math.max(...close.map(p=>p.cum));
-    if(c1-c0<3)continue;
-
-    // Sample well onto the approaches so the deck never inherits river-bed elevation.
-    const approach=45;
-    const aCum=Math.max(0,c0-approach), bCum=Math.min(routeLength,c1+approach);
-    const a=routePointAtCum(aCum), bb=routePointAtCum(bCum);
-    const y0=terrainAbs(a.x,a.z), y1=terrainAbs(bb.x,bb.z);
-
-    spans.push({
-      id:b.id,
-      start:c0,end:c1,
-      rampStart:aCum,rampEnd:bCum,
-      y0,y1,
-      length:c1-c0
-    });
-  }
-  spans.sort((a,b)=>a.start-b.start);
-  bridgeSpans=spans;
-  bridgeRebuildCount++;
-  bridgeStatus.textContent=`${spans.length} · r${bridgeRebuildCount}`;
-}
-function bridgeHeightAtCum(cum){
-  for(const b of bridgeSpans){
-    if(cum<b.rampStart||cum>b.rampEnd)continue;
-    const t=(cum-b.rampStart)/Math.max(.001,b.rampEnd-b.rampStart);
-    // Smooth grade transition from one approach to the other.
-    // The deck remains above the valley/river because no interior terrain sample is used.
-    const smooth=t*t*(3-2*t);
-    return b.y0+(b.y1-b.y0)*smooth;
-  }
-  return null;
-}
+const rebuildBridgeSpans=()=>bridgeManager.rebuild();
+const bridgeHeightAtCum=cum=>bridgeManager.heightAtCum(cum);
 
 // ---------- continuous road ribbon ----------
 function buildRibbon(points,width,material,yOffset=0){
@@ -1367,7 +1332,7 @@ function buildRoadProfile(){
   for(let i=1;i<heights.length-1;i++){
     const here=bridgeHeightAtCum(raw[i].cum);
     if(here===null){
-      const nearBridge=bridgeSpans.some(b=>Math.abs(raw[i].cum-b.rampStart)<18||Math.abs(raw[i].cum-b.rampEnd)<18);
+      const nearBridge=bridgeManager.isNearApproach(raw[i].cum,18);
       if(nearBridge)finalH[i]=(heights[i-1]+2*heights[i]+heights[i+1])/4;
     }
   }
@@ -1700,7 +1665,7 @@ async function loadWaterAround(absx,absz){
     const waterCount=waterFeatures.length;
     const coastCount=coastlineFeatures.length;
     waterStatus.textContent=`${cached?'Cache':'OSM'} · ${waterCount} eau${waterCount!==1?'x':''}${coastCount?` · côte ${coastCount}`:''}`;
-    bridgeStatus.textContent=`${bridgeSpans.length} · r${bridgeRebuildCount}`;
+    bridgeManager.updateStatus();
 
     rebuildLocalWorld();
     waterLoading=false;
@@ -2068,7 +2033,7 @@ function resetWorldCaches(){
   waterLoading=false;
 
   route.length=0;segments.length=0;routeLength=0;
-  waterFeatures.length=0;bridgeFeatures.length=0;bridgeSpans.length=0;
+  waterFeatures.length=0;bridgeFeatures.length=0;bridgeManager.reset();
   coastlineFeatures.length=0;
   waterStatus.textContent='Réinitialisé';
   bridgeStatus.textContent='0';
@@ -2086,7 +2051,7 @@ function resetWorldCaches(){
   lastWaterCenter={x:Infinity,z:Infinity};
   lastSceneryCenter={x:Infinity,z:Infinity};
   lastImageryCenter={x:Infinity,z:Infinity};
-  bridgeRebuildCount=0;
+  bridgeManager.resetCounter();
   activeRoadMeta={highway:null,surface:'asphalt',maxspeed:null,lanes:null,width:null,name:null,ref:null,confidence:0};
   signData.reset();
   passedSignKeys.clear();signReadout.key=null;signReadout.text='';signReadout.startedAt=0;
