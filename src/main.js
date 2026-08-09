@@ -13,6 +13,7 @@ import { createImageryService } from './imagery.js';
 import { createElevationService } from './elevation.js';
 import { createTerrainService } from './terrain.js';
 import { createSceneryDataService } from './scenery-data.js';
+import { createSceneryRenderer } from './scenery-renderer.js';
 
 // Default test route. V4 can replace these coordinates at runtime.
 const MANIC2={lat:49.3213,lon:-68.3467,name:'Manic‑2'};
@@ -82,12 +83,24 @@ const sun=new THREE.DirectionalLight(0xfff2d2,2.6);sun.position.set(-180,260,-12
 const world=new THREE.Group(),
       terrainDetailGroup=new THREE.Group(),
       waterGroup=new THREE.Group(),
-      infrastructureGroup=new THREE.Group(),
+      infrastructureGroup=new THREE.Group(), // bridges + road signs only
+      sceneryInfrastructureGroup=new THREE.Group(),
       buildingGroup=new THREE.Group(),
       roadGroup=new THREE.Group(),
-      forestGroup=new THREE.Group(),
+      forestGroup=new THREE.Group(), // procedural roadside forest only
+      sceneryForestGroup=new THREE.Group(),
       horizonGroup=new THREE.Group();
-world.add(terrainDetailGroup,waterGroup,infrastructureGroup,buildingGroup,roadGroup,forestGroup,horizonGroup);
+world.add(
+  terrainDetailGroup,
+  waterGroup,
+  infrastructureGroup,
+  sceneryInfrastructureGroup,
+  buildingGroup,
+  roadGroup,
+  forestGroup,
+  sceneryForestGroup,
+  horizonGroup
+);
 scene.add(world);
 const groundMat=new THREE.MeshStandardMaterial({color:0xffffff,roughness:1,metalness:0});
 const ground=new THREE.Mesh(new THREE.PlaneGeometry(2000,2000,88,88),groundMat);
@@ -376,6 +389,35 @@ function featureCentroid(points){
   for(const p of points){x+=p.x;z+=p.z}
   return{x:x/points.length,z:z/points.length};
 }
+
+const sceneryRenderer=createSceneryRenderer({
+  THREE,
+  statusEl:sceneryStatus,
+  features:sceneryFeatures,
+  terrainDetailGroup,
+  infrastructureGroup:sceneryInfrastructureGroup,
+  buildingGroup,
+  forestGroup:sceneryForestGroup,
+  materials:{
+    buildingWallMat,
+    rockMat,
+    scrubMat,
+    towerMat,
+    lineMatPower,
+    railMat,
+    damMat,
+    treeTrunkMat,
+    treeMat
+  },
+  featureCentroid,
+  terrainHeight:(x,z)=>terrainAbs(x,z),
+  nearestRoute:(x,z)=>nearestRoute(x,z),
+  isWaterAt:(x,z,margin)=>isWaterAt(x,z,margin),
+  pointInPolygon:(x,z,points)=>pointInPolygon2D(x,z,points),
+  getWorldOffset:()=>worldOffset
+});
+
+const rebuildLocalScenery=()=>sceneryRenderer.rebuild();
 
 
 
@@ -709,93 +751,17 @@ function addGeographicRoadSigns(){
   }
 }
 // ---------- geographic scenery rendering ----------
-function makeFootprintMesh(points,height=6,material=buildingWallMat){
-  if(points.length<3)return null;
-  const local=points.map(p=>({x:p.x-worldOffset.x,z:p.z-worldOffset.z}));
-  const shape=new THREE.Shape();
-  shape.moveTo(local[0].x,-local[0].z);
-  for(let i=1;i<local.length;i++)shape.lineTo(local[i].x,-local[i].z);
-  shape.closePath();
-  const geom=new THREE.ExtrudeGeometry(shape,{depth:height,bevelEnabled:false,steps:1});
-  geom.rotateX(-Math.PI/2);
-  const c=featureCentroid(points);
-  const mesh=new THREE.Mesh(geom,material);
-  mesh.position.y=terrainAbs(c.x,c.z)+.08;
-  mesh.castShadow=true;mesh.receiveShadow=true;
-  return mesh;
-}
 
-function addUtilityTower(x,z,scale=1){
-  const g=new THREE.Group();
-  const y=terrainAbs(x,z);
-  const legs=[];
-  for(const sx of [-1,1])for(const sz of [-1,1]){
-    const leg=new THREE.Mesh(new THREE.CylinderGeometry(.07,.11,10*scale,5),towerMat);
-    leg.position.set((x-worldOffset.x)+sx*.9*scale,y+5*scale,(z-worldOffset.z)+sz*.7*scale);
-    leg.rotation.z=sx*.06;g.add(leg);legs.push(leg);
-  }
-  for(const h of [4,7.2,9.2]){
-    const bar=new THREE.Mesh(new THREE.BoxGeometry(5.2*scale,.12,.12),towerMat);
-    bar.position.set(x-worldOffset.x,y+h*scale,z-worldOffset.z);g.add(bar);
-  }
-  return g;
-}
 
-function addDam(points){
-  if(points.length<2)return null;
-  const g=new THREE.Group();
-  for(let i=0;i<points.length-1;i++){
-    const a=points[i],b=points[i+1];
-    const dx=b.x-a.x,dz=b.z-a.z,len=Math.hypot(dx,dz);
-    if(len<1)continue;
-    const h=14;
-    const m=new THREE.Mesh(new THREE.BoxGeometry(6,h,len),damMat);
-    const mx=(a.x+b.x)/2-worldOffset.x,mz=(a.z+b.z)/2-worldOffset.z;
-    m.position.set(mx,Math.min(terrainAbs(a.x,a.z),terrainAbs(b.x,b.z))+h/2,mz);
-    m.rotation.y=Math.atan2(dx,dz);m.castShadow=true;m.receiveShadow=true;g.add(m);
-  }
-  return g;
-}
 
-function addGuardRail(points){
-  const g=new THREE.Group();
-  for(let i=0;i<points.length-1;i++){
-    const a=points[i],b=points[i+1],dx=b.x-a.x,dz=b.z-a.z,len=Math.hypot(dx,dz);
-    if(len<.5)continue;
-    const m=new THREE.Mesh(new THREE.BoxGeometry(.10,.18,len),railMat);
-    const mx=(a.x+b.x)/2,mz=(a.z+b.z)/2;
-    m.position.set(mx-worldOffset.x,terrainAbs(mx,mz)+.72,mz-worldOffset.z);
-    m.rotation.y=Math.atan2(dx,dz);g.add(m);
-  }
-  return g;
-}
 
-function addPowerLine(points){
-  const g=new THREE.Group();
-  if(points.length<2)return g;
-  const verts=[];
-  for(const p of points){
-    verts.push(p.x-worldOffset.x,terrainAbs(p.x,p.z)+14,p.z-worldOffset.z);
-  }
-  const geom=new THREE.BufferGeometry();
-  geom.setAttribute('position',new THREE.Float32BufferAttribute(verts,3));
-  const line=new THREE.Line(geom,lineMatPower);g.add(line);
-  return g;
-}
 
-function addLandPatch(points,mat,yOffset=.03){
-  if(points.length<3)return null;
-  const local=points.map(p=>({x:p.x-worldOffset.x,z:p.z-worldOffset.z}));
-  const shape=new THREE.Shape();
-  shape.moveTo(local[0].x,-local[0].z);
-  for(let i=1;i<local.length;i++)shape.lineTo(local[i].x,-local[i].z);
-  shape.closePath();
-  const geom=new THREE.ShapeGeometry(shape);geom.rotateX(-Math.PI/2);
-  const c=featureCentroid(points);
-  const m=new THREE.Mesh(geom,mat);
-  m.position.y=terrainAbs(c.x,c.z)+yOffset;
-  m.receiveShadow=true;return m;
-}
+
+
+
+
+
+
 
 
 function pointInPolygon2D(x,z,points){
@@ -846,118 +812,20 @@ function removeTreesOverWater(){
   }
 }
 
-function densifyForestPolygon(points,id){
-  const c=featureCentroid(points);
-  // inexpensive deterministic cluster near centroid; OSM polygon gives location, not each tree.
-  let seed=(Number(id)||1)*2654435761;
-  const rnd=()=>{seed=(seed*1664525+1013904223)>>>0;return seed/4294967296};
-  const g=new THREE.Group();
-  const radius=Math.min(180,Math.max(35,Math.sqrt(points.length)*26));
-  for(let i=0;i<28;i++){
-    const a=rnd()*Math.PI*2,r=Math.sqrt(rnd())*radius;
-    const x=c.x+Math.cos(a)*r,z=c.z+Math.sin(a)*r;
-    if(!pointInPolygon2D(x,z,points))continue;
-    if(isWaterAt(x,z,6))continue;
-    const nr=nearestRoute(x,z);if(nr&&nr.d<13)continue;
-    const scale=.65+rnd()*.9,y=terrainAbs(x,z);
-    const trunk=new THREE.Mesh(new THREE.CylinderGeometry(.10*scale,.16*scale,1.5*scale,5),treeTrunkMat);
-    trunk.position.set(x-worldOffset.x,y+.75*scale,z-worldOffset.z);
-    const crown=new THREE.Mesh(new THREE.ConeGeometry(.78*scale,3.2*scale,6),treeMat);
-    crown.position.set(x-worldOffset.x,y+2.25*scale,z-worldOffset.z);
-    g.add(trunk,crown);
-  }
-  return g;
-}
 
 
-function makeBuildingLOD(points,tags,dist){
-  if(dist<520)return makeFootprintMesh(points,(()=>{
-    let h=parseFloat(tags.height||'');
-    if(!Number.isFinite(h)){
-      const levels=parseFloat(tags['building:levels']||'');
-      h=Number.isFinite(levels)?Math.max(3,levels*3.1):6.5;
-    }
-    return Math.min(45,h);
-  })());
 
-  // Mid-distance proxy: one cheap box per footprint.
-  const c=featureCentroid(points);
-  let minx=Infinity,maxx=-Infinity,minz=Infinity,maxz=-Infinity;
-  for(const p of points){minx=Math.min(minx,p.x);maxx=Math.max(maxx,p.x);minz=Math.min(minz,p.z);maxz=Math.max(maxz,p.z)}
-  const w=Math.max(3,Math.min(35,maxx-minx)),d=Math.max(3,Math.min(35,maxz-minz));
-  const h=Math.max(4,Math.min(18,parseFloat(tags.height||'')||7));
-  const m=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),buildingWallMat);
-  m.position.set(c.x-worldOffset.x,terrainAbs(c.x,c.z)+h/2,c.z-worldOffset.z);
-  m.castShadow=dist<750;m.receiveShadow=true;
-  return m;
-}
-function rebuildLocalScenery(){
-  clearGroup(terrainDetailGroup);clearGroup(infrastructureGroup);clearGroup(buildingGroup);
-  const R=1500,R2=R*R;
-  let shown=0;
 
-  for(const f of sceneryFeatures){
-    const c=featureCentroid(f.points);
-    const dx=c.x-worldOffset.x,dz=c.z-worldOffset.z;
-    const dist2=dx*dx+dz*dz;
-    if(dist2>R2)continue;
-    const dist=Math.sqrt(dist2);
 
-    const t=f.tags||{};
-    let obj=null;
-
-    if(t.building && dist<1150){
-      obj=makeBuildingLOD(f.points,t,dist);
-      if(obj)buildingGroup.add(obj);
-    }
-    else if((t.power==='tower'||t.power==='pole') && dist<1400){
-      obj=addUtilityTower(c.x,c.z,t.power==='pole'?.6:1);
-      infrastructureGroup.add(obj);
-    }
-    else if(t.power==='line'||t.power==='minor_line'){
-      infrastructureGroup.add(addPowerLine(f.points));
-    }
-    else if(t.man_made==='dam'||t.waterway==='dam'){
-      obj=addDam(f.points);if(obj)infrastructureGroup.add(obj);
-    }
-    else if(t.barrier==='guard_rail'){
-      infrastructureGroup.add(addGuardRail(f.points));
-    }
-    else if(t.natural==='bare_rock'||t.natural==='scree'||t.natural==='cliff'){
-      obj=addLandPatch(f.points,rockMat,.04);if(obj)terrainDetailGroup.add(obj);
-    }
-    else if(t.natural==='scrub'||t.landuse==='meadow'){
-      obj=addLandPatch(f.points,scrubMat,.035);if(obj)terrainDetailGroup.add(obj);
-    }
-    else if((t.natural==='wood'||t.landuse==='forest') && dist<1150){
-      // Near forest is dense; mid-distance forest is intentionally thinned.
-      const cluster=densifyForestPolygon(f.points,f.id);
-      if(cluster){
-        if(dist>700){
-          for(let i=cluster.children.length-1;i>=0;i--){
-            if(i%2)cluster.remove(cluster.children[i]);
-          }
-        }
-        forestGroup.add(cluster);
-      }
-    }
-    shown++;
-  }
-  sceneryStatus.textContent=`${shown} objets`;
-}
 
 async function loadSceneryAround(absx,absz){
   const result=await sceneryData.loadAround(absx,absz);
 
   if(!result.ok)return false;
 
-  // Rendering stays in main.js for step 12A.
-  // rebuildLocalScenery() clears infrastructureGroup, so bridge furniture and
-  // signs must be restored immediately after each async scenery refresh.
+  // Scenery renderer owns dedicated infrastructure/forest groups, so refreshing
+  // real-world scenery can no longer erase bridges or road signs.
   rebuildLocalScenery();
-  addEnhancedBridgeFurniture();
-  addCurrentRoadSigns();
-  addGeographicRoadSigns();
 
   sceneryStatus.textContent=
     `${result.cached?'Cache':'OSM'} · ${sceneryFeatures.length} objets`;
@@ -1368,6 +1236,7 @@ async function loadWaterAround(absx,absz){
     // Hydro can arrive after vegetation. Purge trees that were generated before
     // the shoreline/water geometry was known.
     removeTreesOverWater();
+    sceneryRenderer.removeTreesOverWater();
 
     const waterCount=waterFeatures.length;
     const coastCount=coastlineFeatures.length;
@@ -1611,7 +1480,8 @@ function addCurrentRoadSigns(){
 // Build only a corridor around the current location, preserving every source polyline curve.
 function rebuildLocalWorld(){
  clearGroup(roadGroup);clearGroup(forestGroup);
- clearGroup(terrainDetailGroup);clearGroup(infrastructureGroup);clearGroup(buildingGroup);
+ clearGroup(infrastructureGroup);
+ sceneryRenderer.clear();
 
  // CRITICAL: bridge deck heights depend on terrain elevation at their approaches.
  // Elevation tiles, floating-origin shifts and asynchronous loads can all change
@@ -1723,7 +1593,9 @@ function resetWorldCaches(){
   lastPrefetchCum=-Infinity;
   activeRoadProfile=[];
   clearGroup(roadGroup);clearGroup(forestGroup);
-  clearGroup(terrainDetailGroup);clearGroup(infrastructureGroup);clearGroup(buildingGroup);terrainService.clearHorizon();
+  clearGroup(infrastructureGroup);
+  sceneryRenderer.clear();
+  terrainService.clearHorizon();
 }
 
 function preloadHydroAlongRoute(){
