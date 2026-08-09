@@ -10,6 +10,7 @@ import { createOverpassClient } from './overpass.js';
 import { createSignDataService } from './signs.js';
 import { createBridgeManager } from './bridges.js';
 import { createImageryService } from './imagery.js';
+import { createElevationService } from './elevation.js';
 
 // Default test route. V4 can replace these coordinates at runtime.
 const MANIC2={lat:49.3213,lon:-68.3467,name:'Manic‑2'};
@@ -114,164 +115,48 @@ async function fetchOverpassCached(
 
 // ---------- elevation streaming ----------
 const elevStatus=$('elevStatus'), altitudeEl=$('altitude');
-const ELEV_Z=11;
-const elevTiles=new Map(); // "z/x/y" -> ImageData
-const elevPending=new Map();
-let elevBase=null;
-let lastElevCenter={x:Infinity,z:Infinity};
-let elevationBatchLoading=false;
+
+const elevationService=createElevationService({
+  cache:WorldCache,
+  statusEl:elevStatus,
+  toLatLon:(x,z)=>xzToLL(x,z),
+  zoom:11
+});
 
 function fallbackTerrain(x,z){
-  // Mild procedural relief so the world is never perfectly flat while tiles load.
+  // Mild procedural relief so the world is never perfectly flat while DEM tiles load.
   return 5*Math.sin(x*.00023)+4*Math.sin(z*.00031)+2.5*Math.sin((x+z)*.00017);
 }
-function lonLatToTile(lon,lat,z){
-  const n=2**z,latRad=lat*Math.PI/180;
-  return {x:(lon+180)/360*n,y:(1-Math.asinh(Math.tan(latRad))/Math.PI)/2*n};
-}
-function tileElevationAt(lat,lon){
-  const t=lonLatToTile(lon,lat,ELEV_Z),tx=Math.floor(t.x),ty=Math.floor(t.y);
-  const key=`${ELEV_Z}/${tx}/${ty}`;
-  const im=WorldCache.get(elevTiles,key);
-  if(!im)return null;
 
-  // Bilinear interpolation between the four surrounding elevation pixels.
-  // This avoids the "pixel staircase" effect of nearest-neighbour sampling.
-  const fx=(t.x-tx)*im.width-.5, fy=(t.y-ty)*im.height-.5;
-  const x0=Math.floor(fx),y0=Math.floor(fy),u=fx-x0,v=fy-y0;
-  function sample(px,py){
-    px=Math.max(0,Math.min(im.width-1,px));
-    py=Math.max(0,Math.min(im.height-1,py));
-    const k=(py*im.width+px)*4,R=im.data[k],G=im.data[k+1],B=im.data[k+2];
-    return R*256+G+B/256-32768;
-  }
-  const e00=sample(x0,y0),e10=sample(x0+1,y0),e01=sample(x0,y0+1),e11=sample(x0+1,y0+1);
-  const a=e00*(1-u)+e10*u,b=e01*(1-u)+e11*u;
-  return a*(1-v)+b*v;
-}
 function terrainAbs(x,z){
   const ll=xzToLL(x,z);
-  const e=tileElevationAt(ll.lat,ll.lon);
-  if(e===null||!Number.isFinite(e)) return fallbackTerrain(x,z);
-  if(elevBase===null)elevBase=e;
-  return e-elevBase;
-}
-async function fetchElevationTile(tx,ty){
-  const key=`${ELEV_Z}/${tx}/${ty}`;
-  if(elevTiles.has(key))return true;
-  if(elevPending.has(key))return elevPending.get(key);
+  const elevation=elevationService.relativeElevationAt(ll.lat,ll.lon);
 
-  const task=(async()=>{
-    // Two equivalent AWS endpoints. The whole image decode is covered by timeout,
-    // not just the HTTP fetch.
-    const urls=[
-      `https://elevation-tiles-prod.s3.amazonaws.com/terrarium/${ELEV_Z}/${tx}/${ty}.png`,
-      `https://s3.amazonaws.com/elevation-tiles-prod/terrarium/${ELEV_Z}/${tx}/${ty}.png`
-    ];
-
-    async function loadOne(url,timeoutMs=4800){
-      return await new Promise((resolve,reject)=>{
-        const img=new Image();
-        img.crossOrigin='anonymous';
-        let done=false;
-        const finish=(ok,value)=>{
-          if(done)return;done=true;clearTimeout(timer);
-          img.onload=null;img.onerror=null;
-          ok?resolve(value):reject(value);
-        };
-        const timer=setTimeout(()=>finish(false,new Error('elevation image timeout')),timeoutMs);
-        img.onload=()=>{
-          try{
-            const cv=document.createElement('canvas');
-            cv.width=img.naturalWidth||256;cv.height=img.naturalHeight||256;
-            const ctx=cv.getContext('2d',{willReadFrequently:true});
-            ctx.drawImage(img,0,0);
-            const data=ctx.getImageData(0,0,cv.width,cv.height);
-            finish(true,data);
-          }catch(e){finish(false,e)}
-        };
-        img.onerror=()=>finish(false,new Error('elevation image error'));
-        img.src=url;
-      });
-    }
-
-    try{
-      let lastErr=null;
-      for(const url of urls){
-        try{
-          const imageData=await loadOne(url,4800);
-          WorldCache.touch(elevTiles,key,imageData);
-          WorldCache.trim(elevTiles,WorldCache.limits.elevation);
-          return true;
-        }catch(e){lastErr=e;console.warn('Elevation endpoint failed',url,e)}
-      }
-      throw lastErr||new Error('elevation unavailable');
-    }catch(e){
-      console.warn('Elevation tile unavailable',key,e);
-      return false;
-    }finally{
-      // Critical: no stale pending entry can permanently block future refreshes.
-      elevPending.delete(key);
-    }
-  })();
-
-  elevPending.set(key,task);
-  return task;
-}
-async function loadElevationAround(absx,absz){
-  if(elevationBatchLoading)return false;
-  elevationBatchLoading=true;
-  const ll=xzToLL(absx,absz),c=lonLatToTile(ll.lon,ll.lat,ELEV_Z),cx=Math.floor(c.x),cy=Math.floor(c.y);
-  elevStatus.textContent='Chargement…';
-
-  const jobs=[];
-  for(let dx=-1;dx<=1;dx++)for(let dy=-1;dy<=1;dy++)jobs.push(fetchElevationTile(cx+dx,cy+dy));
-
-  let res=[];
-  try{
-    // Hard deadline for the entire 3x3 batch. The visible world must continue.
-    res=await Promise.race([
-      Promise.all(jobs),
-      new Promise(resolve=>setTimeout(()=>resolve(Array(9).fill(false)),5600))
-    ]);
-  }catch(e){
-    console.warn('Elevation batch failed',e);
-    res=Array(9).fill(false);
+  if(elevation===null||!Number.isFinite(elevation)){
+    return fallbackTerrain(x,z);
   }
 
-  const available=()=>{
-    let n=0;
-    for(let dx=-1;dx<=1;dx++)for(let dy=-1;dy<=1;dy++){
-      if(elevTiles.has(`${ELEV_Z}/${cx+dx}/${cy+dy}`))n++;
-    }
-    return n;
-  };
+  return elevation;
+}
 
-  // Wait one micro-turn: a tile may have completed concurrently with the deadline.
-  await Promise.resolve();
-  const count=available();
+async function loadElevationAround(absx,absz){
+  const result=await elevationService.loadAround(absx,absz);
 
-  if(count>0){
-    const ce=tileElevationAt(ll.lat,ll.lon);
-    if(ce!==null&&Number.isFinite(ce)&&elevBase===null)elevBase=ce;
-
-    lastElevCenter={x:absx,z:absz};
-    elevStatus.textContent=count>=5?'Réel':`Partiel ${count}/9`;
-
-    // Rebuild exactly once with whatever valid DEM coverage we have.
+  if(result.count>0){
+    // Visual terrain generation remains in main.js for this first extraction.
     rebuildLocalWorld();
-    toast(count>=5?'Relief réel chargé':'Relief partiel chargé');
-    elevationBatchLoading=false;
+    toast(
+      result.count>=5
+        ?'Relief réel chargé'
+        :'Relief partiel chargé'
+    );
     return true;
   }
 
-  // The procedural terrain remains active and drivable.
-  elevStatus.textContent='Démo';
-  lastElevCenter={x:absx,z:absz};
   console.warn('No DEM tiles available; keeping procedural terrain');
-  elevationBatchLoading=false;
   return false;
 }
+
 function rebuildGroundTerrain(){
   // Near terrain LOD: dense enough for suspension/roadside detail.
   // Horizon rings handle the far field separately.
@@ -1906,10 +1791,8 @@ function resetWorldCaches(){
   sceneryFeatures.length=0;
   // Keep completed elevation/imagery LRU caches across route changes.
   // Only in-flight operations and route-relative state are reset.
-  elevPending.clear();elevBase=null;
+  elevationService.reset();
   imageryService.reset();
-  lastElevCenter={x:Infinity,z:Infinity};
-  elevationBatchLoading=false;
   lastWaterCenter={x:Infinity,z:Infinity};
   lastSceneryCenter={x:Infinity,z:Infinity};
   bridgeManager.resetCounter();
@@ -2459,14 +2342,17 @@ function updateDrive(dt){
    w.pivot.rotation.y+=(targetWheelYaw-w.pivot.rotation.y)*(1-Math.exp(-dt*12));
  }
  $('speed').textContent=Math.round(Math.abs(speed)*3.6);
- const llNow=xzToLL(absX,absZ),realElev=tileElevationAt(llNow.lat,llNow.lon);
+ const llNow=xzToLL(absX,absZ),realElev=elevationService.elevationAt(llNow.lat,llNow.lon);
  altitudeEl.textContent=realElev!==null&&Number.isFinite(realElev)?Math.round(realElev):'—';
  const frameNow=roadFrameAt(absX,absZ);
  $('grade').textContent=frameNow?(Math.tan(frameNow.pitch)*100).toFixed(1):'0.0';
  if(nr){const pct=100*nr.cum/routeLength;$('progress').textContent=pct.toFixed(1);$('doneKm').textContent=(nr.cum/1000).toFixed(1);$('remainKm').textContent=((routeLength-nr.cum)/1000).toFixed(1);$('roadDist').textContent=Math.round(nr.d);updatePassedSignReadout(nr);drawMap(nr.cum)}
  // Refresh elevation tiles after moving roughly 1.4 km from last tile center.
- const ex=absX-lastElevCenter.x,ez=absZ-lastElevCenter.z;
- if(ex*ex+ez*ez>1400*1400)loadElevationAround(absX,absZ);
+ const elevationCenter=elevationService.center;
+ const ex=absX-elevationCenter.x,ez=absZ-elevationCenter.z;
+ if(ex*ex+ez*ez>1400*1400&&!elevationService.loading){
+   loadElevationAround(absX,absZ);
+ }
 
  const wx=absX-lastWaterCenter.x,wz=absZ-lastWaterCenter.z;
  if(wx*wx+wz*wz>2200*2200&&!waterLoading)loadWaterAround(absX,absZ);
@@ -2802,10 +2688,7 @@ function drawMap(cum=0){if(!bounds)return;const dpr=devicePixelRatio||1,w=mc.cli
 let lastPrefetchCum=-Infinity;
 
 async function prefetchElevationAt(x,z){
-  const ll=xzToLL(x,z),c=lonLatToTile(ll.lon,ll.lat,ELEV_Z);
-  const cx=Math.floor(c.x),cy=Math.floor(c.y),jobs=[];
-  for(let dx=-1;dx<=1;dx++)for(let dy=-1;dy<=1;dy++)jobs.push(fetchElevationTile(cx+dx,cy+dy));
-  await Promise.allSettled(jobs);
+  return elevationService.prefetchAt(x,z);
 }
 
 async function prefetchImageryAt(x,z){
