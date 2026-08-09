@@ -2691,6 +2691,8 @@ const vehicleAudio=createVehicleAudio({
   getNearestRoute:()=>nearestRoute(absX,absZ)
 });
 
+const camTarget=new THREE.Vector3();
+
 const cameraController=createCameraController({
   THREE,
   camera,
@@ -3050,7 +3052,7 @@ function updateDrive(dt){
  const signDx=absX-lastSignDataCenter.x,signDz=absZ-lastSignDataCenter.z;
  if(signDx*signDx+signDz*signDz>2500*2500&&!signDataLoading)loadGeographicSignsAround(absX,absZ);
 }
-const camTarget=new THREE.Vector3();
+
 function toggleAssist(){
  if(autopilot){setAutopilot(false,'Pilote auto désactivé');}
  assist=!assist;
