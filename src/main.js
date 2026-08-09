@@ -16,6 +16,7 @@ import { createSceneryDataService } from './scenery-data.js';
 import { createSceneryRenderer } from './scenery-renderer.js';
 import { createWaterDataService } from './water-data.js';
 import { createWaterRenderer } from './water-renderer.js';
+import { createWorldStreaming } from './world-streaming.js';
 
 // Default test route. V4 can replace these coordinates at runtime.
 const MANIC2={lat:49.3213,lon:-68.3467,name:'Manic‑2'};
@@ -1342,6 +1343,7 @@ function recenterIfNeeded(absx,absz,force=false){
 
 
 function resetWorldCaches(){
+  worldStreaming.reset();
   waterData.reset();
 
   route.length=0;segments.length=0;routeLength=0;
@@ -1362,35 +1364,11 @@ function resetWorldCaches(){
   lastRoadMetaCenter={x:Infinity,z:Infinity};
   roadMetaLoading=false;
   updateRoadMetaHUD();
-  lastPrefetchCum=-Infinity;
   activeRoadProfile=[];
   clearGroup(roadGroup);clearGroup(forestGroup);
   clearGroup(infrastructureGroup);
   sceneryRenderer.clear();
   terrainService.clearHorizon();
-}
-
-function preloadHydroAlongRoute(){
-  if(routeLength<=0)return;
-  const generation=waterData.generation;
-
-  // Load only the current visible zone immediately.
-  loadWaterAround(absX,absZ).catch(()=>{});
-
-  // Remaining route points are cache/prefetch only and never rebuild the visible scene.
-  const fractions=[.20,.40,.60,.80];
-  fractions.forEach((f,i)=>{
-    setTimeout(async()=>{
-      if(
-        generation!==waterData.generation ||
-        waterData.loading ||
-        sceneryData.loading
-      )return;
-
-      const p=routePointAt(f);
-      await waterData.prefetchAt(p.x,p.z,7000);
-    },3500+i*3500);
-  });
 }
 
 async function createRequestedRoute(start,end,waypoints=[]){
@@ -1433,7 +1411,7 @@ async function createRequestedRoute(start,end,waypoints=[]){
     loading.classList.add('hidden');
 
     loadElevationAround(absX,absZ).catch(()=>{elevStatus.textContent='Démo'});
-    preloadHydroAlongRoute();
+    worldStreaming.preloadRoute(absX,absZ);
     loadSceneryAround(absX,absZ).catch(()=>{sceneryStatus.textContent='Indisponible'});
     buildImageryMosaic(absX,absZ).catch(()=>{imageryStatus.textContent='Fallback'});
     loadRoadMetadataAround(absX,absZ).catch(()=>{});
@@ -1912,39 +1890,8 @@ function updateDrive(dt){
  const frameNow=roadFrameAt(absX,absZ);
  $('grade').textContent=frameNow?(Math.tan(frameNow.pitch)*100).toFixed(1):'0.0';
  if(nr){const pct=100*nr.cum/routeLength;$('progress').textContent=pct.toFixed(1);$('doneKm').textContent=(nr.cum/1000).toFixed(1);$('remainKm').textContent=((routeLength-nr.cum)/1000).toFixed(1);$('roadDist').textContent=Math.round(nr.d);updatePassedSignReadout(nr);drawMap(nr.cum)}
- // Refresh elevation tiles after moving roughly 1.4 km from last tile center.
- const elevationCenter=elevationService.center;
- const ex=absX-elevationCenter.x,ez=absZ-elevationCenter.z;
- if(ex*ex+ez*ez>1400*1400&&!elevationService.loading){
-   loadElevationAround(absX,absZ);
- }
-
- const waterCenter=waterData.center;
- const wx=absX-waterCenter.x,wz=absZ-waterCenter.z;
- if(wx*wx+wz*wz>2200*2200&&!waterData.loading){
-   loadWaterAround(absX,absZ);
- }
-
- const sceneryCenter=sceneryData.center;
- const sx=absX-sceneryCenter.x,sz=absZ-sceneryCenter.z;
- if(sx*sx+sz*sz>2600*2600&&!sceneryData.loading){
-   loadSceneryAround(absX,absZ);
- }
-
- const imageryCenter=imageryService.center;
- const ix=absX-imageryCenter.x,iz=absZ-imageryCenter.z;
- if(ix*ix+iz*iz>700*700&&!imageryService.loading){
-   buildImageryMosaic(absX,absZ);
- }
-
- const mx=absX-lastRoadMetaCenter.x,mz=absZ-lastRoadMetaCenter.z;
- if(mx*mx+mz*mz>700*700&&!roadMetaLoading)loadRoadMetadataAround(absX,absZ);
-
- const signCenter=signData.center;
- const signDx=absX-signCenter.x,signDz=absZ-signCenter.z;
- if(signDx*signDx+signDz*signDz>2500*2500&&!signData.loading){
-   loadGeographicSignsAround(absX,absZ);
- }
+ // Streaming policy is centralized in world-streaming.js.
+ worldStreaming.updateVisible(absX,absZ);
 }
 
 function toggleAssist(){
@@ -2262,54 +2209,59 @@ function drawMap(cum=0){if(!bounds)return;const dpr=devicePixelRatio||1,w=mc.cli
 
 
 // ---------- directional world prefetch ----------
-let lastPrefetchCum=-Infinity;
+// ---------- unified world streaming ----------
+const worldStreaming=createWorldStreaming({
+  toLatLon:(x,z)=>xzToLL(x,z),
+  nearestRoute:(x,z)=>nearestRoute(x,z),
+  routePointAtCum:cum=>routePointAtCum(cum),
+  routePointAtFraction:f=>routePointAt(f),
+  getRouteLength:()=>routeLength,
 
-async function prefetchElevationAt(x,z){
-  return elevationService.prefetchAt(x,z);
-}
+  elevation:{
+    get center(){return elevationService.center},
+    get loading(){return elevationService.loading},
+    load:(x,z)=>loadElevationAround(x,z),
+    prefetch:(x,z)=>elevationService.prefetchAt(x,z)
+  },
 
-async function prefetchImageryAt(x,z){
-  return imageryService.prefetchAt(x,z);
-}
+  water:{
+    get center(){return waterData.center},
+    get loading(){return waterData.loading},
+    get generation(){return waterData.generation},
+    load:(x,z)=>loadWaterAround(x,z),
+    prefetch:(x,z,timeoutMs)=>waterData.prefetchAt(x,z,timeoutMs)
+  },
 
-async function prefetchOsmAt(x,z){
-  // Visible world always wins over background caching.
-  if(waterData.loading||sceneryData.loading)return;
-  const ll=xzToLL(x,z);
-  await Promise.allSettled([
-    waterData.prefetchAt(x,z,7000),
-    fetchOverpassCached('scenery',ll,sceneryData.query(ll),7000,1000*60*60*24*10),
-    fetchOverpassCached('signs',ll,signQuery(ll),5500,1000*60*60*24*10)
-  ]);
-}
+  scenery:{
+    get center(){return sceneryData.center},
+    get loading(){return sceneryData.loading},
+    load:(x,z)=>loadSceneryAround(x,z),
+    query:ll=>sceneryData.query(ll)
+  },
 
-let prefetchBusy=false;
-async function prefetchDirectionalWorld(){
-  if(prefetchBusy)return;
-  const nr=nearestRoute(absX,absZ);
-  if(!nr||routeLength<=0)return;
-  if(nr.cum-lastPrefetchCum<850)return;
-  lastPrefetchCum=nr.cum;
-  prefetchBusy=true;
+  imagery:{
+    get center(){return imageryService.center},
+    get loading(){return imageryService.loading},
+    load:(x,z)=>buildImageryMosaic(x,z),
+    prefetch:(x,z)=>imageryService.prefetchAt(x,z)
+  },
 
-  try{
-    const near=routePointAtCum(Math.min(routeLength-1,nr.cum+1800));
-    const far=routePointAtCum(Math.min(routeLength-1,nr.cum+3600));
+  roadMetadata:{
+    get center(){return lastRoadMetaCenter},
+    get loading(){return roadMetaLoading},
+    load:(x,z)=>loadRoadMetadataAround(x,z)
+  },
 
-    // Near future gets all caches. Far future only cheap terrain/imagery.
-    await Promise.allSettled([
-      prefetchElevationAt(near.x,near.z),
-      prefetchImageryAt(near.x,near.z),
-      prefetchOsmAt(near.x,near.z)
-    ]);
-    await Promise.allSettled([
-      prefetchElevationAt(far.x,far.z),
-      prefetchImageryAt(far.x,far.z)
-    ]);
-  }finally{prefetchBusy=false}
-}
-function prefetchAhead(){prefetchDirectionalWorld().catch(()=>{})}
+  signs:{
+    get center(){return signData.center},
+    get loading(){return signData.loading},
+    load:(x,z)=>loadGeographicSignsAround(x,z),
+    query:ll=>signData.query(ll)
+  },
 
+  fetchCached:(namespace,ll,query,timeoutMs,ttlMs)=>
+    fetchOverpassCached(namespace,ll,query,timeoutMs,ttlMs)
+});
 
 // ---------- V5 time-of-day prototype ----------
 const timeSlider=$('timeSlider'),timeLabel=$('timeLabel');
@@ -2351,7 +2303,7 @@ function animate(now){
      vehicleAudio.showError();
    }
    cameraController.update(dt);
-   prefetchAhead();
+   worldStreaming.prefetchDirectional(absX,absZ);
    waterTex.offset.x=(waterTex.offset.x+dt*.003)%1;
    waterTex.offset.y=(waterTex.offset.y+dt*.0015)%1;
    drawCompass();
