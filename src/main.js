@@ -2254,7 +2254,9 @@ const VEHICLE={
   brake:9.2,          // service braking
   reverseAccel:3.2,
   rolling:0.32,
-  aero:0.0038,
+  // Simulation drag coefficient. The previous .0038 created an unintended
+  // terminal speed near 120 km/h even when Max was set higher.
+  aero:0.0009,
   wheelbase:2.77,
   maxSteerLow:0.43,   // ~25° at parking speed: tighter control, less twitchy
   maxSteerHigh:0.115, // ~6.6° at highway speed
@@ -2316,6 +2318,7 @@ const keys={};addEventListener('keydown',e=>{
  }
 });addEventListener('keyup',e=>keys[e.code]=false);
 let maxSpeedKmh=100;let MAX=maxSpeedKmh/3.6;const REV=-10;
+let obeyRoadSpeedLimits=localStorage.getItem('worlddrive_obey_speed_limits')!=='0';
 let roadContact=false;
 
 function setAutopilot(enabled,message=''){
@@ -2372,8 +2375,18 @@ function autopilotControl(dt,nr){
   // Approximate safe speed from lateral acceleration v²*kappa.
   // 3.0 m/s² keeps the autopilot comfortable rather than race-car aggressive.
   const curveSpeed=maxCurve>.00015?Math.sqrt(3.0/maxCurve):MAX;
-  const osmLimit=activeRoadMeta.maxspeed?activeRoadMeta.maxspeed/3.6:MAX;
-  let targetSpeed=Math.min(MAX,osmLimit,Math.max(7.5,curveSpeed));
+
+  // Optional legal-speed cap. Curve safety remains active in both modes.
+  const roadLimit=(
+    obeyRoadSpeedLimits &&
+    activeRoadMeta.maxspeed
+  ) ? activeRoadMeta.maxspeed/3.6 : MAX;
+
+  let targetSpeed=Math.min(
+    MAX,
+    roadLimit,
+    Math.max(7.5,curveSpeed)
+  );
 
   // Progressive destination braking.
   const remaining=routeLength-nr.cum;
@@ -2493,8 +2506,14 @@ function updateDrive(dt){
 
  let accel=0;
  if(throttle>0){
-   if(speed>=0)accel+=VEHICLE.accel*throttle*(1-.34*Math.min(1,speed/Math.max(MAX,1)));
-   else accel+=VEHICLE.brake*throttle; // brake reverse motion before going forward
+   if(speed>=0){
+     // EV-style power taper: strong low-speed response, progressively softer
+     // above highway speed, but enough reserve to reach the selected 180–200 km/h cap.
+     const performanceTop=200/3.6;
+     const speedRatio=Math.min(1,Math.max(0,speed/performanceTop));
+     const powerTaper=1-.38*speedRatio;
+     accel+=VEHICLE.accel*throttle*powerTaper;
+   }else accel+=VEHICLE.brake*throttle; // brake reverse motion before going forward
  }else if(throttle<0){
    if(speed>0)accel+=VEHICLE.brake*throttle;
    else accel+=VEHICLE.reverseAccel*throttle;
@@ -2652,6 +2671,33 @@ function placeAt(frac){const p=routePointAt(frac);absX=p.x;absZ=p.z;heading=p.an
 function resetToRoad(){const n=nearestRoute(absX,absZ);if(n){absX=n.px;absZ=n.pz;heading=n.angle;speed=0;steer=0;visualSteer=0;currentSteerAngle=0;longitudinalAccel=0;suspensionRoll=0;suspensionPitch=0;suspensionHeave=0;bodyGroup.rotation.set(0,0,0);bodyGroup.position.y=-.22;roadContact=true;recenterIfNeeded(absX,absZ,true);ensureRoadProfileNear(absX,absZ)}}
 
 const maxSpeedSlider=$('maxSpeedSlider'),maxSpeedLabel=$('maxSpeedLabel');
+const speedLimitModeBtn=$('speedLimitModeBtn');
+
+function updateSpeedLimitModeUI(){
+  if(!speedLimitModeBtn)return;
+  speedLimitModeBtn.textContent=
+    'Limites route: '+(obeyRoadSpeedLimits?'ON':'OFF');
+  speedLimitModeBtn.classList.toggle('active',obeyRoadSpeedLimits);
+  speedLimitModeBtn.title=obeyRoadSpeedLimits
+    ? 'Le pilote automatique respecte les limites OSM'
+    : 'Le pilote automatique ignore les limites OSM';
+}
+
+function toggleRoadSpeedLimits(){
+  obeyRoadSpeedLimits=!obeyRoadSpeedLimits;
+  localStorage.setItem(
+    'worlddrive_obey_speed_limits',
+    obeyRoadSpeedLimits?'1':'0'
+  );
+  updateSpeedLimitModeUI();
+
+  if(obeyRoadSpeedLimits&&activeRoadMeta.maxspeed){
+    toast(`Limites route ON · ${Math.round(activeRoadMeta.maxspeed)} km/h`);
+  }else{
+    toast('Limites route '+(obeyRoadSpeedLimits?'ON':'OFF'));
+  }
+}
+
 function setMaxSpeed(kmh){
   maxSpeedKmh=Math.max(20,Math.min(200,Number(kmh)||100));
   MAX=maxSpeedKmh/3.6;
@@ -2661,6 +2707,8 @@ function setMaxSpeed(kmh){
   toast(`Vitesse max: ${Math.round(maxSpeedKmh)} km/h`);
 }
 maxSpeedSlider.addEventListener('input',e=>setMaxSpeed(e.target.value));
+if(speedLimitModeBtn)speedLimitModeBtn.onclick=toggleRoadSpeedLimits;
+updateSpeedLimitModeUI();
 $('autopilotBtn').onclick=toggleAutopilot;
 $('assist').onclick=toggleAssist;$('camera').onclick=()=>cameraController.cycle();$('reset').onclick=resetToRoad;$('jump').oninput=e=>$('jumpPct').textContent=(+e.target.value).toFixed(1)+' %';$('jumpBtn').onclick=()=>placeAt(+$('jump').value/100);$('northBtn').onclick=()=>{$('jump').value=99.8;$('jumpPct').textContent='99.8 %';placeAt(.998)};
 
