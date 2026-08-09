@@ -7,6 +7,7 @@ import { createRoutingService } from './routing-service.js';
 import { createGeocodingService, validLatLon } from './geocoding.js';
 import { WorldCache, OsmCache } from './cache.js';
 import { createOverpassClient } from './overpass.js';
+import { createSignDataService } from './signs.js';
 
 // Default test route. V4 can replace these coordinates at runtime.
 const MANIC2={lat:49.3213,lon:-68.3467,name:'Manic‑2'};
@@ -350,9 +351,19 @@ let activeRoadMeta={
 let lastRoadMetaCenter={x:Infinity,z:Infinity};
 let roadMetaLoading=false;
 
-const geographicSigns=[];
-let signDataLoading=false;
-let lastSignDataCenter={x:Infinity,z:Infinity};
+const signData=createSignDataService({
+  statusEl:signStatus,
+  toLatLon:(x,z)=>xzToLL(x,z),
+  toWorld:(lat,lon)=>llToXZ(lat,lon),
+  nearestRoute:(x,z)=>nearestRoute(x,z),
+  fetchCached:(namespace,ll,query,timeoutMs,ttlMs)=>
+    fetchOverpassCached(namespace,ll,query,timeoutMs,ttlMs),
+  getGeneration:()=>WorldDrive?.route?.generation??0,
+  onChanged:()=>{
+    if(activeRoadProfile.length)rebuildLocalWorld();
+  }
+});
+const geographicSigns=signData.signs;
 
 function parseMaxspeed(v){
   if(!v)return null;
@@ -442,15 +453,6 @@ function sceneryQuery(ll){
     way(around:4500,${ll.lat},${ll.lon})["waterway"="dam"];
     way(around:4500,${ll.lat},${ll.lon})["barrier"="guard_rail"];
   );out geom;`;
-}
-function signQuery(ll){
-  return `[out:json][timeout:12];(
-    node(around:5000,${ll.lat},${ll.lon})["highway"="traffic_sign"];
-    node(around:5000,${ll.lat},${ll.lon})["traffic_sign"];
-    node(around:5000,${ll.lat},${ll.lon})["place"~"city|town|village|hamlet"]["name"];
-    way(around:5000,${ll.lat},${ll.lon})["waterway"~"river|stream"]["name"];
-    way(around:5000,${ll.lat},${ll.lon})["natural"="water"]["name"];
-  );out tags geom center;`;
 }
 function roadMetaQuery(ll){
   return `[out:json][timeout:10];(
@@ -875,77 +877,9 @@ async function loadRoadMetadataAround(absx,absz){
 
 
 // ---------- V5.1.7 geographic sign data ----------
-function routeCorrelationForPoint(x,z,maxDistance=55){
-  const n=nearestRoute(x,z);
-  if(!n||n.d>maxDistance)return null;
-  return n;
-}
-function extractWaterName(tags={}){
-  return tags['name:fr']||tags.name||tags.official_name||null;
-}
 async function loadGeographicSignsAround(absx,absz){
-  if(signDataLoading)return false;
-  signDataLoading=true;
-  const generation=WorldDrive?.route?.generation??0;
-  const ll=xzToLL(absx,absz);
-
-  const q=signQuery(ll);
-  const {data}=await fetchOverpassCached('signs',ll,q,6500,1000*60*60*24*10);
-
-  if(generation!==(WorldDrive?.route?.generation??0)){signDataLoading=false;return false}
-
-  if(data){
-    const known=new Set(geographicSigns.map(f=>f.key));
-    for(const e of data.elements||[]){
-      const tags=e.tags||{};
-      let lat=e.lat,lon=e.lon;
-      if((lat==null||lon==null)&&e.center){lat=e.center.lat;lon=e.center.lon}
-      if((lat==null||lon==null)&&e.geometry?.length){
-        const mid=e.geometry[Math.floor(e.geometry.length/2)];lat=mid.lat;lon=mid.lon;
-      }
-      if(lat==null||lon==null)continue;
-      const p=llToXZ(lat,lon),near=routeCorrelationForPoint(p.x,p.z,85);
-      if(!near)continue;
-
-      let kind=null,label=null,maxspeed=null;
-      const signTag=tags.traffic_sign||'';
-      if(tags.highway==='traffic_sign'||signTag){
-        const speedMatch=String(signTag).match(/(?:maxspeed[:=]?|CA:)?(\d{2,3})/i);
-        if(speedMatch){
-          kind='speed';maxspeed=parseFloat(speedMatch[1]);label=String(Math.round(maxspeed));
-        }
-      }
-
-      if(!kind&&tags.place&&tags.name){
-        kind='city';label=tags['name:fr']||tags.name;
-      }
-
-      if(!kind&&(tags.waterway||tags.natural==='water')){
-        const wn=extractWaterName(tags);
-        if(wn){kind='river';label=wn}
-      }
-
-      if(!kind||!label)continue;
-      const key=`${kind}:${e.type}:${e.id}:${label}`;
-      if(known.has(key))continue;
-
-      geographicSigns.push({
-        key,kind,label,maxspeed,
-        x:p.x,z:p.z,
-        routeCum:near.cum,
-        routeDistance:near.d
-      });
-      known.add(key);
-    }
-  }
-
-  lastSignDataCenter={x:absx,z:absz};
-  signStatus.textContent=String(geographicSigns.length);
-  signDataLoading=false;
-  if(activeRoadProfile.length)rebuildLocalWorld();
-  return true;
+  return signData.loadAround(absx,absz);
 }
-
 
 function nearestRouteCumToFeature(points){
   let best=null,bd=Infinity;
@@ -2154,9 +2088,7 @@ function resetWorldCaches(){
   lastImageryCenter={x:Infinity,z:Infinity};
   bridgeRebuildCount=0;
   activeRoadMeta={highway:null,surface:'asphalt',maxspeed:null,lanes:null,width:null,name:null,ref:null,confidence:0};
-  geographicSigns.length=0;
-  lastSignDataCenter={x:Infinity,z:Infinity};
-  signDataLoading=false;
+  signData.reset();
   passedSignKeys.clear();signReadout.key=null;signReadout.text='';signReadout.startedAt=0;
   if(signStatus)signStatus.textContent='0';
   lastRoadMetaCenter={x:Infinity,z:Infinity};
@@ -2703,8 +2635,11 @@ function updateDrive(dt){
  const mx=absX-lastRoadMetaCenter.x,mz=absZ-lastRoadMetaCenter.z;
  if(mx*mx+mz*mz>700*700&&!roadMetaLoading)loadRoadMetadataAround(absX,absZ);
 
- const signDx=absX-lastSignDataCenter.x,signDz=absZ-lastSignDataCenter.z;
- if(signDx*signDx+signDz*signDz>2500*2500&&!signDataLoading)loadGeographicSignsAround(absX,absZ);
+ const signCenter=signData.center;
+ const signDx=absX-signCenter.x,signDz=absZ-signCenter.z;
+ if(signDx*signDx+signDz*signDz>2500*2500&&!signData.loading){
+   loadGeographicSignsAround(absX,absZ);
+ }
 }
 
 function toggleAssist(){
