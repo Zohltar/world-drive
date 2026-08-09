@@ -11,6 +11,7 @@ import { createSignDataService } from './signs.js';
 import { createBridgeManager } from './bridges.js';
 import { createImageryService } from './imagery.js';
 import { createElevationService } from './elevation.js';
+import { createTerrainService } from './terrain.js';
 
 // Default test route. V4 can replace these coordinates at runtime.
 const MANIC2={lat:49.3213,lon:-68.3467,name:'Manic‑2'};
@@ -122,22 +123,23 @@ const elevationService=createElevationService({
   toLatLon:(x,z)=>xzToLL(x,z),
   zoom:11
 });
-
-function fallbackTerrain(x,z){
-  // Mild procedural relief so the world is never perfectly flat while DEM tiles load.
-  return 5*Math.sin(x*.00023)+4*Math.sin(z*.00031)+2.5*Math.sin((x+z)*.00017);
-}
-
-function terrainAbs(x,z){
+elevationService.relativeWorldHeight=(x,z)=>{
   const ll=xzToLL(x,z);
-  const elevation=elevationService.relativeElevationAt(ll.lat,ll.lon);
+  return elevationService.relativeElevationAt(ll.lat,ll.lon);
+};
 
-  if(elevation===null||!Number.isFinite(elevation)){
-    return fallbackTerrain(x,z);
-  }
+const terrainService=createTerrainService({
+  THREE,
+  elevation:elevationService,
+  ground,
+  horizonGroup,
+  getWorldOffset:()=>worldOffset,
+  applyImagery:()=>applyImageryToGround()
+});
 
-  return elevation;
-}
+const terrainAbs=(x,z)=>terrainService.heightAt(x,z);
+const rebuildGroundTerrain=()=>terrainService.rebuildGround();
+const rebuildHorizon=()=>terrainService.rebuildHorizon();
 
 async function loadElevationAround(absx,absz){
   const result=await elevationService.loadAround(absx,absz);
@@ -156,26 +158,6 @@ async function loadElevationAround(absx,absz){
   console.warn('No DEM tiles available; keeping procedural terrain');
   return false;
 }
-
-function rebuildGroundTerrain(){
-  // Near terrain LOD: dense enough for suspension/roadside detail.
-  // Horizon rings handle the far field separately.
-  const size=2000,seg=88;
-  if(ground.geometry)ground.geometry.dispose();
-  const geom=new THREE.PlaneGeometry(size,size,seg,seg);
-  geom.rotateX(-Math.PI/2);
-  const pos=geom.attributes.position;
-  for(let i=0;i<pos.count;i++){
-    const rx=pos.getX(i),rz=pos.getZ(i);
-    pos.setY(i,terrainAbs(worldOffset.x+rx,worldOffset.z+rz)-.15);
-  }
-  pos.needsUpdate=true;geom.computeVertexNormals();
-  ground.geometry=geom;
-  ground.rotation.set(0,0,0);
-  ground.position.set(0,0,0);
-  applyImageryToGround();
-}
-
 
 // ---------- Materials ----------
 function makeAsphalt(){
@@ -1435,46 +1417,6 @@ async function loadWaterAround(absx,absz){
 }
 
 
-function rebuildHorizon(){
-  clearGroup(horizonGroup);
-
-  // Overlap the 2.0 km near terrain from ~850 m onward.
-  // Rings progressively reduce segment count and increase opacity,
-  // creating a much softer near/far hand-off.
-  const rings=[
-    {r0:850,r1:1150,segs:80,opacity:.28,yOff:-.42},
-    {r0:1100,r1:1550,segs:64,opacity:.52,yOff:-.50},
-    {r0:1500,r1:2150,segs:48,opacity:.78,yOff:-.58},
-    {r0:2100,r1:3000,segs:36,opacity:1.0,yOff:-.66}
-  ];
-
-  for(const ring of rings){
-    const pos=[],idx=[];
-    for(let i=0;i<=ring.segs;i++){
-      const a=i/ring.segs*Math.PI*2;
-      for(const r of [ring.r0,ring.r1]){
-        const ax=worldOffset.x+Math.cos(a)*r,az=worldOffset.z+Math.sin(a)*r;
-        pos.push(Math.cos(a)*r,terrainAbs(ax,az)+ring.yOff,Math.sin(a)*r);
-      }
-    }
-    for(let i=0;i<ring.segs;i++){
-      const a=i*2;idx.push(a,a+2,a+1,a+2,a+3,a+1);
-    }
-    const g=new THREE.BufferGeometry();
-    g.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));
-    g.setIndex(idx);g.computeVertexNormals();
-    const mat=new THREE.MeshStandardMaterial({
-      color:0x60744f,roughness:1,side:THREE.DoubleSide,
-      transparent:ring.opacity<1,opacity:ring.opacity,depthWrite:ring.opacity>.7
-    });
-    const m=new THREE.Mesh(g,mat);
-    m.receiveShadow=ring.r0<1200;
-    m.renderOrder=-2;
-    horizonGroup.add(m);
-  }
-}
-
-
 function addBridgeStructures(){
   // Deprecated visual deck layer remains disabled: road ribbon is the ONLY roadway.
   return;
@@ -1814,7 +1756,7 @@ function resetWorldCaches(){
   lastPrefetchCum=-Infinity;
   activeRoadProfile=[];
   clearGroup(roadGroup);clearGroup(forestGroup);
-  clearGroup(terrainDetailGroup);clearGroup(infrastructureGroup);clearGroup(buildingGroup);clearGroup(horizonGroup);
+  clearGroup(terrainDetailGroup);clearGroup(infrastructureGroup);clearGroup(buildingGroup);terrainService.clearHorizon();
 }
 
 function preloadHydroAlongRoute(){
@@ -2552,8 +2494,14 @@ mapToggle.addEventListener('click',()=>setCollapsed(mapPanel,mapToggle,!mapPanel
 const compassCanvas=$('compass'),compassCtx=compassCanvas.getContext('2d'),compassHeading=$('compassHeading');
 
 function headingDeg(){
-  // heading 0 = +Z = geographic north in this local projection.
-  let d=(heading*180/Math.PI)%360;
+  // World coordinates use +X = east and +Z = south because llToXZ()
+  // negates latitude. Vehicle heading 0 therefore points SOUTH, not north.
+  // Convert the simulation yaw into a conventional compass bearing:
+  //   heading 0      -> 180° (S)
+  //   heading +90°   ->  90° (E)
+  //   heading 180°   ->   0° (N)
+  //   heading -90°   -> 270° (W)
+  let d=(180-heading*180/Math.PI)%360;
   if(d<0)d+=360;
   return d;
 }
