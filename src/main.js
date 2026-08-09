@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { createVehicleAudio } from './audio.js';
+import { createGamepadController } from './gamepad.js';
 
 // Default test route. V4 can replace these coordinates at runtime.
 const MANIC2={lat:49.3213,lon:-68.3467,name:'Manic‑2'};
@@ -2689,131 +2690,18 @@ const vehicleAudio=createVehicleAudio({
   getNearestRoute:()=>nearestRoute(absX,absZ)
 });
 
-const gamepadStatus=$('gamepadStatus');
-const gamepadState={
-  connected:false,id:'',steer:0,lookX:0,lookY:0,throttle:0,brake:0,hand:false,
-  prevButtons:[],activeIndex:null,lastInputAt:0
-};
-
-function gamepadDeadzone(v,dz=.10){
-  const a=Math.abs(v);if(a<=dz)return 0;
-  return Math.sign(v)*(a-dz)/(1-dz);
-}
-function gamepadButton(gp,i){return !!gp?.buttons?.[i]?.pressed}
-function gamepadValue(gp,i){return Number(gp?.buttons?.[i]?.value)||0}
-function gamepadPressedEdge(gp,i){
-  const now=gamepadButton(gp,i),prev=!!gamepadState.prevButtons[i];
-  gamepadState.prevButtons[i]=now;
-  return now&&!prev;
-}
-function axisTrigger(v){
-  // Some GuliKit modes expose triggers as axes in [-1,+1].
-  if(!Number.isFinite(v))return 0;
-  return Math.max(0,Math.min(1,(v+1)/2));
-}
-function padActivity(gp){
-  let score=0;
-  for(const a of gp.axes||[])score=Math.max(score,Math.abs(a||0));
-  for(const b of gp.buttons||[])score=Math.max(score,b?.value||0);
-  return score;
-}
-function chooseGamepad(){
-  const pads=[...navigator.getGamepads()].filter(Boolean);
-  if(!pads.length)return null;
-
-  // Keep the pad the player has actually used, important when Windows has
-  // several paired Xbox controllers plus the active GuliKit Controller XW.
-  const active=pads.find(p=>p.index===gamepadState.activeIndex);
-  if(active)return active;
-
-  const used=pads.slice().sort((a,b)=>padActivity(b)-padActivity(a))[0];
-  if(padActivity(used)>.08){gamepadState.activeIndex=used.index;return used}
-
-  // Prefer the connected GuliKit if no controller has produced input yet.
-  return pads.find(p=>/gulikit|controller xw/i.test(p.id||'')) ||
-         pads.find(p=>p.mapping==='standard') || pads[0];
-}
-function updateGamepad(){
-  if(!navigator.getGamepads){
-    gamepadStatus.textContent='Non supportée';gamepadState.connected=false;return;
-  }
-  const gp=chooseGamepad();
-  if(!gp){
-    gamepadState.connected=false;gamepadState.activeIndex=null;
-    gamepadState.steer=0;gamepadState.lookX=0;gamepadState.lookY=0;
-    gamepadState.throttle=0;gamepadState.brake=0;
-    gamepadState.hand=false;gamepadState.prevButtons=[];
-    gamepadStatus.textContent='—';return;
-  }
-
-  const activity=padActivity(gp);
-  if(activity>.08){
-    gamepadState.activeIndex=gp.index;
-    gamepadState.lastInputAt=performance.now();
-  }
-
-  gamepadState.connected=true;
-  gamepadState.id=gp.id||'Gamepad';
-  const shortId=/gulikit/i.test(gamepadState.id)?'GuliKit XW':
-                (gp.mapping==='standard'?'Gamepad standard':'Gamepad');
-  gamepadStatus.textContent=shortId;
-
-  // Steering: standard/GuliKit XInput uses axis 0.
-  gamepadState.steer=gamepadDeadzone(Number(gp.axes?.[0])||0);
-
-  // Right stick free-look: standard mapping axes 2/3.
-  gamepadState.lookX=gamepadDeadzone(Number(gp.axes?.[2])||0,.12);
-  gamepadState.lookY=gamepadDeadzone(Number(gp.axes?.[3])||0,.12);
-
-  // Primary mapping: standard Gamepad API buttons 6/7.
-  let lt=gamepadValue(gp,6),rt=gamepadValue(gp,7);
-
-  // GuliKit can expose analog triggers as axes depending on Bluetooth mode/browser.
-  // Only use these fallbacks when buttons 6/7 are not providing analog values.
-  if(lt<.01 && rt<.01 && gp.mapping!=='standard' && (gp.axes?.length||0)>=6){
-    lt=axisTrigger(Number(gp.axes[4]));
-    rt=axisTrigger(Number(gp.axes[5]));
-  }
-  // Alternate combined-trigger axis is only safe on NON-standard mappings.
-  // Axis 2 is the right-stick X axis on Xbox/GuliKit XInput and must never
-  // be treated as a trigger there.
-  if(lt<.01 && rt<.01 && gp.mapping!=='standard' && (gp.axes?.length||0)>=3){
-    const t=Number(gp.axes[2])||0;
-    if(Math.abs(t)>.08){
-      if(t<0)lt=Math.min(1,-t);
-      else rt=Math.min(1,t);
-    }
-  }
-
-  gamepadState.brake=Math.max(0,Math.min(1,lt));
-  gamepadState.throttle=Math.max(0,Math.min(1,rt));
-  gamepadState.hand=gamepadButton(gp,0);
-
-  if(!vehicleAudio.isRunning()){
-    vehicleAudio.showActivationHint();
-  }
-
-  if(gamepadPressedEdge(gp,3))cycleCam();        // Y
-  if(gamepadPressedEdge(gp,2))toggleAssist();    // X
-  if(gamepadPressedEdge(gp,1))toggleAutopilot(); // B
-  if(gamepadPressedEdge(gp,9))resetToRoad();     // Menu/Start
-
-  if(autopilot&&(Math.abs(gamepadState.steer)>.14||gamepadState.brake>.08||gamepadState.hand)){
-    setAutopilot(false,'Reprise manuelle — manette');
-  }
-}
-
-addEventListener('gamepadconnected',e=>{
-  // Do not blindly select the first Windows device: wait for actual input.
-  if(/gulikit|controller xw/i.test(e.gamepad?.id||''))gamepadState.activeIndex=e.gamepad.index;
-  gamepadStatus.textContent=/gulikit/i.test(e.gamepad?.id||'')?'GuliKit XW':'Détectée';
-  toast('Manette détectée — appuie sur un bouton');
+const gamepad=createGamepadController({
+  statusEl:$('gamepadStatus'),
+  audio:vehicleAudio,
+  toast,
+  onCycleCamera:()=>cycleCam(),
+  onToggleAssist:()=>toggleAssist(),
+  onToggleAutopilot:()=>toggleAutopilot(),
+  onResetToRoad:()=>resetToRoad(),
+  isAutopilotEnabled:()=>autopilot,
+  disableAutopilot:message=>setAutopilot(false,message)
 });
-addEventListener('gamepaddisconnected',e=>{
-  if(gamepadState.activeIndex===e.gamepad?.index)gamepadState.activeIndex=null;
-  gamepadState.connected=false;gamepadStatus.textContent='—';
-  toast('Manette déconnectée');
-});
+const gamepadState=gamepad.state;
 
 const keys={};addEventListener('keydown',e=>{
  keys[e.code]=true;
@@ -3577,7 +3465,7 @@ function animate(now){
  requestAnimationFrame(animate);
  const dt=Math.min(.033,(now-last)/1000||.016);last=now;
  try{
-   updateGamepad();
+   gamepad.update();
    updateDrive(dt);
    try{vehicleAudio.update()}catch(audioErr){
      console.warn('Audio frame error',audioErr);
