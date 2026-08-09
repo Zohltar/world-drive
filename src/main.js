@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { createVehicleAudio } from './audio.js';
 import { createGamepadController } from './gamepad.js';
+import { createCameraController } from './camera.js';
 
 // Default test route. V4 can replace these coordinates at runtime.
 const MANIC2={lat:49.3213,lon:-68.3467,name:'Manic‑2'};
@@ -2653,7 +2654,7 @@ async function loadRoute(){
 }
 
 // ---------- Driving ----------
-let absX=0,absZ=0,heading=0,speed=0,steer=0,assist=true,camMode=0,last=performance.now();
+let absX=0,absZ=0,heading=0,speed=0,steer=0,assist=true,last=performance.now();
 let autopilot=false;
 let autopilotSteer=0;
 
@@ -2690,11 +2691,21 @@ const vehicleAudio=createVehicleAudio({
   getNearestRoute:()=>nearestRoute(absX,absZ)
 });
 
+const cameraController=createCameraController({
+  THREE,
+  camera,
+  camTarget,
+  car,
+  modeStatusEl:$('camMode'),
+  getHeading:()=>heading,
+  getLookState:()=>gamepadState
+});
+
 const gamepad=createGamepadController({
   statusEl:$('gamepadStatus'),
   audio:vehicleAudio,
   toast,
-  onCycleCamera:()=>cycleCam(),
+  onCycleCamera:()=>cameraController.cycle(),
   onToggleAssist:()=>toggleAssist(),
   onToggleAutopilot:()=>toggleAutopilot(),
   onResetToRoad:()=>resetToRoad(),
@@ -2706,7 +2717,7 @@ const gamepadState=gamepad.state;
 const keys={};addEventListener('keydown',e=>{
  keys[e.code]=true;
  if(['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Space'].includes(e.code))e.preventDefault();
- if(e.code==='KeyC')cycleCam();
+ if(e.code==='KeyC')cameraController.cycle();
  if(e.code==='KeyL')toggleAssist();
  if(e.code==='KeyP')toggleAutopilot();
  if(e.code==='KeyR')resetToRoad();
@@ -3040,54 +3051,6 @@ function updateDrive(dt){
  if(signDx*signDx+signDz*signDz>2500*2500&&!signDataLoading)loadGeographicSignsAround(absX,absZ);
 }
 const camTarget=new THREE.Vector3();
-let cameraLookYaw=0;
-let cameraLookPitch=0;
-
-function updateCameraLook(dt){
-  const targetYaw=gamepadState.connected?gamepadState.lookX*1.22:0;
-  const targetPitch=gamepadState.connected?-gamepadState.lookY*.58:0;
-
-  const active=Math.abs(targetYaw)>.01||Math.abs(targetPitch)>.01;
-  const rate=active?8.5:3.0;
-  cameraLookYaw+=(targetYaw-cameraLookYaw)*(1-Math.exp(-dt*rate));
-  cameraLookPitch+=(targetPitch-cameraLookPitch)*(1-Math.exp(-dt*rate));
-
-  cameraLookYaw=Math.max(-1.35,Math.min(1.35,cameraLookYaw));
-  cameraLookPitch=Math.max(-.46,Math.min(.38,cameraLookPitch));
-}
-
-function updateCam(dt){
- updateCameraLook(dt);
-
- const baseForward=new THREE.Vector3(Math.sin(heading),0,Math.cos(heading));
- const cosY=Math.cos(cameraLookYaw),sinY=Math.sin(cameraLookYaw);
- const f=new THREE.Vector3(
-   baseForward.x*cosY + baseForward.z*sinY,
-   0,
-   baseForward.z*cosY - baseForward.x*sinY
- ).normalize();
-
- let des,tgt;
- const pitchOffset=Math.sin(cameraLookPitch);
- const pitchHeight=Math.sin(cameraLookPitch)*8;
-
- if(camMode===0){
-   des=car.position.clone().addScaledVector(f,-10.5).add(new THREE.Vector3(0,5+pitchHeight*.35,0));
-   tgt=car.position.clone().addScaledVector(f,8).add(new THREE.Vector3(0,1.2+pitchHeight,0));
- }else if(camMode===1){
-   des=car.position.clone().addScaledVector(f,1.1).add(new THREE.Vector3(0,1.55+pitchHeight*.16,0));
-   tgt=car.position.clone().addScaledVector(f,20).add(new THREE.Vector3(0,1.2+pitchHeight,0));
- }else{
-   des=car.position.clone().addScaledVector(f,-12).add(new THREE.Vector3(0,29+pitchHeight*.55,0));
-   tgt=car.position.clone().addScaledVector(f,10).add(new THREE.Vector3(0,pitchHeight*.8,0));
- }
-
- const a=1-Math.exp(-dt*(camMode===1?12:7));
- camera.position.lerp(des,a);
- camTarget.lerp(tgt,a);
- camera.lookAt(camTarget);
-}
-function cycleCam(){camMode=(camMode+1)%3;$('camMode').textContent=['Chase','Capot','Aérienne'][camMode]}
 function toggleAssist(){
  if(autopilot){setAutopilot(false,'Pilote auto désactivé');}
  assist=!assist;
@@ -3108,7 +3071,7 @@ function setMaxSpeed(kmh){
 }
 maxSpeedSlider.addEventListener('input',e=>setMaxSpeed(e.target.value));
 $('autopilotBtn').onclick=toggleAutopilot;
-$('assist').onclick=toggleAssist;$('camera').onclick=cycleCam;$('reset').onclick=resetToRoad;$('jump').oninput=e=>$('jumpPct').textContent=(+e.target.value).toFixed(1)+' %';$('jumpBtn').onclick=()=>placeAt(+$('jump').value/100);$('northBtn').onclick=()=>{$('jump').value=99.8;$('jumpPct').textContent='99.8 %';placeAt(.998)};
+$('assist').onclick=toggleAssist;$('camera').onclick=()=>cameraController.cycle();$('reset').onclick=resetToRoad;$('jump').oninput=e=>$('jumpPct').textContent=(+e.target.value).toFixed(1)+' %';$('jumpBtn').onclick=()=>placeAt(+$('jump').value/100);$('northBtn').onclick=()=>{$('jump').value=99.8;$('jumpPct').textContent='99.8 %';placeAt(.998)};
 
 
 
@@ -3471,7 +3434,7 @@ function animate(now){
      console.warn('Audio frame error',audioErr);
      vehicleAudio.showError();
    }
-   updateCam(dt);
+   cameraController.update(dt);
    prefetchAhead();
    waterTex.offset.x=(waterTex.offset.x+dt*.003)%1;
    waterTex.offset.y=(waterTex.offset.y+dt*.0015)%1;
