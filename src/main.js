@@ -15,6 +15,7 @@ import { createTerrainService } from './terrain.js';
 import { createSceneryDataService } from './scenery-data.js';
 import { createSceneryRenderer } from './scenery-renderer.js';
 import { createWaterDataService } from './water-data.js';
+import { createWaterRenderer } from './water-renderer.js';
 
 // Default test route. V4 can replace these coordinates at runtime.
 const MANIC2={lat:49.3213,lon:-68.3467,name:'Manic‑2'};
@@ -980,128 +981,33 @@ function waterWidth(tags={}){
   if(tags.waterway==='stream')return 7;
   return 18;
 }
-function addWaterRibbon(points,width,material){
-  if(points.length<2)return null;
-  // Keep water visually smooth and slightly above surrounding terrain.
-  // Rivers should read as water, not painted terrain. Use a lightly smoothed
-  // profile and keep the surface slightly above the DEM.
-  const raw=points.map(p=>terrainAbs(p.x,p.z));
-  const h=raw.slice();
-  for(let i=1;i<h.length-1;i++)h[i]=(raw[i-1]+2*raw[i]+raw[i+1])/4;
-  const prof=points.map((p,i)=>({x:p.x,z:p.z,y:h[i]+.28}));
-  return buildRibbon(prof,width,material,0);
-}
-function simplifyWaterPoints(points,maxPoints=700){
-  if(points.length<=maxPoints)return points;
-  const step=Math.ceil(points.length/maxPoints),out=[];
-  for(let i=0;i<points.length;i+=step)out.push(points[i]);
-  if(out.length>=3)return out;
-  return points.slice(0,maxPoints);
-}
+const waterRenderer=createWaterRenderer({
+  THREE,
+  group:waterGroup,
+  statusEl:waterStatus,
+  waterFeatures,
+  coastlineFeatures,
+  materials:{
+    waterMat,
+    riverMat,
+    coastWaterMat
+  },
+  terrainHeight:(x,z)=>terrainAbs(x,z),
+  getWorldOffset:()=>worldOffset,
+  waterWidth,
+  buildRibbon
+});
 
-function addWaterPolygon(points){
-  if(points.length<3)return null;
-  points=simplifyWaterPoints(points);
+const rebuildLocalWater=()=>waterRenderer.rebuild();
 
-  const local=points.map(p=>({x:p.x-worldOffset.x,z:p.z-worldOffset.z,y:terrainAbs(p.x,p.z)}));
-  const shape=new THREE.Shape();
-  shape.moveTo(local[0].x,-local[0].z);
-  for(let i=1;i<local.length;i++)shape.lineTo(local[i].x,-local[i].z);
-  shape.closePath();
 
-  let geom;
-  try{
-    geom=new THREE.ShapeGeometry(shape);
-    geom.rotateX(-Math.PI/2);
-  }catch(e){
-    console.warn('Large water polygon triangulation failed',e);
-    return null;
-  }
 
-  const heights=local.map(p=>p.y).filter(Number.isFinite).sort((a,b)=>a-b);
-  const qIndex=Math.max(0,Math.min(heights.length-1,Math.floor(heights.length*.18)));
-  const level=heights.length?heights[qIndex]:0;
 
-  const m=new THREE.Mesh(geom,waterMat);
-  m.position.y=level+.30;
-  m.renderOrder=2;
-  m.receiveShadow=false;
-  return m;
-}
 
-function rebuildCoastalWater(){
-  if(!coastlineFeatures.length)return;
 
-  const R=2200,R2=R*R;
-  const coastWidth=3400;
 
-  for(const f of coastlineFeatures){
-    const pts=f.points||[];
-    if(pts.length<2)continue;
 
-    // Work feature-by-feature instead of concatenating unrelated coastlines.
-    let featureNear=false;
-    for(const p of pts){
-      const dx=p.x-worldOffset.x,dz=p.z-worldOffset.z;
-      if(dx*dx+dz*dz<R2){featureNear=true;break}
-    }
-    if(!featureNear)continue;
 
-    const usable=simplifyWaterPoints(pts,500);
-    const samples=usable.map(p=>terrainAbs(p.x,p.z)).filter(Number.isFinite).sort((a,b)=>a-b);
-    const level=samples.length?samples[Math.floor(samples.length*.12)]:0;
-
-    const pos=[],idx=[];
-    for(let i=0;i<usable.length;i++){
-      const p=usable[i],prev=usable[Math.max(0,i-1)],next=usable[Math.min(usable.length-1,i+1)];
-      let tx=next.x-prev.x,tz=next.z-prev.z,tl=Math.hypot(tx,tz)||1;tx/=tl;tz/=tl;
-      let nx=-tz,nz=tx;
-
-      // Determine water side locally. This handles curved coastline much better.
-      const probe=180;
-      const hA=terrainAbs(p.x+nx*probe,p.z+nz*probe);
-      const hB=terrainAbs(p.x-nx*probe,p.z-nz*probe);
-      if(hA>hB){nx=-nx;nz=-nz}
-
-      const lx=p.x-worldOffset.x,lz=p.z-worldOffset.z;
-      pos.push(lx,level+.20,lz);
-      pos.push(lx+nx*coastWidth,level+.20,lz+nz*coastWidth);
-      if(i<usable.length-1){
-        const a=i*2;idx.push(a,a+2,a+1,a+2,a+3,a+1);
-      }
-    }
-    if(idx.length<3)continue;
-
-    const geom=new THREE.BufferGeometry();
-    geom.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));
-    geom.setIndex(idx);geom.computeVertexNormals();
-
-    const m=new THREE.Mesh(geom,coastWaterMat);
-    m.renderOrder=1;m.receiveShadow=false;
-    waterGroup.add(m);
-  }
-}
-
-function rebuildLocalWater(){
-  clearGroup(waterGroup);
-  const R=1650,R2=R*R;
-  let shown=0;
-  rebuildCoastalWater();
-
-  for(const f of waterFeatures){
-    let near=false;
-    for(const p of f.points){
-      const dx=p.x-worldOffset.x,dz=p.z-worldOffset.z;
-      if(dx*dx+dz*dz<R2){near=true;break}
-    }
-    if(!near)continue;
-    let mesh=null;
-    if(f.kind==='polygon')mesh=addWaterPolygon(f.points);
-    else mesh=addWaterRibbon(f.points,waterWidth(f.tags),f.tags?.waterway==='river'?riverMat:waterMat);
-    if(mesh){waterGroup.add(mesh);shown++}
-  }
-  if(shown)waterStatus.textContent='OSM';
-}
 
 async function updateHydroCacheHUD(){
   return waterData.updateCacheHUD();
@@ -1441,7 +1347,7 @@ function resetWorldCaches(){
   route.length=0;segments.length=0;routeLength=0;
   bridgeManager.reset();
   bridgeStatus.textContent='0';
-  clearGroup(waterGroup);
+  waterRenderer.clear();
 
   sceneryData.reset();
   // Keep completed elevation/imagery LRU caches across route changes.
