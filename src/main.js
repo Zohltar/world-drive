@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { createVehicleAudio } from './audio.js';
 import { createGamepadController } from './gamepad.js';
 import { createCameraController } from './camera.js';
+import { createRoutingGeometry, angleDelta, nearestPointOnPolyline } from './routing.js';
 
 // Default test route. V4 can replace these coordinates at runtime.
 const MANIC2={lat:49.3213,lon:-68.3467,name:'Manic‑2'};
@@ -21,6 +22,14 @@ let origin={lat:ROUTE_START.lat,lon:ROUTE_START.lon};
 const route=[];       // {x,z,lat,lon,cum}
 let routeLength=0;
 let segments=[];
+
+const routingGeometry=createRoutingGeometry({
+  getSegments:()=>segments,
+  getRouteLength:()=>routeLength
+});
+const nearestRoute=(x,z)=>routingGeometry.nearestRoute(x,z);
+const routePointAt=frac=>routingGeometry.routePointAt(frac);
+const routePointAtCum=cum=>routingGeometry.routePointAtCum(cum);
 
 const $=id=>document.getElementById(id);
 const loading=$('loading'),loadingText=$('loadingText'),statusEl=$('status'),notice=$('notice'),routingStatus=$('routingStatus');
@@ -1006,49 +1015,7 @@ function segMesh(ax,az,bx,bz,width,mat,y=.05){
  const m=new THREE.Mesh(new THREE.BoxGeometry(width,.10,len),mat);const mx=(a.x+b.x)/2,mz=(a.z+b.z)/2;
  m.position.set(mx,terrainAbs((ax+bx)/2,(az+bz)/2)+y,mz);m.rotation.y=Math.atan2(dx,dz);m.receiveShadow=true;return m
 }
-function nearestRoute(x,z){
- let best=null,bd=Infinity;
- // spatial shortcut: search all segments (~few thousand) is okay, but retain squared distance.
- for(let i=0;i<segments.length;i++){const s=segments[i],vx=s.bx-s.ax,vz=s.bz-s.az,wx=x-s.ax,wz=z-s.az,vv=vx*vx+vz*vz||1,t=Math.max(0,Math.min(1,(wx*vx+wz*vz)/vv)),px=s.ax+t*vx,pz=s.az+t*vz,dx=x-px,dz=z-pz,d2=dx*dx+dz*dz;if(d2<bd){bd=d2;best={...s,i,t,px,pz,d:Math.sqrt(d2),angle:Math.atan2(vx,vz),cum:s.cum+t*s.len}}}
- return best
-}
-function routePointAt(frac){
- const target=Math.max(0,Math.min(1,frac))*routeLength;
- let lo=0,hi=segments.length-1;
- while(lo<hi){const m=(lo+hi)>>1;if(segments[m].cum+segments[m].len<target)lo=m+1;else hi=m}
- const s=segments[lo],t=Math.max(0,Math.min(1,(target-s.cum)/(s.len||1)));
- return {x:s.ax+(s.bx-s.ax)*t,z:s.az+(s.bz-s.az)*t,angle:Math.atan2(s.bx-s.ax,s.bz-s.az),cum:target}
-}
-function routePointAtCum(target){
- target=Math.max(0,Math.min(routeLength,target));
- let lo=0,hi=segments.length-1;
- while(lo<hi){const m=(lo+hi)>>1;if(segments[m].cum+segments[m].len<target)lo=m+1;else hi=m}
- const q=segments[lo],t=Math.max(0,Math.min(1,(target-q.cum)/(q.len||1)));
- return {x:q.ax+(q.bx-q.ax)*t,z:q.az+(q.bz-q.az)*t,angle:Math.atan2(q.bx-q.ax,q.bz-q.az),cum:target};
-}
-function angleDelta(target,current){
-  return Math.atan2(Math.sin(target-current),Math.cos(target-current));
-}
 
-
-
-
-
-
-
-function nearestPointOnPolyline(x,z,pts){
-  let best={d:Infinity,angle:0};
-  for(let i=0;i<pts.length-1;i++){
-    const a=pts[i],b=pts[i+1];
-    const vx=b.x-a.x,vz=b.z-a.z,wx=x-a.x,wz=z-a.z;
-    const vv=vx*vx+vz*vz||1;
-    const t=Math.max(0,Math.min(1,(wx*vx+wz*vz)/vv));
-    const px=a.x+vx*t,pz=a.z+vz*t;
-    const d=Math.hypot(x-px,z-pz);
-    if(d<best.d)best={d,angle:Math.atan2(vx,vz)};
-  }
-  return best;
-}
 
 async function loadRoadMetadataAround(absx,absz){
   if(roadMetaLoading)return false;
