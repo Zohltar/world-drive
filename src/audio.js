@@ -10,9 +10,12 @@ export function createVehicleAudio({
   getState,
   getNearestRoute
 }) {
+  const MASTER_GAIN=.34;
+
   let ctx=null;
   let master=null;
   let ready=false;
+  let enabled=false;
 
   let motorOsc1=null;
   let motorOsc2=null;
@@ -35,6 +38,23 @@ export function createVehicleAudio({
     if(statusEl)statusEl.textContent=text;
   }
 
+  function syncButton(){
+    if(!enableButton)return;
+
+    // Keep the requested label; color communicates the actual mode.
+    enableButton.textContent='Activer audio';
+    enableButton.classList.toggle('audioOn',enabled);
+    enableButton.classList.toggle('audioOff',!enabled);
+    enableButton.setAttribute(
+      'aria-pressed',
+      enabled?'true':'false'
+    );
+    enableButton.title=
+      enabled
+        ?'Audio ON — cliquer pour couper'
+        :'Audio OFF — cliquer pour activer';
+  }
+
   function makeNoiseBuffer(seconds=2){
     const n=Math.floor(ctx.sampleRate*seconds);
     const buffer=ctx.createBuffer(1,n,ctx.sampleRate);
@@ -52,7 +72,7 @@ export function createVehicleAudio({
 
   function buildNodes(){
     master=ctx.createGain();
-    master.gain.value=.34;
+    master.gain.value=MASTER_GAIN;
     master.connect(ctx.destination);
 
     // EV layer.
@@ -128,6 +148,12 @@ export function createVehicleAudio({
   }
 
   async function wake(){
+    if(!enabled){
+      setStatus('OFF');
+      syncButton();
+      return;
+    }
+
     if(ready){
       if(ctx?.state==='suspended'){
         try{
@@ -137,11 +163,28 @@ export function createVehicleAudio({
         }
       }
 
+      if(master&&ctx?.state==='running'){
+        try{
+          const now=ctx.currentTime;
+          master.gain.cancelScheduledValues(now);
+          master.gain.setValueAtTime(
+            MASTER_GAIN,
+            now
+          );
+        }catch(error){
+          console.warn(
+            'Audio master gain restore failed',
+            error
+          );
+        }
+      }
+
       setStatus(
         ctx?.state==='running'
           ?'ON'
           :'Suspendu'
       );
+      syncButton();
       return;
     }
 
@@ -164,11 +207,56 @@ export function createVehicleAudio({
       console.warn('Audio start failed',error);
     }
 
+    if(master&&ctx.state==='running'){
+      const now=ctx.currentTime;
+      master.gain.cancelScheduledValues(now);
+      master.gain.setValueAtTime(
+        MASTER_GAIN,
+        now
+      );
+    }
+
     setStatus(
       ctx.state==='running'
         ?'ON'
         :'Suspendu'
     );
+    syncButton();
+  }
+
+  async function setEnabled(nextEnabled){
+    enabled=!!nextEnabled;
+    syncButton();
+
+    if(enabled){
+      await wake();
+      return;
+    }
+
+    setStatus('OFF');
+
+    if(master&&ctx){
+      try{
+        const now=ctx.currentTime;
+        master.gain.cancelScheduledValues(now);
+        master.gain.setValueAtTime(
+          .0001,
+          now
+        );
+      }catch(error){}
+    }
+
+    if(ctx?.state==='running'){
+      try{
+        await ctx.suspend();
+      }catch(error){
+        console.warn('Audio suspend failed',error);
+      }
+    }
+  }
+
+  function toggle(){
+    return setEnabled(!enabled);
   }
 
   function estimateCombustionRpm(kmh,load,profile){
@@ -216,6 +304,11 @@ export function createVehicleAudio({
   }
 
   function update(){
+    if(!enabled){
+      setStatus('OFF');
+      return;
+    }
+
     if(!ready||!ctx)return;
 
     if(ctx.state!=='running'){
@@ -410,6 +503,7 @@ export function createVehicleAudio({
 
   function isRunning(){
     return !!(
+      enabled &&
       ready &&
       ctx &&
       ctx.state==='running'
@@ -417,9 +511,12 @@ export function createVehicleAudio({
   }
 
   function showActivationHint(){
-    if(!isRunning()){
+    if(!enabled){
+      setStatus('OFF');
+    }else if(!isRunning()){
       setStatus('Clique Activer');
     }
+    syncButton();
   }
 
   function showError(){
@@ -427,10 +524,13 @@ export function createVehicleAudio({
   }
 
   if(enableButton){
+    syncButton();
+
     enableButton.addEventListener('click',event=>{
       event.stopPropagation();
-      wake().catch(error=>{
-        console.warn('Audio activation failed',error);
+
+      toggle().catch(error=>{
+        console.warn('Audio toggle failed',error);
         showError();
       });
     });
@@ -439,7 +539,7 @@ export function createVehicleAudio({
   addEventListener(
     'pointerdown',
     ()=>{
-      if(!ready||ctx?.state!=='running'){
+      if(enabled&&(!ready||ctx?.state!=='running')){
         wake().catch(()=>{});
       }
     },
@@ -449,7 +549,7 @@ export function createVehicleAudio({
   addEventListener(
     'keydown',
     ()=>{
-      if(!ready||ctx?.state!=='running'){
+      if(enabled&&(!ready||ctx?.state!=='running')){
         wake().catch(()=>{});
       }
     },
@@ -460,7 +560,7 @@ export function createVehicleAudio({
     'gamepadconnected',
     ()=>{
       setStatus(
-        ready&&ctx?.state==='running'
+        enabled&&ready&&ctx?.state==='running'
           ?'ON'
           :'OFF'
       );
@@ -475,9 +575,17 @@ export function createVehicleAudio({
     showActivationHint,
     showError,
 
+    toggle,
+    setEnabled,
+
     // Compatibility aliases for gamepad/input modules.
-    enable:wake,
+    enable:()=>setEnabled(true),
+    disable:()=>setEnabled(false),
     resume:wake,
+
+    get enabled(){
+      return enabled;
+    },
 
     get ready(){
       return ready;

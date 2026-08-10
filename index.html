@@ -39,7 +39,7 @@
        <option value="wrx" selected>WRX</option>
      </select>
    </div>
-<div class="top"><span>Max</span><span><b id="maxSpeedLabel">100</b> km/h</span></div>
+<div class="top"><span>Max</span><span><b id="maxSpeedLabel">200</b> km/h</span></div>
          <input type="range" id="maxSpeedSlider" min="20" max="200" step="5" value="200" aria-label="Vitesse maximale">
        </div>
      </div>
@@ -170,7 +170,23 @@
   </div>
   <canvas id="minimap"></canvas>
 </div>
-<div id="help"><b>Clavier</b> WASD / flèches · Espace frein à main · C caméra<br><b>GuliKit / Xbox</b> stick G direction · stick D caméra · RT accélérer · LT freiner/reculer · A frein à main<br>Y caméra · X assistance · B pilote auto · Menu replacer<br><b>Véhicule</b> sélectionnable · <b>Vitesse max</b> réglable 20–200 km/h · <b>Limites route</b> applique les limites OSM au pilote auto seulement</div>
+<div id="help">
+  <div id="helpHeader">
+    <b>COMMANDES</b>
+    <button id="helpToggle" class="panelToggle" aria-label="Masquer les commandes" title="Masquer les commandes">−</button>
+  </div>
+  <div id="helpBody">
+    <b>Clavier</b> WASD / flèches · Espace frein à main · C caméra<br>
+    <b>GuliKit / Xbox</b> stick G direction · stick D caméra · RT accélérer · LT freiner/reculer · A frein à main<br>
+    Y caméra · X assistance · B pilote auto · Menu replacer<br>
+    <b>Véhicule</b> sélectionnable · <b>Vitesse max</b> réglable 20–200 km/h · <b>Limites route</b> applique les limites OSM au pilote auto seulement
+  </div>
+</div>
+
+<div id="speedometerDock" aria-hidden="true">
+  <canvas id="speedometerCanvas" width="190" height="190"></canvas>
+  <button id="showControlsBtn" class="smallBtn">Commandes</button>
+</div>
 <div id="notice"></div>
 
 <script>

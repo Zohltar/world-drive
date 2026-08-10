@@ -105,3 +105,81 @@ input[type=range]{width:100%}
 .searchChoice:hover{background:rgba(255,255,255,.09)}
 .searchMeta{display:block;font-size:9px;color:#93a7ba;margin-top:2px}
 @media(max-width:900px){#mapbox{width:230px;height:330px}.stats{grid-template-columns:1fr 1fr}}@media(max-width:700px){#mapbox,#help{display:none}#hud{width:340px}}
+
+
+/* ---------- 17L commands panel / speedometer ---------- */
+#help{
+  width:min(430px,calc(100vw - 28px));
+  transition:opacity .18s,transform .18s;
+}
+#helpHeader{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+  margin-bottom:6px;
+  color:#d8e4ef;
+  font-size:10px;
+  letter-spacing:.08em;
+}
+#helpHeader .panelToggle{
+  width:26px;
+  height:26px;
+  min-height:26px;
+  font-size:14px;
+}
+#help.hiddenControls{
+  display:none;
+}
+
+#speedometerDock{
+  position:fixed;
+  right:14px;
+  bottom:14px;
+  z-index:10;
+  width:196px;
+  display:none;
+  flex-direction:column;
+  align-items:center;
+  gap:6px;
+}
+#speedometerDock.visible{
+  display:flex;
+}
+#speedometerCanvas{
+  width:190px;
+  height:190px;
+  border-radius:50%;
+  filter:drop-shadow(0 12px 28px rgba(0,0,0,.38));
+}
+#showControlsBtn{
+  width:118px;
+  flex:none;
+  background:rgba(4,10,18,.80);
+  backdrop-filter:blur(10px);
+  border-color:rgba(255,255,255,.16);
+}
+
+/* Audio state is explicit and always visible on the activation button. */
+#audioEnableBtn.audioOn{
+  background:rgba(39,174,96,.32);
+  border-color:rgba(74,222,128,.72);
+  color:#d9ffe7;
+  box-shadow:inset 0 0 0 1px rgba(74,222,128,.10);
+}
+#audioEnableBtn.audioOn:hover{
+  background:rgba(39,174,96,.45);
+}
+#audioEnableBtn.audioOff{
+  background:rgba(190,48,48,.34);
+  border-color:rgba(248,113,113,.72);
+  color:#ffe0e0;
+  box-shadow:inset 0 0 0 1px rgba(248,113,113,.10);
+}
+#audioEnableBtn.audioOff:hover{
+  background:rgba(190,48,48,.48);
+}
+
+@media(max-width:700px){
+  #speedometerDock{display:none!important}
+}

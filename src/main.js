@@ -685,6 +685,94 @@ function applyVehicleVisualProfile(){
 
 applyVehicleVisualProfile();
 
+// ----- Automatic vehicle headlights -----
+// Vehicle-agnostic rig: attached to the sprung body so the beams follow
+// pitch/roll/camber, while remaining visible for both ID4 and WRX visuals.
+const headlightRig=new THREE.Group();
+headlightRig.name='vehicle-headlights';
+bodyGroup.add(headlightRig);
+
+const headlightGlowMat=new THREE.MeshBasicMaterial({
+  color:0xf3f7ff,
+  transparent:true,
+  opacity:0,
+  depthWrite:false
+});
+
+const headlightLights=[];
+const headlightGlows=[];
+
+for(const x of [-.64,.64]){
+  // Small visible LED/lens glow.
+  const glow=new THREE.Mesh(
+    new THREE.SphereGeometry(.085,10,6),
+    headlightGlowMat.clone()
+  );
+  glow.position.set(x,1.02,2.25);
+  glow.scale.set(1.45,.65,.42);
+  glow.renderOrder=6;
+  headlightRig.add(glow);
+  headlightGlows.push(glow);
+
+  // Real forward illumination. Shadows are intentionally disabled:
+  // two shadow-casting spotlights would be unnecessarily expensive.
+  const light=new THREE.SpotLight(
+    0xf4f8ff,
+    0,
+    95,
+    Math.PI/7.5,
+    .58,
+    1.55
+  );
+
+  light.position.set(x,1.02,2.18);
+  light.castShadow=false;
+
+  const target=new THREE.Object3D();
+  target.position.set(
+    x*.30,
+    .30,
+    72
+  );
+
+  headlightRig.add(light);
+  headlightRig.add(target);
+  light.target=target;
+
+  headlightLights.push(light);
+}
+
+let headlightLevel=0;
+
+function smoothstep01(value){
+  const t=Math.max(0,Math.min(1,value));
+  return t*t*(3-2*t);
+}
+
+function updateAutomaticHeadlights(daylight){
+  // Full headlights at night and around civil twilight.
+  // Fade out gradually once daylight becomes strong enough.
+  const duskFactor=
+    1-smoothstep01(
+      (daylight-.10)/.24
+    );
+
+  headlightLevel=duskFactor;
+
+  for(const light of headlightLights){
+    light.intensity=
+      185*headlightLevel;
+  }
+
+  for(const glow of headlightGlows){
+    glow.material.opacity=
+      .12+
+      .88*headlightLevel;
+    glow.visible=
+      headlightLevel>.015;
+  }
+}
+
 function activeVehicleWheels(){
   return wheels.filter(
     wheel=>!wheel.vehicleId||wheel.vehicleId===vehicleSystem.activeId
@@ -695,6 +783,10 @@ function activeVehicleWheels(){
 let suspensionRoll=0;
 let suspensionPitch=0;
 let suspensionHeave=0;
+
+// Small visual-only chassis yaw while cornering. This does not alter heading,
+// steering physics, tire contact, trajectory or camera target.
+let corneringVisualYaw=0;
 
 // Static visual plane defined by the four actual wheel contacts.
 let wheelPlaneRoll=0;
@@ -2264,6 +2356,25 @@ function updateSuspensionVisuals(dt,onRoad,currentSteerAngle){
   const dynamicPitch=
     Math.max(-.040,Math.min(.040,-longitudinalAccel*.0045));
 
+  // Subtle visual rotation into the bend. It grows with actual yaw rate and
+  // road speed, then recenters smoothly. Purely cosmetic: car.rotation.y
+  // remains the authoritative driving heading.
+  const cornerSpeedFactor=
+    Math.min(1,Math.abs(speed)/22);
+
+  const targetCorneringYaw=
+    Math.max(
+      -.050,
+      Math.min(
+        .050,
+        visualYawRate*.055*cornerSpeedFactor
+      )
+    );
+
+  corneringVisualYaw+=
+    (targetCorneringYaw-corneringVisualYaw)*
+    (1-Math.exp(-dt*(Math.abs(targetCorneringYaw)>.002?7.5:9.5)));
+
   // wheelPlaneRoll > 0 means LEFT wheels are higher.
   // Three.js rotation.z > 0 raises vehicle local +X (RIGHT side),
   // therefore the static road-bank component needs the opposite sign.
@@ -2304,6 +2415,7 @@ function updateSuspensionVisuals(dt,onRoad,currentSteerAngle){
   }
 
   bodyGroup.rotation.x=suspensionPitch;
+  bodyGroup.rotation.y=corneringVisualYaw;
   bodyGroup.rotation.z=suspensionRoll;
 
   const bodyBaseY=
@@ -2553,6 +2665,7 @@ function resetVehicleVisualState(){
   suspensionRoll=0;
   suspensionPitch=0;
   suspensionHeave=0;
+  corneringVisualYaw=0;
   wheelPlaneRoll=0;
   wheelPlanePitch=0;
 
@@ -2752,6 +2865,190 @@ function setCollapsed(panel,button,collapsed,label){
 }
 hudToggle.addEventListener('click',()=>setCollapsed(hudPanel,hudToggle,!hudPanel.classList.contains('collapsed'),'les détails'));
 mapToggle.addEventListener('click',()=>setCollapsed(mapPanel,mapToggle,!mapPanel.classList.contains('collapsed'),'la carte'));
+
+// ---------- commands panel / alternate speedometer ----------
+const helpPanel=$('help');
+const helpToggle=$('helpToggle');
+const speedometerDock=$('speedometerDock');
+const showControlsBtn=$('showControlsBtn');
+const speedometerCanvas=$('speedometerCanvas');
+const speedometerCtx=speedometerCanvas?.getContext('2d');
+
+function setGameControlsHidden(hidden){
+  helpPanel?.classList.toggle('hiddenControls',hidden);
+  speedometerDock?.classList.toggle('visible',hidden);
+  speedometerDock?.setAttribute(
+    'aria-hidden',
+    hidden?'false':'true'
+  );
+
+  localStorage.setItem(
+    'worlddrive_hide_controls',
+    hidden?'1':'0'
+  );
+
+  if(!hidden){
+    helpToggle.textContent='−';
+    helpToggle.title='Masquer les commandes';
+    helpToggle.setAttribute(
+      'aria-label',
+      helpToggle.title
+    );
+  }else{
+    requestAnimationFrame(drawSpeedometer);
+  }
+}
+
+helpToggle?.addEventListener(
+  'click',
+  ()=>setGameControlsHidden(true)
+);
+
+showControlsBtn?.addEventListener(
+  'click',
+  ()=>setGameControlsHidden(false)
+);
+
+function drawSpeedometer(){
+  if(
+    !speedometerCtx||
+    !speedometerDock?.classList.contains('visible')
+  ){
+    return;
+  }
+
+  const canvas=speedometerCanvas;
+  const dpr=devicePixelRatio||1;
+  const cssSize=190;
+  const px=Math.round(cssSize*dpr);
+
+  if(canvas.width!==px||canvas.height!==px){
+    canvas.width=px;
+    canvas.height=px;
+  }
+
+  const ctx=speedometerCtx;
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  ctx.clearRect(0,0,cssSize,cssSize);
+
+  const cx=cssSize/2;
+  const cy=cssSize/2;
+  const radius=88;
+
+  const start=Math.PI*.75;
+  const sweep=Math.PI*1.50;
+
+  // Panel / bezel.
+  const bg=ctx.createRadialGradient(
+    cx,cy,20,
+    cx,cy,radius
+  );
+  bg.addColorStop(0,'rgba(16,29,43,.94)');
+  bg.addColorStop(1,'rgba(3,9,16,.94)');
+
+  ctx.fillStyle=bg;
+  ctx.beginPath();
+  ctx.arc(cx,cy,radius,0,Math.PI*2);
+  ctx.fill();
+
+  ctx.strokeStyle='rgba(255,255,255,.18)';
+  ctx.lineWidth=2;
+  ctx.stroke();
+
+  const dialMax=Math.max(
+    200,
+    Math.ceil(maxSpeedKmh/20)*20
+  );
+
+  // Tick marks.
+  for(let value=0;value<=dialMax;value+=10){
+    const ratio=value/dialMax;
+    const angle=start+sweep*ratio;
+
+    const major=value%20===0;
+    const r1=major?68:73;
+    const r2=82;
+
+    ctx.strokeStyle=
+      major
+        ?'rgba(235,244,255,.82)'
+        :'rgba(180,197,215,.42)';
+
+    ctx.lineWidth=major?2:1;
+
+    ctx.beginPath();
+    ctx.moveTo(
+      cx+Math.cos(angle)*r1,
+      cy+Math.sin(angle)*r1
+    );
+    ctx.lineTo(
+      cx+Math.cos(angle)*r2,
+      cy+Math.sin(angle)*r2
+    );
+    ctx.stroke();
+
+    if(major){
+      ctx.fillStyle='rgba(220,232,244,.78)';
+      ctx.font='10px Inter,system-ui,sans-serif';
+      ctx.textAlign='center';
+      ctx.textBaseline='middle';
+
+      ctx.fillText(
+        String(value),
+        cx+Math.cos(angle)*56,
+        cy+Math.sin(angle)*56
+      );
+    }
+  }
+
+  const kmh=Math.abs(speed)*3.6;
+  const needleRatio=Math.max(
+    0,
+    Math.min(1,kmh/dialMax)
+  );
+  const needleAngle=start+sweep*needleRatio;
+
+  // Needle.
+  ctx.save();
+  ctx.translate(cx,cy);
+  ctx.rotate(needleAngle);
+
+  ctx.strokeStyle='#ff4f59';
+  ctx.lineWidth=3;
+  ctx.lineCap='round';
+  ctx.beginPath();
+  ctx.moveTo(-10,0);
+  ctx.lineTo(67,0);
+  ctx.stroke();
+  ctx.restore();
+
+  ctx.fillStyle='#ff4f59';
+  ctx.beginPath();
+  ctx.arc(cx,cy,5,0,Math.PI*2);
+  ctx.fill();
+
+  // Digital readout.
+  ctx.textAlign='center';
+  ctx.fillStyle='#ffffff';
+  ctx.font='700 29px Inter,system-ui,sans-serif';
+  ctx.fillText(
+    String(Math.round(kmh)),
+    cx,
+    cy+30
+  );
+
+  ctx.fillStyle='rgba(190,210,228,.82)';
+  ctx.font='700 10px Inter,system-ui,sans-serif';
+  ctx.fillText(
+    'KM/H',
+    cx,
+    cy+46
+  );
+}
+
+setGameControlsHidden(
+  localStorage.getItem('worlddrive_hide_controls')==='1'
+);
 
 // ---------- compass ----------
 const compassCanvas=$('compass'),compassCtx=compassCanvas.getContext('2d'),compassHeading=$('compassHeading');
@@ -2971,6 +3268,8 @@ function setTimeOfDay(hour){
   scene.fog.color.copy(scene.background);
   hemi.intensity=.10+2.05*daylight;
   sun.intensity=.03+2.55*daylight;
+
+  updateAutomaticHeadlights(daylight);
   const a=(timeOfDay-6)/12*Math.PI;
   sun.position.set(Math.cos(a)*900,Math.max(35,Math.sin(a)*950),420);
 }
@@ -3002,13 +3301,14 @@ function animate(now){
    waterTex.offset.x=(waterTex.offset.x+dt*.003)%1;
    waterTex.offset.y=(waterTex.offset.y+dt*.0015)%1;
    drawCompass();
+   drawSpeedometer();
    renderer.render(scene,camera);
  }catch(e){
    console.error('Frame error:',e);
    statusEl.textContent='Erreur moteur 3D: '+(e?.message||e);
  }
 }
-addEventListener('resize',()=>{camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight);drawMap();drawCompass()});
+addEventListener('resize',()=>{camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight);drawMap();drawCompass();drawSpeedometer()});
 
 (async()=>{
  // Start the renderer first. Network/routing is now an independent startup step.
