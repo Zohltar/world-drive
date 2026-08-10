@@ -2446,6 +2446,12 @@ function updateDrive(dt){
  const turn=autopilot?ap.turn:manualTurn;
  const hand=autopilot?ap.hand:manualHand;
 
+ // Lane-keep is allowed only when the driver is not actively steering.
+ // This keeps manual input authoritative at all times.
+ const steeringNeutral=
+   !autopilot &&
+   Math.abs(manualTurn)<.055;
+
  const brakeRequested=hand||(throttle<-.04&&speed>.15);
  updateBrakeLights(dt,brakeRequested);
  // ----- V4.1 longitudinal dynamics -----
@@ -2541,17 +2547,68 @@ function updateDrive(dt){
  }
  heading+=yawRate*dt;
 
- // Road assist is now a gentle lane-centering force, not a hidden steering snap.
- if(assist&&nr&&nr.d<(autopilot?12:8.5)&&speedAbs>2){
+ // Road assist / lane keeping.
+ // Autopilot keeps its stronger correction. In normal driving, correction only
+ // acts while steering input is neutral, so the driver always wins instantly.
+ if(assist&&nr&&nr.d<(autopilot?12:9.5)&&speedAbs>2){
    let routeHeading=nr.angle;
-   if(Math.abs(angleDelta(routeHeading+Math.PI,heading))<Math.abs(angleDelta(routeHeading,heading)))routeHeading+=Math.PI;
-   const hErr=angleDelta(routeHeading,heading);
-   const strength=autopilot?.55:.12;
-   heading+=hErr*dt*strength;
-   if(nr.d>(autopilot?.55:2.2)){
-     const centerRate=autopilot?.48:.10;
-     absX+=(nr.px-absX)*(1-Math.exp(-dt*centerRate));
-     absZ+=(nr.pz-absZ)*(1-Math.exp(-dt*centerRate));
+
+   if(
+     Math.abs(angleDelta(routeHeading+Math.PI,heading))<
+     Math.abs(angleDelta(routeHeading,heading))
+   ){
+     routeHeading+=Math.PI;
+   }
+
+   const hErr=
+     angleDelta(routeHeading,heading);
+
+   if(autopilot){
+     heading+=
+       hErr*dt*.55;
+
+     if(nr.d>.55){
+       const centerRate=.48;
+       absX+=(nr.px-absX)*(1-Math.exp(-dt*centerRate));
+       absZ+=(nr.pz-absZ)*(1-Math.exp(-dt*centerRate));
+     }
+   }else if(steeringNeutral){
+     // Gentle heading correction begins immediately at neutral.
+     // Position correction waits until the car drifts away from the center,
+     // which avoids an artificial "rail" feeling.
+     const speedAssist=
+       Math.max(
+         .22,
+         Math.min(
+           .60,
+           .22+
+           speedAbs/80
+         )
+       );
+
+     heading+=
+       hErr*dt*speedAssist;
+
+     if(nr.d>.70){
+       const drift=
+         Math.max(
+           0,
+           Math.min(
+             1,
+             (nr.d-.70)/2.8
+           )
+         );
+
+       const centerRate=
+         .08+
+         drift*.30;
+
+       const centerAlpha=
+         1-Math.exp(-dt*centerRate);
+
+       absX+=(nr.px-absX)*centerAlpha;
+       absZ+=(nr.pz-absZ)*centerAlpha;
+     }
    }
  }
 

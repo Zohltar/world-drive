@@ -126,14 +126,21 @@ export function createImageryService({
       bounds;
 
     if(!shouldShow){
-      if(groundMaterial.map!==null){
-        groundMaterial.map=null;
-        groundMaterial.color.set(0x627a4e);
+      const materialModeChanged=
+        groundMaterial.map!==null||
+        groundMaterial.vertexColors!==true;
 
-        // Material shader variant changes only when a map is attached/removed.
+      groundMaterial.map=null;
+
+      // Photo OFF uses baked per-vertex hillshade colors from terrain.js.
+      // Keep material color white so it does not multiply/tint them a second time.
+      groundMaterial.color.set(0xffffff);
+      groundMaterial.vertexColors=true;
+      groundMaterial.roughness=.92;
+      groundMaterial.metalness=0;
+
+      if(materialModeChanged){
         groundMaterial.needsUpdate=true;
-      }else{
-        groundMaterial.color.set(0x627a4e);
       }
 
       appliedTexture=null;
@@ -143,13 +150,18 @@ export function createImageryService({
     const mapChanged=
       groundMaterial.map!==texture;
 
-    if(mapChanged){
-      groundMaterial.map=texture;
-      groundMaterial.color.set(0xffffff);
+    const materialModeChanged=
+      mapChanged||
+      groundMaterial.vertexColors!==false;
+
+    groundMaterial.map=texture;
+    groundMaterial.color.set(0xffffff);
+    groundMaterial.vertexColors=false;
+    groundMaterial.roughness=1;
+
+    if(materialModeChanged){
       groundMaterial.needsUpdate=true;
       appliedTexture=texture;
-    }else{
-      groundMaterial.color.set(0xffffff);
     }
 
     const half=groundSize/2;

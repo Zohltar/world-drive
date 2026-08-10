@@ -495,6 +495,9 @@ export function createTerrainService({
 
     geometry.setIndex(indices);
     geometry.computeVertexNormals();
+    applyHillshadeColors(
+      geometry
+    );
 
     const material=
       ground.material.clone();
@@ -596,6 +599,158 @@ export function createTerrainService({
     }
   }
 
+  function applyHillshadeColors(geometry){
+    const positions=geometry.attributes.position;
+    const normals=geometry.attributes.normal;
+
+    if(!positions||!normals)return;
+
+    let minY=Infinity;
+    let maxY=-Infinity;
+
+    for(let i=0;i<positions.count;i++){
+      const y=positions.getY(i);
+      if(y<minY)minY=y;
+      if(y>maxY)maxY=y;
+    }
+
+    const heightSpan=Math.max(
+      1,
+      maxY-minY
+    );
+
+    // Strong fixed virtual light for Photo OFF readability.
+    const lightX=-.58;
+    const lightY=.64;
+    const lightZ=-.50;
+
+    const colors=new Float32Array(
+      positions.count*3
+    );
+
+    const lowColor=new THREE.Color(0x4f6e3e);
+    const midColor=new THREE.Color(0x6f8150);
+    const highColor=new THREE.Color(0x8b8d69);
+    const tempColor=new THREE.Color();
+
+    const CONTOUR_INTERVAL=14;
+    const CONTOUR_WIDTH=.16;
+
+    for(let i=0;i<positions.count;i++){
+      const nx=normals.getX(i);
+      const ny=normals.getY(i);
+      const nz=normals.getZ(i);
+      const y=positions.getY(i);
+
+      const directional=
+        nx*lightX+
+        ny*lightY+
+        nz*lightZ;
+
+      const slope=
+        Math.max(
+          0,
+          Math.min(
+            1,
+            1-Math.abs(ny)
+          )
+        );
+
+      const altitude=
+        Math.max(
+          0,
+          Math.min(
+            1,
+            (y-minY)/heightSpan
+          )
+        );
+
+      // Topographic base tint:
+      // green valleys -> olive mids -> pale rocky heights.
+      if(altitude<.58){
+        tempColor.copy(lowColor).lerp(
+          midColor,
+          altitude/.58
+        );
+      }else{
+        tempColor.copy(midColor).lerp(
+          highColor,
+          (altitude-.58)/.42
+        );
+      }
+
+      // Strong directional hillshade + explicit slope darkening.
+      let shade=
+        .72+
+        directional*.46-
+        slope*.10;
+
+      shade=
+        Math.max(
+          .34,
+          Math.min(
+            1.36,
+            shade
+          )
+        );
+
+      // Subtle but clearly visible contour lines every ~14 vertical metres.
+      // Width is expressed as fraction of contour interval.
+      const contourPhase=
+        Math.abs(
+          ((y/CONTOUR_INTERVAL)%1+1)%1-.5
+        )*2;
+
+      const contour=
+        contourPhase>
+        (1-CONTOUR_WIDTH)
+          ?.72
+          :1;
+
+      // Intermediate soft contour gives terrain shape even at shallow camera angles.
+      const minorPhase=
+        Math.abs(
+          ((y/(CONTOUR_INTERVAL/2))%1+1)%1-.5
+        )*2;
+
+      const minorContour=
+        minorPhase>.94
+          ?.88
+          :1;
+
+      const finalShade=
+        shade*
+        contour*
+        minorContour;
+
+      colors[i*3]=
+        Math.min(
+          1,
+          tempColor.r*finalShade
+        );
+
+      colors[i*3+1]=
+        Math.min(
+          1,
+          tempColor.g*finalShade
+        );
+
+      colors[i*3+2]=
+        Math.min(
+          1,
+          tempColor.b*finalShade
+        );
+    }
+
+    geometry.setAttribute(
+      'color',
+      new THREE.BufferAttribute(
+        colors,
+        3
+      )
+    );
+  }
+
   function rebuildGround(){
     if(ground.geometry)ground.geometry.dispose();
 
@@ -640,6 +795,9 @@ export function createTerrainService({
 
     positions.needsUpdate=true;
     geometry.computeVertexNormals();
+    applyHillshadeColors(
+      geometry
+    );
 
     ground.geometry=geometry;
     ground.rotation.set(0,0,0);

@@ -32,6 +32,17 @@ export function createVehicleAudio({
 
   let tireNoise=null;
   let tireGain=null;
+  let tireFilter=null;
+  let tireBuffer=null;
+
+  let brakeNoise=null;
+  let brakeGain=null;
+  let brakeFilter=null;
+  let brakeBuffer=null;
+
+  const TIRE_SAMPLE_URL='./assets/audio/tire-squeal.mp3';
+  const BRAKE_SAMPLE_URL='./assets/audio/brake-squeal.mp3';
+
   let currentProfile=getProfile?.()||{type:'ev',profile:'id4'};
 
   function setStatus(text){
@@ -68,6 +79,37 @@ export function createVehicleAudio({
     }
 
     return buffer;
+  }
+
+  async function loadAudioSample(url,label){
+    try{
+      const response=await fetch(url);
+      if(!response.ok){
+        throw new Error(`HTTP ${response.status}`);
+      }
+
+      const bytes=await response.arrayBuffer();
+      return await ctx.decodeAudioData(bytes);
+    }catch(error){
+      console.warn(`${label} sample failed to load`,error);
+      return null;
+    }
+  }
+
+  async function loadTireSample(){
+    tireBuffer=await loadAudioSample(
+      TIRE_SAMPLE_URL,
+      'Tire squeal'
+    );
+    return !!tireBuffer;
+  }
+
+  async function loadBrakeSample(){
+    brakeBuffer=await loadAudioSample(
+      BRAKE_SAMPLE_URL,
+      'Brake squeal'
+    );
+    return !!brakeBuffer;
   }
 
   function buildNodes(){
@@ -128,23 +170,31 @@ export function createVehicleAudio({
     turboGain.connect(master);
     turboOsc.start();
 
-    // Shared tire scrub.
-    tireNoise=ctx.createBufferSource();
-    tireNoise.buffer=makeNoiseBuffer(2);
-    tireNoise.loop=true;
-
+    // Tire scrub uses the supplied real-world sample instead of synthesized
+    // noise. Gain/filter remain persistent; the looping source is created once
+    // the MP3 has decoded.
     tireGain=ctx.createGain();
     tireGain.gain.value=.0001;
 
-    const tireFilter=ctx.createBiquadFilter();
+    tireFilter=ctx.createBiquadFilter();
     tireFilter.type='bandpass';
-    tireFilter.frequency.value=1450;
-    tireFilter.Q.value=.75;
+    tireFilter.frequency.value=1250;
+    tireFilter.Q.value=.55;
 
-    tireNoise.connect(tireFilter);
     tireFilter.connect(tireGain);
     tireGain.connect(master);
-    tireNoise.start();
+
+    // Second real-world sample for high tire/brake stress.
+    brakeGain=ctx.createGain();
+    brakeGain.gain.value=.0001;
+
+    brakeFilter=ctx.createBiquadFilter();
+    brakeFilter.type='bandpass';
+    brakeFilter.frequency.value=1180;
+    brakeFilter.Q.value=.60;
+
+    brakeFilter.connect(brakeGain);
+    brakeGain.connect(master);
   }
 
   async function wake(){
@@ -199,6 +249,41 @@ export function createVehicleAudio({
 
     ctx=new AudioContextClass();
     buildNodes();
+
+    if(await loadTireSample()){
+      tireNoise=ctx.createBufferSource();
+      tireNoise.buffer=tireBuffer;
+      tireNoise.loop=true;
+
+      if(tireBuffer.duration>5){
+        tireNoise.loopStart=1.7;
+        tireNoise.loopEnd=Math.max(
+          2.5,
+          tireBuffer.duration-.65
+        );
+      }
+
+      tireNoise.connect(tireFilter);
+      tireNoise.start(0,tireNoise.loopStart||0);
+    }
+
+    if(await loadBrakeSample()){
+      brakeNoise=ctx.createBufferSource();
+      brakeNoise.buffer=brakeBuffer;
+      brakeNoise.loop=true;
+
+      if(brakeBuffer.duration>2.5){
+        brakeNoise.loopStart=.35;
+        brakeNoise.loopEnd=Math.max(
+          1.0,
+          brakeBuffer.duration-.30
+        );
+      }
+
+      brakeNoise.connect(brakeFilter);
+      brakeNoise.start(0,brakeNoise.loopStart||0);
+    }
+
     ready=true;
 
     try{
@@ -443,9 +528,10 @@ export function createVehicleAudio({
       );
     }
 
-    // Shared tire scrub. Better grip naturally delays squeal because vehicle
-    // profile wheelbase/steering affects lateral demand.
+    // Direct G-force driven tire/brake audio.
+    // Current G is the only trigger. No hold, no hysteresis, no delayed state.
     const speed=state.speed||0;
+
     const yawRate=
       (speed/Math.max(.1,vehicle.wheelbase))*
       Math.tan(state.currentSteerAngle||0);
@@ -453,38 +539,93 @@ export function createVehicleAudio({
     const lateralG=
       Math.abs(speed*yawRate)/9.81;
 
-    const nearest=getNearestRoute?.();
-    const onPavement=!!(
-      nearest&&nearest.d<8.5
-    );
+    const brakingG=
+      Math.max(
+        0,
+        -(state.longitudinalAccel||0)/9.81
+      );
 
-    const baseThreshold=onPavement?.43:.30;
-    const gripBonus=Math.max(
-      0,
-      (vehicle.offroadGrip||.58)-.58
-    )*.18;
+    const lateralNorm=
+      Math.max(
+        0,
+        Math.min(
+          1,
+          (lateralG-.38)/.62
+        )
+      );
 
-    const threshold=baseThreshold+gripBonus;
+    const brakingNorm=
+      Math.max(
+        0,
+        Math.min(
+          1,
+          (brakingG-.22)/.78
+        )
+      );
 
-    const scrub=Math.max(
-      0,
+    const tireLevel=
+      lateralNorm*lateralNorm*
+      (3-2*lateralNorm);
+
+    const combinedG=
       Math.min(
         1,
-        (lateralG-threshold)/.48
-      )
+        Math.sqrt(
+          lateralNorm*lateralNorm+
+          brakingNorm*brakingNorm
+        )
+      );
+
+    const brakeLevel=
+      combinedG*combinedG*
+      (3-2*combinedG);
+
+    const speedGate=
+      Math.max(
+        0,
+        Math.min(
+          1,
+          (kmh-12)/28
+        )
+      );
+
+    tireFilter?.frequency.setTargetAtTime(
+      950+
+      tireLevel*1100+
+      Math.min(260,kmh*.95),
+      now,
+      .04
     );
 
-    const speedGate=Math.max(
-      0,
-      Math.min(1,(kmh-18)/28)
+    brakeFilter?.frequency.setTargetAtTime(
+      900+
+      brakeLevel*1250+
+      Math.min(280,kmh*1.05),
+      now,
+      .04
     );
 
-    const tireVol=scrub*speedGate*.24;
+    const tireVol=
+      tireBuffer
+        ?tireLevel*speedGate*.42
+        :0;
 
-    tireGain.gain.setTargetAtTime(
+    const brakeVol=
+      brakeBuffer
+        ?brakeLevel*speedGate*.40
+        :0;
+
+    // Only tiny smoothing to avoid clicks; perceptually this is immediate.
+    tireGain?.gain.setTargetAtTime(
       Math.max(.0001,tireVol),
       now,
-      tireVol>.01?.035:.12
+      .018
+    );
+
+    brakeGain?.gain.setTargetAtTime(
+      Math.max(.0001,brakeVol),
+      now,
+      .018
     );
 
     setStatus('ON');
@@ -499,6 +640,8 @@ export function createVehicleAudio({
     motorGain?.gain.setTargetAtTime(.0001,now,.025);
     exhaustGain?.gain.setTargetAtTime(.0001,now,.025);
     turboGain?.gain.setTargetAtTime(.0001,now,.025);
+    tireGain?.gain.setTargetAtTime(.0001,now,.018);
+    brakeGain?.gain.setTargetAtTime(.0001,now,.018);
   }
 
   function isRunning(){
