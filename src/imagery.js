@@ -32,6 +32,9 @@ export function createImageryService({
   let center={x:Infinity,z:Infinity};
   let bounds=null;
 
+  let mosaicKey=null;
+  let appliedTexture=null;
+
   function setStatus(text){
     if(statusEl)statusEl.textContent=text;
   }
@@ -117,15 +120,37 @@ export function createImageryService({
   }
 
   function applyToGround(){
-    if(!enabled||!texture||!bounds){
-      groundMaterial.map=null;
-      groundMaterial.color.set(0x627a4e);
-      groundMaterial.needsUpdate=true;
+    const shouldShow=
+      enabled&&
+      texture&&
+      bounds;
+
+    if(!shouldShow){
+      if(groundMaterial.map!==null){
+        groundMaterial.map=null;
+        groundMaterial.color.set(0x627a4e);
+
+        // Material shader variant changes only when a map is attached/removed.
+        groundMaterial.needsUpdate=true;
+      }else{
+        groundMaterial.color.set(0x627a4e);
+      }
+
+      appliedTexture=null;
       return;
     }
 
-    groundMaterial.map=texture;
-    groundMaterial.color.set(0xffffff);
+    const mapChanged=
+      groundMaterial.map!==texture;
+
+    if(mapChanged){
+      groundMaterial.map=texture;
+      groundMaterial.color.set(0xffffff);
+      groundMaterial.needsUpdate=true;
+      appliedTexture=texture;
+    }else{
+      groundMaterial.color.set(0xffffff);
+    }
 
     const half=groundSize/2;
     const worldOffset=getWorldOffset();
@@ -133,7 +158,10 @@ export function createImageryService({
     const spanX=bounds.east-bounds.west;
     const spanZ=bounds.south-bounds.north;
 
-    if(Math.abs(spanX)<1e-9||Math.abs(spanZ)<1e-9){
+    if(
+      Math.abs(spanX)<1e-9||
+      Math.abs(spanZ)<1e-9
+    ){
       return;
     }
 
@@ -142,18 +170,39 @@ export function createImageryService({
     const absNorth=worldOffset.z-half;
     const absSouth=worldOffset.z+half;
 
-    const u0=(absWest-bounds.west)/spanX;
-    const u1=(absEast-bounds.west)/spanX;
-    const vTop=(absNorth-bounds.north)/spanZ;
-    const vBottom=(absSouth-bounds.north)/spanZ;
+    const u0=
+      (absWest-bounds.west)/
+      spanX;
 
-    texture.offset.set(u0,1-vBottom);
-    texture.repeat.set(u1-u0,vBottom-vTop);
-    texture.needsUpdate=true;
-    groundMaterial.needsUpdate=true;
+    const u1=
+      (absEast-bounds.west)/
+      spanX;
+
+    const vTop=
+      (absNorth-bounds.north)/
+      spanZ;
+
+    const vBottom=
+      (absSouth-bounds.north)/
+      spanZ;
+
+    // offset/repeat are sampler uniforms. Changing them does NOT require
+    // re-uploading the 1280x1280 canvas texture to the GPU.
+    texture.offset.set(
+      u0,
+      1-vBottom
+    );
+
+    texture.repeat.set(
+      u1-u0,
+      vBottom-vTop
+    );
+
+    // Deliberately NO texture.needsUpdate here.
   }
 
   async function buildMosaic(absx,absz){
+    if(!enabled)return false;
     if(loading)return false;
 
     loading=true;
@@ -164,6 +213,26 @@ export function createImageryService({
       const tile=lonLatToSlippy(ll.lon,ll.lat);
       const cx=Math.floor(tile.x);
       const cy=Math.floor(tile.y);
+
+      const nextMosaicKey=
+        `${zoom}/${cx}/${cy}`;
+
+      // Streaming can ask for imagery repeatedly while still inside the same
+      // 5x5 tile cell. Reuse the existing GPU texture instead of rebuilding it.
+      if(
+        texture&&
+        bounds&&
+        mosaicKey===nextMosaicKey
+      ){
+        center={
+          x:absx,
+          z:absz
+        };
+
+        applyToGround();
+        setStatus('Réelle · cache GPU');
+        return true;
+      }
 
       // 5x5 around vehicle: covers the detailed 2 km ground patch.
       const radius=2;
@@ -217,16 +286,54 @@ export function createImageryService({
         return false;
       }
 
-      if(texture)texture.dispose();
+      const previousTexture=texture;
 
-      texture=new THREE.CanvasTexture(canvas);
-      texture.colorSpace=THREE.SRGBColorSpace;
-      texture.anisotropy=Math.min(
-        8,
+      const nextTexture=
+        new THREE.CanvasTexture(canvas);
+
+      nextTexture.colorSpace=
+        THREE.SRGBColorSpace;
+
+      // 4x keeps oblique-road imagery crisp while reducing texture sampling
+      // cost compared with the previous forced 8x anisotropy.
+      nextTexture.anisotropy=Math.min(
+        4,
         renderer.capabilities.getMaxAnisotropy()
       );
-      texture.wrapS=THREE.ClampToEdgeWrapping;
-      texture.wrapT=THREE.ClampToEdgeWrapping;
+
+      nextTexture.wrapS=
+        THREE.ClampToEdgeWrapping;
+
+      nextTexture.wrapT=
+        THREE.ClampToEdgeWrapping;
+
+      // Explicit mipmapping keeps distant/minified terrain inexpensive.
+      nextTexture.generateMipmaps=true;
+      nextTexture.minFilter=
+        THREE.LinearMipmapLinearFilter;
+      nextTexture.magFilter=
+        THREE.LinearFilter;
+
+      texture=nextTexture;
+      mosaicKey=nextMosaicKey;
+
+      // CanvasTexture already uploads itself once when first rendered.
+      // Do not force any additional upload here.
+
+      // Release the previous GPU texture away from the swap moment.
+      if(previousTexture){
+        const disposeOld=()=>
+          previousTexture.dispose();
+
+        if(typeof requestIdleCallback==='function'){
+          requestIdleCallback(
+            disposeOld,
+            {timeout:250}
+          );
+        }else{
+          setTimeout(disposeOld,0);
+        }
+      }
 
       const left=cx-radius;
       const top=cy-radius;
@@ -262,6 +369,8 @@ export function createImageryService({
   }
 
   async function prefetchAt(x,z){
+    if(!enabled)return;
+
     const ll=toLatLon(x,z);
     const tile=lonLatToSlippy(ll.lon,ll.lat);
     const cx=Math.floor(tile.x);
@@ -306,6 +415,8 @@ export function createImageryService({
       texture=null;
     }
 
+    mosaicKey=null;
+    appliedTexture=null;
     bounds=null;
     loading=false;
     center={x:Infinity,z:Infinity};
@@ -348,6 +459,10 @@ export function createImageryService({
 
     get hasTexture(){
       return !!texture;
+    },
+
+    get mosaicKey(){
+      return mosaicKey;
     }
   };
 }

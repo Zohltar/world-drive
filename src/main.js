@@ -185,9 +185,33 @@ function makeAsphalt(){
  const t=new THREE.CanvasTexture(c);t.wrapS=t.wrapT=THREE.RepeatWrapping;t.repeat.set(1,4);t.colorSpace=THREE.SRGBColorSpace;return t;
 }
 const asphalt=makeAsphalt();
-const roadMat=new THREE.MeshStandardMaterial({color:0xffffff,map:asphalt,roughness:.96});
-const shoulderMat=new THREE.MeshStandardMaterial({color:0x89867a,roughness:1});
-const lineYellow=new THREE.MeshBasicMaterial({color:0xe6c94f}),lineWhite=new THREE.MeshBasicMaterial({color:0xe8e8e6});
+const roadMat=new THREE.MeshStandardMaterial({
+  color:0xffffff,
+  map:asphalt,
+  roughness:.96,
+  polygonOffset:true,
+  polygonOffsetFactor:-2,
+  polygonOffsetUnits:-2
+});
+const shoulderMat=new THREE.MeshStandardMaterial({
+  color:0x89867a,
+  roughness:1,
+  polygonOffset:true,
+  polygonOffsetFactor:-1,
+  polygonOffsetUnits:-1
+});
+const lineYellow=new THREE.MeshBasicMaterial({
+  color:0xe6c94f,
+  polygonOffset:true,
+  polygonOffsetFactor:-3,
+  polygonOffsetUnits:-3
+});
+const lineWhite=new THREE.MeshBasicMaterial({
+  color:0xe8e8e6,
+  polygonOffset:true,
+  polygonOffsetFactor:-3,
+  polygonOffsetUnits:-3
+});
 const treeTrunkMat=new THREE.MeshStandardMaterial({color:0x604532,roughness:1}),treeMat=new THREE.MeshStandardMaterial({color:0x315b35,roughness:1});
 function makeWaterTexture(){
   const c=document.createElement('canvas');c.width=c.height=128;
@@ -1320,6 +1344,15 @@ function rebuildLocalWorld(){
 
  const profile=buildRoadProfile();
  activeRoadProfile=profile;
+
+ // Cut terrain fragments directly below the road corridor so coarse DEM
+ // triangles can never protrude through asphalt or shoulders.
+ terrainService.setRoadBed(profile,{
+   roadHalfWidth:5.2,
+   blendWidth:12.0,
+   surfaceOffset:0.14
+ });
+
  if(profile.length>1){
    const shoulder=buildRibbon(profile,10.4,shoulderMat,.035);if(shoulder)roadGroup.add(shoulder);
    const asphaltRoad=buildRibbon(profile,7.5,roadMat,.10);if(asphaltRoad)roadGroup.add(asphaltRoad);
@@ -1416,6 +1449,7 @@ function resetWorldCaches(){
   roadMetaLoading=false;
   updateRoadMetaHUD();
   activeRoadProfile=[];
+  terrainService.clearRoadBed();
   clearGroup(roadGroup);clearGroup(forestGroup);
   clearGroup(infrastructureGroup);
   sceneryRenderer.clear();
