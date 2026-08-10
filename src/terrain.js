@@ -78,6 +78,11 @@ export function createTerrainService({
 
   let roadBedOptions={
     roadHalfWidth:5.2,
+
+    // Main terrain is only 120x120 (~16.7 m grid spacing).
+    // Lower a wider safety corridor so no coarse triangle can bridge over road.
+    terrainCutHalfWidth:13.5,
+
     blendWidth:12.0,
     surfaceOffset:.14
   };
@@ -94,7 +99,10 @@ export function createTerrainService({
     }
 
     const margin=
-      roadBedOptions.roadHalfWidth+
+      Math.max(
+        roadBedOptions.roadHalfWidth,
+        roadBedOptions.terrainCutHalfWidth
+      )+
       roadBedOptions.blendWidth+
       4;
 
@@ -120,9 +128,11 @@ export function createTerrainService({
         ax:a.x,
         az:a.z,
         ay,
+        aroll:a.roll||0,
         bx:b.x,
         bz:b.z,
         by,
+        broll:b.roll||0,
         vx,
         vz,
         len2
@@ -221,11 +231,27 @@ export function createTerrainService({
       if(d2<bestD2){
         bestD2=d2;
 
+        const len=Math.sqrt(
+          segment.len2
+        )||1;
+
+        const nx=
+          -segment.vz/len;
+
+        const nz=
+          segment.vx/len;
+
         best={
           distance2:d2,
+          signedLateral:
+            dx*nx+
+            dz*nz,
           y:
             segment.ay+
-            (segment.by-segment.ay)*t
+            (segment.by-segment.ay)*t,
+          roll:
+            segment.aroll+
+            (segment.broll-segment.aroll)*t
         };
       }
     }
@@ -241,18 +267,25 @@ export function createTerrainService({
     }
 
     const {
-      roadHalfWidth,
+      terrainCutHalfWidth,
       blendWidth,
       surfaceOffset
     }=roadBedOptions;
 
     const roadSupportY=
-      sample.y-surfaceOffset;
+      sample.y+
+      Math.tan(sample.roll||0)*
+      sample.signedLateral-
+      surfaceOffset;
 
-    const roadHalfWidth2=
-      roadHalfWidth*roadHalfWidth;
+    const cutHalfWidth2=
+      terrainCutHalfWidth*
+      terrainCutHalfWidth;
 
-    if(sample.distance2<=roadHalfWidth2){
+    // Full safety cut around the road. This is intentionally wider than the
+    // visible asphalt/shoulders because the coarse terrain grid can otherwise
+    // form a triangle whose center crosses the roadway.
+    if(sample.distance2<=cutHalfWidth2){
       return Math.min(
         naturalY,
         roadSupportY
@@ -260,7 +293,8 @@ export function createTerrainService({
     }
 
     const outer=
-      roadHalfWidth+blendWidth;
+      terrainCutHalfWidth+
+      blendWidth;
 
     const outer2=outer*outer;
 
@@ -268,14 +302,12 @@ export function createTerrainService({
       return naturalY;
     }
 
-    // Square root is only needed for the comparatively small number of
-    // vertices actually inside the transition corridor.
     const distance=Math.sqrt(
       sample.distance2
     );
 
     const t=
-      (distance-roadHalfWidth)/
+      (distance-terrainCutHalfWidth)/
       blendWidth;
 
     // smoothstep transition from road platform back to untouched DEM.
@@ -363,6 +395,14 @@ export function createTerrainService({
         ?point.y
         :heightAt(point.x,point.z);
 
+      const roadRoll=Number.isFinite(point.roll)
+        ?point.roll
+        :0;
+
+      const roadRollSlope=Math.tan(
+        roadRoll
+      );
+
       for(const lateralOffset of lateral){
         const wx=
           point.x+
@@ -380,7 +420,7 @@ export function createTerrainService({
         if(absOffset<=roadHalfWidth){
           y=Math.min(
             naturalY,
-            roadY-surfaceOffset
+            roadY+roadRollSlope*lateralOffset-surfaceOffset
           );
         }else{
           const t=Math.min(
@@ -393,7 +433,7 @@ export function createTerrainService({
             t*t*(3-2*t);
 
           const blended=
-            (roadY-surfaceOffset)*(1-smooth)+
+            (roadY+roadRollSlope*lateralOffset-surfaceOffset)*(1-smooth)+
             naturalY*smooth;
 
           y=Math.min(
@@ -484,6 +524,7 @@ export function createTerrainService({
 
   function setRoadBed(profile,{
     roadHalfWidth=5.2,
+    terrainCutHalfWidth=13.5,
     blendWidth=12.0,
     surfaceOffset=.14
   }={}){
@@ -494,6 +535,7 @@ export function createTerrainService({
 
     roadBedOptions={
       roadHalfWidth,
+      terrainCutHalfWidth,
       blendWidth,
       surfaceOffset
     };

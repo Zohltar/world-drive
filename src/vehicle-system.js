@@ -19,12 +19,6 @@ const PROFILES={
       wheelbase:2.77,
       maxSteerLow:0.43,
       maxSteerHigh:0.115,
-
-      // On-road handling personality.
-      roadGripMultiplier:1.00,
-      lateralAccelLimit:7.0,
-      steeringResponseHigh:3.8,
-
       offroadGrip:0.58,
       offroadDrag:1.15
     },
@@ -55,13 +49,7 @@ const PROFILES={
       aero:0.0010,
       wheelbase:2.65,
       maxSteerLow:0.46,
-
-      // More front-end bite than ID4 in fast bends without making it twitchy.
-      maxSteerHigh:0.155,
-      roadGripMultiplier:1.08,
-      lateralAccelLimit:9.2,
-      steeringResponseHigh:5.0,
-
+      maxSteerHigh:0.135,
       offroadGrip:0.70,
       offroadDrag:0.95
     },
@@ -91,7 +79,7 @@ function clone(value){
 }
 
 export function createVehicleSystem({
-  initialId='id4'
+  initialId='wrx'
 }={}) {
   if(!PROFILES[initialId]){
     throw new Error(

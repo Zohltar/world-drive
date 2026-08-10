@@ -185,8 +185,12 @@ function makeAsphalt(){
  const t=new THREE.CanvasTexture(c);t.wrapS=t.wrapT=THREE.RepeatWrapping;t.repeat.set(1,4);t.colorSpace=THREE.SRGBColorSpace;return t;
 }
 const asphalt=makeAsphalt();
+// ----- Road / vehicle visual contact constants -----
 const ROAD_SURFACE_OFFSET=.10;
 const TIRE_VISUAL_CLEARANCE=.018;
+const WHEEL_RADIUS=.38;
+const TIRE_HALF_WIDTH=.135;
+const ROAD_WHEEL_CONTACT_HALF_WIDTH=8.5;
 
 const roadMat=new THREE.MeshStandardMaterial({
   color:0xffffff,
@@ -1353,17 +1357,8 @@ function roadSurfaceAt(x,z){
     return null;
   }
 
-  // IMPORTANT: use the EXACT same transverse normal as buildRibbon().
-  //
-  // buildRibbon() derives:
-  //   tx = sin(angle)
-  //   tz = cos(angle)
-  //   nx = -tz = -cos(angle)
-  //   nz =  tx =  sin(angle)
-  //
-  // Positive profile roll raises the +normal side of the visible road.
-  // Collision must use that SAME normal or the height error grows with
-  // lateral distance from the centreline.
+  // Match buildRibbon() exactly:
+  // tangent=(sin(angle),cos(angle)), transverse normal=(-cos(angle),sin(angle)).
   const normalX=-Math.cos(frame.angle);
   const normalZ= Math.sin(frame.angle);
 
@@ -2143,7 +2138,7 @@ function autopilotControl(dt,nr){
 
 function groundHeightForWheel(absx,absz){
   const rs=roadSurfaceAt(absx,absz);
-  if(rs&&Math.abs(rs.lateral)<8.5){
+  if(rs&&Math.abs(rs.lateral)<ROAD_WHEEL_CONTACT_HALF_WIDTH){
     return rs.y;
   }
   return terrainAbs(absx,absz);
@@ -2151,8 +2146,6 @@ function groundHeightForWheel(absx,absz){
 
 function updateSuspensionVisuals(dt,onRoad,currentSteerAngle){
   const c=Math.cos(heading),sn=Math.sin(heading);
-  const wheelRadius=.38;
-  const tireHalfWidth=.135;
 
   const suspensionWheels=activeVehicleWheels();
   if(suspensionWheels.length!==4){
@@ -2164,9 +2157,7 @@ function updateSuspensionVisuals(dt,onRoad,currentSteerAngle){
     return;
   }
 
-  // PASS 1 — sample the road/terrain under EACH wheel.
-  // Do not position the wheel yet: the chassis root must first be solved from
-  // the four contacts. This avoids the old centreline-height "submarine" bug.
+  // Pass 1: sample the support surface independently under each wheel.
   const samples=[];
 
   for(const w of suspensionWheels){
@@ -2177,11 +2168,13 @@ function updateSuspensionVisuals(dt,onRoad,currentSteerAngle){
     const wz=absZ - lx*sn + lz*c;
 
     let ground;
-    let roadSample=null;
 
     if(onRoad){
-      roadSample=roadSurfaceAt(wx,wz);
-      if(roadSample&&Math.abs(roadSample.lateral)<8.5){
+      const roadSample=roadSurfaceAt(wx,wz);
+      if(
+        roadSample&&
+        Math.abs(roadSample.lateral)<ROAD_WHEEL_CONTACT_HALF_WIDTH
+      ){
         ground=roadSample.y;
       }
     }
@@ -2190,7 +2183,7 @@ function updateSuspensionVisuals(dt,onRoad,currentSteerAngle){
       ground=groundHeightForWheel(wx,wz);
     }
 
-    samples.push({w,lx,lz,wx,wz,ground,roadSample});
+    samples.push({w,ground});
   }
 
   if(samples.length!==4)return;
@@ -2206,13 +2199,13 @@ function updateSuspensionVisuals(dt,onRoad,currentSteerAngle){
   const avgGround=(frontAvg+rearAvg)*.5;
 
   const wheelbase=VEHICLE.wheelbase||2.77;
-  const track=2.00;
+  const wheelTrack=2.00;
 
   const targetWheelPlanePitch=
     Math.atan2(rearAvg-frontAvg,wheelbase);
 
   const targetWheelPlaneRoll=
-    Math.atan2(leftAvg-rightAvg,track);
+    Math.atan2(leftAvg-rightAvg,wheelTrack);
 
   // On pavement this is collision geometry, not a soft animation:
   // use the actual contact plane immediately.
@@ -2228,12 +2221,10 @@ function updateSuspensionVisuals(dt,onRoad,currentSteerAngle){
   // Vertical tire envelope when cambered.
   const camberAbs=Math.abs(wheelPlaneRoll);
   const effectiveWheelRadius=
-    wheelRadius*Math.cos(camberAbs)+
-    tireHalfWidth*Math.sin(camberAbs);
+    WHEEL_RADIUS*Math.cos(camberAbs)+
+    TIRE_HALF_WIDTH*Math.sin(camberAbs);
 
-  // PASS 2 — solve chassis ROOT from all four wheel contacts.
-  // This is the key change: car.position.y no longer comes from the road
-  // centre under the car. It comes from the mean support height of the wheels.
+  // Pass 2: solve chassis root height from the four wheel contacts.
   if(onRoad){
     car.position.y=
       avgGround+
@@ -2241,7 +2232,7 @@ function updateSuspensionVisuals(dt,onRoad,currentSteerAngle){
       TIRE_VISUAL_CLEARANCE;
   }
 
-  // PASS 3 — place each wheel relative to the newly solved chassis.
+  // Pass 3: position each wheel relative to the solved chassis root.
   for(const s of samples){
     const targetLocalY=
       s.ground+
@@ -2292,8 +2283,7 @@ function updateSuspensionVisuals(dt,onRoad,currentSteerAngle){
     (targetPitch-suspensionPitch)*
     (1-Math.exp(-dt*7.2));
 
-  // With the root already solved from the wheels, heave is now only a tiny
-  // sprung-body visual effect. It must never determine road collision.
+  // Heave is visual only; wheel contacts determine road support geometry.
   if(onRoad){
     suspensionHeave+=
       (0-suspensionHeave)*
@@ -2473,8 +2463,8 @@ function updateDrive(dt){
  $('contactMode').textContent=onRoad?'Route':'Terrain';
  const terrainFrame=!onRoad?terrainFrameAt(absX,absZ,heading):null;
 
- // Root rides near the average contact plane. Individual wheel pivots handle
- // the actual wheel-to-ground contact, while the sprung body moves independently.
+ // Off-road root height is terrain-driven. On-road height is solved later
+ // from the four wheel contacts inside updateSuspensionVisuals().
  const centerRoadSurface=
    onRoad
      ?roadSurfaceAt(absX,absZ)
@@ -2500,8 +2490,7 @@ function updateDrive(dt){
      (targetY-car.position.y)*
      yAlpha;
  }
- // On-road Y is solved from the four wheel contacts in
- // updateSuspensionVisuals(), not from the road centre under the chassis.
+ // On-road Y is solved from the four wheel contacts.
 
  // Root vehicle stays yaw-aligned only. Wheel heights and the sprung body
  // handle suspension/pitch/roll independently.
@@ -2532,9 +2521,7 @@ function updateDrive(dt){
      w.visualCamber=0;
    }
 
-   // Tire orientation uses the SAME contact plane as the body.
-   // No route-direction sign correction is required.
-   // Same sign convention as the sprung body:
+   // Tire orientation uses the same four-contact plane as the body.
    // left side higher => negative local Z rotation.
    const targetCamber=
      -wheelPlaneRoll;
@@ -2562,13 +2549,27 @@ function toggleAssist(){
  $('assist').textContent='Assist: '+(assist?'ON':'OFF');
  toast('Assistance '+(assist?'activée':'désactivée'));
 }
-function placeAt(frac){const p=routePointAt(frac);absX=p.x;absZ=p.z;heading=p.angle;speed=0;steer=0;visualSteer=0;currentSteerAngle=0;longitudinalAccel=0;suspensionRoll=0;suspensionPitch=0;suspensionHeave=0;wheelPlaneRoll=0;wheelPlanePitch=0;bodyGroup.rotation.set(0,0,0);bodyGroup.position.y=(vehicleSystem.activeId==='wrx'?-.31:-.22);roadContact=true;recenterIfNeeded(absX,absZ,true);ensureRoadProfileNear(absX,absZ);const placedRoadSurface=roadSurfaceAt(absX,absZ);
+function resetVehicleVisualState(){
+  suspensionRoll=0;
+  suspensionPitch=0;
+  suspensionHeave=0;
+  wheelPlaneRoll=0;
+  wheelPlanePitch=0;
+
+  bodyGroup.rotation.set(0,0,0);
+  bodyGroup.position.y=
+    vehicleSystem.activeId==='wrx'
+      ?-.31
+      :-.22;
+}
+
+function placeAt(frac){const p=routePointAt(frac);absX=p.x;absZ=p.z;heading=p.angle;speed=0;steer=0;visualSteer=0;currentSteerAngle=0;longitudinalAccel=0;resetVehicleVisualState();roadContact=true;recenterIfNeeded(absX,absZ,true);ensureRoadProfileNear(absX,absZ);const placedRoadSurface=roadSurfaceAt(absX,absZ);
 car.position.set(
   0,
   (placedRoadSurface?.y??roadHeightAt(absX,absZ)+ROAD_SURFACE_OFFSET)+.38+TIRE_VISUAL_CLEARANCE,
   0
 );drawMap(p.cum)}
-function resetToRoad(){const n=nearestRoute(absX,absZ);if(n){absX=n.px;absZ=n.pz;heading=n.angle;speed=0;steer=0;visualSteer=0;currentSteerAngle=0;longitudinalAccel=0;suspensionRoll=0;suspensionPitch=0;suspensionHeave=0;wheelPlaneRoll=0;wheelPlanePitch=0;bodyGroup.rotation.set(0,0,0);bodyGroup.position.y=(vehicleSystem.activeId==='wrx'?-.31:-.22);roadContact=true;recenterIfNeeded(absX,absZ,true);ensureRoadProfileNear(absX,absZ)}}
+function resetToRoad(){const n=nearestRoute(absX,absZ);if(n){absX=n.px;absZ=n.pz;heading=n.angle;speed=0;steer=0;visualSteer=0;currentSteerAngle=0;longitudinalAccel=0;resetVehicleVisualState();roadContact=true;recenterIfNeeded(absX,absZ,true);ensureRoadProfileNear(absX,absZ)}}
 
 const maxSpeedSlider=$('maxSpeedSlider'),maxSpeedLabel=$('maxSpeedLabel');
 const speedLimitModeBtn=$('speedLimitModeBtn');
