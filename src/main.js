@@ -80,7 +80,7 @@ function geoDist(a,b){
 // ---------- Three ----------
 const scene=new THREE.Scene();scene.background=new THREE.Color(0x91b5d1);scene.fog=new THREE.FogExp2(0x91b5d1,0.00082);
 const camera=new THREE.PerspectiveCamera(65,innerWidth/innerHeight,.1,4500);
-const renderer=new THREE.WebGLRenderer({antialias:true,powerPreference:'high-performance'});
+const renderer=new THREE.WebGLRenderer({antialias:true,powerPreference:'high-performance',stencil:true});
 renderer.setSize(innerWidth,innerHeight);renderer.setPixelRatio(Math.min(devicePixelRatio,1.6));renderer.shadowMap.enabled=true;renderer.shadowMap.type=THREE.PCFSoftShadowMap;renderer.outputColorSpace=THREE.SRGBColorSpace;renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=1.02;$('app').appendChild(renderer.domElement);
 const hemi=new THREE.HemisphereLight(0xd6ecff,0x4e6345,2.15);scene.add(hemi);
 const sun=new THREE.DirectionalLight(0xfff2d2,2.6);sun.position.set(-180,260,-120);sun.castShadow=true;sun.shadow.mapSize.set(2048,2048);sun.shadow.camera.left=-300;sun.shadow.camera.right=300;sun.shadow.camera.top=300;sun.shadow.camera.bottom=-300;scene.add(sun);
@@ -185,21 +185,67 @@ function makeAsphalt(){
  const t=new THREE.CanvasTexture(c);t.wrapS=t.wrapT=THREE.RepeatWrapping;t.repeat.set(1,4);t.colorSpace=THREE.SRGBColorSpace;return t;
 }
 const asphalt=makeAsphalt();
+const ROAD_SURFACE_OFFSET=.10;
+const TIRE_VISUAL_CLEARANCE=.018;
+
 const roadMat=new THREE.MeshStandardMaterial({
   color:0xffffff,
   map:asphalt,
   roughness:.96,
   polygonOffset:true,
   polygonOffsetFactor:-2,
-  polygonOffsetUnits:-2
+  polygonOffsetUnits:-2,
+
+  // The visible roadway owns these pixels over transparent hydro surfaces.
+  stencilWrite:true,
+  stencilRef:1,
+  stencilFunc:THREE.AlwaysStencilFunc,
+  stencilFail:THREE.KeepStencilOp,
+  stencilZFail:THREE.KeepStencilOp,
+  stencilZPass:THREE.ReplaceStencilOp
 });
 const shoulderMat=new THREE.MeshStandardMaterial({
   color:0x89867a,
   roughness:1,
   polygonOffset:true,
   polygonOffsetFactor:-1,
-  polygonOffsetUnits:-1
+  polygonOffsetUnits:-1,
+
+  stencilWrite:true,
+  stencilRef:1,
+  stencilFunc:THREE.AlwaysStencilFunc,
+  stencilFail:THREE.KeepStencilOp,
+  stencilZFail:THREE.KeepStencilOp,
+  stencilZPass:THREE.ReplaceStencilOp
 });
+const roadEdgeMat=new THREE.MeshStandardMaterial({
+  color:0x4f4e49,
+  roughness:1,
+  metalness:0,
+
+  // Same road priority over water as the top surface.
+  stencilWrite:true,
+  stencilRef:1,
+  stencilFunc:THREE.AlwaysStencilFunc,
+  stencilFail:THREE.KeepStencilOp,
+  stencilZFail:THREE.KeepStencilOp,
+  stencilZPass:THREE.ReplaceStencilOp
+});
+
+const roadUnderMat=new THREE.MeshStandardMaterial({
+  color:0x292b2a,
+  roughness:1,
+  metalness:0,
+  side:THREE.DoubleSide,
+
+  stencilWrite:true,
+  stencilRef:1,
+  stencilFunc:THREE.AlwaysStencilFunc,
+  stencilFail:THREE.KeepStencilOp,
+  stencilZFail:THREE.KeepStencilOp,
+  stencilZPass:THREE.ReplaceStencilOp
+});
+
 const lineYellow=new THREE.MeshBasicMaterial({
   color:0xe6c94f,
   polygonOffset:true,
@@ -235,17 +281,29 @@ function makeWaterTexture(){
 }
 const waterTex=makeWaterTexture();
 
+const waterStencil={
+  stencilWrite:true,
+  stencilRef:1,
+  stencilFunc:THREE.NotEqualStencilFunc,
+  stencilFail:THREE.KeepStencilOp,
+  stencilZFail:THREE.KeepStencilOp,
+  stencilZPass:THREE.KeepStencilOp
+};
+
 const waterMat=new THREE.MeshStandardMaterial({
   color:0x2a6f96,map:waterTex,roughness:.16,metalness:.12,
-  transparent:true,opacity:.90,side:THREE.DoubleSide
+  transparent:true,opacity:.90,side:THREE.DoubleSide,
+  ...waterStencil
 });
 const riverMat=new THREE.MeshStandardMaterial({
   color:0x2f7da7,map:waterTex,roughness:.18,metalness:.10,
-  transparent:true,opacity:.93,side:THREE.DoubleSide
+  transparent:true,opacity:.93,side:THREE.DoubleSide,
+  ...waterStencil
 });
 const coastWaterMat=new THREE.MeshStandardMaterial({
   color:0x235f86,map:waterTex,roughness:.14,metalness:.16,
-  transparent:true,opacity:.94,side:THREE.DoubleSide
+  transparent:true,opacity:.94,side:THREE.DoubleSide,
+  ...waterStencil
 });
 const waterStatus=$('waterStatus');
 const hydroCacheStatus=$('hydroCacheStatus');
@@ -423,7 +481,7 @@ const rebuildLocalScenery=()=>sceneryRenderer.rebuild();
 
 // ---------- Car ----------
 const vehicleSystem=createVehicleSystem({
-  initialId:'id4'
+  initialId:'wrx'
 });
 
 const car=new THREE.Group();
@@ -545,7 +603,13 @@ for(const x of [-.86,.86])for(const z of [-1.22,1.22]){
   rim.rotation.z=Math.PI/2;
   pivot.add(rim);
 
-  wheels.push({pivot,tire,rim,front:z>0});
+  wheels.push({
+    pivot,
+    tire,
+    rim,
+    front:z>0,
+    visualCamber:0
+  });
   if(z>0)frontWheelPivots.push(pivot);
 }
 
@@ -627,6 +691,11 @@ function activeVehicleWheels(){
 let suspensionRoll=0;
 let suspensionPitch=0;
 let suspensionHeave=0;
+
+// Static visual plane defined by the four actual wheel contacts.
+let wheelPlaneRoll=0;
+let wheelPlanePitch=0;
+
 let lastWheelGround=[0,0,0,0];
 
 // Slightly larger crossover scale than old sedan-like box
@@ -898,9 +967,35 @@ function buildRibbon(points,width,material,yOffset=0){
     const tl=Math.hypot(tx,tz)||1;tx/=tl;tz/=tl;
     const nx=-tz,nz=tx;
     if(i>0)cumulative+=Math.hypot(p.x-points[i-1].x,p.z-points[i-1].z);
-    const y=p.y+yOffset;
-    pos.push(p.x-worldOffset.x+nx*width/2,y,p.z-worldOffset.z+nz*width/2);
-    pos.push(p.x-worldOffset.x-nx*width/2,y,p.z-worldOffset.z-nz*width/2);
+
+    const roll=Number.isFinite(p.roll)
+      ?p.roll
+      :0;
+
+    const half=width/2;
+
+    // Positive roll raises the left side (+normal) and lowers the right side.
+    const leftY=
+      p.y+
+      yOffset+
+      Math.tan(roll)*half;
+
+    const rightY=
+      p.y+
+      yOffset-
+      Math.tan(roll)*half;
+
+    pos.push(
+      p.x-worldOffset.x+nx*half,
+      leftY,
+      p.z-worldOffset.z+nz*half
+    );
+
+    pos.push(
+      p.x-worldOffset.x-nx*half,
+      rightY,
+      p.z-worldOffset.z-nz*half
+    );
     uv.push(0,cumulative/8,1,cumulative/8);
     if(i<points.length-1){
       const a=i*2;
@@ -913,6 +1008,188 @@ function buildRibbon(points,width,material,yOffset=0){
   g.setIndex(idx);g.computeVertexNormals();
   const m=new THREE.Mesh(g,material);m.receiveShadow=true;return m;
 }
+
+function buildRoadVolume(profile){
+  if(profile.length<2)return null;
+
+  const group=new THREE.Group();
+
+  // Cross-section dimensions, in metres.
+  const asphaltHalf=3.75;
+  const shoulderHalf=5.20;
+  const toeHalf=5.95;
+
+  const asphaltTop=.10;
+  const shoulderTop=.035;
+  const slabBottom=-.20;
+  const toeBottom=-.36;
+
+  const edgePos=[];
+  const edgeIdx=[];
+  const underPos=[];
+  const underIdx=[];
+
+  function basisAt(i){
+    const p=profile[i];
+    const prev=profile[Math.max(0,i-1)];
+    const next=profile[Math.min(profile.length-1,i+1)];
+
+    let tx=next.x-prev.x;
+    let tz=next.z-prev.z;
+    const len=Math.hypot(tx,tz)||1;
+
+    tx/=len;
+    tz/=len;
+
+    return {
+      p,
+      nx:-tz,
+      nz:tx
+    };
+  }
+
+  // Each row contains:
+  // 0 left toe bottom
+  // 1 left shoulder top
+  // 2 left asphalt edge bottom
+  // 3 left asphalt edge top
+  // 4 right asphalt edge top
+  // 5 right asphalt edge bottom
+  // 6 right shoulder top
+  // 7 right toe bottom
+  for(let i=0;i<profile.length;i++){
+    const {p,nx,nz}=basisAt(i);
+
+    const roll=Number.isFinite(p.roll)
+      ?p.roll
+      :0;
+
+    const rollSlope=Math.tan(roll);
+
+    const push=(off,y)=>{
+      edgePos.push(
+        p.x-worldOffset.x+nx*off,
+        p.y+y+rollSlope*off,
+        p.z-worldOffset.z+nz*off
+      );
+    };
+
+    push( toeHalf,toeBottom);
+    push( shoulderHalf,shoulderTop);
+    push( asphaltHalf,slabBottom);
+    push( asphaltHalf,asphaltTop);
+    push(-asphaltHalf,asphaltTop);
+    push(-asphaltHalf,slabBottom);
+    push(-shoulderHalf,shoulderTop);
+    push(-toeHalf,toeBottom);
+
+    // Bottom slab vertices, kept separate for a darker underside material.
+    underPos.push(
+      p.x-worldOffset.x+nx*asphaltHalf,
+      p.y+slabBottom+rollSlope*asphaltHalf,
+      p.z-worldOffset.z+nz*asphaltHalf,
+
+      p.x-worldOffset.x-nx*asphaltHalf,
+      p.y+slabBottom-rollSlope*asphaltHalf,
+      p.z-worldOffset.z-nz*asphaltHalf
+    );
+  }
+
+  const row=8;
+
+  for(let i=0;i<profile.length-1;i++){
+    const a=i*row;
+    const b=(i+1)*row;
+
+    // Left outer embankment slope.
+    edgeIdx.push(
+      a+0,b+0,a+1,
+      a+1,b+0,b+1
+    );
+
+    // Left shoulder underside/slope into asphalt slab.
+    edgeIdx.push(
+      a+1,b+1,a+2,
+      a+2,b+1,b+2
+    );
+
+    // Visible left asphalt thickness.
+    edgeIdx.push(
+      a+2,b+2,a+3,
+      a+3,b+2,b+3
+    );
+
+    // Visible right asphalt thickness.
+    edgeIdx.push(
+      a+4,b+4,a+5,
+      a+5,b+4,b+5
+    );
+
+    // Right shoulder underside/slope.
+    edgeIdx.push(
+      a+5,b+5,a+6,
+      a+6,b+5,b+6
+    );
+
+    // Right outer embankment slope.
+    edgeIdx.push(
+      a+6,b+6,a+7,
+      a+7,b+6,b+7
+    );
+
+    // Dark underside of the central asphalt slab.
+    const u=i*2;
+    const v=(i+1)*2;
+
+    underIdx.push(
+      u,v,u+1,
+      u+1,v,v+1
+    );
+  }
+
+  const edgeGeom=new THREE.BufferGeometry();
+  edgeGeom.setAttribute(
+    'position',
+    new THREE.Float32BufferAttribute(
+      edgePos,
+      3
+    )
+  );
+  edgeGeom.setIndex(edgeIdx);
+  edgeGeom.computeVertexNormals();
+
+  const edges=new THREE.Mesh(
+    edgeGeom,
+    roadEdgeMat
+  );
+  edges.castShadow=true;
+  edges.receiveShadow=true;
+  edges.renderOrder=1;
+  group.add(edges);
+
+  const underGeom=new THREE.BufferGeometry();
+  underGeom.setAttribute(
+    'position',
+    new THREE.Float32BufferAttribute(
+      underPos,
+      3
+    )
+  );
+  underGeom.setIndex(underIdx);
+  underGeom.computeVertexNormals();
+
+  const underside=new THREE.Mesh(
+    underGeom,
+    roadUnderMat
+  );
+  underside.castShadow=true;
+  underside.receiveShadow=true;
+  underside.renderOrder=0;
+  group.add(underside);
+
+  return group;
+}
+
 function buildRoadProfile(){
   // Find a little more than the visible corridor so the ribbon never ends at screen edge.
   const R=1050,R2=R*R,raw=[];
@@ -960,7 +1237,81 @@ function buildRoadProfile(){
       if(nearBridge)finalH[i]=(heights[i-1]+2*heights[i]+heights[i+1])/4;
     }
   }
-  return raw.map((p,i)=>({x:p.x,z:p.z,y:finalH[i],cum:p.cum}));
+  // Terrain-aligned road roll/camber.
+  // Sample terrain across the road instead of keeping every cross-section horizontal.
+  // A wider probe reduces sensitivity to tiny DEM noise.
+  const rollProbe=5.6;
+  const rawRoll=new Array(raw.length).fill(0);
+
+  for(let i=0;i<raw.length;i++){
+    const p=raw[i];
+    const prev=raw[Math.max(0,i-1)];
+    const next=raw[Math.min(raw.length-1,i+1)];
+
+    let tx=next.x-prev.x;
+    let tz=next.z-prev.z;
+    const tl=Math.hypot(tx,tz)||1;
+
+    tx/=tl;
+    tz/=tl;
+
+    const nx=-tz;
+    const nz=tx;
+
+    const leftY=terrainAbs(
+      p.x+nx*rollProbe,
+      p.z+nz*rollProbe
+    );
+
+    const rightY=terrainAbs(
+      p.x-nx*rollProbe,
+      p.z-nz*rollProbe
+    );
+
+    // Positive roll means the left edge is higher than the right edge.
+    rawRoll[i]=Math.atan2(
+      leftY-rightY,
+      rollProbe*2
+    );
+  }
+
+  // Three smoothing passes prevent visible twisting from DEM noise.
+  let smoothedRoll=rawRoll;
+
+  for(let pass=0;pass<3;pass++){
+    const nextRoll=smoothedRoll.slice();
+
+    for(let i=2;i<smoothedRoll.length-2;i++){
+      nextRoll[i]=(
+        smoothedRoll[i-2]+
+        2*smoothedRoll[i-1]+
+        4*smoothedRoll[i]+
+        2*smoothedRoll[i+1]+
+        smoothedRoll[i+2]
+      )/10;
+    }
+
+    smoothedRoll=nextRoll;
+  }
+
+  // Roads normally follow the terrain cross-slope but should not inherit
+  // extreme cliff angles. Cap at ~12 degrees.
+  const maxRoadRoll=
+    12*Math.PI/180;
+
+  return raw.map((p,i)=>({
+    x:p.x,
+    z:p.z,
+    y:finalH[i],
+    cum:p.cum,
+    roll:Math.max(
+      -maxRoadRoll,
+      Math.min(
+        maxRoadRoll,
+        smoothedRoll[i]
+      )
+    )
+  }));
 }
 let activeRoadProfile=[];
 function roadFrameAt(x,z){
@@ -979,6 +1330,9 @@ function roadFrameAt(x,z){
         y:a.y+(b.y-a.y)*t,
         angle:Math.atan2(vx,vz),
         pitch,
+        roll:
+          (a.roll||0)+
+          ((b.roll||0)-(a.roll||0))*t,
         px,pz,
         index:i,t,
         distance:Math.sqrt(d2)
@@ -991,6 +1345,50 @@ function roadHeightAt(x,z){
   const f=roadFrameAt(x,z);
   return f?f.y:terrainAbs(x,z);
 }
+
+function roadSurfaceAt(x,z){
+  const frame=roadFrameAt(x,z);
+
+  if(!frame){
+    return null;
+  }
+
+  // IMPORTANT: use the EXACT same transverse normal as buildRibbon().
+  //
+  // buildRibbon() derives:
+  //   tx = sin(angle)
+  //   tz = cos(angle)
+  //   nx = -tz = -cos(angle)
+  //   nz =  tx =  sin(angle)
+  //
+  // Positive profile roll raises the +normal side of the visible road.
+  // Collision must use that SAME normal or the height error grows with
+  // lateral distance from the centreline.
+  const normalX=-Math.cos(frame.angle);
+  const normalZ= Math.sin(frame.angle);
+
+  const dx=x-frame.px;
+  const dz=z-frame.pz;
+
+  const lateral=
+    dx*normalX+
+    dz*normalZ;
+
+  const roll=
+    Number.isFinite(frame.roll)
+      ?frame.roll
+      :0;
+
+  return {
+    ...frame,
+    lateral,
+    y:
+      frame.y+
+      Math.tan(roll)*lateral+
+      ROAD_SURFACE_OFFSET
+  };
+}
+
 function terrainFrameAt(x,z,heading){
   // Compute the terrain gradient in WORLD X/Z, independent of vehicle heading.
   // This avoids the Euler-axis problem from v2.3.
@@ -1349,13 +1747,18 @@ function rebuildLocalWorld(){
  // triangles can never protrude through asphalt or shoulders.
  terrainService.setRoadBed(profile,{
    roadHalfWidth:5.2,
+   terrainCutHalfWidth:13.5,
    blendWidth:12.0,
    surfaceOffset:0.14
  });
 
  if(profile.length>1){
+   // Solid 3D road body first; flat top layers are then drawn over it.
+   const roadVolume=buildRoadVolume(profile);
+   if(roadVolume)roadGroup.add(roadVolume);
+
    const shoulder=buildRibbon(profile,10.4,shoulderMat,.035);if(shoulder)roadGroup.add(shoulder);
-   const asphaltRoad=buildRibbon(profile,7.5,roadMat,.10);if(asphaltRoad)roadGroup.add(asphaltRoad);
+   const asphaltRoad=buildRibbon(profile,7.5,roadMat,ROAD_SURFACE_OFFSET);if(asphaltRoad)roadGroup.add(asphaltRoad);
    const center=buildRibbon(profile,.13,lineYellow,.165);if(center)roadGroup.add(center);
 
    // Edge lines: derive horizontally offset profiles but reuse the exact smoothed height.
@@ -1365,7 +1768,12 @@ function rebuildLocalWorld(){
        const p=profile[i],prev=profile[Math.max(0,i-1)],next=profile[Math.min(profile.length-1,i+1)];
        let tx=next.x-prev.x,tz=next.z-prev.z,tl=Math.hypot(tx,tz)||1;tx/=tl;tz/=tl;
        const nx=-tz,nz=tx,off=3.45*side;
-       edge.push({x:p.x+nx*off,z:p.z+nz*off,y:p.y});
+       edge.push({
+         x:p.x+nx*off,
+         z:p.z+nz*off,
+         y:p.y+Math.tan(p.roll||0)*off,
+         roll:p.roll||0
+       });
      }
      const em=buildRibbon(edge,.10,lineWhite,.16);if(em)roadGroup.add(em);
    }
@@ -1644,7 +2052,7 @@ const keys={};addEventListener('keydown',e=>{
    setAutopilot(false,'Reprise manuelle');
  }
 });addEventListener('keyup',e=>keys[e.code]=false);
-let maxSpeedKmh=100;let MAX=maxSpeedKmh/3.6;const REV=-10;
+let maxSpeedKmh=200;let MAX=maxSpeedKmh/3.6;const REV=-10;
 let obeyRoadSpeedLimits=localStorage.getItem('worlddrive_obey_speed_limits')!=='0';
 let roadContact=false;
 
@@ -1734,10 +2142,9 @@ function autopilotControl(dt,nr){
 
 
 function groundHeightForWheel(absx,absz){
-  const nrw=nearestRoute(absx,absz);
-  if(nrw&&nrw.d<6.5){
-    const rf=roadFrameAt(absx,absz);
-    if(rf&&rf.distance<12)return rf.y;
+  const rs=roadSurfaceAt(absx,absz);
+  if(rs&&Math.abs(rs.lateral)<8.5){
+    return rs.y;
   }
   return terrainAbs(absx,absz);
 }
@@ -1745,7 +2152,7 @@ function groundHeightForWheel(absx,absz){
 function updateSuspensionVisuals(dt,onRoad,currentSteerAngle){
   const c=Math.cos(heading),sn=Math.sin(heading);
   const wheelRadius=.38;
-  const contacts=[];
+  const tireHalfWidth=.135;
 
   const suspensionWheels=activeVehicleWheels();
   if(suspensionWheels.length!==4){
@@ -1757,63 +2164,166 @@ function updateSuspensionVisuals(dt,onRoad,currentSteerAngle){
     return;
   }
 
-  for(let i=0;i<suspensionWheels.length;i++){
-    const w=suspensionWheels[i];
+  // PASS 1 — sample the road/terrain under EACH wheel.
+  // Do not position the wheel yet: the chassis root must first be solved from
+  // the four contacts. This avoids the old centreline-height "submarine" bug.
+  const samples=[];
+
+  for(const w of suspensionWheels){
     const lx=w.pivot.position.x;
     const lz=w.pivot.position.z;
 
-    // Rotate local wheel offset into world X/Z using vehicle yaw only.
     const wx=absX + lx*c + lz*sn;
     const wz=absZ - lx*sn + lz*c;
-    const ground=groundHeightForWheel(wx,wz);
-    contacts.push(ground);
 
-    // Wheel center follows the ground independently from the body.
-    const targetLocalY=(ground+wheelRadius)-car.position.y;
-    const suspensionRate=1-Math.exp(-dt*18);
-    w.pivot.position.y+=(targetLocalY-w.pivot.position.y)*suspensionRate;
+    let ground;
+    let roadSample=null;
+
+    if(onRoad){
+      roadSample=roadSurfaceAt(wx,wz);
+      if(roadSample&&Math.abs(roadSample.lateral)<8.5){
+        ground=roadSample.y;
+      }
+    }
+
+    if(!Number.isFinite(ground)){
+      ground=groundHeightForWheel(wx,wz);
+    }
+
+    samples.push({w,lx,lz,wx,wz,ground,roadSample});
   }
 
-  if(contacts.length!==4)return;
+  if(samples.length!==4)return;
 
-  // wheels order: x=-1/z=-1, x=-1/z=+1, x=+1/z=-1, x=+1/z=+1
+  const contacts=samples.map(s=>s.ground);
+
+  // wheels order: rearL, frontL, rearR, frontR
   const rearL=contacts[0],frontL=contacts[1],rearR=contacts[2],frontR=contacts[3];
   const frontAvg=(frontL+frontR)*.5;
   const rearAvg=(rearL+rearR)*.5;
   const leftAvg=(frontL+rearL)*.5;
   const rightAvg=(frontR+rearR)*.5;
+  const avgGround=(frontAvg+rearAvg)*.5;
 
   const wheelbase=VEHICLE.wheelbase||2.77;
   const track=2.00;
 
-  // Static road pitch/roll from wheel contact plane.
-  const roadPitch=Math.atan2(rearAvg-frontAvg,wheelbase);
-  const roadRoll=Math.atan2(leftAvg-rightAvg,track);
+  const targetWheelPlanePitch=
+    Math.atan2(rearAvg-frontAvg,wheelbase);
 
-  // Dynamic body movement only: wheels remain on contact plane.
-  const visualYawRate=(speed/VEHICLE.wheelbase)*Math.tan(currentSteerAngle||0);
-  const lateralAccel=Math.max(-8,Math.min(8,speed*visualYawRate));
-  // Positive lateral acceleration means the car is curving toward one side;
-  // body mass rolls toward the OUTSIDE of the bend.
-  const dynamicRoll=Math.max(-.065,Math.min(.065,lateralAccel*.0075));
-  const dynamicPitch=Math.max(-.040,Math.min(.040,-longitudinalAccel*.0045));
+  const targetWheelPlaneRoll=
+    Math.atan2(leftAvg-rightAvg,track);
 
-  // Body follows road geometry gently, plus suspension response.
-  const targetRoll=(onRoad?roadRoll*.35:roadRoll*.55)+dynamicRoll;
-  const targetPitch=(onRoad?roadPitch*.72:roadPitch*.85)+dynamicPitch;
+  // On pavement this is collision geometry, not a soft animation:
+  // use the actual contact plane immediately.
+  if(onRoad){
+    wheelPlanePitch=targetWheelPlanePitch;
+    wheelPlaneRoll=targetWheelPlaneRoll;
+  }else{
+    const wheelPlaneRate=1-Math.exp(-dt*10);
+    wheelPlanePitch+=(targetWheelPlanePitch-wheelPlanePitch)*wheelPlaneRate;
+    wheelPlaneRoll+=(targetWheelPlaneRoll-wheelPlaneRoll)*wheelPlaneRate;
+  }
 
-  suspensionRoll+=(targetRoll-suspensionRoll)*(1-Math.exp(-dt*5.4));
-  suspensionPitch+=(targetPitch-suspensionPitch)*(1-Math.exp(-dt*7.2));
+  // Vertical tire envelope when cambered.
+  const camberAbs=Math.abs(wheelPlaneRoll);
+  const effectiveWheelRadius=
+    wheelRadius*Math.cos(camberAbs)+
+    tireHalfWidth*Math.sin(camberAbs);
 
-  // Small heave from average wheel travel / terrain undulation.
-  const avg=(frontAvg+rearAvg)*.5;
-  const targetHeave=Math.max(-.045,Math.min(.045,(avg-car.position.y)*.055));
-  suspensionHeave+=(targetHeave-suspensionHeave)*(1-Math.exp(-dt*5.5));
+  // PASS 2 — solve chassis ROOT from all four wheel contacts.
+  // This is the key change: car.position.y no longer comes from the road
+  // centre under the car. It comes from the mean support height of the wheels.
+  if(onRoad){
+    car.position.y=
+      avgGround+
+      effectiveWheelRadius+
+      TIRE_VISUAL_CLEARANCE;
+  }
+
+  // PASS 3 — place each wheel relative to the newly solved chassis.
+  for(const s of samples){
+    const targetLocalY=
+      s.ground+
+      effectiveWheelRadius+
+      TIRE_VISUAL_CLEARANCE-
+      car.position.y;
+
+    if(onRoad){
+      s.w.pivot.position.y=targetLocalY;
+    }else{
+      const suspensionRate=1-Math.exp(-dt*18);
+      s.w.pivot.position.y+=
+        (targetLocalY-s.w.pivot.position.y)*
+        suspensionRate;
+    }
+  }
+
+  // Dynamic sprung-body movement layered over the wheel support plane.
+  const visualYawRate=
+    (speed/VEHICLE.wheelbase)*
+    Math.tan(currentSteerAngle||0);
+
+  const lateralAccel=
+    Math.max(-8,Math.min(8,speed*visualYawRate));
+
+  const dynamicRoll=
+    Math.max(-.065,Math.min(.065,lateralAccel*.0075));
+
+  const dynamicPitch=
+    Math.max(-.040,Math.min(.040,-longitudinalAccel*.0045));
+
+  // wheelPlaneRoll > 0 means LEFT wheels are higher.
+  // Three.js rotation.z > 0 raises vehicle local +X (RIGHT side),
+  // therefore the static road-bank component needs the opposite sign.
+  const targetRoll=
+    -wheelPlaneRoll+
+    dynamicRoll;
+
+  const targetPitch=
+    wheelPlanePitch+
+    dynamicPitch;
+
+  suspensionRoll+=
+    (targetRoll-suspensionRoll)*
+    (1-Math.exp(-dt*7.0));
+
+  suspensionPitch+=
+    (targetPitch-suspensionPitch)*
+    (1-Math.exp(-dt*7.2));
+
+  // With the root already solved from the wheels, heave is now only a tiny
+  // sprung-body visual effect. It must never determine road collision.
+  if(onRoad){
+    suspensionHeave+=
+      (0-suspensionHeave)*
+      (1-Math.exp(-dt*10));
+  }else{
+    const targetHeave=
+      Math.max(
+        -.045,
+        Math.min(
+          .045,
+          (avgGround-car.position.y)*.055
+        )
+      );
+
+    suspensionHeave+=
+      (targetHeave-suspensionHeave)*
+      (1-Math.exp(-dt*5.5));
+  }
 
   bodyGroup.rotation.x=suspensionPitch;
   bodyGroup.rotation.z=suspensionRoll;
-  const bodyBaseY=vehicleSystem.activeId==='wrx' ? -.31 : -.22;
-  bodyGroup.position.y=bodyBaseY+suspensionHeave;
+
+  const bodyBaseY=
+    vehicleSystem.activeId==='wrx'
+      ?-.31
+      :-.22;
+
+  bodyGroup.position.y=
+    bodyBaseY+
+    suspensionHeave;
 }
 
 function updateDrive(dt){
@@ -1965,10 +2475,33 @@ function updateDrive(dt){
 
  // Root rides near the average contact plane. Individual wheel pivots handle
  // the actual wheel-to-ground contact, while the sprung body moves independently.
- const baseGround=(onRoad?roadFrame.y:(terrainFrame?terrainFrame.y:terrainAbs(absX,absZ)));
- const targetY=baseGround+.38;
- const yAlpha=1-Math.exp(-dt*10);
- car.position.x=rx;car.position.z=rz;car.position.y+=(targetY-car.position.y)*yAlpha;
+ const centerRoadSurface=
+   onRoad
+     ?roadSurfaceAt(absX,absZ)
+     :null;
+
+ const baseGround=onRoad
+   ?(centerRoadSurface?.y??roadFrame.y+ROAD_SURFACE_OFFSET)
+   :(terrainFrame?terrainFrame.y:terrainAbs(absX,absZ));
+
+ const targetY=
+   baseGround+
+   .38+
+   (onRoad?TIRE_VISUAL_CLEARANCE:0);
+
+ car.position.x=rx;
+ car.position.z=rz;
+
+ if(!onRoad){
+   const yAlpha=
+     1-Math.exp(-dt*10);
+
+   car.position.y+=
+     (targetY-car.position.y)*
+     yAlpha;
+ }
+ // On-road Y is solved from the four wheel contacts in
+ // updateSuspensionVisuals(), not from the road centre under the chassis.
 
  // Root vehicle stays yaw-aligned only. Wheel heights and the sprung body
  // handle suspension/pitch/roll independently.
@@ -1984,9 +2517,34 @@ function updateDrive(dt){
    w.tire.rotation.x-=speed*dt/.38;
    w.rim.rotation.x-=speed*dt/.38;
 
-   // Pivot yaw is steering only; pivot Y position is suspension travel.
-   const targetWheelYaw=w.front?visualSteer:0;
-   w.pivot.rotation.y+=(targetWheelYaw-w.pivot.rotation.y)*(1-Math.exp(-dt*12));
+   // Steering yaw + visual road camber.
+   // Camber is presentation-only and does not affect tire physics/trajectory.
+   const targetWheelYaw=
+     w.front
+       ?visualSteer
+       :0;
+
+   w.pivot.rotation.y+=
+     (targetWheelYaw-w.pivot.rotation.y)*
+     (1-Math.exp(-dt*12));
+
+   if(!Number.isFinite(w.visualCamber)){
+     w.visualCamber=0;
+   }
+
+   // Tire orientation uses the SAME contact plane as the body.
+   // No route-direction sign correction is required.
+   // Same sign convention as the sprung body:
+   // left side higher => negative local Z rotation.
+   const targetCamber=
+     -wheelPlaneRoll;
+
+   w.visualCamber+=
+     (targetCamber-w.visualCamber)*
+     (1-Math.exp(-dt*18));
+
+   w.pivot.rotation.z=
+     w.visualCamber;
  }
  $('speed').textContent=Math.round(Math.abs(speed)*3.6);
  const llNow=xzToLL(absX,absZ),realElev=elevationService.elevationAt(llNow.lat,llNow.lon);
@@ -2004,8 +2562,13 @@ function toggleAssist(){
  $('assist').textContent='Assist: '+(assist?'ON':'OFF');
  toast('Assistance '+(assist?'activée':'désactivée'));
 }
-function placeAt(frac){const p=routePointAt(frac);absX=p.x;absZ=p.z;heading=p.angle;speed=0;steer=0;visualSteer=0;currentSteerAngle=0;longitudinalAccel=0;suspensionRoll=0;suspensionPitch=0;suspensionHeave=0;bodyGroup.rotation.set(0,0,0);bodyGroup.position.y=(vehicleSystem.activeId==='wrx'?-.31:-.22);roadContact=true;recenterIfNeeded(absX,absZ,true);ensureRoadProfileNear(absX,absZ);car.position.set(0,roadHeightAt(absX,absZ)+.38,0);drawMap(p.cum)}
-function resetToRoad(){const n=nearestRoute(absX,absZ);if(n){absX=n.px;absZ=n.pz;heading=n.angle;speed=0;steer=0;visualSteer=0;currentSteerAngle=0;longitudinalAccel=0;suspensionRoll=0;suspensionPitch=0;suspensionHeave=0;bodyGroup.rotation.set(0,0,0);bodyGroup.position.y=(vehicleSystem.activeId==='wrx'?-.31:-.22);roadContact=true;recenterIfNeeded(absX,absZ,true);ensureRoadProfileNear(absX,absZ)}}
+function placeAt(frac){const p=routePointAt(frac);absX=p.x;absZ=p.z;heading=p.angle;speed=0;steer=0;visualSteer=0;currentSteerAngle=0;longitudinalAccel=0;suspensionRoll=0;suspensionPitch=0;suspensionHeave=0;wheelPlaneRoll=0;wheelPlanePitch=0;bodyGroup.rotation.set(0,0,0);bodyGroup.position.y=(vehicleSystem.activeId==='wrx'?-.31:-.22);roadContact=true;recenterIfNeeded(absX,absZ,true);ensureRoadProfileNear(absX,absZ);const placedRoadSurface=roadSurfaceAt(absX,absZ);
+car.position.set(
+  0,
+  (placedRoadSurface?.y??roadHeightAt(absX,absZ)+ROAD_SURFACE_OFFSET)+.38+TIRE_VISUAL_CLEARANCE,
+  0
+);drawMap(p.cum)}
+function resetToRoad(){const n=nearestRoute(absX,absZ);if(n){absX=n.px;absZ=n.pz;heading=n.angle;speed=0;steer=0;visualSteer=0;currentSteerAngle=0;longitudinalAccel=0;suspensionRoll=0;suspensionPitch=0;suspensionHeave=0;wheelPlaneRoll=0;wheelPlanePitch=0;bodyGroup.rotation.set(0,0,0);bodyGroup.position.y=(vehicleSystem.activeId==='wrx'?-.31:-.22);roadContact=true;recenterIfNeeded(absX,absZ,true);ensureRoadProfileNear(absX,absZ)}}
 
 const maxSpeedSlider=$('maxSpeedSlider'),maxSpeedLabel=$('maxSpeedLabel');
 const speedLimitModeBtn=$('speedLimitModeBtn');
