@@ -164,8 +164,14 @@ async function loadElevationAround(absx,absz){
   const result=await elevationService.loadAround(absx,absz);
 
   if(result.count>0){
-    // Visual terrain generation remains in main.js for this first extraction.
-    rebuildLocalWorld();
+    // Several DEM requests can complete almost together. A synchronous full
+    // rebuild here caused visible hitches while driving. Coalesce them.
+    scheduleVisualJob(
+      'elevation-world',
+      rebuildLocalWorld,
+      260
+    );
+
     toast(
       result.count>=5
         ?'Relief réel chargé'
@@ -481,6 +487,38 @@ const sceneryRenderer=createSceneryRenderer({
 
 const rebuildLocalScenery=()=>sceneryRenderer.rebuild();
 
+// Heavy streamed visuals should not all rebuild inside the same animation frame.
+// Coalesce duplicate requests and let the browser place them between frames.
+const deferredVisualJobs=new Set();
+
+function scheduleVisualJob(key,job,timeout=180){
+  if(deferredVisualJobs.has(key))return;
+
+  deferredVisualJobs.add(key);
+
+  const run=()=>{
+    deferredVisualJobs.delete(key);
+
+    try{
+      job();
+    }catch(error){
+      console.warn(
+        `Deferred visual job failed: ${key}`,
+        error
+      );
+    }
+  };
+
+  if('requestIdleCallback' in window){
+    requestIdleCallback(
+      run,
+      {timeout}
+    );
+  }else{
+    setTimeout(run,0);
+  }
+}
+
 
 
 // ---------- Car ----------
@@ -490,7 +528,213 @@ const vehicleSystem=createVehicleSystem({
 
 const car=new THREE.Group();
 
-// ID.4-inspired compact electric crossover proportions — generic, no brand marks.
+// ----- Professional projected vehicle shadow -----
+// A single procedural shader approximates soft chassis occlusion + four tire
+// contacts + a subtle sun-direction tail. It is fully local: it does NOT alter
+// the scene sun, hemisphere light or time-of-day illumination.
+const vehicleShadowUniforms={
+  uOpacity:{value:.72},
+  uSoftness:{value:1.0},
+  uSunTail:{value:new THREE.Vector2(.12,-.22)},
+  uHeightFade:{value:1.0},
+  uVehicleAspect:{value:2.05}
+};
+
+const vehicleShadowMaterial=
+  new THREE.ShaderMaterial({
+    uniforms:vehicleShadowUniforms,
+    transparent:true,
+    depthWrite:false,
+    depthTest:true,
+    side:THREE.DoubleSide,
+    blending:THREE.NormalBlending,
+
+    vertexShader:`
+      varying vec2 vUv;
+
+      void main(){
+        vUv=uv;
+        gl_Position=
+          projectionMatrix*
+          modelViewMatrix*
+          vec4(position,1.0);
+      }
+    `,
+
+    fragmentShader:`
+      precision highp float;
+
+      varying vec2 vUv;
+
+      uniform float uOpacity;
+      uniform float uSoftness;
+      uniform vec2 uSunTail;
+      uniform float uHeightFade;
+      uniform float uVehicleAspect;
+
+      float ellipse(vec2 p,vec2 radius,float feather){
+        vec2 q=p/radius;
+        float d=length(q);
+        return 1.0-smoothstep(
+          1.0-feather,
+          1.0,
+          d
+        );
+      }
+
+      float boxSoft(vec2 p,vec2 halfSize,float radius){
+        vec2 q=abs(p)-halfSize+radius;
+        float outside=length(max(q,0.0))-radius;
+        float inside=min(max(q.x,q.y),0.0);
+        float d=outside+inside;
+
+        return 1.0-smoothstep(
+          -.10,
+          .34*uSoftness,
+          d
+        );
+      }
+
+      float hash21(vec2 p){
+        p=fract(p*vec2(123.34,345.45));
+        p+=dot(p,p+34.345);
+        return fract(p.x*p.y);
+      }
+
+      void main(){
+        // Vehicle-local projected coordinates:
+        // x = left/right, y = front/rear.
+        vec2 p=(vUv-.5)*2.0;
+
+        // Main underbody shape. Two overlapping rounded masses avoid the
+        // obvious "perfect oval" look of the previous approach.
+        float chassis=
+          boxSoft(
+            p+vec2(0.0,.02),
+            vec2(.45,.70),
+            .28
+          );
+
+        float cabinMass=
+          ellipse(
+            p+vec2(0.0,.06),
+            vec2(.50,.74),
+            .27
+          );
+
+        float body=
+          max(
+            chassis*.90,
+            cabinMass*.68
+          );
+
+        // Stronger ambient occlusion immediately below the center of the car.
+        float core=
+          ellipse(
+            p+vec2(0.0,.02),
+            vec2(.37,.57),
+            .30
+          );
+
+        // Single continuous vehicle silhouette only.
+        // No separate tire-contact shadows: the chassis/core masses provide
+        // all near-ground occlusion.
+
+        // Broad directional penumbra. This is deliberately subtle: it hints at
+        // light direction without pretending to be a full geometry shadow map.
+        vec2 tailP=
+          p-
+          uSunTail;
+
+        float tail=
+          ellipse(
+            tailP,
+            vec2(.60,.82),
+            .34
+          );
+
+        // Ground-contact weighting:
+        // one continuous body silhouette with a darker central contact core
+        // and only a subtle directional penumbra.
+        float alpha=
+          body*.56+
+          core*.34+
+          tail*.10;
+
+        // Avoid perfectly smooth computer-generated edges.
+        float n=
+          hash21(
+            gl_FragCoord.xy*.35
+          )-.5;
+
+        alpha+=
+          n*.018*alpha;
+
+        // Fade the very outer fringe to remove any visible rectangular quad.
+        vec2 edgeUv=
+          abs(vUv-.5)*2.0;
+
+        float edgeFade=
+          1.0-
+          smoothstep(
+            .82,
+            1.0,
+            max(edgeUv.x,edgeUv.y)
+          );
+
+        alpha*=
+          edgeFade*
+          uOpacity*
+          uHeightFade;
+
+        if(alpha<.006){
+          discard;
+        }
+
+        gl_FragColor=
+          vec4(
+            0.0,
+            0.0,
+            0.0,
+            clamp(alpha,0.0,.82)
+          );
+      }
+    `
+  });
+
+const vehicleShadowRig=
+  new THREE.Group();
+
+vehicleShadowRig.name=
+  'vehicle-projected-shadow-rig';
+
+// Yaw first, then local pitch/roll. The child plane keeps its own permanent
+// ground-facing rotation, so updating the rig can never stand the shadow upright.
+vehicleShadowRig.rotation.order='YXZ';
+
+const vehicleShadow=
+  new THREE.Mesh(
+    new THREE.PlaneGeometry(
+      3.35,
+      6.25,
+      1,
+      1
+    ),
+    vehicleShadowMaterial
+  );
+
+vehicleShadow.name=
+  'vehicle-projected-contact-shadow';
+
+// PlaneGeometry is created in XY. Rotate it once into the rig's local XZ plane.
+// IMPORTANT: never overwrite this rotation in updateContactShadow().
+vehicleShadow.rotation.x=-Math.PI/2;
+vehicleShadow.renderOrder=4;
+
+vehicleShadowRig.add(vehicleShadow);
+scene.add(vehicleShadowRig);
+
+// ID.4-inspired compact electric crossover proportions// ID.4-inspired compact electric crossover proportions// ID.4-inspired compact electric crossover proportions — generic, no brand marks.
 const bodyMat=new THREE.MeshStandardMaterial({color:0xbfc4c9,metalness:.32,roughness:.30});
 const lowerMat=new THREE.MeshStandardMaterial({color:0x20252a,metalness:.10,roughness:.45});
 const glassMat=new THREE.MeshStandardMaterial({color:0x182936,metalness:.18,roughness:.18,transparent:true,opacity:.88});
@@ -1037,9 +1281,13 @@ async function loadSceneryAround(absx,absz){
 
   if(!result.ok)return false;
 
-  // Scenery renderer owns dedicated infrastructure/forest groups, so refreshing
-  // real-world scenery can no longer erase bridges or road signs.
-  rebuildLocalScenery();
+  // Applying hundreds of OSM objects is CPU-heavy. Coalesce and defer the
+  // renderer rebuild so network completion cannot interrupt a driving frame.
+  scheduleVisualJob(
+    'scenery',
+    rebuildLocalScenery,
+    220
+  );
 
   sceneryStatus.textContent=
     `${result.cached?'Cache':'OSM'} · ${sceneryFeatures.length} objets`;
@@ -1866,31 +2114,128 @@ function rebuildLocalWorld(){
    }
  }
 
- // lightweight boreal forest, deterministic around the current render origin
+ // Lightweight boreal forest, deterministic around the current render origin.
+ // Instancing avoids recreating hundreds of individual geometries on each stream
+ // refresh and also cuts the resulting draw-call count dramatically.
  let seed=Math.floor(worldOffset.x/90)*73856093 ^ Math.floor(worldOffset.z/90)*19349663;
  function rnd(){seed=(seed*1664525+1013904223)|0;return ((seed>>>0)/4294967296)}
+
+ const nearTrees=[];
+ const farTrees=[];
+
  for(let i=0;i<170;i++){
-   const rx=(rnd()-.5)*1700,rz=(rnd()-.5)*1700,absx=worldOffset.x+rx,absz=worldOffset.z+rz,n=nearestRoute(absx,absz);
+   const rx=(rnd()-.5)*1700;
+   const rz=(rnd()-.5)*1700;
+   const absx=worldOffset.x+rx;
+   const absz=worldOffset.z+rz;
+   const n=nearestRoute(absx,absz);
+
    if(n&&n.d<16)continue;
    if(isWaterAt(absx,absz,7))continue;
-   const scale=.7+rnd()*.8,y=terrainAbs(absx,absz),dist=Math.hypot(rx,rz);
-   // Vegetation LOD: full tree nearby, crown-only mid-range, sparse far edge.
+
+   const scale=.7+rnd()*.8;
+   const y=terrainAbs(absx,absz);
+   const dist=Math.hypot(rx,rz);
+
    if(dist<520){
-     const trunk=new THREE.Mesh(new THREE.CylinderGeometry(.12*scale,.18*scale,1.5*scale,6),treeTrunkMat);trunk.position.set(rx,y+.75*scale,rz);
-     const crown=new THREE.Mesh(new THREE.ConeGeometry(.9*scale,3.4*scale,7),treeMat);crown.position.set(rx,y+2.35*scale,rz);
-     forestGroup.add(trunk,crown);
+     nearTrees.push({rx,rz,y,scale});
    }else if(dist<900 || i%3===0){
-     const crown=new THREE.Mesh(new THREE.ConeGeometry(.9*scale,3.4*scale,6),treeMat);crown.position.set(rx,y+2.15*scale,rz);
-     forestGroup.add(crown);
+     farTrees.push({rx,rz,y,scale});
    }
  }
- rebuildGroundTerrain();
+
+ const dummy=new THREE.Object3D();
+
+ if(nearTrees.length){
+   const trunkGeom=new THREE.CylinderGeometry(.12,.18,1.5,6);
+   const crownGeom=new THREE.ConeGeometry(.9,3.4,7);
+
+   const trunks=new THREE.InstancedMesh(
+     trunkGeom,
+     treeTrunkMat,
+     nearTrees.length
+   );
+
+   const crowns=new THREE.InstancedMesh(
+     crownGeom,
+     treeMat,
+     nearTrees.length
+   );
+
+   for(let i=0;i<nearTrees.length;i++){
+     const t=nearTrees[i];
+
+     dummy.position.set(
+       t.rx,
+       t.y+.75*t.scale,
+       t.rz
+     );
+     dummy.scale.setScalar(t.scale);
+     dummy.rotation.set(0,0,0);
+     dummy.updateMatrix();
+     trunks.setMatrixAt(i,dummy.matrix);
+
+     dummy.position.set(
+       t.rx,
+       t.y+2.35*t.scale,
+       t.rz
+     );
+     dummy.updateMatrix();
+     crowns.setMatrixAt(i,dummy.matrix);
+   }
+
+   trunks.instanceMatrix.needsUpdate=true;
+   crowns.instanceMatrix.needsUpdate=true;
+   forestGroup.add(trunks,crowns);
+ }
+
+ if(farTrees.length){
+   const crownGeom=new THREE.ConeGeometry(.9,3.4,6);
+
+   const crowns=new THREE.InstancedMesh(
+     crownGeom,
+     treeMat,
+     farTrees.length
+   );
+
+   for(let i=0;i<farTrees.length;i++){
+     const t=farTrees[i];
+
+     dummy.position.set(
+       t.rx,
+       t.y+2.15*t.scale,
+       t.rz
+     );
+     dummy.scale.setScalar(t.scale);
+     dummy.rotation.set(0,0,0);
+     dummy.updateMatrix();
+     crowns.setMatrixAt(i,dummy.matrix);
+   }
+
+   crowns.instanceMatrix.needsUpdate=true;
+   forestGroup.add(crowns);
+ }
+
+ // terrainService.setRoadBed() already rebuilt the main terrain geometry above.
+ // The old rebuildGroundTerrain() here rebuilt the exact same ~120x120 mesh a
+ // second time and was a major avoidable frame spike.
  rebuildLocalWater();
- rebuildLocalScenery();
+
+ scheduleVisualJob(
+   'scenery',
+   rebuildLocalScenery,
+   220
+ );
+
  addEnhancedBridgeFurniture();
  addCurrentRoadSigns();
  addGeographicRoadSigns();
- rebuildHorizon();
+
+ scheduleVisualJob(
+   'horizon',
+   rebuildHorizon,
+   260
+ );
 }
 function recenterIfNeeded(absx,absz,force=false){
  const dx=absx-worldOffset.x,dz=absz-worldOffset.z;
@@ -2426,6 +2771,120 @@ function updateSuspensionVisuals(dt,onRoad,currentSteerAngle){
   bodyGroup.position.y=
     bodyBaseY+
     suspensionHeave;
+}
+
+function updateContactShadow(){
+  const roadSurface=
+    roadContact
+      ?roadSurfaceAt(absX,absZ)
+      :null;
+
+  const groundY=
+    roadSurface?.y??
+    terrainAbs(absX,absZ);
+
+  // Keep the projection on the actual support plane.
+  vehicleShadowRig.position.set(
+    car.position.x,
+    groundY+.032,
+    car.position.z
+  );
+
+  const surfacePitch=
+    roadContact
+      ?wheelPlanePitch
+      :0;
+
+  const surfaceRoll=
+    roadContact
+      ?wheelPlaneRoll
+      :0;
+
+  // The rig follows vehicle heading + road support plane.
+  // The child quad remains permanently horizontal relative to this rig.
+  vehicleShadowRig.rotation.set(
+    -surfacePitch,
+    heading,
+    -surfaceRoll
+  );
+
+  const rideGap=
+    Math.max(
+      0,
+      car.position.y-groundY-.35
+    );
+
+  // Contact shadow is strongest near the road and softens/spreads if the car
+  // becomes airborne or crests a sharp grade.
+  vehicleShadowUniforms.uHeightFade.value=
+    Math.max(
+      .22,
+      Math.min(
+        1,
+        1-rideGap*.52
+      )
+    );
+
+  const spread=
+    1+
+    Math.min(
+      .20,
+      rideGap*.12
+    );
+
+  vehicleShadow.scale.set(
+    spread,
+    spread,
+    1
+  );
+
+  // Use the current time-of-day sun only as a DIRECTION INPUT.
+  // The shadow shader never moves or modifies the actual sun.
+  const sunLen=
+    Math.hypot(
+      sun.position.x,
+      sun.position.z
+    )||1;
+
+  const sunX=
+    sun.position.x/sunLen;
+
+  const sunZ=
+    sun.position.z/sunLen;
+
+  // Rotate world sun direction into vehicle-local axes.
+  const sinH=Math.sin(heading);
+  const cosH=Math.cos(heading);
+
+  const localSide=
+    sunX*cosH-
+    sunZ*sinH;
+
+  const localForward=
+    sunX*sinH+
+    sunZ*cosH;
+
+  // Shadow extends opposite the incoming sun direction.
+  vehicleShadowUniforms.uSunTail.value.set(
+    -localSide*.16,
+    -localForward*.24
+  );
+
+  // Slightly stronger at daytime, but never enough to override the global
+  // lighting cycle. At night it behaves mostly as ambient contact occlusion.
+  const daylight=
+    Math.max(
+      0,
+      Math.sin(
+        (timeOfDay-6)/
+        12*
+        Math.PI
+      )
+    );
+
+  vehicleShadowUniforms.uOpacity.value=
+    .62+
+    daylight*.13;
 }
 
 function updateDrive(dt){
@@ -3343,18 +3802,27 @@ $('clearHydroCacheBtn').addEventListener('click',async()=>{
 setTimeOfDay(12);
 
 // ---------- main ----------
+let nextDirectionalPrefetchAt=0;
+
 function animate(now){
  requestAnimationFrame(animate);
  const dt=Math.min(.033,(now-last)/1000||.016);last=now;
  try{
    gamepad.update();
    updateDrive(dt);
+   updateContactShadow();
+
    try{vehicleAudio.update()}catch(audioErr){
      console.warn('Audio frame error',audioErr);
      vehicleAudio.showError();
    }
    cameraController.update(dt);
-   worldStreaming.prefetchDirectional(absX,absZ);
+
+   if(now>=nextDirectionalPrefetchAt){
+     nextDirectionalPrefetchAt=now+100;
+     worldStreaming.prefetchDirectional(absX,absZ);
+   }
+
    waterTex.offset.x=(waterTex.offset.x+dt*.003)%1;
    waterTex.offset.y=(waterTex.offset.y+dt*.0015)%1;
    drawCompass();
