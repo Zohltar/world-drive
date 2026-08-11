@@ -588,22 +588,34 @@ export function createVehicleAudio({
         );
       }else{
         // Road-car combustion model. Preserve the boxer-turbo character used
-        // by WRX and generic combustion vehicles.
+        // by WRX and generic combustion vehicles, with a dedicated naturally
+        // aspirated V12 texture for the Countach.
+        const isCountachV12=
+          currentProfile.profile==='countach-v12';
+
         const fireHz=
-          rpm/60*2;
+          isCountachV12
+            ?rpm/60*6
+            :rpm/60*2;
 
         exhaustOsc1.type='sawtooth';
         exhaustOsc2.type='triangle';
         turboOsc.type='sine';
 
         exhaustOsc1.frequency.setTargetAtTime(
-          Math.max(28,fireHz*.50),
+          Math.max(
+            28,
+            fireHz*(isCountachV12 ? .32 : .50)
+          ),
           now,
           .035
         );
 
         exhaustOsc2.frequency.setTargetAtTime(
-          Math.max(34,fireHz*.93),
+          Math.max(
+            34,
+            fireHz*(isCountachV12 ? .54 : .93)
+          ),
           now,
           .040
         );
@@ -626,9 +638,9 @@ export function createVehicleAudio({
 
         exhaustFilter.type='lowpass';
         exhaustFilter.frequency.setTargetAtTime(
-          360+
-          accelLoad*780+
-          rpm/13,
+          isCountachV12
+            ?520+accelLoad*980+rpm/9
+            :360+accelLoad*780+rpm/13,
           now,
           .055
         );
@@ -656,12 +668,14 @@ export function createVehicleAudio({
         );
 
         turboGain.gain.setTargetAtTime(
-          Math.max(
-            .0001,
-            boostGate*
-            accelLoad*
-            .055
-          ),
+          isCountachV12
+            ? .0001
+            :Math.max(
+                .0001,
+                boostGate*
+                accelLoad*
+                .055
+              ),
           now,
           .045
         );
@@ -716,16 +730,15 @@ export function createVehicleAudio({
       );
     }
 
-    // Direct G-force driven tire/brake audio.
-    // Current G is the only trigger. No hold, no hysteresis, no delayed state.
+    // V18K — lateral tire audio now uses the SAME grip saturation value as
+    // vehicle physics. Steering input by itself can no longer trigger squeal.
     const speed=state.speed||0;
 
-    const yawRate=
-      (speed/Math.max(.1,vehicle.wheelbase))*
-      Math.tan(state.currentSteerAngle||0);
-
-    const lateralG=
-      Math.abs(speed*yawRate)/9.81;
+    const gripUsage=
+      Math.max(
+        0,
+        Number(state.lateralGripUsage)||0
+      );
 
     const brakingG=
       Math.max(
@@ -733,12 +746,14 @@ export function createVehicleAudio({
         -(state.longitudinalAccel||0)/9.81
       );
 
+    // Start only at the real adhesion limit. The small .98 allowance avoids
+    // numerical flutter exactly around 1.00 after the shared physical buildup.
     const lateralNorm=
       Math.max(
         0,
         Math.min(
           1,
-          (lateralG-.38)/.62
+          (gripUsage-.98)/.17
         )
       );
 
@@ -755,18 +770,11 @@ export function createVehicleAudio({
       lateralNorm*lateralNorm*
       (3-2*lateralNorm);
 
-    const combinedG=
-      Math.min(
-        1,
-        Math.sqrt(
-          lateralNorm*lateralNorm+
-          brakingNorm*brakingNorm
-        )
-      );
-
+    // Brake sample is now purely longitudinal. A corner by itself should not
+    // produce brake squeal in addition to the tire scrub sample.
     const brakeLevel=
-      combinedG*combinedG*
-      (3-2*combinedG);
+      brakingNorm*brakingNorm*
+      (3-2*brakingNorm);
 
     const speedGate=
       Math.max(

@@ -1,4 +1,4 @@
-// World Drive V18D - N-player LAN client with remote night headlights.
+// World Drive V18J - N-player LAN client with remote skid-state relay.
 // No remote physics/collisions: each peer only broadcasts presentation state.
 
 const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
@@ -289,6 +289,8 @@ export function createMultiplayerClient({
   getLocalRenderPosition=null,
   solveRemoteSupport=null,
   getHeadlightLevel=()=>0,
+  onRemoteSkidFrame=null,
+  onRemotePeerRemoved=null,
   statusEl=null,
   countEl=null,
   serverEl=null,
@@ -387,6 +389,11 @@ export function createMultiplayerClient({
         targetSteer:Number(message.steer)||0,
         speed:Number(message.speed)||0,
         braking:!!message.braking,
+        onRoad:!!message.onRoad,
+        skidFront:Number(message.skidFront)||0,
+        targetSkidFront:Number(message.skidFront)||0,
+        skidRear:Number(message.skidRear)||0,
+        targetSkidRear:Number(message.skidRear)||0,
         lastSeq:Number(message.seq)||0,
 
         bodyPitch:Number(message.bodyPitch)||0,
@@ -436,6 +443,18 @@ export function createMultiplayerClient({
     if(Number.isFinite(message.steer))peer.targetSteer=message.steer;
     if(Number.isFinite(message.speed))peer.speed=message.speed;
 
+    if(Number.isFinite(message.skidFront)){
+      peer.targetSkidFront=Math.max(0,Math.min(1,message.skidFront));
+    }
+
+    if(Number.isFinite(message.skidRear)){
+      peer.targetSkidRear=Math.max(0,Math.min(1,message.skidRear));
+    }
+
+    if(typeof message.onRoad==='boolean'){
+      peer.onRoad=message.onRoad;
+    }
+
     if(Number.isFinite(message.bodyPitch)){
       peer.targetBodyPitch=message.bodyPitch;
     }
@@ -466,6 +485,7 @@ export function createMultiplayerClient({
       scene.remove(peer.visual.root);
       peer.visual.dispose();
     }
+    onRemotePeerRemoved?.(id);
     peers.delete(id);
     updateCount();
   }
@@ -499,6 +519,9 @@ export function createMultiplayerClient({
       vehicleId:state.vehicleId,
       steer:state.steer,
       braking:state.braking,
+      onRoad:state.onRoad,
+      skidFront:state.skidFront,
+      skidRear:state.skidRear,
       bodyPitch:state.bodyPitch,
       bodyYaw:state.bodyYaw,
       bodyRoll:state.bodyRoll,
@@ -609,6 +632,7 @@ export function createMultiplayerClient({
     const offset=getWorldOffset?.();
     const interp=1-Math.exp(-dt*10.5);
     const steerInterp=1-Math.exp(-dt*13);
+    const skidInterp=1-Math.exp(-dt*14);
 
     for(const peer of peers.values()){
       peer.lat=lerp(peer.lat,peer.targetLat,interp);
@@ -616,6 +640,18 @@ export function createMultiplayerClient({
       peer.y=lerp(peer.y,peer.targetY,interp);
       peer.heading=angleLerp(peer.heading,peer.targetHeading,interp);
       peer.steer=lerp(peer.steer,peer.targetSteer,steerInterp);
+
+      peer.skidFront=lerp(
+        peer.skidFront,
+        peer.targetSkidFront,
+        skidInterp
+      );
+
+      peer.skidRear=lerp(
+        peer.skidRear,
+        peer.targetSkidRear,
+        skidInterp
+      );
 
       peer.bodyPitch=lerp(
         peer.bodyPitch,
@@ -697,6 +733,16 @@ export function createMultiplayerClient({
           0,
           Infinity
         );
+
+        onRemoteSkidFrame?.({
+          id:peer.id,
+          onRoad:false,
+          skidFront:0,
+          skidRear:0,
+          contacts:[],
+          distance:Infinity
+        });
+
         continue;
       }
 
@@ -853,10 +899,21 @@ export function createMultiplayerClient({
           .lerp(peer.visual.brakeHot,brake);
       }
 
+      const peerDistance=Math.sqrt(relativeD2);
+
       peer.visual.setHeadlights?.(
         getHeadlightLevel(),
-        Math.sqrt(relativeD2)
+        peerDistance
       );
+
+      onRemoteSkidFrame?.({
+        id:peer.id,
+        onRoad:peer.onRoad,
+        skidFront:peer.skidFront,
+        skidRear:peer.skidRear,
+        contacts:localSupport?.wheelContacts||[],
+        distance:peerDistance
+      });
     }
   }
 

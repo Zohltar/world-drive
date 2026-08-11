@@ -206,6 +206,58 @@ const PROFILES={
     }
   },
 
+  countach_80:{
+    id:'countach_80',
+    name:'Lamborghini Countach rouge',
+    description:'Supercar V12 des années 80 · propulsion',
+
+    physics:{
+      topSpeedKmh:320,
+
+      // Fast, raw 1980s supercar: noticeably stronger than the road sedans,
+      // but still far below the F1's acceleration/braking/grip envelope.
+      accel:9.0,
+      brake:11.8,
+      reverseAccel:3.0,
+      rolling:0.36,
+      aero:0.00078,
+      wheelbase:2.45,
+
+      // Wide tires + unassisted old-school steering: strong low-speed lock,
+      // progressively calmer at very high speed.
+      maxSteerLow:0.43,
+      maxSteerHigh:0.142,
+      steeringResponseHigh:5.8,
+
+      roadGripMultiplier:1.16,
+      lateralAccelLimit:10.3,
+
+      // Very much a road car despite its exotic shape.
+      offroadGrip:0.42,
+      offroadDrag:1.45
+    },
+
+    audio:{
+      type:'combustion',
+      profile:'countach-v12',
+      idleRpm:950,
+      redlineRpm:7500,
+      gearCount:5,
+      topSpeedKmh:320,
+      shiftPoints:[72,126,188,252,320],
+      cylinders:12,
+      naturallyAspirated:true
+    },
+
+    visual:{
+      type:'wedge-supercar',
+      profile:'countach_80',
+      rideHeight:0.18,
+      color:'red',
+      rearWing:true
+    }
+  },
+
   i3_2017:{
     id:'i3_2017',
     name:'BMW i3 2017 blanche/noire',

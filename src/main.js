@@ -18,8 +18,11 @@ import { createWaterDataService } from './water-data.js';
 import { createWaterRenderer } from './water-renderer.js';
 import { createWorldStreaming } from './world-streaming.js';
 import { createVehicleSystem } from './vehicle-system.js';
-import { buildWrxVisual } from './wrx-visual.js';
 import { createMultiplayerClient } from './multiplayer.js';
+import { createVehicleVisualSystem } from './vehicle-visuals.js';
+import { createMultiplayerVisualSystem } from './multiplayer-visuals.js';
+import { createVehiclePresentation } from './vehicle-presentation.js';
+import { createSkidMarkSystem } from './skidmarks.js';
 
 // Default test route. V4 can replace these coordinates at runtime.
 const MANIC2={lat:49.3213,lon:-68.3467,name:'Manic‑2'};
@@ -329,6 +332,127 @@ const renderer=new THREE.WebGLRenderer({antialias:true,powerPreference:'high-per
 renderer.setSize(innerWidth,innerHeight);renderer.setPixelRatio(Math.min(devicePixelRatio,1.6));renderer.shadowMap.enabled=true;renderer.shadowMap.type=THREE.PCFSoftShadowMap;renderer.outputColorSpace=THREE.SRGBColorSpace;renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=1.02;$('app').appendChild(renderer.domElement);
 const hemi=new THREE.HemisphereLight(0xd6ecff,0x4e6345,2.15);scene.add(hemi);
 const sun=new THREE.DirectionalLight(0xfff2d2,2.6);sun.position.set(-180,260,-120);sun.castShadow=true;sun.shadow.mapSize.set(2048,2048);sun.shadow.camera.left=-300;sun.shadow.camera.right=300;sun.shadow.camera.top=300;sun.shadow.camera.bottom=-300;scene.add(sun);
+
+// ---------- V18G crescent moon + subtle moonlight ----------
+// The moon is intentionally much weaker than the sun. Its role is mainly to
+// reveal car/body shapes at night while headlights remain the dominant light.
+const moonLight=
+  new THREE.DirectionalLight(
+    0xb9d7ff,
+    0
+  );
+
+moonLight.castShadow=false;
+scene.add(moonLight);
+
+function createCrescentMoonTexture(){
+  const canvas=document.createElement('canvas');
+  canvas.width=256;
+  canvas.height=256;
+
+  const ctx=canvas.getContext('2d');
+  ctx.clearRect(0,0,256,256);
+
+  // Soft outer halo.
+  const halo=
+    ctx.createRadialGradient(
+      128,128,42,
+      128,128,116
+    );
+
+  halo.addColorStop(
+    0,
+    'rgba(218,232,255,.25)'
+  );
+
+  halo.addColorStop(
+    .55,
+    'rgba(190,215,255,.09)'
+  );
+
+  halo.addColorStop(
+    1,
+    'rgba(170,205,255,0)'
+  );
+
+  ctx.fillStyle=halo;
+  ctx.beginPath();
+  ctx.arc(128,128,116,0,Math.PI*2);
+  ctx.fill();
+
+  // Bright disc.
+  ctx.fillStyle='rgba(236,244,255,.98)';
+  ctx.beginPath();
+  ctx.arc(128,128,67,0,Math.PI*2);
+  ctx.fill();
+
+  // Cut away an offset disc to form a classic crescent.
+  ctx.globalCompositeOperation='destination-out';
+  ctx.beginPath();
+  ctx.arc(158,111,67,0,Math.PI*2);
+  ctx.fill();
+
+  ctx.globalCompositeOperation='source-over';
+
+  const texture=
+    new THREE.CanvasTexture(canvas);
+
+  texture.colorSpace=THREE.SRGBColorSpace;
+  texture.needsUpdate=true;
+  return texture;
+}
+
+const moonTexture=
+  createCrescentMoonTexture();
+
+const moonMaterial=
+  new THREE.SpriteMaterial({
+    map:moonTexture,
+    color:0xe8f2ff,
+    transparent:true,
+    opacity:0,
+    depthWrite:false,
+    depthTest:false,
+    fog:false
+  });
+
+const moonSprite=
+  new THREE.Sprite(moonMaterial);
+
+moonSprite.scale.set(
+  115,
+  115,
+  1
+);
+
+moonSprite.renderOrder=-5;
+moonSprite.visible=false;
+scene.add(moonSprite);
+
+const moonDirection=
+  new THREE.Vector3(
+    .35,
+    .72,
+    -.60
+  ).normalize();
+
+function updateMoonSkyPosition(){
+  // Keep the moon effectively at infinity while preserving a stable world
+  // direction as the local rendering origin follows the car.
+  moonSprite.position
+    .copy(camera.position)
+    .addScaledVector(
+      moonDirection,
+      3100
+    );
+
+  moonLight.position
+    .copy(camera.position)
+    .addScaledVector(
+      moonDirection,
+      850
+    );
+}
 
 const world=new THREE.Group(),
       terrainDetailGroup=new THREE.Group(),
@@ -766,1241 +890,72 @@ function scheduleVisualJob(key,job,timeout=180){
 
 
 
-// ---------- Car ----------
+// ---------- Vehicle systems ----------
 const vehicleSystem=createVehicleSystem({
   initialId:'wrx'
 });
 
-const car=new THREE.Group();
-
-// ----- Professional projected vehicle shadow -----
-// A single procedural shader approximates soft chassis occlusion + four tire
-// contacts + a subtle sun-direction tail. It is fully local: it does NOT alter
-// the scene sun, hemisphere light or time-of-day illumination.
-const vehicleShadowUniforms={
-  uOpacity:{value:.72},
-  uSoftness:{value:1.0},
-  uSunTail:{value:new THREE.Vector2(.12,-.22)},
-  uHeightFade:{value:1.0},
-  uVehicleAspect:{value:2.05}
-};
-
-const vehicleShadowMaterial=
-  new THREE.ShaderMaterial({
-    uniforms:vehicleShadowUniforms,
-    transparent:true,
-    depthWrite:false,
-    depthTest:true,
-    side:THREE.DoubleSide,
-    blending:THREE.NormalBlending,
-
-    vertexShader:`
-      varying vec2 vUv;
-
-      void main(){
-        vUv=uv;
-        gl_Position=
-          projectionMatrix*
-          modelViewMatrix*
-          vec4(position,1.0);
-      }
-    `,
-
-    fragmentShader:`
-      precision highp float;
-
-      varying vec2 vUv;
-
-      uniform float uOpacity;
-      uniform float uSoftness;
-      uniform vec2 uSunTail;
-      uniform float uHeightFade;
-      uniform float uVehicleAspect;
-
-      float ellipse(vec2 p,vec2 radius,float feather){
-        vec2 q=p/radius;
-        float d=length(q);
-        return 1.0-smoothstep(
-          1.0-feather,
-          1.0,
-          d
-        );
-      }
-
-      float boxSoft(vec2 p,vec2 halfSize,float radius){
-        vec2 q=abs(p)-halfSize+radius;
-        float outside=length(max(q,0.0))-radius;
-        float inside=min(max(q.x,q.y),0.0);
-        float d=outside+inside;
-
-        return 1.0-smoothstep(
-          -.10,
-          .34*uSoftness,
-          d
-        );
-      }
-
-      float hash21(vec2 p){
-        p=fract(p*vec2(123.34,345.45));
-        p+=dot(p,p+34.345);
-        return fract(p.x*p.y);
-      }
-
-      void main(){
-        // Vehicle-local projected coordinates:
-        // x = left/right, y = front/rear.
-        vec2 p=(vUv-.5)*2.0;
-
-        // Main underbody shape. Two overlapping rounded masses avoid the
-        // obvious "perfect oval" look of the previous approach.
-        float chassis=
-          boxSoft(
-            p+vec2(0.0,.02),
-            vec2(.45,.70),
-            .28
-          );
-
-        float cabinMass=
-          ellipse(
-            p+vec2(0.0,.06),
-            vec2(.50,.74),
-            .27
-          );
-
-        float body=
-          max(
-            chassis*.90,
-            cabinMass*.68
-          );
-
-        // Stronger ambient occlusion immediately below the center of the car.
-        float core=
-          ellipse(
-            p+vec2(0.0,.02),
-            vec2(.37,.57),
-            .30
-          );
-
-        // Single continuous vehicle silhouette only.
-        // No separate tire-contact shadows: the chassis/core masses provide
-        // all near-ground occlusion.
-
-        // Broad directional penumbra. This is deliberately subtle: it hints at
-        // light direction without pretending to be a full geometry shadow map.
-        vec2 tailP=
-          p-
-          uSunTail;
-
-        float tail=
-          ellipse(
-            tailP,
-            vec2(.60,.82),
-            .34
-          );
-
-        // Ground-contact weighting:
-        // one continuous body silhouette with a darker central contact core
-        // and only a subtle directional penumbra.
-        float alpha=
-          body*.56+
-          core*.34+
-          tail*.10;
-
-        // Avoid perfectly smooth computer-generated edges.
-        float n=
-          hash21(
-            gl_FragCoord.xy*.35
-          )-.5;
-
-        alpha+=
-          n*.018*alpha;
-
-        // Fade the very outer fringe to remove any visible rectangular quad.
-        vec2 edgeUv=
-          abs(vUv-.5)*2.0;
-
-        float edgeFade=
-          1.0-
-          smoothstep(
-            .82,
-            1.0,
-            max(edgeUv.x,edgeUv.y)
-          );
-
-        alpha*=
-          edgeFade*
-          uOpacity*
-          uHeightFade;
-
-        if(alpha<.006){
-          discard;
-        }
-
-        gl_FragColor=
-          vec4(
-            0.0,
-            0.0,
-            0.0,
-            clamp(alpha,0.0,.82)
-          );
-      }
-    `
-  });
-
-const vehicleShadowRig=
-  new THREE.Group();
-
-vehicleShadowRig.name=
-  'vehicle-projected-shadow-rig';
-
-// Yaw first, then local pitch/roll. The child plane keeps its own permanent
-// ground-facing rotation, so updating the rig can never stand the shadow upright.
-vehicleShadowRig.rotation.order='YXZ';
-
-const vehicleShadow=
-  new THREE.Mesh(
-    new THREE.PlaneGeometry(
-      3.35,
-      6.25,
-      1,
-      1
-    ),
-    vehicleShadowMaterial
-  );
-
-vehicleShadow.name=
-  'vehicle-projected-contact-shadow';
-
-// PlaneGeometry is created in XY. Rotate it once into the rig's local XZ plane.
-// IMPORTANT: never overwrite this rotation in updateContactShadow().
-vehicleShadow.rotation.x=-Math.PI/2;
-vehicleShadow.renderOrder=4;
-
-vehicleShadowRig.add(vehicleShadow);
-scene.add(vehicleShadowRig);
-
-// ID.4-inspired compact electric crossover proportions// ID.4-inspired compact electric crossover proportions// ID.4-inspired compact electric crossover proportions — generic, no brand marks.
-const bodyMat=new THREE.MeshStandardMaterial({color:0xbfc4c9,metalness:.32,roughness:.30});
-const lowerMat=new THREE.MeshStandardMaterial({color:0x20252a,metalness:.10,roughness:.45});
-const glassMat=new THREE.MeshStandardMaterial({color:0x182936,metalness:.18,roughness:.18,transparent:true,opacity:.88});
-const lightMat=new THREE.MeshBasicMaterial({color:0xeaf5ff});
-const tailMat=new THREE.MeshBasicMaterial({color:0x8b1825});
-const brakeLampMat=new THREE.MeshBasicMaterial({color:0x8b1825});
-
-// Additional vehicle visuals register their own rear-lamp materials here so
-// updateBrakeLights() can drive every selectable car consistently.
-const extraBrakeLampMaterials=[];
-
-const wheelMat=new THREE.MeshStandardMaterial({color:0x111418,metalness:.25,roughness:.38});
-const rimMat=new THREE.MeshStandardMaterial({color:0xa7adb2,metalness:.65,roughness:.24});
-
-// Lower battery-floor / rocker area
-const floor=new THREE.Mesh(new THREE.BoxGeometry(1.98,.34,4.55),lowerMat);
-floor.position.y=.55;floor.castShadow=true;car.add(floor);
-
-// Main rounded crossover body
-const bodyGeom=new THREE.BoxGeometry(1.92,.70,4.38,3,2,5);
-const body= new THREE.Mesh(bodyGeom,bodyMat);
-body.position.y=.91;body.castShadow=true;car.add(body);
-
-// soften body silhouette by slightly scaling end vertices
-{
-  const p=body.geometry.attributes.position;
-  for(let i=0;i<p.count;i++){
-    const z=p.getZ(i), y=p.getY(i);
-    const end=Math.min(1,Math.abs(z)/2.19);
-    if(y>.05){
-      p.setX(i,p.getX(i)*(1-.07*end));
-      p.setY(i,p.getY(i)-.08*end);
-    }
-  }
-  p.needsUpdate=true;body.geometry.computeVertexNormals();
-}
-
-// Sloped glasshouse / panoramic roof
-const cabinGeom=new THREE.BoxGeometry(1.68,.78,2.45,2,2,4);
-const cabin=new THREE.Mesh(cabinGeom,glassMat);
-cabin.position.set(0,1.48,-.18);
-cabin.castShadow=true;
-car.add(cabin);
-{
-  const p=cabin.geometry.attributes.position;
-  for(let i=0;i<p.count;i++){
-    const z=p.getZ(i), y=p.getY(i);
-    if(y>0){
-      const taper=.10+.12*Math.abs(z)/1.225;
-      p.setX(i,p.getX(i)*(1-taper));
-    }
-    // more sloped windshield/front roof
-    if(z>0)p.setY(i,p.getY(i)-.12*(z/1.225));
-  }
-  p.needsUpdate=true;cabin.geometry.computeVertexNormals();
-}
-
-// Body-colored hood and rear shoulders
-const hood=new THREE.Mesh(new THREE.BoxGeometry(1.72,.22,1.18),bodyMat);
-hood.position.set(0,1.18,1.50);hood.rotation.x=-.035;hood.castShadow=true;car.add(hood);
-
-const rearDeck=new THREE.Mesh(new THREE.BoxGeometry(1.76,.18,.80),bodyMat);
-rearDeck.position.set(0,1.16,-1.73);rearDeck.rotation.x=.025;rearDeck.castShadow=true;car.add(rearDeck);
-
-// Panoramic roof panel
-const roof=new THREE.Mesh(new THREE.BoxGeometry(1.34,.035,1.58),glassMat);
-roof.position.set(0,1.89,-.26);roof.rotation.x=-.015;car.add(roof);
-
-// Continuous front light bar + slim headlights
-const frontBar=new THREE.Mesh(new THREE.BoxGeometry(1.50,.055,.05),lightMat);
-frontBar.position.set(0,1.02,2.205);car.add(frontBar);
-for(const x of [-.68,.68]){
-  const lamp=new THREE.Mesh(new THREE.BoxGeometry(.34,.12,.055),lightMat);
-  lamp.position.set(x,1.00,2.215);car.add(lamp);
-}
-
-// Rear red light bar
-const rearBar=new THREE.Mesh(new THREE.BoxGeometry(1.56,.08,.05),tailMat);
-rearBar.position.set(0,1.06,-2.205);car.add(rearBar);
-
-const brakeLamps=[];
-for(const x of [-.62,.62]){
-  const lamp=new THREE.Mesh(new THREE.BoxGeometry(.34,.15,.055),brakeLampMat);
-  lamp.position.set(x,1.03,-2.215);
-  car.add(lamp);brakeLamps.push(lamp);
-}
-let brakeLightLevel=0;
-const brakeBaseColor=new THREE.Color(0x8b1825);
-const brakeHotColor=new THREE.Color(0xff3048);
-function updateBrakeLights(dt,braking){
-  const target=braking?1:0;
-
-  brakeLightLevel+=
-    (target-brakeLightLevel)*
-    (1-Math.exp(-dt*(braking?14:7)));
-
-  tailMat.color
-    .copy(brakeBaseColor)
-    .lerp(
-      brakeHotColor,
-      brakeLightLevel
-    );
-
-  brakeLampMat.color
-    .copy(brakeBaseColor)
-    .lerp(
-      brakeHotColor,
-      brakeLightLevel
-    );
-
-  for(const entry of extraBrakeLampMaterials){
-    entry.material.color
-      .copy(entry.baseColor)
-      .lerp(
-        entry.hotColor,
-        brakeLightLevel
-      );
-  }
-}
-
-// Black front/rear lower valances
-const frontValance=new THREE.Mesh(new THREE.BoxGeometry(1.72,.24,.18),lowerMat);
-frontValance.position.set(0,.66,2.18);car.add(frontValance);
-const rearValance=new THREE.Mesh(new THREE.BoxGeometry(1.72,.23,.18),lowerMat);
-rearValance.position.set(0,.66,-2.18);car.add(rearValance);
-
-// Wheel arches / wheels
-// Front wheels use a steering pivot group. Tire/rim spin INSIDE the pivot,
-// so wheel roll and steering never fight each other through Euler rotations.
-const wheels=[];
-const frontWheelPivots=[];
-for(const x of [-.86,.86])for(const z of [-1.22,1.22]){
-  const pivot=new THREE.Group();
-  pivot.position.set(x,0,z);
-  car.add(pivot);
-
-  const tire=new THREE.Mesh(new THREE.CylinderGeometry(.38,.38,.27,20),wheelMat);
-  tire.rotation.z=Math.PI/2;
-  tire.castShadow=true;
-  pivot.add(tire);
-
-  const rim=new THREE.Mesh(new THREE.CylinderGeometry(.235,.235,.285,10),rimMat);
-  rim.rotation.z=Math.PI/2;
-  pivot.add(rim);
-
-  wheels.push({
-    pivot,
-    tire,
-    rim,
-    front:z>0,
-    visualCamber:0
-  });
-  if(z>0)frontWheelPivots.push(pivot);
-}
-
-// Subtle wheel-arch trim
-for(const x of [-.83,.83])for(const z of [-1.22,1.22]){
-  const arch=new THREE.Mesh(new THREE.TorusGeometry(.41,.05,8,18,Math.PI),lowerMat);
-  arch.rotation.y=Math.PI/2;
-  arch.rotation.z=(x<0?Math.PI/2:-Math.PI/2);
-  arch.position.set(x,.59,z);
-  car.add(arch);
-}
-
-// Side mirrors
-for(const x of [-1.02,1.02]){
-  const mirror=new THREE.Mesh(new THREE.BoxGeometry(.16,.14,.28),lowerMat);
-  mirror.position.set(x,1.46,.53);mirror.castShadow=true;car.add(mirror);
-}
-
-// Separate sprung body from unsprung wheel assemblies.
-// Everything except wheel pivots becomes the sprung visual body.
-const bodyGroup=new THREE.Group();
-const wheelPivotSet=new Set(wheels.map(w=>w.pivot));
-const sprungChildren=car.children.filter(c=>!wheelPivotSet.has(c));
-for(const child of sprungChildren){
-  car.remove(child);
-  bodyGroup.add(child);
-}
-car.add(bodyGroup);
-// Lower the sprung body relative to wheel centers for compact-crossover proportions.
-// Keeps a modest wheel-arch gap instead of an off-road / lifted stance.
-bodyGroup.position.y=-.22;
-
-// Tag the original visual as ID4 before adding other vehicle models.
-for(const child of bodyGroup.children){
-  child.userData.vehicleId='id4';
-}
-for(const wheel of wheels){
-  wheel.vehicleId='id4';
-  wheel.pivot.userData.vehicleId='id4';
-}
-
-
-function makeVehicleMaterial(color,metalness=.25,roughness=.34){
-  return new THREE.MeshStandardMaterial({
-    color,
-    metalness,
-    roughness
-  });
-}
-
-function addVehicleMesh(group,geometry,material,position,rotation=null){
-  const mesh=new THREE.Mesh(geometry,material);
-  mesh.position.set(...position);
-  if(rotation)mesh.rotation.set(...rotation);
-  mesh.castShadow=true;
-  mesh.userData.vehicleId=group.userData.vehicleId;
-  group.add(mesh);
-  return mesh;
-}
-
-function buildRoadCarVisual({
-  id,
-  color,
-  length=4.55,
-  width=1.82,
-  height=.66,
-  cabinLength=2.25,
-  cabinHeight=.66,
-  wheelbase=2.68,
-  wheelRadius=.35,
-  blackRoof=false,
-  sport=false,
-  compact=false
-}){
-  const group=new THREE.Group();
-  group.userData.vehicleId=id;
-  bodyGroup.add(group);
-
-  const paint=makeVehicleMaterial(color,.34,.27);
-  const dark=makeVehicleMaterial(0x11161b,.15,.42);
-  const glass=makeVehicleMaterial(0x152633,.18,.16);
-  const lamp=new THREE.MeshBasicMaterial({color:0xeaf5ff});
-
-  const rearBaseColor=
-    new THREE.Color(0x861520);
-
-  const rearHotColor=
-    new THREE.Color(0xff3048);
-
-  const red=
-    new THREE.MeshBasicMaterial({
-      color:rearBaseColor.clone()
-    });
-
-  extraBrakeLampMaterials.push({
-    vehicleId:id,
-    material:red,
-    baseColor:rearBaseColor,
-    hotColor:rearHotColor
-  });
-
-  addVehicleMesh(group,new THREE.BoxGeometry(width,.24,length),dark,[0,.61,0]);
-  addVehicleMesh(group,new THREE.BoxGeometry(width*.97,height,length*.94,3,2,5),paint,[0,.94,0]);
-
-  const cabin=addVehicleMesh(
-    group,
-    new THREE.BoxGeometry(width*.82,cabinHeight,cabinLength,2,2,4),
-    blackRoof?dark:glass,
-    [0,1.46,-.12]
-  );
-
-  const cp=cabin.geometry.attributes.position;
-  for(let i=0;i<cp.count;i++){
-    const z=cp.getZ(i);
-    const y=cp.getY(i);
-    if(y>0)cp.setX(i,cp.getX(i)*(.88-.06*Math.abs(z)/(cabinLength*.5)));
-  }
-  cp.needsUpdate=true;
-  cabin.geometry.computeVertexNormals();
-
-  addVehicleMesh(group,new THREE.BoxGeometry(width*.82,.18,length*.24),paint,[0,1.18,length*.34],[-.04,0,0]);
-  addVehicleMesh(group,new THREE.BoxGeometry(width*.85,.14,length*.16),paint,[0,1.16,-length*.40],[.03,0,0]);
-
-  if(blackRoof){
-    addVehicleMesh(group,new THREE.BoxGeometry(width*.62,.04,cabinLength*.58),glass,[0,1.81,-.18]);
-  }
-
-  if(sport){
-    addVehicleMesh(group,new THREE.BoxGeometry(width*.78,.06,.18),dark,[0,1.26,-length*.49]);
-  }
-
-  for(const x of [-width*.34,width*.34]){
-    addVehicleMesh(group,new THREE.BoxGeometry(width*.18,.10,.05),lamp,[x,1.00,length*.475]);
-    addVehicleMesh(group,new THREE.BoxGeometry(width*.20,.12,.05),red,[x,1.00,-length*.475]);
-  }
-
-  const localWheels=[];
-  for(const x of [-width*.47,width*.47]){
-    for(const z of [-wheelbase*.5,wheelbase*.5]){
-      const pivot=new THREE.Group();
-      pivot.position.set(x,0,z);
-      pivot.userData.vehicleId=id;
-      car.add(pivot);
-
-      const tire=new THREE.Mesh(
-        new THREE.CylinderGeometry(wheelRadius,wheelRadius,.25,20),
-        wheelMat
-      );
-      tire.rotation.z=Math.PI/2;
-      tire.castShadow=true;
-      pivot.add(tire);
-
-      const rim=new THREE.Mesh(
-        new THREE.CylinderGeometry(wheelRadius*.61,wheelRadius*.61,.265,10),
-        rimMat
-      );
-      rim.rotation.z=Math.PI/2;
-      pivot.add(rim);
-
-      const wheel={
-        pivot,tire,rim,
-        front:z>0,
-        visualCamber:0,
-        vehicleId:id
-      };
-      wheels.push(wheel);
-      localWheels.push(wheel);
-      if(z>0)frontWheelPivots.push(pivot);
-    }
-  }
-
-  return {group,wheels:localWheels};
-}
-
-function buildF12010Visual(){
-  const id='f1_2010';
-  const group=new THREE.Group();
-  group.userData.vehicleId=id;
-  bodyGroup.add(group);
-
-  const red=makeVehicleMaterial(0xb8141b,.34,.25);
-  const white=makeVehicleMaterial(0xf1f1ed,.28,.30);
-  const carbon=makeVehicleMaterial(0x101214,.12,.30);
-  const glass=makeVehicleMaterial(0x111820,.18,.16);
-
-  const f1BrakeBase=
-    new THREE.Color(0x7f1018);
-
-  const f1BrakeHot=
-    new THREE.Color(0xff2638);
-
-  const f1BrakeMat=
-    new THREE.MeshBasicMaterial({
-      color:f1BrakeBase.clone()
-    });
-
-  extraBrakeLampMaterials.push({
-    vehicleId:id,
-    material:f1BrakeMat,
-    baseColor:f1BrakeBase,
-    hotColor:f1BrakeHot
-  });
-
-  addVehicleMesh(group,new THREE.BoxGeometry(.72,.28,4.55),red,[0,.57,.05]);
-  addVehicleMesh(group,new THREE.BoxGeometry(1.18,.24,1.45),red,[0,.68,-.28]);
-  addVehicleMesh(group,new THREE.BoxGeometry(.54,.38,1.12),white,[0,.90,-.25]);
-  addVehicleMesh(group,new THREE.BoxGeometry(.46,.25,.54),glass,[0,1.05,-.08]);
-  addVehicleMesh(group,new THREE.BoxGeometry(1.72,.08,.38),carbon,[0,.42,2.05]);
-  addVehicleMesh(group,new THREE.BoxGeometry(1.48,.10,.34),carbon,[0,.92,-2.02]);
-  addVehicleMesh(group,new THREE.BoxGeometry(.10,.55,.12),carbon,[-.62,.68,-1.94]);
-  addVehicleMesh(group,new THREE.BoxGeometry(.10,.55,.12),carbon,[.62,.68,-1.94]);
-
-  // Central F1 rear rain/brake light.
-  addVehicleMesh(
-    group,
-    new THREE.BoxGeometry(.18,.10,.06),
-    f1BrakeMat,
-    [0,.61,-2.28]
-  );
-
-  const localWheels=[];
-  for(const x of [-.88,.88]){
-    for(const z of [-1.48,1.48]){
-      const pivot=new THREE.Group();
-      pivot.position.set(x,.04,z);
-      pivot.userData.vehicleId=id;
-      car.add(pivot);
-      const tire=new THREE.Mesh(new THREE.CylinderGeometry(.39,.39,.34,20),wheelMat);
-      tire.rotation.z=Math.PI/2;tire.castShadow=true;pivot.add(tire);
-      const rim=new THREE.Mesh(new THREE.CylinderGeometry(.20,.20,.35,12),rimMat);
-      rim.rotation.z=Math.PI/2;pivot.add(rim);
-      const wheel={pivot,tire,rim,front:z>0,visualCamber:0,vehicleId:id};
-      wheels.push(wheel);localWheels.push(wheel);
-      if(z>0)frontWheelPivots.push(pivot);
-    }
-  }
-  return {group,wheels:localWheels};
-}
-
-const civicVisual=buildRoadCarVisual({
-  id:'civic',
-  color:0x080a0c,
-  length:4.58,
-  width:1.80,
-  height:.61,
-  cabinLength:2.34,
-  cabinHeight:.62,
-  wheelbase:2.70,
-  wheelRadius:.34,
-  sport:true
+const vehicleVisuals=createVehicleVisualSystem({
+  THREE,
+  scene,
+  vehicleSystem
 });
 
-const sonataVisual=buildRoadCarVisual({
-  id:'sonata',
-  color:0xf2f3f1,
-  length:4.86,
-  width:1.86,
-  height:.62,
-  cabinLength:2.48,
-  cabinHeight:.64,
-  wheelbase:2.80,
-  wheelRadius:.35,
-  blackRoof:true,
-  sport:true
+const {
+  car,
+  bodyGroup
+}=vehicleVisuals;
+
+const vehiclePresentation=createVehiclePresentation({
+  THREE,
+  scene,
+  car,
+  bodyGroup,
+  wheels:vehicleVisuals.wheels,
+  vehicleSystem,
+  sun,
+  roadSurfaceAt,
+  terrainAbs,
+  groundHeightForWheel,
+  activeVehicleWheels:vehicleVisuals.activeVehicleWheels,
+  getDrivingState:()=>({
+    heading,
+    absX,
+    absZ,
+    speed,
+    longitudinalAccel,
+    VEHICLE,
+    roadContact,
+    timeOfDay
+  }),
+  ROAD_WHEEL_CONTACT_HALF_WIDTH,
+  WHEEL_RADIUS,
+  TIRE_HALF_WIDTH,
+  TIRE_VISUAL_CLEARANCE
 });
 
-const i3Visual=buildRoadCarVisual({
-  id:'i3_2017',
-  color:0xf1f1ed,
-  length:4.00,
-  width:1.78,
-  height:.78,
-  cabinLength:2.28,
-  cabinHeight:.78,
-  wheelbase:2.57,
-  wheelRadius:.36,
-  blackRoof:true,
-  compact:true
-});
-
-const f12010Visual=buildF12010Visual();
-
-const wrxVisual=buildWrxVisual({
+const multiplayerVisuals=createMultiplayerVisualSystem({
   THREE,
   car,
   bodyGroup,
-  wheels,
-  brakeLampMaterial:brakeLampMat
+  wheels:vehicleVisuals.wheels,
+  tailMat:vehicleVisuals.tailMat,
+  brakeLampMat:vehicleVisuals.brakeLampMat,
+  extraBrakeLampMaterials:vehicleVisuals.extraBrakeLampMaterials,
+  llToXZ,
+  groundHeightForWheel,
+  WHEEL_RADIUS,
+  TIRE_HALF_WIDTH,
+  TIRE_VISUAL_CLEARANCE
 });
 
-function applyVehicleVisualProfile(){
-  const id=vehicleSystem.activeId;
-
-  for(const child of bodyGroup.children){
-    const vehicleId=child.userData?.vehicleId;
-    if(vehicleId){
-      child.visible=vehicleId===id;
-    }
-  }
-
-  for(const wheel of wheels){
-    if(wheel.vehicleId){
-      wheel.pivot.visible=wheel.vehicleId===id;
-    }
-  }
-
-  const stance={
-    id4:-.22,
-    wrx:-.31,
-    civic:-.30,
-    sonata:-.30,
-    f1_2010:-.38,
-    i3_2017:-.24
-  };
-
-  bodyGroup.position.y=
-    stance[id]??-.28;
-}
-
-applyVehicleVisualProfile();
-
-// ---------- V18B exact multiplayer vehicle visuals ----------
-// Remote cars reuse the exact procedural geometry already built for local cars.
-// Geometry is shared (read-only), while materials are cloned per peer so remote
-// brake lights cannot affect the local vehicle or another peer.
-function makeRemotePlayerLabel(name){
-  const canvas=document.createElement('canvas');
-  canvas.width=512;
-  canvas.height=128;
-
-  const ctx=canvas.getContext('2d');
-  ctx.clearRect(0,0,canvas.width,canvas.height);
-  ctx.font='700 52px system-ui, sans-serif';
-  ctx.textAlign='center';
-  ctx.textBaseline='middle';
-
-  const safeName=String(name||'Conducteur').slice(0,24);
-  const width=Math.min(
-    480,
-    Math.max(
-      170,
-      ctx.measureText(safeName).width+58
-    )
-  );
-  const x=(canvas.width-width)/2;
-
-  ctx.fillStyle='rgba(5,13,22,.84)';
-  ctx.strokeStyle='rgba(228,241,255,.78)';
-  ctx.lineWidth=4;
-  ctx.beginPath();
-  ctx.roundRect(x,20,width,88,22);
-  ctx.fill();
-  ctx.stroke();
-
-  ctx.fillStyle='#f6fbff';
-  ctx.fillText(safeName,canvas.width/2,64);
-
-  const texture=new THREE.CanvasTexture(canvas);
-  texture.colorSpace=THREE.SRGBColorSpace;
-  texture.needsUpdate=true;
-
-  const material=new THREE.SpriteMaterial({
-    map:texture,
-    transparent:true,
-    depthTest:false,
-    depthWrite:false
-  });
-
-  const sprite=new THREE.Sprite(material);
-  sprite.position.set(0,2.30,0);
-  sprite.scale.set(3.7,.92,1);
-  sprite.renderOrder=1000;
-
-  return {
-    sprite,
-    dispose(){
-      texture.dispose();
-      material.dispose();
-    }
-  };
-}
-
-function remoteBrakeDefinition(vehicleId,sourceMaterial){
-  if(
-    (vehicleId==='id4'||vehicleId==='wrx')&&
-    (
-      sourceMaterial===tailMat||
-      sourceMaterial===brakeLampMat
-    )
-  ){
-    return {
-      base:new THREE.Color(0x8b1825),
-      hot:new THREE.Color(0xff3048)
-    };
-  }
-
-  const extra=
-    extraBrakeLampMaterials.find(
-      entry=>
-        entry.vehicleId===vehicleId&&
-        entry.material===sourceMaterial
-    );
-
-  if(extra){
-    return {
-      base:extra.baseColor.clone(),
-      hot:extra.hotColor.clone()
-    };
-  }
-
-  return null;
-}
-
-function cloneRemoteVehicleNode(
-  source,
-  vehicleId,
-  objectMap,
-  ownedMaterials,
-  brakeEntries
-){
-  const clone=source.clone(false);
-
-  // Inactive local models are hidden by applyVehicleVisualProfile().
-  // A remote clone must always be visible regardless of our own selected car.
-  clone.visible=true;
-  objectMap.set(source,clone);
-
-  if(source.isMesh){
-    // Geometry is immutable after vehicle construction and is safe to share.
-    clone.geometry=source.geometry;
-
-    const cloneOneMaterial=material=>{
-      const cloned=material.clone();
-      ownedMaterials.add(cloned);
-
-      const brake=
-        remoteBrakeDefinition(
-          vehicleId,
-          material
-        );
-
-      if(brake){
-        brakeEntries.push({
-          material:cloned,
-          baseColor:brake.base,
-          hotColor:brake.hot
-        });
-      }
-
-      return cloned;
-    };
-
-    clone.material=
-      Array.isArray(source.material)
-        ?source.material.map(cloneOneMaterial)
-        :cloneOneMaterial(source.material);
-  }
-
-  for(const child of source.children){
-    clone.add(
-      cloneRemoteVehicleNode(
-        child,
-        vehicleId,
-        objectMap,
-        ownedMaterials,
-        brakeEntries
-      )
-    );
-  }
-
-  return clone;
-}
-
-function remoteHeadlightProfile(vehicleId){
-  const profiles={
-    id4:{x:.64,y:1.02,z:2.18,targetY:.30,targetZ:72},
-    wrx:{x:.62,y:.91,z:2.16,targetY:.26,targetZ:70},
-    civic:{x:.61,y:1.00,z:2.16,targetY:.28,targetZ:70},
-    sonata:{x:.63,y:1.00,z:2.30,targetY:.28,targetZ:72},
-    i3_2017:{x:.58,y:1.04,z:1.91,targetY:.30,targetZ:68},
-    f1_2010:{x:.46,y:.54,z:2.18,targetY:.16,targetZ:74}
-  };
-  return profiles[vehicleId]||profiles.id4;
-}
-
-function createRemoteHeadlightSystem(vehicleId,parent){
-  const profile=remoteHeadlightProfile(vehicleId);
-
-  const rig=new THREE.Group();
-  rig.name=`remote-headlights-${vehicleId}`;
-  parent.add(rig);
-
-  const glowGeometry=
-    new THREE.SphereGeometry(.085,10,6);
-
-  const glowMaterials=[];
-  const glows=[];
-  const lights=[];
-
-  for(const side of [-1,1]){
-    const x=profile.x*side;
-
-    const glowMaterial=
-      new THREE.MeshBasicMaterial({
-        color:0xf3f7ff,
-        transparent:true,
-        opacity:0,
-        depthWrite:false,
-        blending:THREE.AdditiveBlending
-      });
-
-    glowMaterials.push(glowMaterial);
-
-    const glow=
-      new THREE.Mesh(
-        glowGeometry,
-        glowMaterial
-      );
-
-    glow.position.set(
-      x,
-      profile.y,
-      profile.z+.07
-    );
-    glow.scale.set(1.50,.66,.44);
-    glow.renderOrder=7;
-    glow.visible=false;
-    rig.add(glow);
-    glows.push(glow);
-
-    const light=
-      new THREE.SpotLight(
-        0xf4f8ff,
-        0,
-        95,
-        Math.PI/7.2,
-        .60,
-        1.55
-      );
-
-    light.position.set(
-      x,
-      profile.y,
-      profile.z
-    );
-    light.castShadow=false;
-
-    const target=new THREE.Object3D();
-    target.position.set(
-      x*.28,
-      profile.targetY,
-      profile.targetZ
-    );
-
-    rig.add(light);
-    rig.add(target);
-    light.target=target;
-
-    lights.push(light);
-  }
-
-  return {
-    setLevel(level,distanceMeters=0){
-      const night=
-        Math.max(
-          0,
-          Math.min(
-            1,
-            Number(level)||0
-          )
-        );
-
-      const distance=
-        Math.max(
-          0,
-          Number(distanceMeters)||0
-        );
-
-      // Keep projected light local to the convoy/passing-car zone.
-      // Lens glows stay visible much farther away.
-      const beamFade=
-        1-smoothstep01(
-          (distance-150)/130
-        );
-
-      const beamLevel=
-        night*beamFade;
-
-      for(const light of lights){
-        light.intensity=
-          165*beamLevel;
-        light.visible=
-          beamLevel>.01;
-      }
-
-      const glowFade=
-        1-smoothstep01(
-          (distance-900)/1700
-        );
-
-      const glowLevel=
-        night*glowFade;
-
-      for(const glow of glows){
-        glow.material.opacity=
-          .92*glowLevel;
-        glow.visible=
-          glowLevel>.012;
-      }
-    },
-
-    dispose(){
-      glowGeometry.dispose();
-      for(const material of glowMaterials){
-        material.dispose();
-      }
-    }
-  };
-}
-
-function createExactRemoteVehicleVisual(vehicleId,name){
-  const root=new THREE.Group();
-  root.name=`remote-exact-${vehicleId}-${name}`;
-  root.rotation.order='YXZ';
-
-  // Model scale must match the local car exactly.
-  const modelRoot=new THREE.Group();
-  modelRoot.scale.copy(car.scale);
-  root.add(modelRoot);
-
-  // Same architecture as the local vehicle:
-  // yaw is on root, sprung-body pitch/roll is isolated from wheels.
-  const remoteBodyGroup=new THREE.Group();
-  remoteBodyGroup.rotation.order='XYZ';
-  modelRoot.add(remoteBodyGroup);
-
-  const objectMap=new Map();
-  const ownedMaterials=new Set();
-  const brakeEntries=[];
-
-  const bodySources=
-    bodyGroup.children.filter(
-      child=>
-        child.userData?.vehicleId===vehicleId
-    );
-
-  if(!bodySources.length){
-    return null;
-  }
-
-  for(const source of bodySources){
-    remoteBodyGroup.add(
-      cloneRemoteVehicleNode(
-        source,
-        vehicleId,
-        objectMap,
-        ownedMaterials,
-        brakeEntries
-      )
-    );
-  }
-
-  const remoteHeadlights=
-    createRemoteHeadlightSystem(
-      vehicleId,
-      remoteBodyGroup
-    );
-
-  const remoteWheels=[];
-
-  for(const sourceWheel of wheels){
-    if(sourceWheel.vehicleId!==vehicleId)continue;
-
-    const wheelMap=new Map();
-    const clonedPivot=
-      cloneRemoteVehicleNode(
-        sourceWheel.pivot,
-        vehicleId,
-        wheelMap,
-        ownedMaterials,
-        brakeEntries
-      );
-
-    // Suspension Y is dynamic on the local wheel pivot. Start the remote clone
-    // at the neutral contact plane; multiplayer.update() solves visual Y.
-    clonedPivot.position.y=0;
-    modelRoot.add(clonedPivot);
-
-    const clonedTire=
-      wheelMap.get(sourceWheel.tire);
-
-    const clonedRim=
-      wheelMap.get(sourceWheel.rim);
-
-    const radius=
-      Number(
-        sourceWheel.tire?.geometry?.parameters?.radiusTop
-      )||.38;
-
-    remoteWheels.push({
-      pivot:clonedPivot,
-      tire:clonedTire,
-      rim:clonedRim,
-      front:!!sourceWheel.front,
-      radius,
-      baseX:clonedPivot.position.x,
-      baseZ:clonedPivot.position.z
-    });
-  }
-
-  if(remoteWheels.length!==4){
-    console.warn(
-      'Remote vehicle wheel clone incomplete',
-      vehicleId,
-      remoteWheels.length
-    );
-  }
-
-  const label=
-    makeRemotePlayerLabel(name);
-
-  root.add(label.sprite);
-
-  return {
-    root,
-    modelRoot,
-    bodyGroup:remoteBodyGroup,
-    wheels:remoteWheels,
-    brakeEntries,
-    setBraking(level){
-      for(const entry of brakeEntries){
-        entry.material.color
-          .copy(entry.baseColor)
-          .lerp(entry.hotColor,level);
-      }
-    },
-    setHeadlights(level,distanceMeters){
-      remoteHeadlights.setLevel(
-        level,
-        distanceMeters
-      );
-    },
-    dispose(){
-      label.dispose();
-      remoteHeadlights.dispose();
-
-      for(const material of ownedMaterials){
-        material.dispose?.();
-      }
-
-      // Shared local vehicle geometry is deliberately NOT disposed here.
-      root.clear();
-      objectMap.clear();
-    }
-  };
-}
-
-// ----- Automatic vehicle headlights -----
-// Vehicle-agnostic rig: attached to the sprung body so the beams follow
-// pitch/roll/camber, while remaining visible for both ID4 and WRX visuals.
-const headlightRig=new THREE.Group();
-headlightRig.name='vehicle-headlights';
-bodyGroup.add(headlightRig);
-
-const headlightGlowMat=new THREE.MeshBasicMaterial({
-  color:0xf3f7ff,
-  transparent:true,
-  opacity:0,
-  depthWrite:false
+const skidMarks=createSkidMarkSystem({
+  THREE,
+  scene,
+  getWorldOffset:()=>worldOffset,
+  getRoadSurface:(x,z)=>roadSurfaceAt(x,z),
+  maxSegments:1800
 });
-
-const headlightLights=[];
-const headlightGlows=[];
-
-for(const x of [-.64,.64]){
-  // Small visible LED/lens glow.
-  const glow=new THREE.Mesh(
-    new THREE.SphereGeometry(.085,10,6),
-    headlightGlowMat.clone()
-  );
-  glow.position.set(x,1.02,2.25);
-  glow.scale.set(1.45,.65,.42);
-  glow.renderOrder=6;
-  headlightRig.add(glow);
-  headlightGlows.push(glow);
-
-  // Real forward illumination. Shadows are intentionally disabled:
-  // two shadow-casting spotlights would be unnecessarily expensive.
-  const light=new THREE.SpotLight(
-    0xf4f8ff,
-    0,
-    95,
-    Math.PI/7.5,
-    .58,
-    1.55
-  );
-
-  light.position.set(x,1.02,2.18);
-  light.castShadow=false;
-
-  const target=new THREE.Object3D();
-  target.position.set(
-    x*.30,
-    .30,
-    72
-  );
-
-  headlightRig.add(light);
-  headlightRig.add(target);
-  light.target=target;
-
-  headlightLights.push(light);
-}
-
-let headlightLevel=0;
-
-function smoothstep01(value){
-  const t=Math.max(0,Math.min(1,value));
-  return t*t*(3-2*t);
-}
-
-function updateAutomaticHeadlights(daylight){
-  // Full headlights at night and around civil twilight.
-  // Fade out gradually once daylight becomes strong enough.
-  const duskFactor=
-    1-smoothstep01(
-      (daylight-.10)/.24
-    );
-
-  headlightLevel=duskFactor;
-
-  for(const light of headlightLights){
-    light.intensity=
-      185*headlightLevel;
-  }
-
-  for(const glow of headlightGlows){
-    glow.material.opacity=
-      .12+
-      .88*headlightLevel;
-    glow.visible=
-      headlightLevel>.015;
-  }
-}
-
-function activeVehicleWheels(){
-  return wheels.filter(
-    wheel=>!wheel.vehicleId||wheel.vehicleId===vehicleSystem.activeId
-  );
-}
-
-// Suspension visual state
-let suspensionRoll=0;
-let suspensionPitch=0;
-let suspensionHeave=0;
-
-// Small visual-only chassis yaw while cornering. This does not alter heading,
-// steering physics, tire contact, trajectory or camera target.
-let corneringVisualYaw=0;
-
-// Static visual plane defined by the four actual wheel contacts.
-let wheelPlaneRoll=0;
-let wheelPlanePitch=0;
-
-let lastWheelGround=[0,0,0,0];
-
-// Slightly larger crossover scale than old sedan-like box
-car.scale.set(.80,.80,.80);
-scene.add(car);
 
 function clearGroup(g){while(g.children.length){const c=g.children.pop();c.traverse?.(o=>{if(o.geometry)o.geometry.dispose();if(o.material&&![roadMat,shoulderMat,lineYellow,lineWhite,treeTrunkMat,treeMat].includes(o.material)){if(Array.isArray(o.material))o.material.forEach(m=>m.dispose());else o.material.dispose()}})}}
 function segMesh(ax,az,bx,bz,width,mat,y=.05){
@@ -3229,6 +2184,7 @@ function recenterIfNeeded(absx,absz,force=false){
 function resetWorldCaches(){
   worldStreaming.reset();
   waterData.reset();
+  skidMarks.clear();
 
   route.length=0;segments.length=0;routeLength=0;
   bridgeManager.reset();
@@ -3387,6 +2343,13 @@ let longitudinalAccel=0;
 let visualSteer=0;
 let bodyHeave=0;
 let currentSteerAngle=0; // shared with audio / visual systems
+
+// V18K — tire stress comes from the actual vehicle-physics grip clamp.
+// This value is intentionally smoothed a little to represent tire-force/slip
+// buildup and to ignore a momentary joystick twitch.
+// 1.0 = the requested cornering force has reached available lateral grip.
+let lateralGripUsage=0;
+
 // Mutable object identity is intentional: audio/physics keep the same reference
 // when future vehicles are selected.
 const VEHICLE=vehicleSystem.physics;
@@ -3401,13 +2364,14 @@ const vehicleAudio=createVehicleAudio({
     speed,
     longitudinalAccel,
     currentSteerAngle,
+    lateralGripUsage,
     absX,
     absZ
   }),
   getNearestRoute:()=>nearestRoute(absX,absZ)
 });
 
-// V18A LAN multiplayer is presentation-only: remote cars never participate
+// V18 multiplayer is presentation-only: remote cars never participate
 // in local collision, road contact or vehicle physics.
 const multiplayer=createMultiplayerClient({
   THREE,
@@ -3427,16 +2391,19 @@ const multiplayer=createMultiplayerClient({
       speed,
       vehicleId:vehicleSystem.activeId,
       steer:currentSteerAngle,
-      braking:brakeLightLevel>.18,
+      braking:vehicleVisuals.brakeLightLevel>.18,
+      onRoad:skidMarks.localState.onRoad,
+      skidFront:skidMarks.localState.front,
+      skidRear:skidMarks.localState.rear,
       bodyPitch:bodyGroup.rotation.x,
       bodyYaw:bodyGroup.rotation.y,
       bodyRoll:bodyGroup.rotation.z,
       bodyY:bodyGroup.position.y,
-      wheelPitch:wheelPlanePitch,
-      wheelRoll:wheelPlaneRoll
+      wheelPitch:vehiclePresentation.wheelPlanePitch,
+      wheelRoll:vehiclePresentation.wheelPlaneRoll
     };
   },
-  createRemoteVisual:createExactRemoteVehicleVisual,
+  createRemoteVisual:multiplayerVisuals.createRemoteVehicleVisual,
 
   // V18C: anchor all remote peer positions to the local car using direct
   // geographic metre offsets. This is independent of route origin/recentering.
@@ -3447,11 +2414,26 @@ const multiplayer=createMultiplayerClient({
 
   // Remote vertical support is solved from THIS client's road/terrain.
   // Sender Y is intentionally ignored for normal rendering.
-  solveRemoteSupport:solveRemoteVehicleSupport,
+  solveRemoteSupport:multiplayerVisuals.solveRemoteVehicleSupport,
 
   // Remote headlights follow the same local dusk/night factor as our car.
   // No multiplayer protocol field is necessary for automatic headlights.
-  getHeadlightLevel:()=>headlightLevel,
+  getHeadlightLevel:()=>vehicleVisuals.headlightLevel,
+
+  onRemoteSkidFrame:frame=>{
+    skidMarks.updateRemote({
+      peerId:frame.id,
+      contacts:frame.contacts,
+      front:frame.skidFront,
+      rear:frame.skidRear,
+      onRoad:frame.onRoad,
+      distance:frame.distance
+    });
+  },
+
+  onRemotePeerRemoved:id=>{
+    skidMarks.resetSource(`remote:${id}`);
+  },
 
   statusEl:$('multiplayerStatus'),
   countEl:$('multiplayerCount'),
@@ -3597,508 +2579,6 @@ function groundHeightForWheel(absx,absz){
 }
 
 
-// V18C.1 — presentation-only support solver for remote multiplayer cars.
-//
-// Important: vertical render-space Y is LOCAL state in World Drive. It depends
-// on the receiver's currently loaded DEM/road profile and must never be trusted
-// as a network coordinate. Every client therefore solves remote wheel contacts
-// against its own road/terrain exactly like it does for the local vehicle.
-function solveRemoteVehicleSupport({
-  lat,
-  lon,
-  heading:remoteHeading,
-  visual
-}){
-  if(
-    !Number.isFinite(lat)||
-    !Number.isFinite(lon)||
-    !visual?.wheels?.length
-  ){
-    return null;
-  }
-
-  const center=
-    llToXZ(lat,lon);
-
-  const c=
-    Math.cos(remoteHeading||0);
-
-  const sn=
-    Math.sin(remoteHeading||0);
-
-  const contacts=[];
-
-  for(const wheel of visual.wheels){
-    const lx=
-      Number.isFinite(wheel.baseX)
-        ?wheel.baseX
-        :wheel.pivot.position.x;
-
-    const lz=
-      Number.isFinite(wheel.baseZ)
-        ?wheel.baseZ
-        :wheel.pivot.position.z;
-
-    const wx=
-      center.x+
-      lx*c+
-      lz*sn;
-
-    const wz=
-      center.z-
-      lx*sn+
-      lz*c;
-
-    const ground=
-      groundHeightForWheel(
-        wx,
-        wz
-      );
-
-    contacts.push({
-      wheel,
-      ground,
-      lx,
-      lz
-    });
-  }
-
-  if(contacts.length!==4){
-    return null;
-  }
-
-  const front=
-    contacts.filter(
-      item=>item.wheel.front
-    );
-
-  const rear=
-    contacts.filter(
-      item=>!item.wheel.front
-    );
-
-  const left=
-    contacts.filter(
-      item=>item.lx<0
-    );
-
-  const right=
-    contacts.filter(
-      item=>item.lx>=0
-    );
-
-  const avg=list=>
-    list.reduce(
-      (sum,item)=>sum+item.ground,
-      0
-    )/
-    Math.max(
-      1,
-      list.length
-    );
-
-  const frontAvg=avg(front);
-  const rearAvg=avg(rear);
-  const leftAvg=avg(left);
-  const rightAvg=avg(right);
-  const avgGround=avg(contacts);
-
-  const frontZ=
-    front.length
-      ?front.reduce(
-          (sum,item)=>sum+item.lz,
-          0
-        )/front.length
-      :1;
-
-  const rearZ=
-    rear.length
-      ?rear.reduce(
-          (sum,item)=>sum+item.lz,
-          0
-        )/rear.length
-      :-1;
-
-  const leftX=
-    left.length
-      ?left.reduce(
-          (sum,item)=>sum+item.lx,
-          0
-        )/left.length
-      :-1;
-
-  const rightX=
-    right.length
-      ?right.reduce(
-          (sum,item)=>sum+item.lx,
-          0
-        )/right.length
-      :1;
-
-  const wheelbase=
-    Math.max(
-      .5,
-      Math.abs(
-        frontZ-rearZ
-      )
-    );
-
-  const track=
-    Math.max(
-      .5,
-      Math.abs(
-        rightX-leftX
-      )
-    );
-
-  const wheelPitch=
-    Math.atan2(
-      rearAvg-frontAvg,
-      wheelbase
-    );
-
-  const wheelRoll=
-    Math.atan2(
-      leftAvg-rightAvg,
-      track
-    );
-
-  // Match the local wheel-contact solver exactly.
-  const camberAbs=
-    Math.abs(wheelRoll);
-
-  const effectiveWheelRadius=
-    WHEEL_RADIUS*
-    Math.cos(camberAbs)+
-    TIRE_HALF_WIDTH*
-    Math.sin(camberAbs);
-
-  const rootY=
-    avgGround+
-    effectiveWheelRadius+
-    TIRE_VISUAL_CLEARANCE;
-
-  return {
-    rootY,
-    wheelPitch,
-    wheelRoll,
-
-    wheelLocalY:
-      contacts.map(
-        item=>
-          item.ground+
-          effectiveWheelRadius+
-          TIRE_VISUAL_CLEARANCE-
-          rootY
-      )
-  };
-}
-
-function updateSuspensionVisuals(dt,onRoad,currentSteerAngle){
-  const c=Math.cos(heading),sn=Math.sin(heading);
-
-  const suspensionWheels=activeVehicleWheels();
-  if(suspensionWheels.length!==4){
-    console.warn(
-      'Vehicle wheel configuration invalid',
-      vehicleSystem.activeId,
-      suspensionWheels.length
-    );
-    return;
-  }
-
-  // Pass 1: sample the support surface independently under each wheel.
-  const samples=[];
-
-  for(const w of suspensionWheels){
-    const lx=w.pivot.position.x;
-    const lz=w.pivot.position.z;
-
-    const wx=absX + lx*c + lz*sn;
-    const wz=absZ - lx*sn + lz*c;
-
-    let ground;
-
-    if(onRoad){
-      const roadSample=roadSurfaceAt(wx,wz);
-      if(
-        roadSample&&
-        Math.abs(roadSample.lateral)<ROAD_WHEEL_CONTACT_HALF_WIDTH
-      ){
-        ground=roadSample.y;
-      }
-    }
-
-    if(!Number.isFinite(ground)){
-      ground=groundHeightForWheel(wx,wz);
-    }
-
-    samples.push({w,ground});
-  }
-
-  if(samples.length!==4)return;
-
-  const contacts=samples.map(s=>s.ground);
-
-  // wheels order: rearL, frontL, rearR, frontR
-  const rearL=contacts[0],frontL=contacts[1],rearR=contacts[2],frontR=contacts[3];
-  const frontAvg=(frontL+frontR)*.5;
-  const rearAvg=(rearL+rearR)*.5;
-  const leftAvg=(frontL+rearL)*.5;
-  const rightAvg=(frontR+rearR)*.5;
-  const avgGround=(frontAvg+rearAvg)*.5;
-
-  const wheelbase=VEHICLE.wheelbase||2.77;
-  const wheelTrack=2.00;
-
-  const targetWheelPlanePitch=
-    Math.atan2(rearAvg-frontAvg,wheelbase);
-
-  const targetWheelPlaneRoll=
-    Math.atan2(leftAvg-rightAvg,wheelTrack);
-
-  // On pavement this is collision geometry, not a soft animation:
-  // use the actual contact plane immediately.
-  if(onRoad){
-    wheelPlanePitch=targetWheelPlanePitch;
-    wheelPlaneRoll=targetWheelPlaneRoll;
-  }else{
-    const wheelPlaneRate=1-Math.exp(-dt*10);
-    wheelPlanePitch+=(targetWheelPlanePitch-wheelPlanePitch)*wheelPlaneRate;
-    wheelPlaneRoll+=(targetWheelPlaneRoll-wheelPlaneRoll)*wheelPlaneRate;
-  }
-
-  // Vertical tire envelope when cambered.
-  const camberAbs=Math.abs(wheelPlaneRoll);
-  const effectiveWheelRadius=
-    WHEEL_RADIUS*Math.cos(camberAbs)+
-    TIRE_HALF_WIDTH*Math.sin(camberAbs);
-
-  // Pass 2: solve chassis root height from the four wheel contacts.
-  if(onRoad){
-    car.position.y=
-      avgGround+
-      effectiveWheelRadius+
-      TIRE_VISUAL_CLEARANCE;
-  }
-
-  // Pass 3: position each wheel relative to the solved chassis root.
-  for(const s of samples){
-    const targetLocalY=
-      s.ground+
-      effectiveWheelRadius+
-      TIRE_VISUAL_CLEARANCE-
-      car.position.y;
-
-    if(onRoad){
-      s.w.pivot.position.y=targetLocalY;
-    }else{
-      const suspensionRate=1-Math.exp(-dt*18);
-      s.w.pivot.position.y+=
-        (targetLocalY-s.w.pivot.position.y)*
-        suspensionRate;
-    }
-  }
-
-  // Dynamic sprung-body movement layered over the wheel support plane.
-  const visualYawRate=
-    (speed/VEHICLE.wheelbase)*
-    Math.tan(currentSteerAngle||0);
-
-  const lateralAccel=
-    Math.max(-8,Math.min(8,speed*visualYawRate));
-
-  const dynamicRoll=
-    Math.max(-.065,Math.min(.065,lateralAccel*.0075));
-
-  const dynamicPitch=
-    Math.max(-.040,Math.min(.040,-longitudinalAccel*.0045));
-
-  // Subtle visual rotation into the bend. It grows with actual yaw rate and
-  // road speed, then recenters smoothly. Purely cosmetic: car.rotation.y
-  // remains the authoritative driving heading.
-  const cornerSpeedFactor=
-    Math.min(1,Math.abs(speed)/22);
-
-  const targetCorneringYaw=
-    Math.max(
-      -.050,
-      Math.min(
-        .050,
-        visualYawRate*.055*cornerSpeedFactor
-      )
-    );
-
-  corneringVisualYaw+=
-    (targetCorneringYaw-corneringVisualYaw)*
-    (1-Math.exp(-dt*(Math.abs(targetCorneringYaw)>.002?7.5:9.5)));
-
-  // wheelPlaneRoll > 0 means LEFT wheels are higher.
-  // Three.js rotation.z > 0 raises vehicle local +X (RIGHT side),
-  // therefore the static road-bank component needs the opposite sign.
-  const targetRoll=
-    -wheelPlaneRoll+
-    dynamicRoll;
-
-  const targetPitch=
-    wheelPlanePitch+
-    dynamicPitch;
-
-  suspensionRoll+=
-    (targetRoll-suspensionRoll)*
-    (1-Math.exp(-dt*7.0));
-
-  suspensionPitch+=
-    (targetPitch-suspensionPitch)*
-    (1-Math.exp(-dt*7.2));
-
-  // Heave is visual only; wheel contacts determine road support geometry.
-  if(onRoad){
-    suspensionHeave+=
-      (0-suspensionHeave)*
-      (1-Math.exp(-dt*10));
-  }else{
-    const targetHeave=
-      Math.max(
-        -.045,
-        Math.min(
-          .045,
-          (avgGround-car.position.y)*.055
-        )
-      );
-
-    suspensionHeave+=
-      (targetHeave-suspensionHeave)*
-      (1-Math.exp(-dt*5.5));
-  }
-
-  bodyGroup.rotation.x=suspensionPitch;
-  bodyGroup.rotation.y=corneringVisualYaw;
-  bodyGroup.rotation.z=suspensionRoll;
-
-  const bodyBaseY=
-    vehicleSystem.activeId==='wrx'
-      ?-.31
-      :-.22;
-
-  bodyGroup.position.y=
-    bodyBaseY+
-    suspensionHeave;
-}
-
-function updateContactShadow(){
-  const roadSurface=
-    roadContact
-      ?roadSurfaceAt(absX,absZ)
-      :null;
-
-  const groundY=
-    roadSurface?.y??
-    terrainAbs(absX,absZ);
-
-  // Keep the projection on the actual support plane.
-  vehicleShadowRig.position.set(
-    car.position.x,
-    groundY+.032,
-    car.position.z
-  );
-
-  const surfacePitch=
-    roadContact
-      ?wheelPlanePitch
-      :0;
-
-  const surfaceRoll=
-    roadContact
-      ?wheelPlaneRoll
-      :0;
-
-  // The rig follows vehicle heading + road support plane.
-  // The child quad remains permanently horizontal relative to this rig.
-  vehicleShadowRig.rotation.set(
-    -surfacePitch,
-    heading,
-    -surfaceRoll
-  );
-
-  const rideGap=
-    Math.max(
-      0,
-      car.position.y-groundY-.35
-    );
-
-  // Contact shadow is strongest near the road and softens/spreads if the car
-  // becomes airborne or crests a sharp grade.
-  vehicleShadowUniforms.uHeightFade.value=
-    Math.max(
-      .22,
-      Math.min(
-        1,
-        1-rideGap*.52
-      )
-    );
-
-  const spread=
-    1+
-    Math.min(
-      .20,
-      rideGap*.12
-    );
-
-  vehicleShadow.scale.set(
-    spread,
-    spread,
-    1
-  );
-
-  // Use the current time-of-day sun only as a DIRECTION INPUT.
-  // The shadow shader never moves or modifies the actual sun.
-  const sunLen=
-    Math.hypot(
-      sun.position.x,
-      sun.position.z
-    )||1;
-
-  const sunX=
-    sun.position.x/sunLen;
-
-  const sunZ=
-    sun.position.z/sunLen;
-
-  // Rotate world sun direction into vehicle-local axes.
-  const sinH=Math.sin(heading);
-  const cosH=Math.cos(heading);
-
-  const localSide=
-    sunX*cosH-
-    sunZ*sinH;
-
-  const localForward=
-    sunX*sinH+
-    sunZ*cosH;
-
-  // Shadow extends opposite the incoming sun direction.
-  vehicleShadowUniforms.uSunTail.value.set(
-    -localSide*.16,
-    -localForward*.24
-  );
-
-  // Slightly stronger at daytime, but never enough to override the global
-  // lighting cycle. At night it behaves mostly as ambient contact occlusion.
-  const daylight=
-    Math.max(
-      0,
-      Math.sin(
-        (timeOfDay-6)/
-        12*
-        Math.PI
-      )
-    );
-
-  vehicleShadowUniforms.uOpacity.value=
-    .62+
-    daylight*.13;
-}
 
 function updateDrive(dt){
  const nr=nearestRoute(absX,absZ);
@@ -4125,7 +2605,7 @@ function updateDrive(dt){
    Math.abs(manualTurn)<.055;
 
  const brakeRequested=hand||(throttle<-.04&&speed>.15);
- updateBrakeLights(dt,brakeRequested);
+ vehicleVisuals.updateBrakeLights(dt,brakeRequested);
  // ----- V4.1 longitudinal dynamics -----
  const previousSpeed=speed;
  const onPavement=nr&&nr.d<8.5;
@@ -4218,13 +2698,35 @@ function updateDrive(dt){
  // Vehicle-specific lateral acceleration ceiling.
  // This was previously hard-coded to 7.0 m/s² for every vehicle, which made
  // the WRX understeer like the heavier ID4 in high-speed bends.
- const latAccel=Math.abs(speed*yawRate);
+ const requestedLatAccel=Math.abs(speed*yawRate);
  const offroadLatLimit=speedAbs<10?7.0:3.8;
  const roadLatLimit=VEHICLE.lateralAccelLimit??7.0;
  const latLimit=onPavement?roadLatLimit:offroadLatLimit;
 
- if(latAccel>latLimit&&latAccel>0){
-   yawRate*=latLimit/latAccel;
+ // Raw tire demand is measured exactly where the physics reaches its grip
+ // ceiling, rather than reconstructed later from joystick/steering angle.
+ const rawGripUsage=
+   onPavement&&latLimit>0
+     ?Math.min(1.35,requestedLatAccel/latLimit)
+     :0;
+
+ // Real tires do not build slip/force in zero time. A short attack/release
+ // also prevents a tiny joystick tap from instantly firing audio/decals.
+ const gripResponse=
+   rawGripUsage>lateralGripUsage
+     ?12
+     :18;
+
+ lateralGripUsage+=
+   (rawGripUsage-lateralGripUsage)*
+   (1-Math.exp(-dt*gripResponse));
+
+ if(lateralGripUsage<.002&&rawGripUsage===0){
+   lateralGripUsage=0;
+ }
+
+ if(requestedLatAccel>latLimit&&requestedLatAccel>0){
+   yawRate*=latLimit/requestedLatAccel;
  }
  heading+=yawRate*dt;
 
@@ -4353,44 +2855,24 @@ function updateDrive(dt){
  // Root vehicle stays yaw-aligned only. Wheel heights and the sprung body
  // handle suspension/pitch/roll independently.
  car.rotation.set(0,heading,0);
- updateSuspensionVisuals(dt,onRoad,steerAngle);
+ vehiclePresentation.updateSuspensionVisuals(dt,onRoad,steerAngle);
  // Wheel rotation + visible front steering.
  // Steering pivot and wheel spin are now independent transforms.
  visualSteer+=(steerAngle-visualSteer)*(1-Math.exp(-dt*7));
- for(const w of wheels){
-   if(w.vehicleId&&w.vehicleId!==vehicleSystem.activeId)continue;
+ vehiclePresentation.updateWheels(dt,speed,visualSteer);
 
-   // Tire/rim roll independently inside the steering/suspension pivot.
-   w.tire.rotation.x-=speed*dt/.38;
-   w.rim.rotation.x-=speed*dt/.38;
+ skidMarks.updateLocal({
+   contacts:vehiclePresentation.wheelContacts,
+   onRoad,
+   speed,
+   steerAngle,
+   lateralGripUsage,
+   longitudinalAccel,
+   handbrake:hand,
+   vehicle:VEHICLE,
+   dt
+ });
 
-   // Steering yaw + visual road camber.
-   // Camber is presentation-only and does not affect tire physics/trajectory.
-   const targetWheelYaw=
-     w.front
-       ?visualSteer
-       :0;
-
-   w.pivot.rotation.y+=
-     (targetWheelYaw-w.pivot.rotation.y)*
-     (1-Math.exp(-dt*12));
-
-   if(!Number.isFinite(w.visualCamber)){
-     w.visualCamber=0;
-   }
-
-   // Tire orientation uses the same four-contact plane as the body.
-   // left side higher => negative local Z rotation.
-   const targetCamber=
-     -wheelPlaneRoll;
-
-   w.visualCamber+=
-     (targetCamber-w.visualCamber)*
-     (1-Math.exp(-dt*18));
-
-   w.pivot.rotation.z=
-     w.visualCamber;
- }
  $('speed').textContent=Math.round(Math.abs(speed)*3.6);
  const llNow=xzToLL(absX,absZ),realElev=elevationService.elevationAt(llNow.lat,llNow.lon);
  altitudeEl.textContent=realElev!==null&&Number.isFinite(realElev)?Math.round(realElev):'—';
@@ -4407,28 +2889,14 @@ function toggleAssist(){
  $('assist').textContent='Assist: '+(assist?'ON':'OFF');
  toast('Assistance '+(assist?'activée':'désactivée'));
 }
-function resetVehicleVisualState(){
-  suspensionRoll=0;
-  suspensionPitch=0;
-  suspensionHeave=0;
-  corneringVisualYaw=0;
-  wheelPlaneRoll=0;
-  wheelPlanePitch=0;
 
-  bodyGroup.rotation.set(0,0,0);
-  bodyGroup.position.y=
-    vehicleSystem.activeId==='wrx'
-      ?-.31
-      :-.22;
-}
-
-function placeAt(frac){const p=routePointAt(frac);absX=p.x;absZ=p.z;heading=p.angle;speed=0;steer=0;visualSteer=0;currentSteerAngle=0;longitudinalAccel=0;resetVehicleVisualState();roadContact=true;recenterIfNeeded(absX,absZ,true);ensureRoadProfileNear(absX,absZ);const placedRoadSurface=roadSurfaceAt(absX,absZ);
+function placeAt(frac){const p=routePointAt(frac);absX=p.x;absZ=p.z;heading=p.angle;speed=0;steer=0;visualSteer=0;currentSteerAngle=0;longitudinalAccel=0;lateralGripUsage=0;vehiclePresentation.reset();skidMarks.resetSource('local');roadContact=true;recenterIfNeeded(absX,absZ,true);ensureRoadProfileNear(absX,absZ);const placedRoadSurface=roadSurfaceAt(absX,absZ);
 car.position.set(
   0,
   (placedRoadSurface?.y??roadHeightAt(absX,absZ)+ROAD_SURFACE_OFFSET)+.38+TIRE_VISUAL_CLEARANCE,
   0
 );drawMap(p.cum)}
-function resetToRoad(){const n=nearestRoute(absX,absZ);if(n){absX=n.px;absZ=n.pz;heading=n.angle;speed=0;steer=0;visualSteer=0;currentSteerAngle=0;longitudinalAccel=0;resetVehicleVisualState();roadContact=true;recenterIfNeeded(absX,absZ,true);ensureRoadProfileNear(absX,absZ)}}
+function resetToRoad(){const n=nearestRoute(absX,absZ);if(n){absX=n.px;absZ=n.pz;heading=n.angle;speed=0;steer=0;visualSteer=0;currentSteerAngle=0;longitudinalAccel=0;lateralGripUsage=0;vehiclePresentation.reset();skidMarks.resetSource('local');roadContact=true;recenterIfNeeded(absX,absZ,true);ensureRoadProfileNear(absX,absZ)}}
 
 const maxSpeedSlider=$('maxSpeedSlider'),maxSpeedLabel=$('maxSpeedLabel');
 const speedLimitModeBtn=$('speedLimitModeBtn');
@@ -4529,8 +2997,9 @@ if(vehicleSelect){
       visualSteer=0;
       currentSteerAngle=0;
       longitudinalAccel=0;
+      lateralGripUsage=0;
 
-      applyVehicleVisualProfile();
+      vehicleVisuals.applyVehicleVisualProfile();
       vehicleAudio.setProfile(vehicleSystem.active.audio);
 
       // Each car exposes its own real top-speed capability.
@@ -5081,14 +3550,84 @@ function setTimeOfDay(hour){
   timeLabel.textContent=String(hh).padStart(2,'0')+':'+String(mm).padStart(2,'0');
 
   const daylight=Math.max(0,Math.sin((timeOfDay-6)/12*Math.PI));
-  scene.background=new THREE.Color().setHSL(.58,.45,.08+.50*daylight);
-  scene.fog.color.copy(scene.background);
-  hemi.intensity=.10+2.05*daylight;
-  sun.intensity=.03+2.55*daylight;
 
-  updateAutomaticHeadlights(daylight);
+  // Smoothly bring moonlight in through dusk and remove it through dawn.
+  // This keeps the transition compatible with the existing automatic lights.
+  const nightFactor=
+    1-Math.min(
+      1,
+      daylight/.24
+    );
+
+  scene.background=
+    new THREE.Color().setHSL(
+      .58,
+      .45,
+      .08+.50*daylight
+    );
+
+  scene.fog.color.copy(
+    scene.background
+  );
+
+  hemi.intensity=
+    .10+
+    2.05*daylight;
+
+  sun.intensity=
+    .03+
+    2.55*daylight;
+
+  // A little directional blue moonlight makes body panels readable without
+  // flattening the night scene. No moon shadows: cheap enough for multiplayer.
+  moonLight.intensity=
+    .22*
+    nightFactor;
+
+  moonMaterial.opacity=
+    .92*
+    nightFactor;
+
+  moonSprite.visible=
+    nightFactor>.02;
+
+  vehicleVisuals.updateAutomaticHeadlights(daylight);
+
   const a=(timeOfDay-6)/12*Math.PI;
-  sun.position.set(Math.cos(a)*900,Math.max(35,Math.sin(a)*950),420);
+
+  sun.position.set(
+    Math.cos(a)*900,
+    Math.max(
+      35,
+      Math.sin(a)*950
+    ),
+    420
+  );
+
+  // Move the crescent through a simple east-to-west night arc.
+  const nightHour=
+    timeOfDay>=18
+      ?timeOfDay-18
+      :timeOfDay+6;
+
+  const moonArc=
+    Math.max(
+      0,
+      Math.min(
+        12,
+        nightHour
+      )
+    )/
+    12*
+    Math.PI;
+
+  moonDirection.set(
+    Math.cos(moonArc)*.72,
+    .18+Math.sin(moonArc)*.82,
+    -.58
+  ).normalize();
+
+  updateMoonSkyPosition();
 }
 timeSlider.addEventListener('input',e=>setTimeOfDay(e.target.value));
 
@@ -5111,7 +3650,7 @@ function animate(now){
  try{
    gamepad.update();
    updateDrive(dt);
-   updateContactShadow();
+   vehiclePresentation.updateContactShadow();
    multiplayer.update(dt);
 
    try{vehicleAudio.update()}catch(audioErr){
@@ -5119,6 +3658,7 @@ function animate(now){
      vehicleAudio.showError();
    }
    cameraController.update(dt);
+   updateMoonSkyPosition();
 
    if(now>=nextDirectionalPrefetchAt){
      nextDirectionalPrefetchAt=now+100;
