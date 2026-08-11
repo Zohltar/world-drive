@@ -19,6 +19,7 @@ import { createWaterRenderer } from './water-renderer.js';
 import { createWorldStreaming } from './world-streaming.js';
 import { createVehicleSystem } from './vehicle-system.js';
 import { buildWrxVisual } from './wrx-visual.js';
+import { createMultiplayerClient } from './multiplayer.js';
 
 // Default test route. V4 can replace these coordinates at runtime.
 const MANIC2={lat:49.3213,lon:-68.3467,name:'Manic‑2'};
@@ -49,6 +50,250 @@ const routePointAtCum=cum=>routingGeometry.routePointAtCum(cum);
 
 const $=id=>document.getElementById(id);
 const loading=$('loading'),loadingText=$('loadingText'),statusEl=$('status'),notice=$('notice'),routingStatus=$('routingStatus');
+
+// ---------- competitive route challenge ----------
+const runChallengeEl=$('runChallenge');
+const runStateEl=$('runState');
+const runTimerEl=$('runTimer');
+const runQualityEl=$('runQuality');
+const qualityFillEl=$('qualityFill');
+const resetRunBtn=$('resetRunBtn');
+const challengeSubsection=$('challengeSubsection');
+const challengeSubsectionToggle=$('challengeSubsectionToggle');
+const challengeSubsectionSummary=$('challengeSubsectionSummary');
+
+challengeSubsectionToggle?.addEventListener(
+  'click',
+  ()=>{
+    const collapsed=
+      challengeSubsection.classList.toggle(
+        'collapsed'
+      );
+
+    const chevron=
+      challengeSubsectionToggle.querySelector(
+        '.routeSubsectionChevron'
+      );
+
+    if(chevron){
+      chevron.textContent=
+        collapsed
+          ?'+'
+          :'−';
+    }
+  }
+);
+
+const runChallenge={
+  running:false,
+  finished:false,
+  startedAt:0,
+  finishedAt:0,
+  lastSampleAt:0,
+  offroadMs:0
+};
+
+function formatRunTime(ms){
+  const safe=Math.max(0,ms||0);
+  const totalTenths=Math.floor(safe/100);
+  const tenths=totalTenths%10;
+  const totalSeconds=Math.floor(totalTenths/10);
+  const seconds=totalSeconds%60;
+  const minutes=Math.floor(totalSeconds/60);
+
+  return (
+    String(minutes).padStart(2,'0')+
+    ':'+
+    String(seconds).padStart(2,'0')+
+    '.'+
+    tenths
+  );
+}
+
+function runElapsedMs(now=performance.now()){
+  if(!runChallenge.running&&!runChallenge.finished){
+    return 0;
+  }
+
+  const end=
+    runChallenge.finished
+      ?runChallenge.finishedAt
+      :now;
+
+  return Math.max(
+    0,
+    end-runChallenge.startedAt
+  );
+}
+
+function updateRunChallengeHUD(now=performance.now()){
+  if(!runChallengeEl)return;
+
+  const penalty=
+    Math.floor(
+      runChallenge.offroadMs/
+      1000
+    );
+
+  const quality=
+    Math.max(
+      0,
+      100-penalty
+    );
+
+  runTimerEl.textContent=
+    formatRunTime(
+      runElapsedMs(now)
+    );
+
+  runQualityEl.textContent=
+    String(quality);
+
+  qualityFillEl.style.width=
+    quality+'%';
+
+  qualityFillEl.style.backgroundColor=
+    quality>=90
+      ?'#55d98b'
+      :quality>=70
+        ?'#e2c45b'
+        :quality>=45
+          ?'#e28b50'
+          :'#df5a61';
+
+  runQualityEl.style.color=
+    quality>=90
+      ?'#71e29f'
+      :quality>=70
+        ?'#f0d56b'
+        :quality>=45
+          ?'#f1a263'
+          :'#f06a71';
+
+  runChallengeEl.classList.toggle(
+    'running',
+    runChallenge.running
+  );
+
+  runChallengeEl.classList.toggle(
+    'finished',
+    runChallenge.finished
+  );
+
+  runStateEl.textContent=
+    runChallenge.finished
+      ?'TERMINÉ'
+      :runChallenge.running
+        ?'EN COURSE'
+        :'PRÊT';
+
+  if(challengeSubsectionSummary){
+    challengeSubsectionSummary.textContent=
+      runChallenge.finished
+        ?formatRunTime(
+            runElapsedMs(now)
+          )
+        :runChallenge.running
+          ?formatRunTime(
+              runElapsedMs(now)
+            )
+          :'PRÊT';
+  }
+}
+
+function resetRunChallenge(){
+  runChallenge.running=false;
+  runChallenge.finished=false;
+  runChallenge.startedAt=0;
+  runChallenge.finishedAt=0;
+  runChallenge.lastSampleAt=0;
+  runChallenge.offroadMs=0;
+
+  updateRunChallengeHUD();
+}
+
+function startRunChallenge(now){
+  if(
+    runChallenge.running||
+    runChallenge.finished
+  ){
+    return;
+  }
+
+  runChallenge.running=true;
+  runChallenge.startedAt=now;
+  runChallenge.lastSampleAt=now;
+
+  updateRunChallengeHUD(now);
+}
+
+function finishRunChallenge(now){
+  if(!runChallenge.running)return;
+
+  runChallenge.running=false;
+  runChallenge.finished=true;
+  runChallenge.finishedAt=now;
+  runChallenge.lastSampleAt=now;
+
+  updateRunChallengeHUD(now);
+  toast(
+    'Parcours terminé · '+
+    formatRunTime(
+      runElapsedMs(now)
+    )
+  );
+}
+
+function updateRunChallenge(onRoad,nr){
+  const now=performance.now();
+  const speedKmh=Math.abs(speed)*3.6;
+
+  // Start at the first meaningful vehicle movement.
+  if(
+    !runChallenge.running&&
+    !runChallenge.finished&&
+    speedKmh>.8
+  ){
+    startRunChallenge(now);
+  }
+
+  if(runChallenge.running){
+    const sampleDelta=
+      Math.max(
+        0,
+        now-runChallenge.lastSampleAt
+      );
+
+    // "Hors piste" is exactly the game's Terrain contact state.
+    if(!onRoad){
+      runChallenge.offroadMs+=
+        sampleDelta;
+    }
+
+    runChallenge.lastSampleAt=now;
+
+    // Finish inside the final ~12 metres of the route.
+    if(
+      nr&&
+      routeLength>0&&
+      nr.cum>=routeLength-12
+    ){
+      finishRunChallenge(now);
+    }
+  }
+
+  updateRunChallengeHUD(now);
+}
+
+resetRunBtn?.addEventListener(
+  'click',
+  ()=>{
+    resetRunChallenge();
+    toast('Défi parcours réinitialisé');
+  }
+);
+
+updateRunChallengeHUD();
 
 const routingService=createRoutingService({
   onStatus:label=>{routingStatus.textContent=label},
@@ -741,6 +986,11 @@ const glassMat=new THREE.MeshStandardMaterial({color:0x182936,metalness:.18,roug
 const lightMat=new THREE.MeshBasicMaterial({color:0xeaf5ff});
 const tailMat=new THREE.MeshBasicMaterial({color:0x8b1825});
 const brakeLampMat=new THREE.MeshBasicMaterial({color:0x8b1825});
+
+// Additional vehicle visuals register their own rear-lamp materials here so
+// updateBrakeLights() can drive every selectable car consistently.
+const extraBrakeLampMaterials=[];
+
 const wheelMat=new THREE.MeshStandardMaterial({color:0x111418,metalness:.25,roughness:.38});
 const rimMat=new THREE.MeshStandardMaterial({color:0xa7adb2,metalness:.65,roughness:.24});
 
@@ -821,9 +1071,33 @@ const brakeBaseColor=new THREE.Color(0x8b1825);
 const brakeHotColor=new THREE.Color(0xff3048);
 function updateBrakeLights(dt,braking){
   const target=braking?1:0;
-  brakeLightLevel+=(target-brakeLightLevel)*(1-Math.exp(-dt*(braking?14:7)));
-  tailMat.color.copy(brakeBaseColor).lerp(brakeHotColor,brakeLightLevel);
-  brakeLampMat.color.copy(brakeBaseColor).lerp(brakeHotColor,brakeLightLevel);
+
+  brakeLightLevel+=
+    (target-brakeLightLevel)*
+    (1-Math.exp(-dt*(braking?14:7)));
+
+  tailMat.color
+    .copy(brakeBaseColor)
+    .lerp(
+      brakeHotColor,
+      brakeLightLevel
+    );
+
+  brakeLampMat.color
+    .copy(brakeBaseColor)
+    .lerp(
+      brakeHotColor,
+      brakeLightLevel
+    );
+
+  for(const entry of extraBrakeLampMaterials){
+    entry.material.color
+      .copy(entry.baseColor)
+      .lerp(
+        entry.hotColor,
+        brakeLightLevel
+      );
+  }
 }
 
 // Black front/rear lower valances
@@ -899,6 +1173,247 @@ for(const wheel of wheels){
   wheel.pivot.userData.vehicleId='id4';
 }
 
+
+function makeVehicleMaterial(color,metalness=.25,roughness=.34){
+  return new THREE.MeshStandardMaterial({
+    color,
+    metalness,
+    roughness
+  });
+}
+
+function addVehicleMesh(group,geometry,material,position,rotation=null){
+  const mesh=new THREE.Mesh(geometry,material);
+  mesh.position.set(...position);
+  if(rotation)mesh.rotation.set(...rotation);
+  mesh.castShadow=true;
+  mesh.userData.vehicleId=group.userData.vehicleId;
+  group.add(mesh);
+  return mesh;
+}
+
+function buildRoadCarVisual({
+  id,
+  color,
+  length=4.55,
+  width=1.82,
+  height=.66,
+  cabinLength=2.25,
+  cabinHeight=.66,
+  wheelbase=2.68,
+  wheelRadius=.35,
+  blackRoof=false,
+  sport=false,
+  compact=false
+}){
+  const group=new THREE.Group();
+  group.userData.vehicleId=id;
+  bodyGroup.add(group);
+
+  const paint=makeVehicleMaterial(color,.34,.27);
+  const dark=makeVehicleMaterial(0x11161b,.15,.42);
+  const glass=makeVehicleMaterial(0x152633,.18,.16);
+  const lamp=new THREE.MeshBasicMaterial({color:0xeaf5ff});
+
+  const rearBaseColor=
+    new THREE.Color(0x861520);
+
+  const rearHotColor=
+    new THREE.Color(0xff3048);
+
+  const red=
+    new THREE.MeshBasicMaterial({
+      color:rearBaseColor.clone()
+    });
+
+  extraBrakeLampMaterials.push({
+    vehicleId:id,
+    material:red,
+    baseColor:rearBaseColor,
+    hotColor:rearHotColor
+  });
+
+  addVehicleMesh(group,new THREE.BoxGeometry(width,.24,length),dark,[0,.61,0]);
+  addVehicleMesh(group,new THREE.BoxGeometry(width*.97,height,length*.94,3,2,5),paint,[0,.94,0]);
+
+  const cabin=addVehicleMesh(
+    group,
+    new THREE.BoxGeometry(width*.82,cabinHeight,cabinLength,2,2,4),
+    blackRoof?dark:glass,
+    [0,1.46,-.12]
+  );
+
+  const cp=cabin.geometry.attributes.position;
+  for(let i=0;i<cp.count;i++){
+    const z=cp.getZ(i);
+    const y=cp.getY(i);
+    if(y>0)cp.setX(i,cp.getX(i)*(.88-.06*Math.abs(z)/(cabinLength*.5)));
+  }
+  cp.needsUpdate=true;
+  cabin.geometry.computeVertexNormals();
+
+  addVehicleMesh(group,new THREE.BoxGeometry(width*.82,.18,length*.24),paint,[0,1.18,length*.34],[-.04,0,0]);
+  addVehicleMesh(group,new THREE.BoxGeometry(width*.85,.14,length*.16),paint,[0,1.16,-length*.40],[.03,0,0]);
+
+  if(blackRoof){
+    addVehicleMesh(group,new THREE.BoxGeometry(width*.62,.04,cabinLength*.58),glass,[0,1.81,-.18]);
+  }
+
+  if(sport){
+    addVehicleMesh(group,new THREE.BoxGeometry(width*.78,.06,.18),dark,[0,1.26,-length*.49]);
+  }
+
+  for(const x of [-width*.34,width*.34]){
+    addVehicleMesh(group,new THREE.BoxGeometry(width*.18,.10,.05),lamp,[x,1.00,length*.475]);
+    addVehicleMesh(group,new THREE.BoxGeometry(width*.20,.12,.05),red,[x,1.00,-length*.475]);
+  }
+
+  const localWheels=[];
+  for(const x of [-width*.47,width*.47]){
+    for(const z of [-wheelbase*.5,wheelbase*.5]){
+      const pivot=new THREE.Group();
+      pivot.position.set(x,0,z);
+      pivot.userData.vehicleId=id;
+      car.add(pivot);
+
+      const tire=new THREE.Mesh(
+        new THREE.CylinderGeometry(wheelRadius,wheelRadius,.25,20),
+        wheelMat
+      );
+      tire.rotation.z=Math.PI/2;
+      tire.castShadow=true;
+      pivot.add(tire);
+
+      const rim=new THREE.Mesh(
+        new THREE.CylinderGeometry(wheelRadius*.61,wheelRadius*.61,.265,10),
+        rimMat
+      );
+      rim.rotation.z=Math.PI/2;
+      pivot.add(rim);
+
+      const wheel={
+        pivot,tire,rim,
+        front:z>0,
+        visualCamber:0,
+        vehicleId:id
+      };
+      wheels.push(wheel);
+      localWheels.push(wheel);
+      if(z>0)frontWheelPivots.push(pivot);
+    }
+  }
+
+  return {group,wheels:localWheels};
+}
+
+function buildF12010Visual(){
+  const id='f1_2010';
+  const group=new THREE.Group();
+  group.userData.vehicleId=id;
+  bodyGroup.add(group);
+
+  const red=makeVehicleMaterial(0xb8141b,.34,.25);
+  const white=makeVehicleMaterial(0xf1f1ed,.28,.30);
+  const carbon=makeVehicleMaterial(0x101214,.12,.30);
+  const glass=makeVehicleMaterial(0x111820,.18,.16);
+
+  const f1BrakeBase=
+    new THREE.Color(0x7f1018);
+
+  const f1BrakeHot=
+    new THREE.Color(0xff2638);
+
+  const f1BrakeMat=
+    new THREE.MeshBasicMaterial({
+      color:f1BrakeBase.clone()
+    });
+
+  extraBrakeLampMaterials.push({
+    vehicleId:id,
+    material:f1BrakeMat,
+    baseColor:f1BrakeBase,
+    hotColor:f1BrakeHot
+  });
+
+  addVehicleMesh(group,new THREE.BoxGeometry(.72,.28,4.55),red,[0,.57,.05]);
+  addVehicleMesh(group,new THREE.BoxGeometry(1.18,.24,1.45),red,[0,.68,-.28]);
+  addVehicleMesh(group,new THREE.BoxGeometry(.54,.38,1.12),white,[0,.90,-.25]);
+  addVehicleMesh(group,new THREE.BoxGeometry(.46,.25,.54),glass,[0,1.05,-.08]);
+  addVehicleMesh(group,new THREE.BoxGeometry(1.72,.08,.38),carbon,[0,.42,2.05]);
+  addVehicleMesh(group,new THREE.BoxGeometry(1.48,.10,.34),carbon,[0,.92,-2.02]);
+  addVehicleMesh(group,new THREE.BoxGeometry(.10,.55,.12),carbon,[-.62,.68,-1.94]);
+  addVehicleMesh(group,new THREE.BoxGeometry(.10,.55,.12),carbon,[.62,.68,-1.94]);
+
+  // Central F1 rear rain/brake light.
+  addVehicleMesh(
+    group,
+    new THREE.BoxGeometry(.18,.10,.06),
+    f1BrakeMat,
+    [0,.61,-2.28]
+  );
+
+  const localWheels=[];
+  for(const x of [-.88,.88]){
+    for(const z of [-1.48,1.48]){
+      const pivot=new THREE.Group();
+      pivot.position.set(x,.04,z);
+      pivot.userData.vehicleId=id;
+      car.add(pivot);
+      const tire=new THREE.Mesh(new THREE.CylinderGeometry(.39,.39,.34,20),wheelMat);
+      tire.rotation.z=Math.PI/2;tire.castShadow=true;pivot.add(tire);
+      const rim=new THREE.Mesh(new THREE.CylinderGeometry(.20,.20,.35,12),rimMat);
+      rim.rotation.z=Math.PI/2;pivot.add(rim);
+      const wheel={pivot,tire,rim,front:z>0,visualCamber:0,vehicleId:id};
+      wheels.push(wheel);localWheels.push(wheel);
+      if(z>0)frontWheelPivots.push(pivot);
+    }
+  }
+  return {group,wheels:localWheels};
+}
+
+const civicVisual=buildRoadCarVisual({
+  id:'civic',
+  color:0x080a0c,
+  length:4.58,
+  width:1.80,
+  height:.61,
+  cabinLength:2.34,
+  cabinHeight:.62,
+  wheelbase:2.70,
+  wheelRadius:.34,
+  sport:true
+});
+
+const sonataVisual=buildRoadCarVisual({
+  id:'sonata',
+  color:0xf2f3f1,
+  length:4.86,
+  width:1.86,
+  height:.62,
+  cabinLength:2.48,
+  cabinHeight:.64,
+  wheelbase:2.80,
+  wheelRadius:.35,
+  blackRoof:true,
+  sport:true
+});
+
+const i3Visual=buildRoadCarVisual({
+  id:'i3_2017',
+  color:0xf1f1ed,
+  length:4.00,
+  width:1.78,
+  height:.78,
+  cabinLength:2.28,
+  cabinHeight:.78,
+  wheelbase:2.57,
+  wheelRadius:.36,
+  blackRoof:true,
+  compact:true
+});
+
+const f12010Visual=buildF12010Visual();
+
 const wrxVisual=buildWrxVisual({
   THREE,
   car,
@@ -923,11 +1438,456 @@ function applyVehicleVisualProfile(){
     }
   }
 
-  // Lower sport-sedan stance, crossover height for ID4.
-  bodyGroup.position.y=id==='wrx' ? -.31 : -.22;
+  const stance={
+    id4:-.22,
+    wrx:-.31,
+    civic:-.30,
+    sonata:-.30,
+    f1_2010:-.38,
+    i3_2017:-.24
+  };
+
+  bodyGroup.position.y=
+    stance[id]??-.28;
 }
 
 applyVehicleVisualProfile();
+
+// ---------- V18B exact multiplayer vehicle visuals ----------
+// Remote cars reuse the exact procedural geometry already built for local cars.
+// Geometry is shared (read-only), while materials are cloned per peer so remote
+// brake lights cannot affect the local vehicle or another peer.
+function makeRemotePlayerLabel(name){
+  const canvas=document.createElement('canvas');
+  canvas.width=512;
+  canvas.height=128;
+
+  const ctx=canvas.getContext('2d');
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  ctx.font='700 52px system-ui, sans-serif';
+  ctx.textAlign='center';
+  ctx.textBaseline='middle';
+
+  const safeName=String(name||'Conducteur').slice(0,24);
+  const width=Math.min(
+    480,
+    Math.max(
+      170,
+      ctx.measureText(safeName).width+58
+    )
+  );
+  const x=(canvas.width-width)/2;
+
+  ctx.fillStyle='rgba(5,13,22,.84)';
+  ctx.strokeStyle='rgba(228,241,255,.78)';
+  ctx.lineWidth=4;
+  ctx.beginPath();
+  ctx.roundRect(x,20,width,88,22);
+  ctx.fill();
+  ctx.stroke();
+
+  ctx.fillStyle='#f6fbff';
+  ctx.fillText(safeName,canvas.width/2,64);
+
+  const texture=new THREE.CanvasTexture(canvas);
+  texture.colorSpace=THREE.SRGBColorSpace;
+  texture.needsUpdate=true;
+
+  const material=new THREE.SpriteMaterial({
+    map:texture,
+    transparent:true,
+    depthTest:false,
+    depthWrite:false
+  });
+
+  const sprite=new THREE.Sprite(material);
+  sprite.position.set(0,2.30,0);
+  sprite.scale.set(3.7,.92,1);
+  sprite.renderOrder=1000;
+
+  return {
+    sprite,
+    dispose(){
+      texture.dispose();
+      material.dispose();
+    }
+  };
+}
+
+function remoteBrakeDefinition(vehicleId,sourceMaterial){
+  if(
+    (vehicleId==='id4'||vehicleId==='wrx')&&
+    (
+      sourceMaterial===tailMat||
+      sourceMaterial===brakeLampMat
+    )
+  ){
+    return {
+      base:new THREE.Color(0x8b1825),
+      hot:new THREE.Color(0xff3048)
+    };
+  }
+
+  const extra=
+    extraBrakeLampMaterials.find(
+      entry=>
+        entry.vehicleId===vehicleId&&
+        entry.material===sourceMaterial
+    );
+
+  if(extra){
+    return {
+      base:extra.baseColor.clone(),
+      hot:extra.hotColor.clone()
+    };
+  }
+
+  return null;
+}
+
+function cloneRemoteVehicleNode(
+  source,
+  vehicleId,
+  objectMap,
+  ownedMaterials,
+  brakeEntries
+){
+  const clone=source.clone(false);
+
+  // Inactive local models are hidden by applyVehicleVisualProfile().
+  // A remote clone must always be visible regardless of our own selected car.
+  clone.visible=true;
+  objectMap.set(source,clone);
+
+  if(source.isMesh){
+    // Geometry is immutable after vehicle construction and is safe to share.
+    clone.geometry=source.geometry;
+
+    const cloneOneMaterial=material=>{
+      const cloned=material.clone();
+      ownedMaterials.add(cloned);
+
+      const brake=
+        remoteBrakeDefinition(
+          vehicleId,
+          material
+        );
+
+      if(brake){
+        brakeEntries.push({
+          material:cloned,
+          baseColor:brake.base,
+          hotColor:brake.hot
+        });
+      }
+
+      return cloned;
+    };
+
+    clone.material=
+      Array.isArray(source.material)
+        ?source.material.map(cloneOneMaterial)
+        :cloneOneMaterial(source.material);
+  }
+
+  for(const child of source.children){
+    clone.add(
+      cloneRemoteVehicleNode(
+        child,
+        vehicleId,
+        objectMap,
+        ownedMaterials,
+        brakeEntries
+      )
+    );
+  }
+
+  return clone;
+}
+
+function remoteHeadlightProfile(vehicleId){
+  const profiles={
+    id4:{x:.64,y:1.02,z:2.18,targetY:.30,targetZ:72},
+    wrx:{x:.62,y:.91,z:2.16,targetY:.26,targetZ:70},
+    civic:{x:.61,y:1.00,z:2.16,targetY:.28,targetZ:70},
+    sonata:{x:.63,y:1.00,z:2.30,targetY:.28,targetZ:72},
+    i3_2017:{x:.58,y:1.04,z:1.91,targetY:.30,targetZ:68},
+    f1_2010:{x:.46,y:.54,z:2.18,targetY:.16,targetZ:74}
+  };
+  return profiles[vehicleId]||profiles.id4;
+}
+
+function createRemoteHeadlightSystem(vehicleId,parent){
+  const profile=remoteHeadlightProfile(vehicleId);
+
+  const rig=new THREE.Group();
+  rig.name=`remote-headlights-${vehicleId}`;
+  parent.add(rig);
+
+  const glowGeometry=
+    new THREE.SphereGeometry(.085,10,6);
+
+  const glowMaterials=[];
+  const glows=[];
+  const lights=[];
+
+  for(const side of [-1,1]){
+    const x=profile.x*side;
+
+    const glowMaterial=
+      new THREE.MeshBasicMaterial({
+        color:0xf3f7ff,
+        transparent:true,
+        opacity:0,
+        depthWrite:false,
+        blending:THREE.AdditiveBlending
+      });
+
+    glowMaterials.push(glowMaterial);
+
+    const glow=
+      new THREE.Mesh(
+        glowGeometry,
+        glowMaterial
+      );
+
+    glow.position.set(
+      x,
+      profile.y,
+      profile.z+.07
+    );
+    glow.scale.set(1.50,.66,.44);
+    glow.renderOrder=7;
+    glow.visible=false;
+    rig.add(glow);
+    glows.push(glow);
+
+    const light=
+      new THREE.SpotLight(
+        0xf4f8ff,
+        0,
+        95,
+        Math.PI/7.2,
+        .60,
+        1.55
+      );
+
+    light.position.set(
+      x,
+      profile.y,
+      profile.z
+    );
+    light.castShadow=false;
+
+    const target=new THREE.Object3D();
+    target.position.set(
+      x*.28,
+      profile.targetY,
+      profile.targetZ
+    );
+
+    rig.add(light);
+    rig.add(target);
+    light.target=target;
+
+    lights.push(light);
+  }
+
+  return {
+    setLevel(level,distanceMeters=0){
+      const night=
+        Math.max(
+          0,
+          Math.min(
+            1,
+            Number(level)||0
+          )
+        );
+
+      const distance=
+        Math.max(
+          0,
+          Number(distanceMeters)||0
+        );
+
+      // Keep projected light local to the convoy/passing-car zone.
+      // Lens glows stay visible much farther away.
+      const beamFade=
+        1-smoothstep01(
+          (distance-150)/130
+        );
+
+      const beamLevel=
+        night*beamFade;
+
+      for(const light of lights){
+        light.intensity=
+          165*beamLevel;
+        light.visible=
+          beamLevel>.01;
+      }
+
+      const glowFade=
+        1-smoothstep01(
+          (distance-900)/1700
+        );
+
+      const glowLevel=
+        night*glowFade;
+
+      for(const glow of glows){
+        glow.material.opacity=
+          .92*glowLevel;
+        glow.visible=
+          glowLevel>.012;
+      }
+    },
+
+    dispose(){
+      glowGeometry.dispose();
+      for(const material of glowMaterials){
+        material.dispose();
+      }
+    }
+  };
+}
+
+function createExactRemoteVehicleVisual(vehicleId,name){
+  const root=new THREE.Group();
+  root.name=`remote-exact-${vehicleId}-${name}`;
+  root.rotation.order='YXZ';
+
+  // Model scale must match the local car exactly.
+  const modelRoot=new THREE.Group();
+  modelRoot.scale.copy(car.scale);
+  root.add(modelRoot);
+
+  // Same architecture as the local vehicle:
+  // yaw is on root, sprung-body pitch/roll is isolated from wheels.
+  const remoteBodyGroup=new THREE.Group();
+  remoteBodyGroup.rotation.order='XYZ';
+  modelRoot.add(remoteBodyGroup);
+
+  const objectMap=new Map();
+  const ownedMaterials=new Set();
+  const brakeEntries=[];
+
+  const bodySources=
+    bodyGroup.children.filter(
+      child=>
+        child.userData?.vehicleId===vehicleId
+    );
+
+  if(!bodySources.length){
+    return null;
+  }
+
+  for(const source of bodySources){
+    remoteBodyGroup.add(
+      cloneRemoteVehicleNode(
+        source,
+        vehicleId,
+        objectMap,
+        ownedMaterials,
+        brakeEntries
+      )
+    );
+  }
+
+  const remoteHeadlights=
+    createRemoteHeadlightSystem(
+      vehicleId,
+      remoteBodyGroup
+    );
+
+  const remoteWheels=[];
+
+  for(const sourceWheel of wheels){
+    if(sourceWheel.vehicleId!==vehicleId)continue;
+
+    const wheelMap=new Map();
+    const clonedPivot=
+      cloneRemoteVehicleNode(
+        sourceWheel.pivot,
+        vehicleId,
+        wheelMap,
+        ownedMaterials,
+        brakeEntries
+      );
+
+    // Suspension Y is dynamic on the local wheel pivot. Start the remote clone
+    // at the neutral contact plane; multiplayer.update() solves visual Y.
+    clonedPivot.position.y=0;
+    modelRoot.add(clonedPivot);
+
+    const clonedTire=
+      wheelMap.get(sourceWheel.tire);
+
+    const clonedRim=
+      wheelMap.get(sourceWheel.rim);
+
+    const radius=
+      Number(
+        sourceWheel.tire?.geometry?.parameters?.radiusTop
+      )||.38;
+
+    remoteWheels.push({
+      pivot:clonedPivot,
+      tire:clonedTire,
+      rim:clonedRim,
+      front:!!sourceWheel.front,
+      radius,
+      baseX:clonedPivot.position.x,
+      baseZ:clonedPivot.position.z
+    });
+  }
+
+  if(remoteWheels.length!==4){
+    console.warn(
+      'Remote vehicle wheel clone incomplete',
+      vehicleId,
+      remoteWheels.length
+    );
+  }
+
+  const label=
+    makeRemotePlayerLabel(name);
+
+  root.add(label.sprite);
+
+  return {
+    root,
+    modelRoot,
+    bodyGroup:remoteBodyGroup,
+    wheels:remoteWheels,
+    brakeEntries,
+    setBraking(level){
+      for(const entry of brakeEntries){
+        entry.material.color
+          .copy(entry.baseColor)
+          .lerp(entry.hotColor,level);
+      }
+    },
+    setHeadlights(level,distanceMeters){
+      remoteHeadlights.setLevel(
+        level,
+        distanceMeters
+      );
+    },
+    dispose(){
+      label.dispose();
+      remoteHeadlights.dispose();
+
+      for(const material of ownedMaterials){
+        material.dispose?.();
+      }
+
+      // Shared local vehicle geometry is deliberately NOT disposed here.
+      root.clear();
+      objectMap.clear();
+    }
+  };
+}
 
 // ----- Automatic vehicle headlights -----
 // Vehicle-agnostic rig: attached to the sprung body so the beams follow
@@ -2310,6 +3270,7 @@ async function createRequestedRoute(start,end,waypoints=[]){
   ROUTE_WAYPOINTS=Array.isArray(waypoints)?waypoints.slice(0,8):[];
   origin={lat:ROUTE_START.lat,lon:ROUTE_START.lon};
   resetWorldCaches();
+  resetRunChallenge();
 
   loading.classList.remove('hidden');
   loadingText.textContent='Initialisation du trajet…';
@@ -2446,6 +3407,60 @@ const vehicleAudio=createVehicleAudio({
   getNearestRoute:()=>nearestRoute(absX,absZ)
 });
 
+// V18A LAN multiplayer is presentation-only: remote cars never participate
+// in local collision, road contact or vehicle physics.
+const multiplayer=createMultiplayerClient({
+  THREE,
+  scene,
+  latLonToWorld:(lat,lon)=>llToXZ(lat,lon),
+  getWorldOffset:()=>worldOffset,
+  getLocalState:()=>{
+    const ll=xzToLL(absX,absZ);
+    return {
+      lat:ll.lat,
+      lon:ll.lon,
+      // V18B sends the real local car-root height and presentation pose.
+      // Remote clients can therefore reproduce the same procedural model,
+      // chassis pitch/roll and wheel-plane camber without network physics.
+      y:car.position.y,
+      heading,
+      speed,
+      vehicleId:vehicleSystem.activeId,
+      steer:currentSteerAngle,
+      braking:brakeLightLevel>.18,
+      bodyPitch:bodyGroup.rotation.x,
+      bodyYaw:bodyGroup.rotation.y,
+      bodyRoll:bodyGroup.rotation.z,
+      bodyY:bodyGroup.position.y,
+      wheelPitch:wheelPlanePitch,
+      wheelRoll:wheelPlaneRoll
+    };
+  },
+  createRemoteVisual:createExactRemoteVehicleVisual,
+
+  // V18C: anchor all remote peer positions to the local car using direct
+  // geographic metre offsets. This is independent of route origin/recentering.
+  getLocalRenderPosition:()=>({
+    x:car.position.x,
+    z:car.position.z
+  }),
+
+  // Remote vertical support is solved from THIS client's road/terrain.
+  // Sender Y is intentionally ignored for normal rendering.
+  solveRemoteSupport:solveRemoteVehicleSupport,
+
+  // Remote headlights follow the same local dusk/night factor as our car.
+  // No multiplayer protocol field is necessary for automatic headlights.
+  getHeadlightLevel:()=>headlightLevel,
+
+  statusEl:$('multiplayerStatus'),
+  countEl:$('multiplayerCount'),
+  serverEl:$('multiplayerServer'),
+  nameInput:$('multiplayerName'),
+  toggleButton:$('multiplayerToggleBtn'),
+  toast
+});
+
 const camTarget=new THREE.Vector3();
 
 const cameraController=createCameraController({
@@ -2579,6 +3594,204 @@ function groundHeightForWheel(absx,absz){
     return rs.y;
   }
   return terrainAbs(absx,absz);
+}
+
+
+// V18C.1 — presentation-only support solver for remote multiplayer cars.
+//
+// Important: vertical render-space Y is LOCAL state in World Drive. It depends
+// on the receiver's currently loaded DEM/road profile and must never be trusted
+// as a network coordinate. Every client therefore solves remote wheel contacts
+// against its own road/terrain exactly like it does for the local vehicle.
+function solveRemoteVehicleSupport({
+  lat,
+  lon,
+  heading:remoteHeading,
+  visual
+}){
+  if(
+    !Number.isFinite(lat)||
+    !Number.isFinite(lon)||
+    !visual?.wheels?.length
+  ){
+    return null;
+  }
+
+  const center=
+    llToXZ(lat,lon);
+
+  const c=
+    Math.cos(remoteHeading||0);
+
+  const sn=
+    Math.sin(remoteHeading||0);
+
+  const contacts=[];
+
+  for(const wheel of visual.wheels){
+    const lx=
+      Number.isFinite(wheel.baseX)
+        ?wheel.baseX
+        :wheel.pivot.position.x;
+
+    const lz=
+      Number.isFinite(wheel.baseZ)
+        ?wheel.baseZ
+        :wheel.pivot.position.z;
+
+    const wx=
+      center.x+
+      lx*c+
+      lz*sn;
+
+    const wz=
+      center.z-
+      lx*sn+
+      lz*c;
+
+    const ground=
+      groundHeightForWheel(
+        wx,
+        wz
+      );
+
+    contacts.push({
+      wheel,
+      ground,
+      lx,
+      lz
+    });
+  }
+
+  if(contacts.length!==4){
+    return null;
+  }
+
+  const front=
+    contacts.filter(
+      item=>item.wheel.front
+    );
+
+  const rear=
+    contacts.filter(
+      item=>!item.wheel.front
+    );
+
+  const left=
+    contacts.filter(
+      item=>item.lx<0
+    );
+
+  const right=
+    contacts.filter(
+      item=>item.lx>=0
+    );
+
+  const avg=list=>
+    list.reduce(
+      (sum,item)=>sum+item.ground,
+      0
+    )/
+    Math.max(
+      1,
+      list.length
+    );
+
+  const frontAvg=avg(front);
+  const rearAvg=avg(rear);
+  const leftAvg=avg(left);
+  const rightAvg=avg(right);
+  const avgGround=avg(contacts);
+
+  const frontZ=
+    front.length
+      ?front.reduce(
+          (sum,item)=>sum+item.lz,
+          0
+        )/front.length
+      :1;
+
+  const rearZ=
+    rear.length
+      ?rear.reduce(
+          (sum,item)=>sum+item.lz,
+          0
+        )/rear.length
+      :-1;
+
+  const leftX=
+    left.length
+      ?left.reduce(
+          (sum,item)=>sum+item.lx,
+          0
+        )/left.length
+      :-1;
+
+  const rightX=
+    right.length
+      ?right.reduce(
+          (sum,item)=>sum+item.lx,
+          0
+        )/right.length
+      :1;
+
+  const wheelbase=
+    Math.max(
+      .5,
+      Math.abs(
+        frontZ-rearZ
+      )
+    );
+
+  const track=
+    Math.max(
+      .5,
+      Math.abs(
+        rightX-leftX
+      )
+    );
+
+  const wheelPitch=
+    Math.atan2(
+      rearAvg-frontAvg,
+      wheelbase
+    );
+
+  const wheelRoll=
+    Math.atan2(
+      leftAvg-rightAvg,
+      track
+    );
+
+  // Match the local wheel-contact solver exactly.
+  const camberAbs=
+    Math.abs(wheelRoll);
+
+  const effectiveWheelRadius=
+    WHEEL_RADIUS*
+    Math.cos(camberAbs)+
+    TIRE_HALF_WIDTH*
+    Math.sin(camberAbs);
+
+  const rootY=
+    avgGround+
+    effectiveWheelRadius+
+    TIRE_VISUAL_CLEARANCE;
+
+  return {
+    rootY,
+    wheelPitch,
+    wheelRoll,
+
+    wheelLocalY:
+      contacts.map(
+        item=>
+          item.ground+
+          effectiveWheelRadius+
+          TIRE_VISUAL_CLEARANCE-
+          rootY
+      )
+  };
 }
 
 function updateSuspensionVisuals(dt,onRoad,currentSteerAngle){
@@ -2924,8 +4137,17 @@ function updateDrive(dt){
    if(speed>=0){
      // EV-style power taper: strong low-speed response, progressively softer
      // above highway speed, but enough reserve to reach the selected 180–200 km/h cap.
-     const performanceTop=200/3.6;
-     const speedRatio=Math.min(1,Math.max(0,speed/performanceTop));
+     const performanceTop=
+       (VEHICLE.topSpeedKmh||200)/3.6;
+
+     const speedRatio=
+       Math.min(
+         1,
+         Math.max(
+           0,
+           speed/performanceTop
+         )
+       );
      const powerTaper=1-.38*speedRatio;
      accel+=VEHICLE.accel*throttle*powerTaper;
    }else accel+=VEHICLE.brake*throttle; // brake reverse motion before going forward
@@ -3089,6 +4311,14 @@ function updateDrive(dt){
  }
  const onRoad=roadContact&&roadFrame&&roadFrame.distance<18;
  $('contactMode').textContent=onRoad?'Route':'Terrain';
+
+ // Competitive run uses the same final Route/Terrain contact decision as HUD
+ // and vehicle support, so penalties match what the player actually sees.
+ updateRunChallenge(
+   onRoad,
+   nr
+ );
+
  const terrainFrame=!onRoad?terrainFrameAt(absX,absZ,heading):null;
 
  // Off-road root height is terrain-driven. On-road height is solved later
@@ -3228,8 +4458,49 @@ function toggleRoadSpeedLimits(){
   }
 }
 
+function vehicleTopSpeedKmh(){
+  return Math.max(
+    20,
+    Number(VEHICLE.topSpeedKmh)||200
+  );
+}
+
+function syncVehicleSpeedCapability({
+  useVehicleMaximum=false
+}={}){
+  const top=
+    vehicleTopSpeedKmh();
+
+  maxSpeedSlider.max=
+    String(top);
+
+  if(useVehicleMaximum){
+    maxSpeedSlider.value=
+      String(top);
+    setMaxSpeed(top);
+  }else if(maxSpeedKmh>top){
+    maxSpeedSlider.value=
+      String(top);
+    setMaxSpeed(top);
+  }
+
+  maxSpeedLabel.textContent=
+    Math.round(maxSpeedKmh);
+}
+
 function setMaxSpeed(kmh){
-  maxSpeedKmh=Math.max(20,Math.min(200,Number(kmh)||100));
+  const vehicleTop=
+    vehicleTopSpeedKmh();
+
+  maxSpeedKmh=
+    Math.max(
+      20,
+      Math.min(
+        vehicleTop,
+        Number(kmh)||100
+      )
+    );
+
   MAX=maxSpeedKmh/3.6;
   maxSpeedLabel.textContent=Math.round(maxSpeedKmh);
   // If the limit is reduced below current speed, taper immediately to new limit.
@@ -3239,6 +4510,9 @@ function setMaxSpeed(kmh){
 maxSpeedSlider.addEventListener('input',e=>setMaxSpeed(e.target.value));
 if(speedLimitModeBtn)speedLimitModeBtn.onclick=toggleRoadSpeedLimits;
 updateSpeedLimitModeUI();
+syncVehicleSpeedCapability({
+  useVehicleMaximum:true
+});
 
 const vehicleSelect=$('vehicleSelect');
 if(vehicleSelect){
@@ -3258,6 +4532,12 @@ if(vehicleSelect){
 
       applyVehicleVisualProfile();
       vehicleAudio.setProfile(vehicleSystem.active.audio);
+
+      // Each car exposes its own real top-speed capability.
+      // Selecting a vehicle starts its speed limiter at that vehicle's maximum.
+      syncVehicleSpeedCapability({
+        useVehicleMaximum:true
+      });
 
       toast(
         `Véhicule: ${vehicleSystem.active.name} · ${vehicleSystem.active.description}`
@@ -3681,6 +4961,27 @@ function drawMap(cum=0){if(!bounds)return;const dpr=devicePixelRatio||1,w=mc.cli
  // Red dot = current vehicle position/progress.
  const p=routePointAt(cum/routeLength),carMapX=X(p.x),carMapZ=Z(p.z);mctx.fillStyle='#ff4949';mctx.beginPath();mctx.arc(carMapX,carMapZ,5,0,Math.PI*2);mctx.fill();
 
+ // V18A: connected LAN peers appear directly from their geographic position.
+ for(const peer of multiplayer.getPeers()){
+   const remote=llToXZ(peer.lat,peer.lon);
+   if(
+     remote.x<bounds.minx||remote.x>bounds.maxx||
+     remote.z<bounds.minz||remote.z>bounds.maxz
+   )continue;
+
+   const px=X(remote.x),pz=Z(remote.z);
+   mctx.fillStyle='#48d9ff';
+   mctx.beginPath();
+   mctx.arc(px,pz,4.5,0,Math.PI*2);
+   mctx.fill();
+
+   mctx.font='700 9px system-ui';
+   mctx.textAlign='left';
+   mctx.textBaseline='bottom';
+   mctx.fillStyle='#bdefff';
+   mctx.fillText(peer.name,px+7,pz-4);
+ }
+
  // When a road sign is crossed, briefly repeat its text beside the vehicle marker.
  if(signReadout.text&&signReadout.startedAt){
    const age=performance.now()-signReadout.startedAt;
@@ -3811,6 +5112,7 @@ function animate(now){
    gamepad.update();
    updateDrive(dt);
    updateContactShadow();
+   multiplayer.update(dt);
 
    try{vehicleAudio.update()}catch(audioErr){
      console.warn('Audio frame error',audioErr);

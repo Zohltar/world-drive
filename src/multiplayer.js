@@ -1,0 +1,895 @@
+// World Drive V18D - N-player LAN client with remote night headlights.
+// No remote physics/collisions: each peer only broadcasts presentation state.
+
+const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+const lerp=(a,b,t)=>a+(b-a)*t;
+
+function angleLerp(a,b,t){
+  let d=(b-a)%(Math.PI*2);
+  if(d>Math.PI)d-=Math.PI*2;
+  if(d<-Math.PI)d+=Math.PI*2;
+  return a+d*t;
+}
+
+
+// Route-origin-independent local tangent plane, in real metres.
+// Multiplayer visuals are only drawn within ~3.2 km, where this is precise
+// and avoids any dependence on each client's current route origin.
+const GEO_EARTH=6378137;
+
+function geographicOffsetMeters(
+  fromLat,
+  fromLon,
+  toLat,
+  toLon
+){
+  const rad=Math.PI/180;
+  const dLat=(toLat-fromLat)*rad;
+
+  let dLon=(toLon-fromLon)*rad;
+  if(dLon>Math.PI)dLon-=Math.PI*2;
+  else if(dLon<-Math.PI)dLon+=Math.PI*2;
+
+  const midLat=(fromLat+toLat)*.5*rad;
+
+  return {
+    x:dLon*GEO_EARTH*Math.cos(midLat),
+    z:-dLat*GEO_EARTH
+  };
+}
+
+function makeLabelTexture(THREE,text){
+  const canvas=document.createElement('canvas');
+  canvas.width=512;
+  canvas.height=128;
+  const ctx=canvas.getContext('2d');
+
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  ctx.font='700 52px system-ui, sans-serif';
+  ctx.textAlign='center';
+  ctx.textBaseline='middle';
+
+  const width=Math.min(
+    480,
+    Math.max(170,ctx.measureText(text).width+58)
+  );
+  const x=(canvas.width-width)/2;
+
+  ctx.fillStyle='rgba(5,13,22,.84)';
+  ctx.strokeStyle='rgba(228,241,255,.78)';
+  ctx.lineWidth=4;
+  ctx.beginPath();
+  ctx.roundRect(x,20,width,88,22);
+  ctx.fill();
+  ctx.stroke();
+
+  ctx.fillStyle='#f6fbff';
+  ctx.fillText(text,canvas.width/2,64);
+
+  const texture=new THREE.CanvasTexture(canvas);
+  texture.colorSpace=THREE.SRGBColorSpace;
+  texture.needsUpdate=true;
+  return texture;
+}
+
+function makeWheel(THREE,radius=.34,width=.24){
+  const tire=new THREE.Mesh(
+    new THREE.CylinderGeometry(radius,radius,width,16),
+    new THREE.MeshStandardMaterial({
+      color:0x15191e,
+      roughness:.90,
+      metalness:.02
+    })
+  );
+  tire.rotation.z=Math.PI/2;
+  tire.castShadow=true;
+
+  const rim=new THREE.Mesh(
+    new THREE.CylinderGeometry(radius*.52,radius*.52,width+.012,12),
+    new THREE.MeshStandardMaterial({
+      color:0xaab2ba,
+      roughness:.46,
+      metalness:.70
+    })
+  );
+  rim.rotation.z=Math.PI/2;
+  tire.add(rim);
+
+  const pivot=new THREE.Group();
+  pivot.add(tire);
+  return {pivot,tire,radius};
+}
+
+function createRemoteVehicleVisual(THREE,vehicleId,name){
+  const root=new THREE.Group();
+  root.name=`remote-${name}`;
+  root.rotation.order='YXZ';
+
+  const dark=new THREE.MeshStandardMaterial({
+    color:0x121821,
+    roughness:.65,
+    metalness:.16
+  });
+  const glass=new THREE.MeshStandardMaterial({
+    color:0x182d3d,
+    roughness:.22,
+    metalness:.15
+  });
+
+  const specs={
+    id4:{color:0x3b6e91,w:1.82,l:4.58,h:.63,cabin:.68,wheelbase:2.76,r:.36},
+    wrx:{color:0x2766a5,w:1.80,l:4.48,h:.48,cabin:.55,wheelbase:2.64,r:.35},
+    civic:{color:0x101317,w:1.78,l:4.52,h:.47,cabin:.53,wheelbase:2.70,r:.34},
+    sonata:{color:0xe9edf0,w:1.86,l:4.80,h:.48,cabin:.52,wheelbase:2.80,r:.35},
+    i3_2017:{color:0xf0f1ee,w:1.78,l:4.00,h:.70,cabin:.78,wheelbase:2.57,r:.35},
+    f1_2010:{color:0xc51f27,w:1.78,l:4.75,h:.20,cabin:.18,wheelbase:3.15,r:.32}
+  };
+  const s=specs[vehicleId]||specs.wrx;
+  const bodyMat=new THREE.MeshStandardMaterial({
+    color:s.color,
+    roughness:.48,
+    metalness:.18
+  });
+
+  const brakeBase=new THREE.Color(0x721018);
+  const brakeHot=new THREE.Color(0xff2638);
+  const brakeMat=new THREE.MeshBasicMaterial({color:brakeBase.clone()});
+  const wheels=[];
+
+  if(vehicleId==='f1_2010'){
+    const tub=new THREE.Mesh(
+      new THREE.BoxGeometry(.72,.27,3.55),
+      bodyMat
+    );
+    tub.position.y=.46;
+    tub.castShadow=true;
+    root.add(tub);
+
+    const nose=new THREE.Mesh(
+      new THREE.BoxGeometry(.34,.15,1.38),
+      bodyMat
+    );
+    nose.position.set(0,.42,2.23);
+    root.add(nose);
+
+    const cockpit=new THREE.Mesh(
+      new THREE.BoxGeometry(.58,.30,.78),
+      dark
+    );
+    cockpit.position.set(0,.67,-.25);
+    root.add(cockpit);
+
+    const frontWing=new THREE.Mesh(
+      new THREE.BoxGeometry(1.78,.08,.34),
+      bodyMat
+    );
+    frontWing.position.set(0,.24,2.48);
+    root.add(frontWing);
+
+    const rearWing=new THREE.Mesh(
+      new THREE.BoxGeometry(1.58,.13,.28),
+      dark
+    );
+    rearWing.position.set(0,.78,-2.02);
+    root.add(rearWing);
+
+    const lamp=new THREE.Mesh(
+      new THREE.BoxGeometry(.18,.10,.07),
+      brakeMat
+    );
+    lamp.position.set(0,.50,-2.08);
+    root.add(lamp);
+
+    const positions=[
+      [-.77,.32,1.18,true],
+      [.77,.32,1.18,true],
+      [-.79,.34,-1.32,false],
+      [.79,.34,-1.32,false]
+    ];
+    for(const [x,y,z,front] of positions){
+      const wheel=makeWheel(THREE,s.r,.27);
+      wheel.pivot.position.set(x,y,z);
+      wheel.front=front;
+      root.add(wheel.pivot);
+      wheels.push(wheel);
+    }
+  }else{
+    const body=new THREE.Mesh(
+      new THREE.BoxGeometry(s.w,s.h,s.l),
+      bodyMat
+    );
+    body.position.y=.54+s.h*.30;
+    body.castShadow=true;
+    root.add(body);
+
+    const cabinLength=vehicleId==='i3_2017'?2.25:2.05;
+    const cabin=new THREE.Mesh(
+      new THREE.BoxGeometry(s.w*.78,s.cabin,cabinLength),
+      glass
+    );
+    cabin.position.set(0,1.00+s.cabin*.18,-.18);
+    cabin.castShadow=true;
+    root.add(cabin);
+
+    if(vehicleId==='i3_2017'){
+      const blackRoof=new THREE.Mesh(
+        new THREE.BoxGeometry(s.w*.74,.10,1.62),
+        dark
+      );
+      blackRoof.position.set(0,1.46,-.25);
+      root.add(blackRoof);
+    }
+
+    const rearLampGeom=new THREE.BoxGeometry(.40,.13,.06);
+    for(const x of [-s.w*.30,s.w*.30]){
+      const lamp=new THREE.Mesh(rearLampGeom,brakeMat);
+      lamp.position.set(x,.74,-s.l*.505);
+      root.add(lamp);
+    }
+
+    const halfWB=s.wheelbase*.5;
+    const halfTrack=s.w*.44;
+    const positions=[
+      [-halfTrack,s.r,halfWB,true],
+      [halfTrack,s.r,halfWB,true],
+      [-halfTrack,s.r,-halfWB,false],
+      [halfTrack,s.r,-halfWB,false]
+    ];
+    for(const [x,y,z,front] of positions){
+      const wheel=makeWheel(THREE,s.r,.24);
+      wheel.pivot.position.set(x,y,z);
+      wheel.front=front;
+      root.add(wheel.pivot);
+      wheels.push(wheel);
+    }
+  }
+
+  const tagMaterial=new THREE.SpriteMaterial({
+    map:makeLabelTexture(THREE,name),
+    transparent:true,
+    depthTest:false,
+    depthWrite:false
+  });
+  const tag=new THREE.Sprite(tagMaterial);
+  tag.position.set(0,2.25,0);
+  tag.scale.set(3.7,.92,1);
+  tag.renderOrder=1000;
+  root.add(tag);
+
+  return {
+    root,
+    wheels,
+    brakeMat,
+    brakeBase,
+    brakeHot,
+    labelTexture:tagMaterial.map,
+    dispose(){
+      root.traverse(obj=>{
+        if(obj.geometry)obj.geometry.dispose?.();
+        if(obj.material){
+          const mats=Array.isArray(obj.material)?obj.material:[obj.material];
+          for(const mat of mats){
+            if(mat.map&&mat.map!==tagMaterial.map)mat.map.dispose?.();
+            mat.dispose?.();
+          }
+        }
+      });
+      tagMaterial.map.dispose?.();
+    }
+  };
+}
+
+export function createMultiplayerClient({
+  THREE,
+  scene,
+  latLonToWorld,
+  getWorldOffset,
+  getLocalState,
+  createRemoteVisual=null,
+  getLocalRenderPosition=null,
+  solveRemoteSupport=null,
+  getHeadlightLevel=()=>0,
+  statusEl=null,
+  countEl=null,
+  serverEl=null,
+  nameInput=null,
+  toggleButton=null,
+  toast=()=>{}
+}){
+  let socket=null;
+  let ownId=null;
+  let nextSendAt=0;
+  let manuallyClosed=false;
+  let cachedName='Conducteur';
+  let localSequence=0;
+  const peers=new Map();
+
+  const defaultUrl=()=>{
+    const scheme=location.protocol==='https:'?'wss':'ws';
+    return `${scheme}://${location.hostname}:8081`;
+  };
+
+  function setStatus(text,state='off'){
+    if(statusEl){
+      statusEl.textContent=text;
+      statusEl.dataset.state=state;
+    }
+    if(serverEl)serverEl.textContent=defaultUrl();
+    if(toggleButton){
+      const connected=socket?.readyState===WebSocket.OPEN;
+      const connecting=socket?.readyState===WebSocket.CONNECTING;
+      toggleButton.textContent=connected?'Déconnecter':(connecting?'Connexion…':'Connecter');
+      toggleButton.disabled=!!connecting;
+    }
+    updateCount();
+  }
+
+  function updateCount(count=null){
+    if(!countEl)return;
+    if(Number.isFinite(count)){
+      countEl.textContent=String(count);
+      return;
+    }
+    const connected=socket?.readyState===WebSocket.OPEN;
+    countEl.textContent=String(peers.size+(connected?1:0));
+  }
+
+  function refreshName(){
+    cachedName=(nameInput?.value||cachedName||'Conducteur')
+      .trim()
+      .slice(0,24)||'Conducteur';
+    if(nameInput)nameInput.value=cachedName;
+    localStorage.setItem('worlddrive_multiplayer_name',cachedName);
+    return cachedName;
+  }
+
+  function replacePeerVisual(peer,vehicleId){
+    if(peer.visual){
+      scene.remove(peer.visual.root);
+      peer.visual.dispose();
+    }
+    peer.vehicleId=vehicleId||'wrx';
+
+    peer.visual=
+      createRemoteVisual?.(
+        peer.vehicleId,
+        peer.name||'Conducteur'
+      )||
+      createRemoteVehicleVisual(
+        THREE,
+        peer.vehicleId,
+        peer.name||'Conducteur'
+      );
+
+    scene.add(peer.visual.root);
+  }
+
+  function ensurePeer(message){
+    if(!message.id||message.id===ownId)return null;
+    let peer=peers.get(message.id);
+    if(!peer){
+      peer={
+        id:message.id,
+        name:(message.name||'Conducteur').slice(0,24),
+        vehicleId:message.vehicleId||'wrx',
+        lat:Number(message.lat)||0,
+        lon:Number(message.lon)||0,
+        targetLat:Number(message.lat)||0,
+        targetLon:Number(message.lon)||0,
+        // Network Y is retained only as a compatibility fallback.
+        y:Number(message.y)||0,
+        targetY:Number(message.y)||0,
+        renderY:null,
+
+        heading:Number(message.heading)||0,
+        targetHeading:Number(message.heading)||0,
+        steer:Number(message.steer)||0,
+        targetSteer:Number(message.steer)||0,
+        speed:Number(message.speed)||0,
+        braking:!!message.braking,
+        lastSeq:Number(message.seq)||0,
+
+        bodyPitch:Number(message.bodyPitch)||0,
+        targetBodyPitch:Number(message.bodyPitch)||0,
+        bodyYaw:Number(message.bodyYaw)||0,
+        targetBodyYaw:Number(message.bodyYaw)||0,
+        bodyRoll:Number(message.bodyRoll)||0,
+        targetBodyRoll:Number(message.bodyRoll)||0,
+        bodyY:Number(message.bodyY)||0,
+        targetBodyY:Number(message.bodyY)||0,
+        wheelPitch:Number(message.wheelPitch)||0,
+        targetWheelPitch:Number(message.wheelPitch)||0,
+        wheelRoll:Number(message.wheelRoll)||0,
+        targetWheelRoll:Number(message.wheelRoll)||0,
+
+        lastSeen:performance.now(),
+        wheelSpin:0,
+        visual:null
+      };
+      replacePeerVisual(peer,peer.vehicleId);
+      peers.set(peer.id,peer);
+      updateCount();
+    }
+    return peer;
+  }
+
+  function applyState(message){
+    const peer=ensurePeer(message);
+    if(!peer)return;
+
+    const seq=Number(message.seq)||0;
+    if(seq>0&&peer.lastSeq>0&&seq<peer.lastSeq)return;
+    if(seq>0)peer.lastSeq=seq;
+
+    const vehicleId=message.vehicleId||peer.vehicleId;
+    const name=(message.name||peer.name).slice(0,24);
+
+    if(vehicleId!==peer.vehicleId||name!==peer.name){
+      peer.name=name;
+      replacePeerVisual(peer,vehicleId);
+    }
+
+    if(Number.isFinite(message.lat))peer.targetLat=message.lat;
+    if(Number.isFinite(message.lon))peer.targetLon=message.lon;
+    if(Number.isFinite(message.y))peer.targetY=message.y;
+    if(Number.isFinite(message.heading))peer.targetHeading=message.heading;
+    if(Number.isFinite(message.steer))peer.targetSteer=message.steer;
+    if(Number.isFinite(message.speed))peer.speed=message.speed;
+
+    if(Number.isFinite(message.bodyPitch)){
+      peer.targetBodyPitch=message.bodyPitch;
+    }
+    if(Number.isFinite(message.bodyYaw)){
+      peer.targetBodyYaw=message.bodyYaw;
+    }
+    if(Number.isFinite(message.bodyRoll)){
+      peer.targetBodyRoll=message.bodyRoll;
+    }
+    if(Number.isFinite(message.bodyY)){
+      peer.targetBodyY=message.bodyY;
+    }
+    if(Number.isFinite(message.wheelPitch)){
+      peer.targetWheelPitch=message.wheelPitch;
+    }
+    if(Number.isFinite(message.wheelRoll)){
+      peer.targetWheelRoll=message.wheelRoll;
+    }
+
+    peer.braking=!!message.braking;
+    peer.lastSeen=performance.now();
+  }
+
+  function removePeer(id){
+    const peer=peers.get(id);
+    if(!peer)return;
+    if(peer.visual){
+      scene.remove(peer.visual.root);
+      peer.visual.dispose();
+    }
+    peers.delete(id);
+    updateCount();
+  }
+
+  function clearPeers(){
+    for(const id of [...peers.keys()])removePeer(id);
+  }
+
+  function send(payload){
+    if(socket?.readyState!==WebSocket.OPEN)return;
+    try{
+      socket.send(JSON.stringify(payload));
+    }catch(error){
+      console.warn('Multiplayer send failed',error);
+    }
+  }
+
+  function sendLocalState(){
+    const state=getLocalState?.();
+    if(!state)return;
+
+    send({
+      type:'state',
+      seq:++localSequence,
+      name:cachedName,
+      lat:state.lat,
+      lon:state.lon,
+      y:state.y,
+      heading:state.heading,
+      speed:state.speed,
+      vehicleId:state.vehicleId,
+      steer:state.steer,
+      braking:state.braking,
+      bodyPitch:state.bodyPitch,
+      bodyYaw:state.bodyYaw,
+      bodyRoll:state.bodyRoll,
+      bodyY:state.bodyY,
+      wheelPitch:state.wheelPitch,
+      wheelRoll:state.wheelRoll
+    });
+  }
+
+  function connect(){
+    if(
+      socket&&
+      (socket.readyState===WebSocket.OPEN||socket.readyState===WebSocket.CONNECTING)
+    )return;
+
+    manuallyClosed=false;
+    localSequence=0;
+    const url=defaultUrl();
+    setStatus('Connexion…','connecting');
+
+    try{
+      socket=new WebSocket(url);
+    }catch(error){
+      console.warn('Multiplayer WebSocket failed',error);
+      setStatus('Indisponible','error');
+      return;
+    }
+
+    socket.addEventListener('open',()=>{
+      send({
+        type:'hello',
+        name:refreshName(),
+        vehicleId:getLocalState()?.vehicleId||'wrx'
+      });
+      setStatus('Connecté','on');
+      toast('Multijoueur LAN connecté');
+    });
+
+    socket.addEventListener('message',event=>{
+      let message;
+      try{
+        message=JSON.parse(event.data);
+      }catch{
+        return;
+      }
+
+      if(message.type==='welcome'){
+        ownId=message.id;
+        updateCount(message.count);
+      }else if(message.type==='snapshot'){
+        // One atomic initial roster for late joiners.
+        for(const state of message.states||[]){
+          applyState(state);
+        }
+      }else if(message.type==='refresh-state'){
+        // A new player joined: send our position immediately.
+        sendLocalState();
+      }else if(message.type==='state'){
+        applyState(message);
+      }else if(message.type==='leave'){
+        removePeer(message.id);
+      }else if(message.type==='roster'){
+        updateCount(message.count);
+      }
+    });
+
+    socket.addEventListener('close',()=>{
+      socket=null;
+      ownId=null;
+      clearPeers();
+      setStatus(manuallyClosed?'Déconnecté':'Serveur perdu',manuallyClosed?'off':'error');
+      if(!manuallyClosed)toast('Connexion multijoueur perdue');
+    });
+
+    socket.addEventListener('error',()=>{
+      setStatus('Erreur réseau','error');
+    });
+  }
+
+  function disconnect(){
+    manuallyClosed=true;
+    if(socket){
+      try{socket.close(1000,'client disconnect')}catch{}
+    }
+    socket=null;
+    ownId=null;
+    clearPeers();
+    setStatus('Déconnecté','off');
+  }
+
+  function toggle(){
+    if(socket?.readyState===WebSocket.OPEN)disconnect();
+    else connect();
+  }
+
+  function update(dt){
+    const now=performance.now();
+
+    if(socket?.readyState===WebSocket.OPEN&&now>=nextSendAt){
+      nextSendAt=now+50; // 20 Hz state stream; rendering remains local frame-rate.
+      sendLocalState();
+    }
+
+    const localState=getLocalState?.();
+    const localRender=getLocalRenderPosition?.();
+
+    // Compatibility fallback only. Normal V18C placement does not use this.
+    const offset=getWorldOffset?.();
+    const interp=1-Math.exp(-dt*10.5);
+    const steerInterp=1-Math.exp(-dt*13);
+
+    for(const peer of peers.values()){
+      peer.lat=lerp(peer.lat,peer.targetLat,interp);
+      peer.lon=lerp(peer.lon,peer.targetLon,interp);
+      peer.y=lerp(peer.y,peer.targetY,interp);
+      peer.heading=angleLerp(peer.heading,peer.targetHeading,interp);
+      peer.steer=lerp(peer.steer,peer.targetSteer,steerInterp);
+
+      peer.bodyPitch=lerp(
+        peer.bodyPitch,
+        peer.targetBodyPitch,
+        interp
+      );
+      peer.bodyYaw=angleLerp(
+        peer.bodyYaw,
+        peer.targetBodyYaw,
+        interp
+      );
+      peer.bodyRoll=lerp(
+        peer.bodyRoll,
+        peer.targetBodyRoll,
+        interp
+      );
+      peer.bodyY=lerp(
+        peer.bodyY,
+        peer.targetBodyY,
+        interp
+      );
+      peer.wheelPitch=lerp(
+        peer.wheelPitch,
+        peer.targetWheelPitch,
+        interp
+      );
+      peer.wheelRoll=lerp(
+        peer.wheelRoll,
+        peer.targetWheelRoll,
+        interp
+      );
+
+      let rx;
+      let rz;
+      let relativeD2;
+
+      if(
+        localState&&
+        localRender&&
+        Number.isFinite(localState.lat)&&
+        Number.isFinite(localState.lon)&&
+        Number.isFinite(localRender.x)&&
+        Number.isFinite(localRender.z)
+      ){
+        const delta=geographicOffsetMeters(
+          localState.lat,
+          localState.lon,
+          peer.lat,
+          peer.lon
+        );
+
+        rx=localRender.x+delta.x;
+        rz=localRender.z+delta.z;
+        relativeD2=delta.x*delta.x+delta.z*delta.z;
+      }else{
+        // Legacy integration fallback.
+        const abs=latLonToWorld(peer.lat,peer.lon);
+        rx=abs.x-(offset?.x||0);
+        rz=abs.z-(offset?.z||0);
+
+        const localAbs=
+          localState&&
+          Number.isFinite(localState.lat)&&
+          Number.isFinite(localState.lon)
+            ?latLonToWorld(localState.lat,localState.lon)
+            :{x:0,z:0};
+
+        const dx=abs.x-localAbs.x;
+        const dz=abs.z-localAbs.z;
+        relativeD2=dx*dx+dz*dz;
+      }
+
+      const visible=relativeD2<3200*3200;
+
+      peer.visual.root.visible=visible;
+
+      if(!visible){
+        peer.visual.setHeadlights?.(
+          0,
+          Infinity
+        );
+        continue;
+      }
+
+      // V18C.1:
+      // X/Z/heading are network state.
+      // Y/contact plane are solved against the RECEIVER'S own road/terrain.
+      const localSupport=
+        solveRemoteSupport?.({
+          lat:peer.lat,
+          lon:peer.lon,
+          heading:peer.heading,
+          visual:peer.visual
+        })||
+        null;
+
+      const supportY=
+        Number.isFinite(localSupport?.rootY)
+          ?localSupport.rootY
+          :peer.y;
+
+      // Initialize instantly so a late join never rises/falls through the road
+      // from an unrelated sender-side vertical origin.
+      if(!Number.isFinite(peer.renderY)){
+        peer.renderY=supportY;
+      }else{
+        const verticalInterp=
+          1-Math.exp(
+            -dt*18
+          );
+
+        peer.renderY=
+          lerp(
+            peer.renderY,
+            supportY,
+            verticalInterp
+          );
+      }
+
+      peer.visual.root.position.set(
+        rx,
+        peer.renderY,
+        rz
+      );
+
+      peer.visual.root.rotation.y=
+        peer.heading;
+
+      const localWheelPitch=
+        Number.isFinite(localSupport?.wheelPitch)
+          ?localSupport.wheelPitch
+          :peer.wheelPitch;
+
+      const localWheelRoll=
+        Number.isFinite(localSupport?.wheelRoll)
+          ?localSupport.wheelRoll
+          :peer.wheelRoll;
+
+      if(peer.visual.bodyGroup){
+        peer.visual.bodyGroup.position.y=
+          peer.bodyY;
+
+        // Preserve remote driver's visual suspension/cornering character, but
+        // replace the static road-support component with the receiver's local
+        // support plane. This keeps the car aligned with the visible road.
+        const pitchDelta=
+          localWheelPitch-
+          peer.wheelPitch;
+
+        const rollDelta=
+          localWheelRoll-
+          peer.wheelRoll;
+
+        peer.visual.bodyGroup.rotation.set(
+          peer.bodyPitch-
+          pitchDelta,
+          peer.bodyYaw,
+          peer.bodyRoll-
+          rollDelta
+        );
+      }else{
+        peer.visual.root.rotation.x=
+          -localWheelPitch;
+
+        peer.visual.root.rotation.z=
+          -localWheelRoll;
+      }
+
+      for(
+        let wheelIndex=0;
+        wheelIndex<peer.visual.wheels.length;
+        wheelIndex++
+      ){
+        const wheel=
+          peer.visual.wheels[
+            wheelIndex
+          ];
+
+        const radius=
+          Number(wheel.radius)||.34;
+
+        peer.wheelSpin-=
+          peer.speed*dt/radius;
+
+        if(wheel.tire){
+          wheel.tire.rotation.x=
+            peer.wheelSpin;
+        }
+
+        if(wheel.rim){
+          wheel.rim.rotation.x=
+            peer.wheelSpin;
+        }
+
+        const localWheelY=
+          localSupport?.wheelLocalY?.[
+            wheelIndex
+          ];
+
+        if(Number.isFinite(localWheelY)){
+          wheel.pivot.position.y=
+            localWheelY;
+        }else{
+          const x=
+            Number.isFinite(wheel.baseX)
+              ?wheel.baseX
+              :wheel.pivot.position.x;
+
+          const z=
+            Number.isFinite(wheel.baseZ)
+              ?wheel.baseZ
+              :wheel.pivot.position.z;
+
+          wheel.pivot.position.y=
+            -Math.tan(localWheelPitch)*z-
+            Math.tan(localWheelRoll)*x;
+        }
+
+        wheel.pivot.rotation.y=
+          wheel.front
+            ?peer.steer
+            :0;
+
+        wheel.pivot.rotation.z=
+          -localWheelRoll;
+      }
+
+      const brake=peer.braking?1:0;
+
+      if(peer.visual.setBraking){
+        peer.visual.setBraking(brake);
+      }else{
+        peer.visual.brakeMat.color
+          .copy(peer.visual.brakeBase)
+          .lerp(peer.visual.brakeHot,brake);
+      }
+
+      peer.visual.setHeadlights?.(
+        getHeadlightLevel(),
+        Math.sqrt(relativeD2)
+      );
+    }
+  }
+
+  function getPeers(){
+    return [...peers.values()].map(peer=>({
+      id:peer.id,
+      name:peer.name,
+      lat:peer.lat,
+      lon:peer.lon,
+      vehicleId:peer.vehicleId,
+      speed:peer.speed
+    }));
+  }
+
+  if(nameInput){
+    nameInput.value=
+      localStorage.getItem('worlddrive_multiplayer_name')||
+      nameInput.value||
+      'Conducteur';
+    refreshName();
+    nameInput.addEventListener('change',refreshName);
+  }
+
+  toggleButton?.addEventListener('click',toggle);
+  addEventListener('beforeunload',()=>disconnect(),{once:true});
+  setStatus('Déconnecté','off');
+
+  return {
+    connect,
+    disconnect,
+    toggle,
+    update,
+    getPeers,
+    isConnected:()=>socket?.readyState===WebSocket.OPEN
+  };
+}
