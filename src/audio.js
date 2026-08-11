@@ -1,6 +1,6 @@
 // World Drive - vehicle audio
-// Profile-aware WebAudio synthesis: EV whine for ID4 and boxer-turbo combustion
-// character for WRX. No external audio assets required.
+// Profile-aware WebAudio synthesis.
+// F1 uses a dedicated dark 12,000-rpm V8 model with no aggressive high harmonics.
 
 export function createVehicleAudio({
   statusEl,
@@ -348,43 +348,90 @@ export function createVehicleAudio({
     const idle=profile.idleRpm||850;
     const redline=profile.redlineRpm||6700;
 
-    // Simple six-speed automaticized sound model. It is intentionally independent
-    // from the actual drivetrain physics for now.
-    const shiftPoints=[28,52,82,118,160,205];
+    const defaultShiftPoints=[
+      28,52,82,118,160,205
+    ];
+
+    const shiftPoints=
+      Array.isArray(profile.shiftPoints)&&
+      profile.shiftPoints.length
+        ?profile.shiftPoints
+        :defaultShiftPoints;
+
     let gear=1;
 
     while(
-      gear<shiftPoints.length &&
+      gear<shiftPoints.length&&
       kmh>shiftPoints[gear-1]
     ){
       gear++;
     }
 
-    const lower=gear===1
-      ?0
-      :shiftPoints[gear-2];
+    const lower=
+      gear===1
+        ?0
+        :shiftPoints[gear-2];
 
-    const upper=shiftPoints[
-      Math.min(
-        shiftPoints.length-1,
-        gear-1
-      )
-    ];
+    const upper=
+      shiftPoints[
+        Math.min(
+          shiftPoints.length-1,
+          gear-1
+        )
+      ];
 
-    const span=Math.max(1,upper-lower);
-    const local=Math.max(
-      0,
-      Math.min(1,(kmh-lower)/span)
-    );
+    const span=
+      Math.max(
+        1,
+        upper-lower
+      );
 
-    const rpm=
-      idle+
-      (redline-idle)*
-      (.22+.70*local+.08*load);
+    const local=
+      Math.max(
+        0,
+        Math.min(
+          1,
+          (kmh-lower)/span
+        )
+      );
+
+    let rpm;
+
+    if(profile.profile==='f1-v8'){
+      // 2010-era F1 sound model:
+      // high idle, extremely wide rev range, and each upshift drops the engine
+      // back into the power band rather than down near idle.
+      const gearFloor=
+        gear===1
+          ?.20
+          :.54;
+
+      const gearSweep=
+        1-gearFloor;
+
+      rpm=
+        idle+
+        (redline-idle)*
+        (
+          gearFloor+
+          gearSweep*local+
+          load*.025
+        );
+    }else{
+      rpm=
+        idle+
+        (redline-idle)*
+        (
+          .22+
+          .70*local+
+          .08*load
+        );
+    }
 
     return {
       rpm:Math.min(redline,rpm),
-      gear
+      gear,
+      local
     };
   }
 
@@ -412,78 +459,219 @@ export function createVehicleAudio({
     currentProfile=getProfile?.()||currentProfile;
 
     if(currentProfile.type==='combustion'){
-      const {rpm}=estimateCombustionRpm(
+      const {rpm,gear,local}=estimateCombustionRpm(
         kmh,
         accelLoad,
         currentProfile
       );
 
-      // Four-stroke fundamental approximation plus uneven boxer secondary pulse.
-      const fireHz=rpm/60*2;
-      exhaustOsc1.frequency.setTargetAtTime(
-        Math.max(28,fireHz*.50),
-        now,
-        .035
-      );
-      exhaustOsc2.frequency.setTargetAtTime(
-        Math.max(34,fireHz*.93),
-        now,
-        .040
-      );
+      const isF1=
+        currentProfile.profile==='f1-v8';
 
-      const exhaustVol=
-        kmh<1
-          ?.035
-          :Math.min(
-              .19,
-              .045+
-              accelLoad*.105+
-              kmh/2700
-            );
+      if(isF1){
+        // F1 synth rebuilt from scratch:
+        // intentionally dark, low/mid focused, and capped at 12,000 rpm.
+        const idle=
+          currentProfile.idleRpm||3200;
 
-      exhaustGain.gain.setTargetAtTime(
-        exhaustVol,
-        now,
-        .045
-      );
+        const redline=
+          currentProfile.redlineRpm||12000;
 
-      exhaustFilter.frequency.setTargetAtTime(
-        360+
-        accelLoad*780+
-        rpm/13,
-        now,
-        .055
-      );
+        const rpmNorm=
+          Math.max(
+            0,
+            Math.min(
+              1,
+              (rpm-idle)/
+              Math.max(
+                1,
+                redline-idle
+              )
+            )
+          );
 
-      // Turbo becomes obvious under load and above low rpm/speed.
-      const boostGate=Math.max(
-        0,
-        Math.min(1,(kmh-18)/65)
-      );
+        // Four-stroke V8 firing rate.
+        const firingHz=
+          rpm/60*4;
 
-      turboOsc.frequency.setTargetAtTime(
-        850+
-        rpm*.19,
-        now,
-        .055
-      );
+        // Deliberately use sub-harmonics of firing frequency.
+        // At 12,000 rpm:
+        // low ~= 176 Hz, body ~= 344 Hz, edge ~= 520 Hz.
+        // This keeps the engine deep instead of shrill.
+        const lowOrder=
+          firingHz*.22;
 
-      turboGain.gain.setTargetAtTime(
-        Math.max(
+        const bodyOrder=
+          firingHz*.43;
+
+        const edgeOrder=
+          firingHz*.65;
+
+        exhaustOsc1.type='sawtooth';
+        exhaustOsc2.type='triangle';
+        turboOsc.type='triangle';
+
+        exhaustOsc1.frequency.setTargetAtTime(
+          Math.max(
+            70,
+            lowOrder
+          ),
+          now,
+          .030
+        );
+
+        exhaustOsc2.frequency.setTargetAtTime(
+          Math.max(
+            110,
+            bodyOrder
+          ),
+          now,
+          .030
+        );
+
+        turboOsc.frequency.setTargetAtTime(
+          Math.max(
+            150,
+            edgeOrder
+          ),
+          now,
+          .035
+        );
+
+        // Keep the entire engine dark.
+        // Even at redline the low-pass remains below ~2.2 kHz.
+        exhaustFilter.type='lowpass';
+        exhaustFilter.frequency.setTargetAtTime(
+          900+
+          rpmNorm*950+
+          accelLoad*280,
+          now,
+          .050
+        );
+
+        exhaustFilter.Q.setTargetAtTime(
+          .42,
+          now,
+          .050
+        );
+
+        // Main exhaust body dominates the sound.
+        const exhaustVol=
+          .075+
+          rpmNorm*.095+
+          accelLoad*.050;
+
+        exhaustGain.gain.setTargetAtTime(
+          Math.min(
+            .205,
+            exhaustVol
+          ),
+          now,
+          .040
+        );
+
+        // Third layer only adds texture/body.
+        // It is intentionally quiet and never becomes a whistle.
+        turboGain.gain.setTargetAtTime(
+          .003+
+          rpmNorm*.010+
+          accelLoad*.006,
+          now,
+          .045
+        );
+
+        // No EV layer.
+        motorGain.gain.setTargetAtTime(
           .0001,
-          boostGate*accelLoad*.055
-        ),
-        now,
-        .045
-      );
+          now,
+          .040
+        );
+      }else{
+        // Road-car combustion model. Preserve the boxer-turbo character used
+        // by WRX and generic combustion vehicles.
+        const fireHz=
+          rpm/60*2;
 
-      // Mute EV layer.
-      motorGain.gain.setTargetAtTime(
-        .0001,
-        now,
-        .04
-      );
-    }else{
+        exhaustOsc1.type='sawtooth';
+        exhaustOsc2.type='triangle';
+        turboOsc.type='sine';
+
+        exhaustOsc1.frequency.setTargetAtTime(
+          Math.max(28,fireHz*.50),
+          now,
+          .035
+        );
+
+        exhaustOsc2.frequency.setTargetAtTime(
+          Math.max(34,fireHz*.93),
+          now,
+          .040
+        );
+
+        const exhaustVol=
+          kmh<1
+            ?.035
+            :Math.min(
+                .19,
+                .045+
+                accelLoad*.105+
+                kmh/2700
+              );
+
+        exhaustGain.gain.setTargetAtTime(
+          exhaustVol,
+          now,
+          .045
+        );
+
+        exhaustFilter.type='lowpass';
+        exhaustFilter.frequency.setTargetAtTime(
+          360+
+          accelLoad*780+
+          rpm/13,
+          now,
+          .055
+        );
+
+        exhaustFilter.Q.setTargetAtTime(
+          .72,
+          now,
+          .055
+        );
+
+        const boostGate=
+          Math.max(
+            0,
+            Math.min(
+              1,
+              (kmh-18)/65
+            )
+          );
+
+        turboOsc.frequency.setTargetAtTime(
+          850+
+          rpm*.19,
+          now,
+          .055
+        );
+
+        turboGain.gain.setTargetAtTime(
+          Math.max(
+            .0001,
+            boostGate*
+            accelLoad*
+            .055
+          ),
+          now,
+          .045
+        );
+
+        motorGain.gain.setTargetAtTime(
+          .0001,
+          now,
+          .04
+        );
+      }    }else{
       // ID4 EV whine, preserving the original World Drive character.
       const f1=72+kmh*3.0;
       const f2=f1*2.04;
