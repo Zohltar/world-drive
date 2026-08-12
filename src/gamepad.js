@@ -8,6 +8,8 @@ export function createGamepadController({
   onCycleCamera,
   onToggleAssist,
   onToggleAutopilot,
+  onShiftUp,
+  onShiftDown,
   onResetToRoad,
   isAutopilotEnabled,
   disableAutopilot
@@ -152,7 +154,9 @@ export function createGamepadController({
 
     state.brake=Math.max(0,Math.min(1,lt));
     state.throttle=Math.max(0,Math.min(1,rt));
-    state.hand=button(gp,0); // A
+
+    // V20.12: B is now the held handbrake input.
+    state.hand=button(gp,1); // B
 
     // V19.3: standard XInput button 11 = right-stick click (R3).
     // Held state, not a toggle: hold to look behind, release to return.
@@ -161,9 +165,17 @@ export function createGamepadController({
     if(audio&&!audio.isRunning())audio.showActivationHint();
 
     if(pressedEdge(gp,3))onCycleCamera?.();       // Y
-    if(pressedEdge(gp,2))onToggleAssist?.();      // X
-    if(pressedEdge(gp,1))onToggleAutopilot?.();   // B
-    if(pressedEdge(gp,9))onResetToRoad?.();       // Menu / Start
+
+    // V20.13 manual gearbox:
+    // A = upshift, X = downshift.
+    if(pressedEdge(gp,0))onShiftUp?.();            // A
+    if(pressedEdge(gp,2))onShiftDown?.();          // X
+
+    // B used to toggle autopilot. Preserve that function by moving it to
+    // View / Back (button 8) instead of deleting the command.
+    if(pressedEdge(gp,8))onToggleAutopilot?.();    // View / Back
+
+    if(pressedEdge(gp,9))onResetToRoad?.();        // Menu / Start
 
     if(
       isAutopilotEnabled?.() &&

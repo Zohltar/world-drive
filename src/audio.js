@@ -2,6 +2,211 @@
 // Profile-aware WebAudio synthesis.
 // F1 uses a dedicated dark 12,000-rpm V8 model with no aggressive high harmonics.
 
+export function computeGearRedlineSpeeds(
+  profile,
+  effectiveRedlineRpm=null
+){
+  const nominalRedline=
+    Math.max(
+      1000,
+      Number(profile.redlineRpm)||6500
+    );
+
+  const referenceRedline=
+    Math.max(
+      1000,
+      Number(profile.referenceRedlineRpm)||
+      nominalRedline
+    );
+
+  const referenceTopSpeed=
+    Math.max(
+      20,
+      Number(profile.referenceTopGearRedlineKmh)||
+      200
+    );
+
+  const ratios=
+    Array.isArray(profile.gearRatios)&&
+    profile.gearRatios.length
+      ?profile.gearRatios
+       .map(Number)
+       .filter(
+         value=>
+           Number.isFinite(value)&&
+           value>0
+       )
+      :[1];
+
+  const effectiveRedline=
+    Math.max(
+      800,
+      Number(effectiveRedlineRpm)||
+      nominalRedline
+    );
+
+  const referenceTopGearRatio=
+    Math.max(
+      .05,
+      Number(profile.referenceTopGearRatio)||
+      1
+    );
+
+  const currentTopGearRatio=
+    Math.max(
+      .05,
+      ratios[
+        ratios.length-1
+      ]
+    );
+
+  // Calibration rule:
+  // referenceTopSpeed occurs at referenceRedline with the calibrated
+  // reference top-gear ratio. Changing engine redline or any ratio therefore
+  // changes the mechanical redline speed automatically.
+  const topSpeed=
+    referenceTopSpeed*
+    (
+      effectiveRedline/
+      referenceRedline
+    )*
+    (
+      referenceTopGearRatio/
+      currentTopGearRatio
+    );
+
+  return ratios.map(
+    ratio=>
+      topSpeed*
+      (
+        currentTopGearRatio/
+        ratio
+      )
+  );
+}
+
+export function computeTransmissionState(
+  kmh,
+  load,
+  profile,
+  forcedGear=null
+){
+  const idle=
+    Math.max(
+      500,
+      Number(profile.idleRpm)||850
+    );
+
+  const nominalRedline=
+    Math.max(
+      idle+1000,
+      Number(profile.redlineRpm)||6500
+    );
+
+  const gearRedlineSpeeds=
+    computeGearRedlineSpeeds(
+      profile,
+      nominalRedline
+    );
+
+  let gear=
+    Number.isFinite(Number(forcedGear))&&
+    Number(forcedGear)>=1
+      ?Math.round(Number(forcedGear))
+      :1;
+
+  gear=
+    Math.max(
+      1,
+      Math.min(
+        gearRedlineSpeeds.length,
+        gear
+      )
+    );
+
+  if(
+    !Number.isFinite(Number(forcedGear))||
+    Number(forcedGear)<1
+  ){
+    while(
+      gear<gearRedlineSpeeds.length&&
+      kmh>=gearRedlineSpeeds[gear-1]
+    ){
+      gear++;
+    }
+  }
+
+  const redlineSpeed=
+    Math.max(
+      1,
+      gearRedlineSpeeds[
+        Math.min(
+          gearRedlineSpeeds.length-1,
+          gear-1
+        )
+      ]
+    );
+
+  // Fixed gear = RPM proportional to road speed.
+  // First gear uses clutch slip near launch so engine speed cannot fall below
+  // idle while the car is almost stationary.
+  let rpm=
+    nominalRedline*
+    (
+      Math.max(0,kmh)/
+      redlineSpeed
+    );
+
+  if(gear===1){
+    const clutchLift=
+      Math.min(
+        420,
+        (nominalRedline-idle)*.065
+      )*
+      Math.max(
+        0,
+        Math.min(
+          1,
+          Number(load)||0
+        )
+      );
+
+    rpm=
+      Math.max(
+        idle+clutchLift,
+        rpm
+      );
+  }else{
+    rpm=
+      Math.max(
+        idle,
+        rpm
+      );
+  }
+
+  const local=
+    Math.max(
+      0,
+      Math.min(
+        1,
+        rpm/
+        nominalRedline
+      )
+    );
+
+  return {
+    rpm:Math.min(
+      nominalRedline,
+      rpm
+    ),
+    mechanicalRpm:rpm,
+    gear,
+    local,
+    redlineSpeedKmh:redlineSpeed,
+    gearRedlineSpeeds
+  };
+}
+
 export function createVehicleAudio({
   statusEl,
   enableButton,
@@ -344,95 +549,8 @@ export function createVehicleAudio({
     return setEnabled(!enabled);
   }
 
-  function estimateCombustionRpm(kmh,load,profile){
-    const idle=profile.idleRpm||850;
-    const redline=profile.redlineRpm||6700;
-
-    const defaultShiftPoints=[
-      28,52,82,118,160,205
-    ];
-
-    const shiftPoints=
-      Array.isArray(profile.shiftPoints)&&
-      profile.shiftPoints.length
-        ?profile.shiftPoints
-        :defaultShiftPoints;
-
-    let gear=1;
-
-    while(
-      gear<shiftPoints.length&&
-      kmh>shiftPoints[gear-1]
-    ){
-      gear++;
-    }
-
-    const lower=
-      gear===1
-        ?0
-        :shiftPoints[gear-2];
-
-    const upper=
-      shiftPoints[
-        Math.min(
-          shiftPoints.length-1,
-          gear-1
-        )
-      ];
-
-    const span=
-      Math.max(
-        1,
-        upper-lower
-      );
-
-    const local=
-      Math.max(
-        0,
-        Math.min(
-          1,
-          (kmh-lower)/span
-        )
-      );
-
-    let rpm;
-
-    if(profile.profile==='f1-v8'){
-      // 2010-era F1 sound model:
-      // high idle, extremely wide rev range, and each upshift drops the engine
-      // back into the power band rather than down near idle.
-      const gearFloor=
-        gear===1
-          ?.20
-          :.54;
-
-      const gearSweep=
-        1-gearFloor;
-
-      rpm=
-        idle+
-        (redline-idle)*
-        (
-          gearFloor+
-          gearSweep*local+
-          load*.025
-        );
-    }else{
-      rpm=
-        idle+
-        (redline-idle)*
-        (
-          .22+
-          .70*local+
-          .08*load
-        );
-    }
-
-    return {
-      rpm:Math.min(redline,rpm),
-      gear,
-      local
-    };
+  function estimateCombustionRpm(kmh,load,profile,forcedGear=null){
+    return computeTransmissionState(kmh,load,profile,forcedGear);
   }
 
   function update(){
@@ -459,11 +577,25 @@ export function createVehicleAudio({
     currentProfile=getProfile?.()||currentProfile;
 
     if(currentProfile.type==='combustion'){
-      const {rpm,gear,local}=estimateCombustionRpm(
-        kmh,
-        accelLoad,
-        currentProfile
-      );
+      const fallbackTransmission=
+        estimateCombustionRpm(
+          kmh,
+          accelLoad,
+          currentProfile,
+          state.transmissionGear
+        );
+
+      const rpm=
+        Number.isFinite(Number(state.engineRpm))
+          ?Number(state.engineRpm)
+          :fallbackTransmission.rpm;
+
+      const gear=
+        Number.isFinite(Number(state.transmissionGear))
+          ?Number(state.transmissionGear)
+          :fallbackTransmission.gear;
+
+      const local=fallbackTransmission.local;
 
       const isF1=
         currentProfile.profile==='f1-v8';

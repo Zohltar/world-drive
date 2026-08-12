@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { createVehicleAudio } from './audio.js';
+import { createVehicleAudio, computeTransmissionState, computeGearRedlineSpeeds } from './audio.js';
 import { createGamepadController } from './gamepad.js';
 import { createCameraController } from './camera.js';
 import { createRoutingGeometry, angleDelta, nearestPointOnPolyline } from './routing.js';
@@ -924,6 +924,12 @@ const vehiclePresentation=createVehiclePresentation({
     absZ,
     speed,
     longitudinalAccel,
+    rearSlipAmount:
+      Math.max(
+        0,
+        rearSlipAmount-
+        frontSlipAmount*.45
+      ),
     VEHICLE,
     roadContact,
     timeOfDay
@@ -2353,6 +2359,865 @@ let currentSteerAngle=0; // shared with audio / visual systems
 // 1.0 = the requested cornering force has reached available lateral grip.
 let lateralGripUsage=0;
 
+// V20.0 — direction of travel can diverge from chassis heading during a slide.
+// At normal grip this converges almost instantly and behaves like the old model.
+let velocityHeading=0;
+
+// V20.2: chassis yaw itself now has response time. This prevents a tiny
+// high-speed steering correction from producing near-maximum lateral force in
+// only a few frames.
+let dynamicYawRate=0;
+
+// Per-wheel normalized friction-circle demand:
+// 1.0 = wheel has reached its estimated adhesion limit.
+let wheelGripUsage=[0,0,0,0];
+let wheelSlipLevels=[0,0,0,0];
+
+// Handling slip is LATTERAL slip by axle. Longitudinal tire stress is still
+// available for skid marks, but cannot by itself make the rear of the car yaw.
+let frontSlipAmount=0;
+let rearSlipAmount=0;
+
+// V20.4 automatic transmission state.
+let transmissionGear=1;
+let transmissionPendingGear=1;
+let transmissionShiftTimer=0;
+let transmissionShiftDuration=0;
+let transmissionShiftStartRpm=0;
+let transmissionShiftEndRpm=0;
+let engineRpm=0;
+let transmissionShifting=false;
+let transmissionProfileKey='';
+
+// V20.5 rev limiter state.
+let revLimiterActive=false;
+let revLimiterPhase=0;
+
+// V20.11 transmission mode.
+// Automatic is intentionally the default on every fresh game load.
+let transmissionMode='automatic';
+let manualShiftRequest=null;
+
+function activeTransmissionProfile(){
+  return vehicleSystem.active.audio||{type:'ev',profile:'ev'};
+}
+
+// For combustion vehicles, the last shift point is the road speed at which
+// highest gear reaches engine redline. That is the mechanical maximum speed.
+function effectiveEngineRedlineRpm(
+  profile=activeTransmissionProfile(),
+  onPavement=true
+){
+  const nominal=
+    Math.max(
+      1000,
+      Number(profile.redlineRpm)||6500
+    );
+
+  // V20.6: loose terrain represents much higher drivetrain/load resistance.
+  // Combustion engines effectively lose the upper 30% of their usable RPM.
+  return onPavement
+    ?nominal
+    :nominal*.70;
+}
+
+function transmissionRedlineSpeedKmh(
+  profile=activeTransmissionProfile(),
+  effectiveRedlineRpm=null
+){
+  if(profile.type!=='combustion'){
+    return Math.max(
+      20,
+      Number(VEHICLE.topSpeedKmh)||200
+    );
+  }
+
+  const speeds=
+    computeGearRedlineSpeeds(
+      profile,
+      effectiveRedlineRpm||
+      Number(profile.redlineRpm)||
+      6500
+    );
+
+  return Math.max(
+    20,
+    Number(
+      speeds[
+        speeds.length-1
+      ]
+    )||20
+  );
+}
+
+function resetTransmissionState(){
+  const profile=activeTransmissionProfile();
+
+  transmissionGear=1;
+  transmissionPendingGear=1;
+  transmissionShiftTimer=0;
+  transmissionShiftDuration=0;
+  transmissionShiftStartRpm=0;
+  transmissionShiftEndRpm=0;
+  transmissionShifting=false;
+  revLimiterActive=false;
+  revLimiterPhase=0;
+  manualShiftRequest=null;
+
+  transmissionProfileKey=
+    `${vehicleSystem.activeId}:${profile.profile||profile.type||''}`;
+
+  engineRpm=
+    profile.type==='combustion'
+      ?Number(profile.idleRpm)||850
+      :0;
+}
+
+function requestManualShift(direction){
+  if(transmissionMode!=='manual'){
+    return;
+  }
+
+  const profile=
+    activeTransmissionProfile();
+
+  if(
+    profile.type!=='combustion'||
+    speed<-.25||
+    transmissionShifting||
+    transmissionShiftTimer>0
+  ){
+    return;
+  }
+
+  const gearCount=
+    Array.isArray(profile.gearRatios)&&
+    profile.gearRatios.length
+      ?profile.gearRatios.length
+      :Math.max(
+         1,
+         Number(profile.gearCount)||1
+       );
+
+  const current=
+    Math.max(
+      1,
+      Number(transmissionGear)||1
+    );
+
+  const target=
+    Math.max(
+      1,
+      Math.min(
+        gearCount,
+        current+
+        (
+          direction>0
+            ?1
+            :-1
+        )
+      )
+    );
+
+  if(target===current){
+    return;
+  }
+
+  manualShiftRequest=target;
+}
+
+function desiredTransmissionGear(
+  kmh,
+  profile,
+  currentGear,
+  effectiveRedlineRpm
+){
+  const points=
+    computeGearRedlineSpeeds(
+      profile,
+      effectiveRedlineRpm
+    );
+
+  if(!points.length){
+    return 1;
+  }
+
+  const gear=
+    Math.max(
+      1,
+      Math.min(
+        points.length,
+        Number(currentGear)||1
+      )
+    );
+
+  if(
+    gear<points.length&&
+    kmh>=points[gear-1]
+  ){
+    return gear+1;
+  }
+
+  if(
+    gear>1&&
+    kmh<
+      points[gear-2]*
+      .82
+  ){
+    return gear-1;
+  }
+
+  return gear;
+}
+
+function updateTransmission(dt,requestedThrottle,onPavement=true){
+  const profile=activeTransmissionProfile();
+  const profileKey=
+    `${vehicleSystem.activeId}:${profile.profile||profile.type||''}`;
+
+  if(profileKey!==transmissionProfileKey){
+    resetTransmissionState();
+  }
+
+  if(profile.type!=='combustion'){
+    transmissionGear=speed<-.25?-1:0;
+    transmissionPendingGear=transmissionGear;
+    transmissionShiftTimer=0;
+    transmissionShiftDuration=0;
+    transmissionShifting=false;
+    revLimiterActive=false;
+    revLimiterPhase=0;
+    engineRpm=0;
+    return requestedThrottle;
+  }
+
+  const idle=Number(profile.idleRpm)||850;
+  const redline=Number(profile.redlineRpm)||6500;
+
+  const effectiveRedline=
+    effectiveEngineRedlineRpm(
+      profile,
+      onPavement
+    );
+
+  const kmh=Math.abs(speed)*3.6;
+
+  if(speed<-.25){
+    transmissionGear=-1;
+    transmissionPendingGear=-1;
+    transmissionShiftTimer=0;
+    transmissionShiftDuration=0;
+    transmissionShifting=false;
+    revLimiterActive=false;
+    revLimiterPhase=0;
+
+    const reverseRatio=
+      physicsClamp(
+        Math.abs(speed)/Math.max(1,Math.abs(REV)),
+        0,
+        1
+      );
+
+    engineRpm=
+      idle+(redline*.62-idle)*reverseRatio;
+
+    return requestedThrottle;
+  }
+
+  if(transmissionGear<1){
+    transmissionGear=1;
+    transmissionPendingGear=1;
+  }
+
+  if(transmissionShiftTimer>0){
+    revLimiterActive=false;
+    revLimiterPhase=0;
+
+    transmissionShiftTimer=
+      Math.max(0,transmissionShiftTimer-dt);
+
+    const progress=
+      transmissionShiftDuration>0
+        ?1-transmissionShiftTimer/transmissionShiftDuration
+        :1;
+
+    engineRpm=
+      transmissionShiftStartRpm+
+      (transmissionShiftEndRpm-transmissionShiftStartRpm)*
+      physicsSmoothstep01(progress);
+
+    transmissionShifting=
+      transmissionShiftTimer>0;
+
+    if(!transmissionShifting){
+      transmissionGear=transmissionPendingGear;
+      engineRpm=
+        computeTransmissionState(
+          kmh,
+          0,
+          profile,
+          transmissionGear
+        ).rpm;
+    }
+
+    return requestedThrottle>0&&transmissionShifting
+      ?0
+      :requestedThrottle;
+  }
+
+  let desiredGear=
+    transmissionGear;
+
+  if(transmissionMode==='automatic'){
+    desiredGear=
+      desiredTransmissionGear(
+        kmh,
+        profile,
+        transmissionGear,
+        effectiveRedline
+      );
+  }else if(manualShiftRequest!==null){
+    const requestedGear=
+      Math.max(
+        1,
+        Math.min(
+          Array.isArray(profile.gearRatios)&&
+          profile.gearRatios.length
+            ?profile.gearRatios.length
+            :Math.max(
+               1,
+               Number(profile.gearCount)||1
+             ),
+          Number(manualShiftRequest)||1
+        )
+      );
+
+    manualShiftRequest=null;
+
+    // Protect the engine from a mechanically impossible downshift.
+    // A real manual box can be abused into an over-rev, but for World Drive
+    // we reject the shift rather than creating an engine-damage subsystem.
+    if(requestedGear<transmissionGear){
+      const requestedState=
+        computeTransmissionState(
+          kmh,
+          0,
+          profile,
+          requestedGear
+        );
+
+      if(
+        requestedState.mechanicalRpm>
+        effectiveRedline*
+        1.035
+      ){
+        toast(
+          'Rétrogradage refusé · régime trop élevé'
+        );
+
+        desiredGear=
+          transmissionGear;
+      }else{
+        desiredGear=
+          requestedGear;
+      }
+    }else{
+      desiredGear=
+        requestedGear;
+    }
+  }
+
+  if(desiredGear!==transmissionGear){
+    transmissionPendingGear=desiredGear;
+    manualShiftRequest=null;
+
+    const upshift=desiredGear>transmissionGear;
+
+    transmissionShiftDuration=
+      Math.max(
+        .045,
+        Number(
+          upshift
+            ?profile.shiftDuration
+            :profile.downshiftDuration
+        )||
+        (upshift?.18:.15)
+      );
+
+    transmissionShiftTimer=transmissionShiftDuration;
+
+    transmissionShiftStartRpm=
+      computeTransmissionState(
+        kmh,
+        0,
+        profile,
+        transmissionGear
+      ).rpm;
+
+    transmissionShiftEndRpm=
+      computeTransmissionState(
+        kmh,
+        0,
+        profile,
+        desiredGear
+      ).rpm;
+
+    transmissionShifting=true;
+    revLimiterActive=false;
+    revLimiterPhase=0;
+    engineRpm=transmissionShiftStartRpm;
+
+    return requestedThrottle>0
+      ?0
+      :requestedThrottle;
+  }
+
+  transmissionShifting=false;
+
+  const load=
+    physicsClamp(
+      Math.abs(longitudinalAccel)/7.5,
+      0,
+      1
+    );
+
+  const steadyTransmission=
+    computeTransmissionState(
+      kmh,
+      load,
+      profile,
+      transmissionGear
+    );
+
+  engineRpm=
+    steadyTransmission.rpm;
+
+  const gearCount=
+    Array.isArray(profile.gearRatios)&&
+    profile.gearRatios.length
+      ?profile.gearRatios.length
+      :Math.max(
+         1,
+         Number(profile.gearCount)||1
+       );
+
+  const topGear=
+    transmissionGear>=gearCount;
+
+  const redlineSpeedKmh=
+    transmissionRedlineSpeedKmh(
+      profile,
+      effectiveRedline
+    );
+
+  const mechanicalState=
+    computeTransmissionState(
+      kmh,
+      load,
+      profile,
+      transmissionGear
+    );
+
+  const limiterAllowed=
+    transmissionMode==='manual'
+      ?transmissionGear>=1
+      :topGear;
+
+  const touchingLimiter=
+    limiterAllowed&&
+    requestedThrottle>.05&&
+    (
+      (
+        topGear&&
+        kmh>=redlineSpeedKmh*.994
+      )||
+      mechanicalState.mechanicalRpm>=
+        effectiveRedline*.994
+    );
+
+  if(touchingLimiter){
+    revLimiterActive=true;
+
+    const limiterHz=
+      Math.max(
+        6,
+        Number(profile.revLimiterHz)||12
+      );
+
+    const limiterDropRpm=
+      Math.max(
+        100,
+        Number(profile.revLimiterDropRpm)||
+        Math.min(
+          300,
+          redline*.035
+        )
+      );
+
+    revLimiterPhase+=
+      dt*
+      Math.PI*
+      2*
+      limiterHz;
+
+    if(revLimiterPhase>Math.PI*2*100){
+      revLimiterPhase%=Math.PI*2;
+    }
+
+    // Needle + audio bounce under the actual redline.
+    const bounce=
+      .5+
+      .5*
+      Math.sin(revLimiterPhase);
+
+    const effectiveDrop=
+      limiterDropRpm*
+      (
+        effectiveRedline/
+        redline
+      );
+
+    engineRpm=
+      effectiveRedline-
+      effectiveDrop*
+      (
+        .18+
+        bounce*.82
+      );
+
+    engineRpm=
+      Math.max(
+        idle,
+        Math.min(
+          effectiveRedline,
+          engineRpm
+        )
+      );
+
+    // Fuel/ignition-cut style torque pulse.
+    const powerPulse=
+      Math.sin(revLimiterPhase)<-.12;
+
+    return powerPulse
+      ?requestedThrottle
+      :0;
+  }
+
+  revLimiterActive=false;
+  revLimiterPhase=0;
+
+  if(!onPavement){
+    engineRpm=
+      Math.min(
+        engineRpm,
+        effectiveRedline
+      );
+  }
+
+  return requestedThrottle;
+}
+
+function physicsClamp(value,min,max){
+  return Math.max(min,Math.min(max,value));
+}
+
+function physicsSmoothstep01(value){
+  const t=physicsClamp(Number(value)||0,0,1);
+  return t*t*(3-2*t);
+}
+
+function estimateWheelGripUsage({
+  requestedLatAccel,
+  signedLatAccel,
+  latLimit,
+  longitudinalAccel,
+  throttle,
+  handbrake,
+  airborne,
+  vehicle,
+  dt
+}){
+  const contacts=
+    vehiclePresentation?.wheelContacts||
+    [];
+
+  const defaults=[
+    {front:false,side:'left'},
+    {front:true,side:'left'},
+    {front:false,side:'right'},
+    {front:true,side:'right'}
+  ];
+
+  const drivetrain=
+    vehicle.drivetrain||
+    'AWD';
+
+  const lateralDemand=
+    latLimit>0
+      ?Math.max(
+         0,
+         requestedLatAccel/
+         latLimit
+       )
+      :0;
+
+  // Positive longitudinal acceleration transfers load rearward.
+  const longitudinalTransfer=
+    physicsClamp(
+      (
+        longitudinalAccel/
+        9.81
+      )*.11,
+      -.18,
+      .18
+    );
+
+  // Positive yaw in World Drive = right turn; load moves to the outside/left.
+  const lateralTransfer=
+    physicsClamp(
+      (
+        signedLatAccel/
+        9.81
+      )*.085,
+      -.22,
+      .22
+    );
+
+  const accelCapability=
+    Math.max(
+      1,
+      Number(vehicle.accel)||6
+    );
+
+  const brakeCapability=
+    Math.max(
+      1,
+      Number(vehicle.brake)||9.8
+    );
+
+  const raw=[];
+  const smoothed=[];
+  const slip=[];
+  const lateralSlip=[];
+
+  for(let i=0;i<4;i++){
+    const meta={
+      ...defaults[i],
+      ...(contacts[i]||{})
+    };
+
+    const axleLoad=
+      meta.front
+        ?1-longitudinalTransfer
+        :1+longitudinalTransfer;
+
+    const sideLoad=
+      meta.side==='left'
+        ?1+lateralTransfer
+        :1-lateralTransfer;
+
+    const support=
+      airborne||
+      meta.contact===false
+        ?0
+        :physicsClamp(
+           Number(
+             meta.contactFactor
+           )||1,
+           .15,
+           1
+         );
+
+    const loadFactor=
+      airborne
+        ?.05
+        :physicsClamp(
+           axleLoad*
+           sideLoad*
+           support,
+           .10,
+           1.55
+         );
+
+    // Lateral force is shared by all four tires, but an unloaded tire reaches
+    // its friction limit sooner.
+    const lateralUtil=
+      airborne
+        ?0
+        :lateralDemand/
+         Math.max(
+           .20,
+           loadFactor
+         );
+
+    let longitudinalUtil=0;
+
+    if(longitudinalAccel<-.15){
+      // Road cars typically have a front-biased brake load.
+      const brakeDemand=
+        Math.min(
+          1.45,
+          -longitudinalAccel/
+          brakeCapability
+        );
+
+      // V20.2: ordinary maximum braking should load the tire heavily, but not
+      // automatically count as a full friction-circle failure in a straight
+      // line. Cornering + braking can still push the combined demand over 1.
+      longitudinalUtil=
+        brakeDemand*
+        (
+          meta.front
+            ?.82
+            :.54
+        )/
+        Math.max(
+          .25,
+          loadFactor
+        );
+    }else if(
+      longitudinalAccel>.15&&
+      throttle>0
+    ){
+      const accelDemand=
+        Math.min(
+          1.35,
+          longitudinalAccel/
+          accelCapability
+        );
+
+      let drivenFactor=.05;
+
+      if(drivetrain==='FWD'){
+        drivenFactor=
+          meta.front
+            ?.78
+            :.04;
+      }else if(drivetrain==='RWD'){
+        drivenFactor=
+          meta.front
+            ?.04
+            :.78;
+      }else{
+        drivenFactor=.46;
+      }
+
+      longitudinalUtil=
+        accelDemand*
+        drivenFactor/
+        Math.max(
+          .25,
+          loadFactor
+        );
+    }
+
+    if(
+      handbrake&&
+      !meta.front&&
+      !airborne
+    ){
+      longitudinalUtil=
+        Math.max(
+          longitudinalUtil,
+          1.28
+        );
+    }
+
+    const combined=
+      airborne
+        ?0
+        :Math.sqrt(
+           lateralUtil*lateralUtil+
+           longitudinalUtil*longitudinalUtil
+         );
+
+    raw[i]=
+      Math.min(
+        1.65,
+        combined
+      );
+
+    const old=
+      Number(
+        wheelGripUsage[i]
+      )||0;
+
+    const response=
+      raw[i]>old
+        ?11
+        :17;
+
+    smoothed[i]=
+      old+
+      (
+        raw[i]-
+        old
+      )*
+      (
+        1-
+        Math.exp(
+          -Math.min(.05,dt)*
+          response
+        )
+      );
+
+    slip[i]=
+      physicsSmoothstep01(
+        (
+          smoothed[i]-
+          .98
+        )/
+        .24
+      );
+
+    // Lateral handling slip is intentionally separate from combined tire
+    // stress. Straight-line acceleration/braking can therefore make a tire
+    // work hard (and eventually leave rubber) without generating fake
+    // oversteer.
+    lateralSlip[i]=
+      airborne
+        ?0
+        :physicsSmoothstep01(
+           (
+             lateralUtil-
+             1.00
+           )/
+           .30
+         );
+  }
+
+  return {
+    raw,
+    smoothed,
+    slip,
+    lateralSlip,
+
+    frontCombined:
+      Math.max(
+        slip[1]||0,
+        slip[3]||0
+      ),
+
+    rearCombined:
+      Math.max(
+        slip[0]||0,
+        slip[2]||0
+      ),
+
+    frontLateral:
+      Math.max(
+        lateralSlip[1]||0,
+        lateralSlip[3]||0
+      ),
+
+    rearLateral:
+      Math.max(
+        lateralSlip[0]||0,
+        lateralSlip[2]||0
+      )
+  };
+}
+
 // Mutable object identity is intentional: audio/physics keep the same reference
 // when future vehicles are selected.
 const VEHICLE=vehicleSystem.physics;
@@ -2368,6 +3233,10 @@ const vehicleAudio=createVehicleAudio({
     longitudinalAccel,
     currentSteerAngle,
     lateralGripUsage,
+    engineRpm,
+    transmissionGear,
+    shifting:transmissionShifting,
+    revLimiterActive,
     absX,
     absZ
   }),
@@ -2465,6 +3334,13 @@ const gamepad=createGamepadController({
   onCycleCamera:()=>cameraController.cycle(),
   onToggleAssist:()=>toggleAssist(),
   onToggleAutopilot:()=>toggleAutopilot(),
+
+  onShiftUp:()=>
+    requestManualShift(1),
+
+  onShiftDown:()=>
+    requestManualShift(-1),
+
   onResetToRoad:()=>resetToRoad(),
   isAutopilotEnabled:()=>autopilot,
   disableAutopilot:message=>setAutopilot(false,message)
@@ -2473,7 +3349,30 @@ const gamepadState=gamepad.state;
 
 const keys={};addEventListener('keydown',e=>{
  keys[e.code]=true;
- if(['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Space'].includes(e.code))e.preventDefault();
+ if([
+   'ArrowUp',
+   'ArrowDown',
+   'ArrowLeft',
+   'ArrowRight',
+   'Space',
+   'BracketLeft',
+   'BracketRight'
+ ].includes(e.code))e.preventDefault();
+
+ if(
+   !e.repeat&&
+   e.code==='BracketRight'
+ ){
+   requestManualShift(1);
+ }
+
+ if(
+   !e.repeat&&
+   e.code==='BracketLeft'
+ ){
+   requestManualShift(-1);
+ }
+
  if(e.code==='KeyC')cameraController.cycle();
  if(e.code==='KeyL')toggleAssist();
  if(e.code==='KeyP')toggleAutopilot();
@@ -2587,6 +3486,11 @@ function updateDrive(dt){
  const nr=nearestRoute(absX,absZ);
  const ap=autopilotControl(dt,nr);
 
+ // Presentation vertical physics was solved on the previous frame.
+ // This one-frame-old state is stable and avoids a circular dependency.
+ const airborneNow=
+   !!vehiclePresentation.airborne;
+
  const keyboardThrottle=((keys.KeyW||keys.ArrowUp?1:0)-(keys.KeyS||keys.ArrowDown?1:0));
  const keyboardTurn=((keys.KeyA||keys.ArrowLeft?1:0)-(keys.KeyD||keys.ArrowRight?1:0));
  let manualThrottle=keyboardThrottle,manualTurn=keyboardTurn,manualHand=!!keys.Space;
@@ -2601,6 +3505,19 @@ function updateDrive(dt){
  const turn=autopilot?ap.turn:manualTurn;
  const hand=autopilot?ap.hand:manualHand;
 
+ const onPavement=
+   !!(
+     nr&&
+     nr.d<8.5
+   );
+
+ const driveThrottle=
+   updateTransmission(
+     dt,
+     throttle,
+     onPavement
+   );
+
  // Lane-keep is allowed only when the driver is not actively steering.
  // This keeps manual input authoritative at all times.
  const steeringNeutral=
@@ -2611,12 +3528,12 @@ function updateDrive(dt){
  vehicleVisuals.updateBrakeLights(dt,brakeRequested);
  // ----- V4.1 longitudinal dynamics -----
  const previousSpeed=speed;
- const onPavement=nr&&nr.d<8.5;
  const surfaceGrip=onPavement?roadSurfaceGrip():1;
  const grip=onPavement?surfaceGrip:VEHICLE.offroadGrip;
 
- // V19.0 terrain behavior.
- // Every vehicle loses 20% propulsion and top speed away from pavement.
+ // Terrain behavior:
+ // every vehicle still loses 20% propulsion away from pavement.
+ // Combustion vehicles additionally lose 30% usable redline in V20.6.
  // AWD keeps a meaningful traction advantage in loose terrain.
  const offroadPowerFactor=
    onPavement
@@ -2632,12 +3549,13 @@ function updateDrive(dt){
      :1;
 
  let accel=0;
- if(throttle>0){
+ if(driveThrottle>0){
    if(speed>=0){
-     // EV-style power taper: strong low-speed response, progressively softer
-     // above highway speed, but enough reserve to reach the selected 180–200 km/h cap.
+     // Power falls progressively with road speed. Mechanical gearing/redline
+     // sets the upper bound; aero/rolling drag can still prevent a weak engine
+     // from actually reaching it.
      const performanceTop=
-       (VEHICLE.topSpeedKmh||200)/3.6;
+       vehicleTopSpeedKmh()/3.6;
 
      const speedRatio=
        Math.min(
@@ -2651,16 +3569,16 @@ function updateDrive(dt){
      accel+=
        VEHICLE.accel*
        offroadPowerFactor*
-       throttle*
+       driveThrottle*
        powerTaper;
-   }else accel+=VEHICLE.brake*throttle; // brake reverse motion before going forward
- }else if(throttle<0){
-   if(speed>0)accel+=VEHICLE.brake*throttle;
+   }else accel+=VEHICLE.brake*driveThrottle; // brake reverse motion before going forward
+ }else if(driveThrottle<0){
+   if(speed>0)accel+=VEHICLE.brake*driveThrottle;
    else{
      accel+=
        VEHICLE.reverseAccel*
        offroadPowerFactor*
-       throttle;
+       driveThrottle;
    }
  }
 
@@ -2678,27 +3596,88 @@ function updateDrive(dt){
 
  speed+=accel*dt;
 
- // Terrain top speed is 80% of the driver's currently selected maximum.
- // If the car leaves the road already above that limit, bleed the excess
- // quickly instead of snapping instantaneously to the new cap.
+ // V20.6 off-road resistance.
+ // Combustion: reduced effective redline naturally lowers every gear's usable
+ // speed. If the car enters terrain above that top-gear redline speed, added
+ // resistance bleeds the excess progressively rather than snapping speed.
+ // EV: preserve the previous 20% off-road electronic reduction.
  if(!onPavement&&speed>0){
-   const offroadMax=
-     MAX*.80;
+   const profile=
+     activeTransmissionProfile();
 
-   if(speed>offroadMax){
-     const offroadOverspeedDecel=12.5; // m/s²
-
-     speed=
-       Math.max(
-         offroadMax,
-         speed-
-         offroadOverspeedDecel*
-         dt
+   if(profile.type==='combustion'){
+     const terrainRedline=
+       effectiveEngineRedlineRpm(
+         profile,
+         false
        );
+
+     const terrainMechanicalTop=
+       transmissionRedlineSpeedKmh(
+         profile,
+         terrainRedline
+       )/
+       3.6;
+
+     if(speed>terrainMechanicalTop){
+       const excess=
+         speed-
+         terrainMechanicalTop;
+
+       const terrainOverspeedResistance=
+         Math.min(
+           13.5,
+           4.5+
+           excess*.55
+         );
+
+       speed=
+         Math.max(
+           terrainMechanicalTop,
+           speed-
+           terrainOverspeedResistance*
+           dt
+         );
+     }
+   }else{
+     const offroadEvMax=
+       MAX*.80;
+
+     if(speed>offroadEvMax){
+       speed=
+         Math.max(
+           offroadEvMax,
+           speed-
+           12.5*
+           dt
+         );
+     }
    }
  }
 
- speed=Math.max(REV,Math.min(MAX,speed));
+ // Full mechanical setting is NOT hard-clamped for combustion cars. The rev
+ // limiter and drag determine their maximum. A deliberately lower user speed
+ // setting still behaves as an explicit driver/electronic speed cap.
+ const mechanicalTop=
+   vehicleTopSpeedKmh();
+
+ const userSpeedCapActive=
+   maxSpeedKmh<
+   mechanicalTop-.5;
+
+ const hardForwardCap=
+   userSpeedCapActive
+     ?MAX
+     :Infinity;
+
+ speed=
+   Math.max(
+     REV,
+     Math.min(
+       hardForwardCap,
+       speed
+     )
+   );
  if(previousSpeed>0&&speed<0&&!throttle)speed=0;
  if(previousSpeed<0&&speed>0&&!throttle)speed=0;
  longitudinalAccel=(speed-previousSpeed)/Math.max(dt,.001);
@@ -2752,7 +3731,7 @@ function updateDrive(dt){
 
    const steeringInputExponent=
      vehicleSteeringExponent+
-     .95*
+     1.15*
      highSpeedSteerSmooth;
 
    steerTarget=
@@ -2793,7 +3772,7 @@ function updateDrive(dt){
         0,
         Math.min(
           1,
-          throttle
+          driveThrottle
         )
       )
      :0;
@@ -2855,6 +3834,12 @@ function updateDrive(dt){
    Math.tan(steerAngle)*
    effectiveGrip;
 
+ // With all four tires off the ground the steering wheel cannot produce
+ // meaningful yaw. Keep a tiny residual for visual continuity.
+ if(airborneNow){
+   yawRate*=.06;
+ }
+
  const drivetrain=
    VEHICLE.drivetrain||
    'AWD';
@@ -2911,15 +3896,114 @@ function updateDrive(dt){
       )
      :1;
 
+ const slideGripFactor=
+   airborneNow
+     ?.08
+     :Math.max(
+        .78,
+        1-
+        rearSlipAmount*.16
+      );
+
  const latLimit=
    baseLatLimit*
-   rwdPowerGripFactor;
+   rwdPowerGripFactor*
+   slideGripFactor;
+
+ const signedLatAccel=
+   speed*
+   yawRate;
+
+ const perWheelGrip=
+   estimateWheelGripUsage({
+     requestedLatAccel,
+     signedLatAccel,
+     latLimit,
+     longitudinalAccel,
+     throttle:driveThrottle,
+     handbrake:hand,
+     airborne:airborneNow,
+     vehicle:VEHICLE,
+     dt
+   });
+
+ wheelGripUsage=
+   perWheelGrip.smoothed;
+
+ wheelSlipLevels=
+   perWheelGrip.slip;
+
+ const targetFrontSlip=
+   perWheelGrip.frontLateral;
+
+ const targetRearSlip=
+   perWheelGrip.rearLateral;
+
+ const slipDt=
+   Math.min(
+     .05,
+     dt
+   );
+
+ frontSlipAmount+=
+   (
+     targetFrontSlip-
+     frontSlipAmount
+   )*
+   (
+     1-
+     Math.exp(
+       -slipDt*
+       (
+         targetFrontSlip>
+         frontSlipAmount
+           ?7.8
+           :5.8
+       )
+     )
+   );
+
+ rearSlipAmount+=
+   (
+     targetRearSlip-
+     rearSlipAmount
+   )*
+   (
+     1-
+     Math.exp(
+       -slipDt*
+       (
+         targetRearSlip>
+         rearSlipAmount
+           ?7.8
+           :5.8
+       )
+     )
+   );
+
+ if(airborneNow){
+   frontSlipAmount*=
+     Math.exp(
+       -dt*5
+     );
+
+   rearSlipAmount*=
+     Math.exp(
+       -dt*5
+     );
+ }
 
  // Raw tire demand is measured exactly where the physics reaches its grip
  // ceiling, rather than reconstructed later from joystick/steering angle.
  const rawGripUsage=
-   onPavement&&latLimit>0
-     ?Math.min(1.35,requestedLatAccel/latLimit)
+   onPavement&&
+   !airborneNow&&
+   latLimit>0
+     ?Math.min(
+        1.35,
+        requestedLatAccel/
+        latLimit
+      )
      :0;
 
  // Real tires do not build slip/force in zero time. A short attack/release
@@ -2938,16 +4022,56 @@ function updateDrive(dt){
  }
 
  if(requestedLatAccel>latLimit&&requestedLatAccel>0){
-   yawRate*=latLimit/requestedLatAccel;
+   yawRate*=
+     latLimit/
+     requestedLatAccel;
+ }
+
+ // ---------------------------------------------------------------
+ // V20.2 AXLE BALANCE
+ // ---------------------------------------------------------------
+ // Front slip primarily causes understeer. Rear slip primarily causes
+ // oversteer. If both axles are saturated, the entire car slides and steering
+ // authority falls instead of the physics continuing to corner perfectly at
+ // the grip limit.
+ const frontDominance=
+   Math.max(
+     0,
+     frontSlipAmount-
+     rearSlipAmount*.55
+   );
+
+ const rearDominance=
+   Math.max(
+     0,
+     rearSlipAmount-
+     frontSlipAmount*.55
+   );
+
+ const fourWheelSlide=
+   Math.min(
+     frontSlipAmount,
+     rearSlipAmount
+   );
+
+ if(!airborneNow){
+   // Front saturation = the car refuses additional steering input.
+   yawRate*=
+     Math.max(
+       .46,
+       1-
+       frontDominance*.54-
+       fourWheelSlide*.24
+     );
  }
 
  if(
    drivetrain==='RWD'&&
-   powerCorneringLoad>.05
+   powerCorneringLoad>.05&&
+   !airborneNow
  ){
-   // Small rear-slip yaw moment after the lateral-grip reduction.
-   // Vehicle profiles tune this independently: Countach can rotate more,
-   // while the high-downforce F1 stays much calmer.
+   // Power-oversteer remains a small vehicle-personality term, but only the
+   // REAR-DOMINANT part can amplify rotation.
    const powerOversteerYaw=
      VEHICLE.powerOversteerYaw??
      .035;
@@ -2956,6 +4080,10 @@ function updateDrive(dt){
      Math.sign(steer||1)*
      powerOversteerYaw*
      powerCorneringLoad*
+     (
+       .30+
+       rearDominance*.70
+     )*
      Math.min(
        1,
        speedAbs/18
@@ -2966,12 +4094,125 @@ function updateDrive(dt){
      Math.sign(speed||1);
  }
 
- heading+=yawRate*dt;
+ if(
+   rearDominance>.015&&
+   !airborneNow&&
+   speedAbs>4
+ ){
+   const slipYaw=
+     Math.sign(
+       yawRate||
+       steerAngle||
+       1
+     )*
+     rearDominance*
+     Math.min(
+       .135,
+       .040+
+       speedAbs*.0022
+     );
+
+   yawRate+=
+     slipYaw*
+     Math.sign(speed||1);
+ }
+
+ // ---------------------------------------------------------------
+ // HIGH-SPEED LATERAL FORCE BUILDUP
+ // ---------------------------------------------------------------
+ // The old model applied target yaw almost immediately. A real tire/chassis
+ // needs time to build lateral force, and that response should become calmer
+ // as speed rises.
+ const yawResponseSpeedT=
+   physicsClamp(
+     (
+       speedAbs-
+       12
+     )/
+     42,
+     0,
+     1
+   );
+
+ const yawResponse=
+   airborneNow
+     ?.85
+     :(
+        8.8-
+        yawResponseSpeedT*
+        5.8
+      );
+
+ const yawReleaseBoost=
+   Math.abs(yawRate)<
+   Math.abs(dynamicYawRate)
+     ?1.35
+     :1;
+
+ dynamicYawRate+=
+   (
+     yawRate-
+     dynamicYawRate
+   )*
+   (
+     1-
+     Math.exp(
+       -dt*
+       yawResponse*
+       yawReleaseBoost
+     )
+   );
+
+ heading+=
+   dynamicYawRate*
+   dt;
+
+ // Four-wheel sliding scrubs speed away. This makes entering a corner far
+ // beyond the efficient limit cost trajectory and speed instead of behaving
+ // like a perfect constant-G turn.
+ if(
+   !airborneNow&&
+   fourWheelSlide>.01&&
+   speedAbs>6
+ ){
+   const scrubDecel=
+     (
+       1.0+
+       fourWheelSlide*
+       3.2
+     );
+
+   const scrubDelta=
+     scrubDecel*
+     dt;
+
+   if(speed>0){
+     speed=
+       Math.max(
+         0,
+         speed-
+         scrubDelta
+       );
+   }else if(speed<0){
+     speed=
+       Math.min(
+         0,
+         speed+
+         scrubDelta
+       );
+   }
+ }
 
  // Road assist / lane keeping.
  // Autopilot keeps its stronger correction. In normal driving, correction only
  // acts while steering input is neutral, so the driver always wins instantly.
- if(assist&&nr&&nr.d<(autopilot?12:9.5)&&speedAbs>2){
+ if(
+   !airborneNow&&
+   assist&&
+   nr&&
+   nr.d<(autopilot?12:9.5)&&
+   speedAbs>2
+ ){
    let routeHeading=nr.angle;
 
    if(
@@ -3033,8 +4274,69 @@ function updateDrive(dt){
    }
  }
 
- absX+=Math.sin(heading)*speed*dt;
- absZ+=Math.cos(heading)*speed*dt;
+ // Direction of travel follows chassis heading almost instantly while the
+ // tires are hooked up. During rear slip it lags progressively, creating a
+ // real sideslip angle: the nose turns while momentum carries the car outward.
+ if(
+   !Number.isFinite(
+     velocityHeading
+   )||
+   Math.abs(speed)<1.2
+ ){
+   velocityHeading=heading;
+ }
+
+ const trajectoryRearSlip=
+   Math.max(
+     0,
+     rearSlipAmount-
+     frontSlipAmount*.45
+   );
+
+ const velocityFollowRate=
+   airborneNow
+     ?.45
+     :(
+        2.8+
+        27.2*
+        Math.pow(
+          1-
+          physicsClamp(
+            trajectoryRearSlip,
+            0,
+            1
+          ),
+          2
+        )
+      );
+
+ velocityHeading+=
+   angleDelta(
+     heading,
+     velocityHeading
+   )*
+   (
+     1-
+     Math.exp(
+       -dt*
+       velocityFollowRate
+     )
+   );
+
+ absX+=
+   Math.sin(
+     velocityHeading
+   )*
+   speed*
+   dt;
+
+ absZ+=
+   Math.cos(
+     velocityHeading
+   )*
+   speed*
+   dt;
+
  recenterIfNeeded(absX,absZ);
  const rx=absX-worldOffset.x,rz=absZ-worldOffset.z;
 
@@ -3080,15 +4382,8 @@ function updateDrive(dt){
  car.position.x=rx;
  car.position.z=rz;
 
- if(!onRoad){
-   const yAlpha=
-     1-Math.exp(-dt*10);
-
-   car.position.y+=
-     (targetY-car.position.y)*
-     yAlpha;
- }
- // On-road Y is solved from the four wheel contacts.
+ // V20.0: vehiclePresentation owns root Y on both pavement and terrain.
+ // It may follow support geometry or continue ballistically while airborne.
 
  // Root vehicle stays yaw-aligned only. Wheel heights and the sprung body
  // handle suspension/pitch/roll independently.
@@ -3105,6 +4400,7 @@ function updateDrive(dt){
    speed,
    steerAngle,
    lateralGripUsage,
+   wheelGripUsage,
    longitudinalAccel,
    handbrake:hand,
    vehicle:VEHICLE,
@@ -3128,13 +4424,13 @@ function toggleAssist(){
  toast('Assistance '+(assist?'activée':'désactivée'));
 }
 
-function placeAt(frac){const p=routePointAt(frac);absX=p.x;absZ=p.z;heading=p.angle;speed=0;steer=0;visualSteer=0;currentSteerAngle=0;longitudinalAccel=0;lateralGripUsage=0;vehiclePresentation.reset();skidMarks.resetSource('local');roadContact=true;recenterIfNeeded(absX,absZ,true);ensureRoadProfileNear(absX,absZ);const placedRoadSurface=roadSurfaceAt(absX,absZ);
+function placeAt(frac){const p=routePointAt(frac);absX=p.x;absZ=p.z;heading=p.angle;speed=0;steer=0;visualSteer=0;currentSteerAngle=0;longitudinalAccel=0;lateralGripUsage=0;wheelGripUsage=[0,0,0,0];wheelSlipLevels=[0,0,0,0];frontSlipAmount=0;rearSlipAmount=0;dynamicYawRate=0;velocityHeading=heading;resetTransmissionState();vehiclePresentation.reset();skidMarks.resetSource('local');roadContact=true;recenterIfNeeded(absX,absZ,true);ensureRoadProfileNear(absX,absZ);const placedRoadSurface=roadSurfaceAt(absX,absZ);
 car.position.set(
   0,
   (placedRoadSurface?.y??roadHeightAt(absX,absZ)+ROAD_SURFACE_OFFSET)+.38+TIRE_VISUAL_CLEARANCE,
   0
 );drawMap(p.cum)}
-function resetToRoad(){const n=nearestRoute(absX,absZ);if(n){absX=n.px;absZ=n.pz;heading=n.angle;speed=0;steer=0;visualSteer=0;currentSteerAngle=0;longitudinalAccel=0;lateralGripUsage=0;vehiclePresentation.reset();skidMarks.resetSource('local');roadContact=true;recenterIfNeeded(absX,absZ,true);ensureRoadProfileNear(absX,absZ)}}
+function resetToRoad(){const n=nearestRoute(absX,absZ);if(n){absX=n.px;absZ=n.pz;heading=n.angle;speed=0;steer=0;visualSteer=0;currentSteerAngle=0;longitudinalAccel=0;lateralGripUsage=0;wheelGripUsage=[0,0,0,0];wheelSlipLevels=[0,0,0,0];frontSlipAmount=0;rearSlipAmount=0;dynamicYawRate=0;velocityHeading=heading;resetTransmissionState();vehiclePresentation.reset();skidMarks.resetSource('local');roadContact=true;recenterIfNeeded(absX,absZ,true);ensureRoadProfileNear(absX,absZ)}}
 
 const maxSpeedSlider=$('maxSpeedSlider'),maxSpeedLabel=$('maxSpeedLabel');
 const speedLimitModeBtn=$('speedLimitModeBtn');
@@ -3165,6 +4461,17 @@ function toggleRoadSpeedLimits(){
 }
 
 function vehicleTopSpeedKmh(){
+  const profile=
+    activeTransmissionProfile();
+
+  if(profile.type==='combustion'){
+    return transmissionRedlineSpeedKmh(
+      profile,
+      Number(profile.redlineRpm)||6500
+    );
+  }
+
+  // EVs retain their electronic vehicle-profile limiter.
   return Math.max(
     20,
     Number(VEHICLE.topSpeedKmh)||200
@@ -3209,8 +4516,16 @@ function setMaxSpeed(kmh){
 
   MAX=maxSpeedKmh/3.6;
   maxSpeedLabel.textContent=Math.round(maxSpeedKmh);
-  // If the limit is reduced below current speed, taper immediately to new limit.
-  if(speed>MAX)speed=MAX;
+  // Only an intentionally lower driver/electronic cap clamps current speed.
+  // At the vehicle's full setting, mechanical gearing + redline limiter own
+  // the top speed.
+  if(
+    maxSpeedKmh<
+      vehicleTop-.5&&
+    speed>MAX
+  ){
+    speed=MAX;
+  }
   toast(`Vitesse max: ${Math.round(maxSpeedKmh)} km/h`);
 }
 maxSpeedSlider.addEventListener('input',e=>setMaxSpeed(e.target.value));
@@ -3220,7 +4535,91 @@ syncVehicleSpeedCapability({
   useVehicleMaximum:true
 });
 
+resetTransmissionState();
+
 const vehicleSelect=$('vehicleSelect');
+
+// V20.11 transmission selector.
+// Created at runtime so the patch does not replace the user's current HTML/CSS.
+const transmissionModeControl=
+  document.createElement('div');
+
+transmissionModeControl.id=
+  'transmissionModeControl';
+
+transmissionModeControl.style.cssText=`
+  margin-top:8px;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:8px;
+  font-size:11px;
+`;
+
+const transmissionModeLabel=
+  document.createElement('span');
+
+transmissionModeLabel.textContent=
+  'Transmission';
+
+transmissionModeLabel.style.cssText=`
+  color:#9fb1c2;
+  font-weight:700;
+`;
+
+const transmissionModeSelect=
+  document.createElement('select');
+
+transmissionModeSelect.id=
+  'transmissionModeSelect';
+
+transmissionModeSelect.innerHTML=`
+  <option value="automatic">Automatique</option>
+  <option value="manual">Manuelle</option>
+`;
+
+transmissionModeSelect.value=
+  'automatic';
+
+transmissionModeSelect.style.cssText=`
+  min-width:118px;
+  padding:4px 7px;
+  border-radius:6px;
+  border:1px solid rgba(255,255,255,.16);
+  background:#26313a;
+  color:#fff;
+  font:inherit;
+`;
+
+transmissionModeSelect.addEventListener(
+  'change',
+  ()=>{
+    transmissionMode=
+      transmissionModeSelect.value==='manual'
+        ?'manual'
+        :'automatic';
+
+    manualShiftRequest=null;
+
+    toast(
+      transmissionMode==='manual'
+        ?'Transmission manuelle · [ / X rétrograder · ] / A monter'
+        :'Transmission automatique'
+    );
+  }
+);
+
+if(vehicleSelect?.parentElement){
+  transmissionModeControl.append(
+    transmissionModeLabel,
+    transmissionModeSelect
+  );
+
+  vehicleSelect.parentElement.appendChild(
+    transmissionModeControl
+  );
+}
+
 if(vehicleSelect){
   vehicleSystem.populateSelect(vehicleSelect);
 
@@ -3236,6 +4635,14 @@ if(vehicleSelect){
       currentSteerAngle=0;
       longitudinalAccel=0;
       lateralGripUsage=0;
+      wheelGripUsage=[0,0,0,0];
+      wheelSlipLevels=[0,0,0,0];
+      frontSlipAmount=0;
+      rearSlipAmount=0;
+      dynamicYawRate=0;
+      velocityHeading=heading;
+      resetTransmissionState();
+      vehiclePresentation.reset();
 
       vehicleVisuals.applyVehicleVisualProfile();
       vehicleAudio.setProfile(vehicleSystem.active.audio);
@@ -3369,13 +4776,44 @@ function setCollapsed(panel,button,collapsed,label){
 hudToggle.addEventListener('click',()=>setCollapsed(hudPanel,hudToggle,!hudPanel.classList.contains('collapsed'),'les détails'));
 mapToggle.addEventListener('click',()=>setCollapsed(mapPanel,mapToggle,!mapPanel.classList.contains('collapsed'),'la carte'));
 
-// ---------- commands panel / alternate speedometer ----------
+// ---------- V20.7 unified instrument cluster ----------
 const helpPanel=$('help');
 const helpToggle=$('helpToggle');
 const speedometerDock=$('speedometerDock');
 const showControlsBtn=$('showControlsBtn');
 const speedometerCanvas=$('speedometerCanvas');
 const speedometerCtx=speedometerCanvas?.getContext('2d');
+
+// The existing speedometer dock is reused so the new cluster keeps the same
+// "Commandes" show/hide behavior. Everything is drawn by code: no image asset.
+const instrumentClusterStyle=document.createElement('style');
+instrumentClusterStyle.textContent=`
+#speedometerDock{
+  width:486px!important;
+  gap:7px!important;
+}
+#speedometerCanvas{
+  width:480px!important;
+  height:236px!important;
+  border-radius:18px!important;
+  filter:drop-shadow(0 14px 34px rgba(0,0,0,.48))!important;
+}
+#showControlsBtn{
+  width:118px!important;
+}
+@media(max-width:980px){
+  #speedometerDock.visible{
+    transform:scale(.82);
+    transform-origin:right bottom;
+  }
+}
+@media(max-width:700px){
+  #speedometerDock{
+    display:none!important;
+  }
+}
+`;
+document.head.appendChild(instrumentClusterStyle);
 
 function setGameControlsHidden(hidden){
   helpPanel?.classList.toggle('hiddenControls',hidden);
@@ -3412,72 +4850,450 @@ showControlsBtn?.addEventListener(
   ()=>setGameControlsHidden(false)
 );
 
-function drawSpeedometer(){
-  if(
-    !speedometerCtx||
-    !speedometerDock?.classList.contains('visible')
-  ){
-    return;
+function drawGaugeBezel(
+  ctx,
+  cx,
+  cy,
+  radius,
+  {
+    thick=false
+  }={}
+){
+  // Outer black housing.
+  const housing=ctx.createRadialGradient(
+    cx,
+    cy,
+    radius*.35,
+    cx,
+    cy,
+    radius*1.12
+  );
+
+  housing.addColorStop(0,'rgba(20,22,25,.98)');
+  housing.addColorStop(.72,'rgba(5,6,8,.99)');
+  housing.addColorStop(1,'rgba(0,0,0,1)');
+
+  ctx.fillStyle=housing;
+  ctx.beginPath();
+  ctx.arc(
+    cx,
+    cy,
+    radius+10,
+    0,
+    Math.PI*2
+  );
+  ctx.fill();
+
+  // Chrome / brushed-metal ring inspired by the reference cluster.
+  const metal=ctx.createLinearGradient(
+    cx-radius,
+    cy-radius,
+    cx+radius,
+    cy+radius
+  );
+
+  metal.addColorStop(0,'#777d83');
+  metal.addColorStop(.18,'#f2f4f5');
+  metal.addColorStop(.36,'#70757b');
+  metal.addColorStop(.55,'#f7f8f8');
+  metal.addColorStop(.75,'#777c81');
+  metal.addColorStop(1,'#d8dbde');
+
+  ctx.strokeStyle=metal;
+  ctx.lineWidth=thick?7:5;
+  ctx.beginPath();
+  ctx.arc(
+    cx,
+    cy,
+    radius+3,
+    0,
+    Math.PI*2
+  );
+  ctx.stroke();
+
+  ctx.strokeStyle='rgba(255,255,255,.65)';
+  ctx.lineWidth=1;
+  ctx.beginPath();
+  ctx.arc(
+    cx,
+    cy,
+    radius-2,
+    0,
+    Math.PI*2
+  );
+  ctx.stroke();
+
+  // Black dial face.
+  const face=ctx.createRadialGradient(
+    cx-radius*.16,
+    cy-radius*.18,
+    radius*.06,
+    cx,
+    cy,
+    radius
+  );
+
+  face.addColorStop(0,'#121417');
+  face.addColorStop(.52,'#08090b');
+  face.addColorStop(1,'#010203');
+
+  ctx.fillStyle=face;
+  ctx.beginPath();
+  ctx.arc(
+    cx,
+    cy,
+    radius-6,
+    0,
+    Math.PI*2
+  );
+  ctx.fill();
+}
+
+function drawNeedle(
+  ctx,
+  cx,
+  cy,
+  angle,
+  length,
+  {
+    width=4,
+    tail=12
+  }={}
+){
+  ctx.save();
+  ctx.translate(cx,cy);
+  ctx.rotate(angle);
+
+  ctx.shadowColor='rgba(255,38,45,.48)';
+  ctx.shadowBlur=5;
+  ctx.strokeStyle='#ff2d35';
+  ctx.lineWidth=width;
+  ctx.lineCap='round';
+
+  ctx.beginPath();
+  ctx.moveTo(-tail,0);
+  ctx.lineTo(length,0);
+  ctx.stroke();
+
+  ctx.shadowBlur=0;
+  ctx.restore();
+
+  const hub=ctx.createRadialGradient(
+    cx-2,
+    cy-2,
+    1,
+    cx,
+    cy,
+    8
+  );
+
+  hub.addColorStop(0,'#f7f7f7');
+  hub.addColorStop(.24,'#8b8d90');
+  hub.addColorStop(.58,'#25282b');
+  hub.addColorStop(1,'#050607');
+
+  ctx.fillStyle=hub;
+  ctx.beginPath();
+  ctx.arc(
+    cx,
+    cy,
+    7,
+    0,
+    Math.PI*2
+  );
+  ctx.fill();
+}
+
+function drawTachometer(
+  ctx,
+  {
+    cx,
+    cy,
+    radius
   }
+){
+  drawGaugeBezel(
+    ctx,
+    cx,
+    cy,
+    radius
+  );
 
-  const canvas=speedometerCanvas;
-  const dpr=devicePixelRatio||1;
-  const cssSize=190;
-  const px=Math.round(cssSize*dpr);
-
-  if(canvas.width!==px||canvas.height!==px){
-    canvas.width=px;
-    canvas.height=px;
-  }
-
-  const ctx=speedometerCtx;
-  ctx.setTransform(dpr,0,0,dpr,0,0);
-  ctx.clearRect(0,0,cssSize,cssSize);
-
-  const cx=cssSize/2;
-  const cy=cssSize/2;
-  const radius=88;
+  const profile=activeTransmissionProfile();
+  const isCombustion=
+    profile.type==='combustion';
 
   const start=Math.PI*.75;
   const sweep=Math.PI*1.50;
 
-  // Panel / bezel.
-  const bg=ctx.createRadialGradient(
-    cx,cy,20,
-    cx,cy,radius
+  if(!isCombustion){
+    // EVs keep the same physical cluster, but we avoid inventing RPM.
+    for(let i=0;i<=8;i++){
+      const ratio=i/8;
+      const angle=start+sweep*ratio;
+      const major=i%2===0;
+      const r1=major?radius-25:radius-20;
+      const r2=radius-11;
+
+      ctx.strokeStyle=
+        major
+          ?'rgba(245,247,248,.92)'
+          :'rgba(224,229,233,.55)';
+
+      ctx.lineWidth=major?3:1.5;
+
+      ctx.beginPath();
+      ctx.moveTo(
+        cx+Math.cos(angle)*r1,
+        cy+Math.sin(angle)*r1
+      );
+      ctx.lineTo(
+        cx+Math.cos(angle)*r2,
+        cy+Math.sin(angle)*r2
+      );
+      ctx.stroke();
+    }
+
+    ctx.fillStyle='#f5f6f7';
+    ctx.font='800 24px Inter,system-ui,sans-serif';
+    ctx.textAlign='center';
+    ctx.textBaseline='middle';
+    ctx.fillText(
+      'EV',
+      cx,
+      cy-5
+    );
+
+    ctx.fillStyle='rgba(220,225,230,.74)';
+    ctx.font='700 9px Inter,system-ui,sans-serif';
+    ctx.fillText(
+      'ELECTRIC',
+      cx,
+      cy+16
+    );
+
+    return;
+  }
+
+  const redline=
+    Number(profile.redlineRpm)||
+    6500;
+
+  const effectiveRedline=
+    effectiveEngineRedlineRpm(
+      profile,
+      !!(
+        nearestRoute(absX,absZ)?.d<8.5
+      )
+    );
+
+  const dialMaxThousands=
+    Math.max(
+      8,
+      Math.ceil(
+        redline/
+        1000
+      )
+    );
+
+  const dialMaxRpm=
+    dialMaxThousands*
+    1000;
+
+  // Dense white ticks.
+  const minorStep=200;
+
+  for(
+    let value=0;
+    value<=dialMaxRpm;
+    value+=minorStep
+  ){
+    const ratio=value/dialMaxRpm;
+    const angle=start+sweep*ratio;
+
+    const major=value%1000===0;
+    const mid=value%500===0;
+
+    const r1=
+      major
+        ?radius-28
+        :mid
+          ?radius-23
+          :radius-18;
+
+    const r2=radius-10;
+
+    const inRed=
+      value>=effectiveRedline*.90;
+
+    ctx.strokeStyle=
+      inRed
+        ?'#ff383e'
+        :major
+          ?'rgba(250,250,250,.98)'
+          :mid
+            ?'rgba(242,244,245,.84)'
+            :'rgba(226,230,232,.62)';
+
+    ctx.lineWidth=
+      major
+        ?3.3
+        :mid
+          ?2.2
+          :1.3;
+
+    ctx.beginPath();
+    ctx.moveTo(
+      cx+Math.cos(angle)*r1,
+      cy+Math.sin(angle)*r1
+    );
+    ctx.lineTo(
+      cx+Math.cos(angle)*r2,
+      cy+Math.sin(angle)*r2
+    );
+    ctx.stroke();
+  }
+
+  // RPM labels.
+  for(
+    let i=0;
+    i<=dialMaxThousands;
+    i++
+  ){
+    const ratio=
+      (i*1000)/
+      dialMaxRpm;
+
+    const angle=
+      start+
+      sweep*
+      ratio;
+
+    const labelRadius=
+      radius-40;
+
+    ctx.fillStyle=
+      i*1000>=effectiveRedline*.90
+        ?'#ff4a50'
+        :'rgba(248,248,248,.94)';
+
+    ctx.font='800 15px Inter,system-ui,sans-serif';
+    ctx.textAlign='center';
+    ctx.textBaseline='middle';
+
+    ctx.fillText(
+      String(i),
+      cx+Math.cos(angle)*labelRadius,
+      cy+Math.sin(angle)*labelRadius
+    );
+  }
+
+  ctx.fillStyle='rgba(232,235,237,.78)';
+  ctx.font='700 9px Inter,system-ui,sans-serif';
+  ctx.textAlign='center';
+  ctx.textBaseline='middle';
+  ctx.fillText(
+    'x1000 RPM',
+    cx,
+    cy+26
   );
-  bg.addColorStop(0,'rgba(16,29,43,.94)');
-  bg.addColorStop(1,'rgba(3,9,16,.94)');
 
-  ctx.fillStyle=bg;
+  const rpmRatio=
+    physicsClamp(
+      engineRpm/
+      dialMaxRpm,
+      0,
+      1
+    );
+
+  drawNeedle(
+    ctx,
+    cx,
+    cy,
+    start+sweep*rpmRatio,
+    radius-31,
+    {
+      width:3.5,
+      tail:10
+    }
+  );
+}
+
+function drawSpeedGauge(
+  ctx,
+  {
+    cx,
+    cy,
+    radius
+  }
+){
+  drawGaugeBezel(
+    ctx,
+    cx,
+    cy,
+    radius,
+    {
+      thick:true
+    }
+  );
+
+  const start=Math.PI*.75;
+  const sweep=Math.PI*1.50;
+
+  const mechanicalMax=
+    Math.max(
+      80,
+      vehicleTopSpeedKmh()
+    );
+
+  const dialMax=
+    Math.max(
+      180,
+      Math.ceil(
+        mechanicalMax/
+        20
+      )*
+      20
+    );
+
+  // Bright inner scale band.
+  ctx.strokeStyle='rgba(242,244,246,.88)';
+  ctx.lineWidth=5;
   ctx.beginPath();
-  ctx.arc(cx,cy,radius,0,Math.PI*2);
-  ctx.fill();
-
-  ctx.strokeStyle='rgba(255,255,255,.18)';
-  ctx.lineWidth=2;
+  ctx.arc(
+    cx,
+    cy,
+    radius-13,
+    start,
+    start+sweep
+  );
   ctx.stroke();
 
-  const dialMax=Math.max(
-    200,
-    Math.ceil(maxSpeedKmh/20)*20
-  );
-
-  // Tick marks.
-  for(let value=0;value<=dialMax;value+=10){
+  for(
+    let value=0;
+    value<=dialMax;
+    value+=10
+  ){
     const ratio=value/dialMax;
     const angle=start+sweep*ratio;
 
     const major=value%20===0;
-    const r1=major?68:73;
-    const r2=82;
+    const r1=
+      major
+        ?radius-29
+        :radius-23;
+
+    const r2=radius-13;
 
     ctx.strokeStyle=
       major
-        ?'rgba(235,244,255,.82)'
-        :'rgba(180,197,215,.42)';
+        ?'#08090a'
+        :'rgba(13,14,15,.72)';
 
-    ctx.lineWidth=major?2:1;
+    ctx.lineWidth=
+      major
+        ?2.5
+        :1.3;
 
     ctx.beginPath();
     ctx.moveTo(
@@ -3491,61 +5307,292 @@ function drawSpeedometer(){
     ctx.stroke();
 
     if(major){
-      ctx.fillStyle='rgba(220,232,244,.78)';
-      ctx.font='10px Inter,system-ui,sans-serif';
+      ctx.fillStyle='rgba(247,247,247,.97)';
+      ctx.font='800 15px Inter,system-ui,sans-serif';
       ctx.textAlign='center';
       ctx.textBaseline='middle';
 
       ctx.fillText(
         String(value),
-        cx+Math.cos(angle)*56,
-        cy+Math.sin(angle)*56
+        cx+Math.cos(angle)*(radius-34),
+        cy+Math.sin(angle)*(radius-34)
       );
     }
   }
 
-  const kmh=Math.abs(speed)*3.6;
-  const needleRatio=Math.max(
-    0,
-    Math.min(1,kmh/dialMax)
+  ctx.fillStyle='rgba(245,246,247,.92)';
+  ctx.font='800 11px Inter,system-ui,sans-serif';
+  ctx.textAlign='center';
+  ctx.textBaseline='middle';
+  ctx.fillText(
+    'km/h',
+    cx,
+    cy-28
   );
-  const needleAngle=start+sweep*needleRatio;
 
-  // Needle.
-  ctx.save();
-  ctx.translate(cx,cy);
-  ctx.rotate(needleAngle);
+  const kmh=
+    Math.abs(speed)*
+    3.6;
 
-  ctx.strokeStyle='#ff4f59';
-  ctx.lineWidth=3;
-  ctx.lineCap='round';
+  const speedRatio=
+    physicsClamp(
+      kmh/
+      dialMax,
+      0,
+      1
+    );
+
+  drawNeedle(
+    ctx,
+    cx,
+    cy,
+    start+sweep*speedRatio,
+    radius-39,
+    {
+      width:4,
+      tail:13
+    }
+  );
+
+  // Integrated gear LCD, inspired by the rectangular display in the reference.
+  const lcdW=44;
+  const lcdH=44;
+  const lcdX=cx-lcdW/2;
+  const lcdY=cy+42;
+
+  const lcd=ctx.createLinearGradient(
+    lcdX,
+    lcdY,
+    lcdX,
+    lcdY+lcdH
+  );
+
+  lcd.addColorStop(0,'#383c42');
+  lcd.addColorStop(.48,'#202329');
+  lcd.addColorStop(1,'#111318');
+
+  ctx.fillStyle=lcd;
+  ctx.strokeStyle='rgba(180,186,192,.62)';
+  ctx.lineWidth=1.4;
+
   ctx.beginPath();
-  ctx.moveTo(-10,0);
-  ctx.lineTo(67,0);
+  if(ctx.roundRect){
+    ctx.roundRect(
+      lcdX,
+      lcdY,
+      lcdW,
+      lcdH,
+      4
+    );
+  }else{
+    ctx.rect(
+      lcdX,
+      lcdY,
+      lcdW,
+      lcdH
+    );
+  }
+  ctx.fill();
   ctx.stroke();
-  ctx.restore();
 
-  ctx.fillStyle='#ff4f59';
+  const profile=activeTransmissionProfile();
+  const isCombustion=
+    profile.type==='combustion';
+
+  let gearText;
+
+  if(!isCombustion){
+    gearText=
+      speed<-.25
+        ?'R'
+        :'D';
+  }else if(transmissionShifting){
+    gearText='—';
+  }else{
+    gearText=
+      transmissionGear<0
+        ?'R'
+        :String(
+           Math.max(
+             1,
+             transmissionGear
+           )
+         );
+  }
+
+  ctx.fillStyle=
+    revLimiterActive
+      ?'#ff474d'
+      :'#ff3a40';
+
+  ctx.font='900 27px Inter,system-ui,sans-serif';
+  ctx.textAlign='center';
+  ctx.textBaseline='middle';
+
+  ctx.fillText(
+    gearText,
+    cx,
+    lcdY+lcdH/2+1
+  );
+
+  const status=
+    revLimiterActive
+      ?'LIMIT'
+      :transmissionShifting
+        ?'SHIFT'
+        :transmissionMode==='manual'
+          ?'MAN'
+          :'AUTO';
+
+  if(status){
+    ctx.fillStyle=
+      revLimiterActive
+        ?'#ff575d'
+        :transmissionShifting
+          ?'#ffd36a'
+          :'rgba(220,226,232,.72)';
+
+    ctx.font=
+      transmissionShifting||
+      revLimiterActive
+        ?'900 8px Inter,system-ui,sans-serif'
+        :'800 7px Inter,system-ui,sans-serif';
+
+    ctx.fillText(
+      status,
+      cx,
+      lcdY-5
+    );
+  }
+}
+
+function drawSpeedometer(){
+  if(
+    !speedometerCtx||
+    !speedometerDock?.classList.contains('visible')
+  ){
+    return;
+  }
+
+  const canvas=speedometerCanvas;
+  const dpr=devicePixelRatio||1;
+  const cssW=480;
+  const cssH=236;
+
+  const pxW=Math.round(cssW*dpr);
+  const pxH=Math.round(cssH*dpr);
+
+  if(
+    canvas.width!==pxW||
+    canvas.height!==pxH
+  ){
+    canvas.width=pxW;
+    canvas.height=pxH;
+  }
+
+  const ctx=speedometerCtx;
+
+  ctx.setTransform(
+    dpr,
+    0,
+    0,
+    dpr,
+    0,
+    0
+  );
+
+  ctx.clearRect(
+    0,
+    0,
+    cssW,
+    cssH
+  );
+
+  // One black binnacle around both instruments.
+  const panel=ctx.createLinearGradient(
+    0,
+    0,
+    0,
+    cssH
+  );
+
+  panel.addColorStop(0,'rgba(9,10,12,.92)');
+  panel.addColorStop(.38,'rgba(1,2,3,.97)');
+  panel.addColorStop(1,'rgba(0,0,0,.99)');
+
+  ctx.fillStyle=panel;
+  ctx.strokeStyle='rgba(118,124,130,.30)';
+  ctx.lineWidth=1.5;
+
   ctx.beginPath();
-  ctx.arc(cx,cy,5,0,Math.PI*2);
+  if(ctx.roundRect){
+    ctx.roundRect(
+      2,
+      2,
+      cssW-4,
+      cssH-4,
+      22
+    );
+  }else{
+    ctx.rect(
+      2,
+      2,
+      cssW-4,
+      cssH-4
+    );
+  }
+  ctx.fill();
+  ctx.stroke();
+
+  // Slight dashboard hood at the top.
+  const hood=ctx.createLinearGradient(
+    0,
+    0,
+    0,
+    52
+  );
+
+  hood.addColorStop(0,'rgba(25,27,30,.80)');
+  hood.addColorStop(1,'rgba(3,4,5,0)');
+
+  ctx.fillStyle=hood;
+  ctx.beginPath();
+  if(ctx.roundRect){
+    ctx.roundRect(
+      16,
+      8,
+      cssW-32,
+      55,
+      24
+    );
+  }else{
+    ctx.rect(
+      16,
+      8,
+      cssW-32,
+      55
+    );
+  }
   ctx.fill();
 
-  // Digital readout.
-  ctx.textAlign='center';
-  ctx.fillStyle='#ffffff';
-  ctx.font='700 29px Inter,system-ui,sans-serif';
-  ctx.fillText(
-    String(Math.round(kmh)),
-    cx,
-    cy+30
+  // Tachometer is deliberately smaller and slightly overlapped by speedometer,
+  // matching the visual hierarchy of the reference image.
+  drawTachometer(
+    ctx,
+    {
+      cx:108,
+      cy:125,
+      radius:84
+    }
   );
 
-  ctx.fillStyle='rgba(190,210,228,.82)';
-  ctx.font='700 10px Inter,system-ui,sans-serif';
-  ctx.fillText(
-    'KM/H',
-    cx,
-    cy+46
+  drawSpeedGauge(
+    ctx,
+    {
+      cx:337,
+      cy:120,
+      radius:112
+    }
   );
 }
 

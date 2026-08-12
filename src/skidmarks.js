@@ -1,5 +1,6 @@
-// World Drive V18J — pooled skid-mark renderer.
-// One InstancedMesh handles local + multiplayer rubber marks.
+// World Drive V20.0 — pooled skid-mark renderer.
+// Local rubber is driven by independent per-wheel adhesion loss; multiplayer
+// keeps the compact front/rear aggregate state.
 export function createSkidMarkSystem({
   THREE,
   scene,
@@ -64,12 +65,19 @@ export function createSkidMarkSystem({
   let nextSlot=0;
   let lastOffsetX=NaN;
   let lastOffsetZ=NaN;
-  let localState={front:0,rear:0,onRoad:false};
+  let localState={
+    front:0,
+    rear:0,
+    wheels:[0,0,0,0],
+    onRoad:false
+  };
 
-  // Visible rubber requires sustained slip, not merely touching the
-  // adhesion limit for one instant.
+  // Legacy axle timers remain for remote/fallback behavior.
   let lateralSquealTime=0;
   let brakingSlipTime=0;
+
+  // V20.0 local tire timers: every wheel earns its own rubber independently.
+  const wheelSlipTime=[0,0,0,0];
 
   const LATERAL_MARK_DELAY=.70;
   const BRAKE_MARK_DELAY=.38;
@@ -277,6 +285,7 @@ export function createSkidMarkSystem({
   function updateSource(sourceId,contacts,{
     front=0,
     rear=0,
+    wheels=null,
     onRoad=false,
     distance=0
   }={}){
@@ -304,9 +313,21 @@ export function createSkidMarkSystem({
         !Number.isFinite(ground)
       )continue;
 
+      const wheelIntensity=
+        Array.isArray(wheels)&&
+        Number.isFinite(
+          Number(wheels[index])
+        )
+          ?Number(wheels[index])
+          :(
+             c.front
+               ?front
+               :rear
+           );
+
       const intensity=
         smoothstep01(
-          c.front?front:rear
+          wheelIntensity
         );
 
       const key=`${sourceId}:${index}`;
@@ -362,6 +383,7 @@ export function createSkidMarkSystem({
     speed,
     steerAngle,
     lateralGripUsage,
+    wheelGripUsage,
     longitudinalAccel,
     handbrake,
     vehicle,
@@ -370,7 +392,113 @@ export function createSkidMarkSystem({
     if(!onRoad||Math.abs(speed)<3.4){
       lateralSquealTime=0;
       brakingSlipTime=0;
-      return {front:0,rear:0,onRoad:!!onRoad};
+
+      for(let i=0;i<4;i++){
+        wheelSlipTime[i]=0;
+      }
+
+      return {
+        front:0,
+        rear:0,
+        wheels:[0,0,0,0],
+        onRoad:!!onRoad
+      };
+    }
+
+    // V20.0: if the physics supplied four independent friction-circle values,
+    // use them directly. No steering-angle reconstruction is needed.
+    if(
+      Array.isArray(
+        wheelGripUsage
+      )&&
+      wheelGripUsage.length===4
+    ){
+      const safeDt=
+        Math.max(
+          0,
+          Math.min(
+            .05,
+            Number(dt)||0
+          )
+        );
+
+      const speedGate=
+        smoothstep01(
+          (
+            Math.abs(speed)*3.6-
+            12
+          )/
+          18
+        );
+
+      const wheels=
+        wheelGripUsage.map(
+          (usage,index)=>{
+            const raw=
+              smoothstep01(
+                (
+                  Math.max(
+                    0,
+                    Number(usage)||0
+                  )-
+                  1.06
+                )/
+                .26
+              );
+
+            const rear=
+              index===0||
+              index===2;
+
+            // Handbrake remains an immediate rear-wheel event.
+            if(handbrake&&rear){
+              wheelSlipTime[index]=
+                Math.max(
+                  wheelSlipTime[index],
+                  .50
+                );
+
+              return Math.max(
+                raw,
+                speedGate
+              );
+            }
+
+            if(raw>.001){
+              wheelSlipTime[index]+=
+                safeDt;
+            }else{
+              wheelSlipTime[index]=0;
+            }
+
+            // Because this signal already comes from an actual friction-circle
+            // calculation, the visual delay can be shorter than old G-based
+            // heuristics while still avoiding one-frame rubber flashes.
+            const delay=
+              raw>.72
+                ?.30
+                :.52;
+
+            return wheelSlipTime[index]>=delay
+              ?raw
+              :0;
+          }
+        );
+
+      return {
+        front:
+          Math.max(
+            wheels[1]||0,
+            wheels[3]||0
+          ),
+        rear:
+          Math.max(
+            wheels[0]||0,
+            wheels[2]||0
+          ),
+        wheels,
+        onRoad:true
+      };
     }
 
     const gripUsage=
@@ -449,9 +577,28 @@ export function createSkidMarkSystem({
 
     const handbrakeSlip=handbrake?speedGate:0;
 
+    const front=
+      Math.max(
+        lateralSlip*.72,
+        brakeSlip
+      );
+
+    const rear=
+      Math.max(
+        lateralSlip,
+        brakeSlip*.72,
+        handbrakeSlip
+      );
+
     return {
-      front:Math.max(lateralSlip*.72,brakeSlip),
-      rear:Math.max(lateralSlip,brakeSlip*.72,handbrakeSlip),
+      front,
+      rear,
+      wheels:[
+        rear,
+        front,
+        rear,
+        front
+      ],
       onRoad:true
     };
   }
@@ -484,6 +631,10 @@ export function createSkidMarkSystem({
     nextSlot=0;
     lateralSquealTime=0;
     brakingSlipTime=0;
+
+    for(let i=0;i<4;i++){
+      wheelSlipTime[i]=0;
+    }
 
     for(let i=0;i<slots.length;i++){
       slots[i].active=false;

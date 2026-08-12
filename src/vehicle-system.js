@@ -24,6 +24,9 @@ const PROFILES={
       steeringResponseHigh:4.4,
       roadGripMultiplier:1.02,
       lateralAccelLimit:7.8,
+      suspensionTravel:0.17,
+      suspensionResponse:14.0,
+
       offroadGrip:0.58,
       offroadDrag:1.15
     },
@@ -47,7 +50,6 @@ const PROFILES={
 
     physics:{
       drivetrain:'AWD',
-      topSpeedKmh:200,
       // More immediate than ID4, but not supercar-like.
       accel:7.15,
       brake:10.6,
@@ -60,6 +62,9 @@ const PROFILES={
       steeringResponseHigh:5.6,
       roadGripMultiplier:1.10,
       lateralAccelLimit:9.4,
+      suspensionTravel:0.14,
+      suspensionResponse:18.0,
+
       offroadGrip:0.70,
       offroadDrag:0.95
     },
@@ -69,7 +74,18 @@ const PROFILES={
       profile:'boxer-turbo',
       idleRpm:850,
       redlineRpm:6700,
-      gearCount:6
+      gearCount:6,
+
+      // V20.6 mechanical gearbox calibration.
+      // 225 km/h = top-gear redline at the reference RPM/ratio.
+      referenceRedlineRpm:6700,
+      referenceTopGearRedlineKmh:225,
+      referenceTopGearRatio:1,
+      gearRatios:[4.3,2.443182,1.706349,1.360759,1.168478,1],
+      shiftDuration:0.16,
+      downshiftDuration:0.14,
+      revLimiterHz:12.5,
+      revLimiterDropRpm:220,
     },
 
     visual:{
@@ -89,7 +105,6 @@ const PROFILES={
 
     physics:{
       drivetrain:'FWD',
-      topSpeedKmh:200,
       accel:6.7,
       brake:9.8,
       reverseAccel:3.3,
@@ -101,6 +116,9 @@ const PROFILES={
       steeringResponseHigh:5.2,
       roadGripMultiplier:1.06,
       lateralAccelLimit:8.7,
+      suspensionTravel:0.15,
+      suspensionResponse:15.0,
+
       offroadGrip:0.62,
       offroadDrag:1.04
     },
@@ -110,7 +128,18 @@ const PROFILES={
       profile:'civic',
       idleRpm:750,
       redlineRpm:6800,
-      gearCount:6
+      gearCount:6,
+
+      // V20.6 mechanical gearbox calibration.
+      // 180 km/h = top-gear redline at the reference RPM/ratio.
+      referenceRedlineRpm:6800,
+      referenceTopGearRedlineKmh:180,
+      referenceTopGearRatio:1,
+      gearRatios:[4.888889,2.820513,1.964286,1.506849,1.235955,1],
+      shiftDuration:0.22,
+      downshiftDuration:0.18,
+      revLimiterHz:11.5,
+      revLimiterDropRpm:240,
     },
 
     visual:{
@@ -128,7 +157,6 @@ const PROFILES={
 
     physics:{
       drivetrain:'FWD',
-      topSpeedKmh:200,
       accel:6.9,
       brake:9.9,
       reverseAccel:3.3,
@@ -140,6 +168,9 @@ const PROFILES={
       steeringResponseHigh:5.0,
       roadGripMultiplier:1.05,
       lateralAccelLimit:8.5,
+      suspensionTravel:0.15,
+      suspensionResponse:14.0,
+
       offroadGrip:0.60,
       offroadDrag:1.06
     },
@@ -149,7 +180,18 @@ const PROFILES={
       profile:'sonata-sport',
       idleRpm:750,
       redlineRpm:6500,
-      gearCount:6
+      gearCount:6,
+
+      // V20.6 mechanical gearbox calibration.
+      // 205 km/h = top-gear redline at the reference RPM/ratio.
+      referenceRedlineRpm:6500,
+      referenceTopGearRedlineKmh:205,
+      referenceTopGearRatio:1,
+      gearRatios:[4.6875,2.678571,1.875,1.461039,1.222826,1],
+      shiftDuration:0.18,
+      downshiftDuration:0.16,
+      revLimiterHz:11.0,
+      revLimiterDropRpm:220,
     },
 
     visual:{
@@ -167,7 +209,6 @@ const PROFILES={
 
     physics:{
       drivetrain:'RWD',
-      topSpeedKmh:350,
       accel:13.2,
 
       // F1 carbon brakes: substantially stronger than road cars.
@@ -195,6 +236,9 @@ const PROFILES={
       powerOversteerGripLoss:0.035,
       powerOversteerYaw:0.018,
 
+      suspensionTravel:0.075,
+      suspensionResponse:22.0,
+
       offroadGrip:0.34,
       offroadDrag:2.25
     },
@@ -205,8 +249,18 @@ const PROFILES={
       idleRpm:3200,
       redlineRpm:12000,
       gearCount:7,
-      topSpeedKmh:350,
-      shiftPoints:[72,124,174,224,270,312,350],
+
+      // V20.6 mechanical gearbox calibration.
+      // 350 km/h = top-gear redline at the reference RPM/ratio.
+      referenceRedlineRpm:12000,
+      referenceTopGearRedlineKmh:350,
+      referenceTopGearRatio:1,
+      gearRatios:[4.861111,2.822581,2.011494,1.5625,1.296296,1.121795,1],
+      shiftDuration:0.075,
+      downshiftDuration:0.065,
+      revLimiterHz:16.5,
+      revLimiterDropRpm:380,
+
       cylinders:8,
       naturallyAspirated:true
     },
@@ -226,7 +280,6 @@ const PROFILES={
 
     physics:{
       drivetrain:'RWD',
-      topSpeedKmh:320,
 
       // Fast, raw 1980s supercar: noticeably stronger than the road sedans,
       // but still far below the F1's acceleration/braking/grip envelope.
@@ -252,6 +305,9 @@ const PROFILES={
       powerOversteerYaw:0.055,
 
       // Very much a road car despite its exotic shape.
+      suspensionTravel:0.11,
+      suspensionResponse:17.0,
+
       offroadGrip:0.42,
       offroadDrag:1.45
     },
@@ -262,8 +318,18 @@ const PROFILES={
       idleRpm:950,
       redlineRpm:7500,
       gearCount:5,
-      topSpeedKmh:320,
-      shiftPoints:[72,126,188,252,320],
+
+      // V20.6 mechanical gearbox calibration.
+      // 320 km/h = top-gear redline at the reference RPM/ratio.
+      referenceRedlineRpm:7500,
+      referenceTopGearRedlineKmh:320,
+      referenceTopGearRatio:1,
+      gearRatios:[4.444444,2.539683,1.702128,1.269841,1],
+      shiftDuration:0.28,
+      downshiftDuration:0.22,
+      revLimiterHz:9.5,
+      revLimiterDropRpm:280,
+
       cylinders:12,
       naturallyAspirated:true
     },
@@ -299,6 +365,9 @@ const PROFILES={
 
       powerOversteerGripLoss:0.08,
       powerOversteerYaw:0.030,
+
+      suspensionTravel:0.16,
+      suspensionResponse:14.0,
 
       offroadGrip:0.55,
       offroadDrag:1.18
