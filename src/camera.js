@@ -22,7 +22,20 @@ export function createCameraController({
 
   function updateLook(dt){
     const input=getLookState?.()||{};
-    const targetYaw=input.connected ? (input.lookX||0)*1.22 : 0;
+
+    // While R3 reverse-view is held, center horizontal free-look so the
+    // requested view is predictably straight behind the vehicle.
+    const reverseView=
+      !!(
+        input.connected&&
+        input.reverseView
+      );
+
+    const targetYaw=
+      input.connected&&!reverseView
+        ?(input.lookX||0)*1.22
+        :0;
+
     const targetPitch=input.connected ? -(input.lookY||0)*.58 : 0;
 
     const active=Math.abs(targetYaw)>.01||Math.abs(targetPitch)>.01;
@@ -39,14 +52,32 @@ export function createCameraController({
     updateLook(dt);
 
     const heading=getHeading?.()||0;
+    const input=getLookState?.()||{};
+    const reverseView=
+      !!(
+        input.connected&&
+        input.reverseView
+      );
+
     const baseForward=new THREE.Vector3(
       Math.sin(heading),
       0,
       Math.cos(heading)
     );
 
-    const cosY=Math.cos(lookYaw);
-    const sinY=Math.sin(lookYaw);
+    // R3 flips the viewing direction by 180°. The existing camera position
+    // smoothing naturally moves Chase/Aerial cameras to the opposite side of
+    // the car; Hood mode becomes a rear-facing view close to the vehicle.
+    const viewYaw=
+      lookYaw+
+      (
+        reverseView
+          ?Math.PI
+          :0
+      );
+
+    const cosY=Math.cos(viewYaw);
+    const sinY=Math.sin(viewYaw);
     const forward=new THREE.Vector3(
       baseForward.x*cosY + baseForward.z*sinY,
       0,

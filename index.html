@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
-<title>World Drive V5.2.8 — VS Code Edition</title>
+<title>World Drive V19.1 — LAN Multiplayer</title>
 <link rel="stylesheet" href="/src/styles.css">
 <script type="importmap">
 {"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.179.1/build/three.module.js"}}
@@ -16,16 +16,16 @@
   <div id="compassPointer"></div>
   <div id="compassHeading">N · 000°</div>
 </div>
-<div id="loading"><div class="box"><div class="spin"></div><h1>World Drive V4.0</h1><p id="loadingText">Récupération de la géométrie réelle de la route…</p></div></div>
+<div id="loading"><div class="box"><div class="spin"></div><h1>World Drive V19.1</h1><p id="loadingText">Récupération de la géométrie réelle de la route…</p></div></div>
 <div id="hud">
  <div class="panelHeader">
-   <div id="brand"><b>V5.2.8</b> WORLD DRIVE · VS CODE</div>
+   <div id="brand"><b>V19.1</b> WORLD DRIVE · VS CODE</div>
    <button id="hudToggle" class="panelToggle" aria-label="Minimiser les détails" title="Minimiser">−</button>
  </div>
 
  <div id="hudBody">
    <div id="status">Chargement de la route…</div>
-   <div style="font-size:10px;color:#8fa6bf;margin-top:4px">V5 alpha · architecture en évolution</div>
+   <div style="font-size:10px;color:#8fa6bf;margin-top:4px">V19.1 alpha · multijoueur LAN</div>
 
    <div class="compactStats">
      <div class="card">
@@ -64,6 +64,37 @@
            <div class="value" id="audioStatus">OFF</div>
            <button id="audioEnableBtn" class="smallBtn">Activer audio</button>
          </div>
+       </div>
+
+       
+     </div>
+   </div>
+
+   <div class="section collapsed" id="multiplayerSection">
+     <button class="sectionHead" data-section="multiplayerSection"><span>Multijoueur LAN</span><span>+</span></button>
+     <div class="sectionBody">
+       <div class="multiplayerBox">
+         <label class="placeLabel" for="multiplayerName">Nom du conducteur</label>
+         <input id="multiplayerName" type="text" maxlength="24" value="Conducteur" placeholder="Ex. Mathieu">
+
+         <div class="stats multiplayerStats">
+           <div class="card">
+             <div class="label">État</div>
+             <div class="value multiplayerState" id="multiplayerStatus" data-state="off">Déconnecté</div>
+           </div>
+           <div class="card">
+             <div class="label">Joueurs</div>
+             <div class="value" id="multiplayerCount">0</div>
+           </div>
+         </div>
+
+         <div class="multiplayerServerLine">
+           <span>Serveur</span>
+           <code id="multiplayerServer">ws://localhost:8081</code>
+         </div>
+
+         <button id="multiplayerToggleBtn" class="smallBtn multiplayerConnectBtn">Connecter</button>
+         <div class="searchMeta multiplayerHint">Exploration seulement · aucune collision entre joueurs.</div>
        </div>
      </div>
    </div>
@@ -147,7 +178,9 @@
          <div class="row"><button id="jumpBtn">Téléporter</button><button id="northBtn">Arrivée</button></div>
        </div>
      </div>
-   </div>
+   
+       
+</div>
  </div>
 
  <div id="actionBar">
@@ -169,6 +202,44 @@
     <button id="mapToggle" class="panelToggle" aria-label="Minimiser la carte" title="Minimiser">−</button>
   </div>
   <canvas id="minimap"></canvas>
+  <div class="routeSubsection collapsed" id="challengeSubsection">
+         <button class="routeSubsectionHead" id="challengeSubsectionToggle" type="button">
+           <span>Défi parcours</span>
+           <span class="routeSubsectionState" id="challengeSubsectionSummary">PRÊT</span>
+           <span class="routeSubsectionChevron">+</span>
+         </button>
+         <div class="routeSubsectionBody">
+           <div class="runChallenge" id="runChallenge">
+         <div class="runChallengeHead">
+           <div>
+             <div class="runState" id="runState">PRÊT</div>
+           </div>
+           <button id="resetRunBtn" class="smallBtn runResetBtn">Réinitialiser</button>
+         </div>
+
+         <div class="runStats">
+           <div class="runMetric">
+             <span>Temps</span>
+             <b id="runTimer">00:00.0</b>
+           </div>
+
+           
+
+           
+
+           <div class="runMetric qualityMetric">
+             <span>Qualité</span>
+             <b id="runQuality">100</b>
+           </div>
+         </div>
+
+         <div class="qualityTrack" aria-hidden="true">
+           <div id="qualityFill" class="qualityFill"></div>
+         </div>
+       
+           </div>
+         </div>
+       </div>
 </div>
 <div id="help">
   <div id="helpHeader">
@@ -210,3 +281,4 @@ setTimeout(function(){
 <script type="module" src="/src/main.js"></script>
 </body>
 </html>
+

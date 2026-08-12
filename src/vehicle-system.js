@@ -11,6 +11,7 @@ const PROFILES={
     description:'Crossover électrique AWD',
 
     physics:{
+      drivetrain:'AWD',
       topSpeedKmh:200,
       accel:6.2,
       brake:9.2,
@@ -45,6 +46,7 @@ const PROFILES={
     description:'Berline sport AWD · Boxer Turbo',
 
     physics:{
+      drivetrain:'AWD',
       topSpeedKmh:200,
       // More immediate than ID4, but not supercar-like.
       accel:7.15,
@@ -86,6 +88,7 @@ const PROFILES={
     description:'Berline compacte traction',
 
     physics:{
+      drivetrain:'FWD',
       topSpeedKmh:200,
       accel:6.7,
       brake:9.8,
@@ -124,6 +127,7 @@ const PROFILES={
     description:'Berline sport traction',
 
     physics:{
+      drivetrain:'FWD',
       topSpeedKmh:200,
       accel:6.9,
       brake:9.9,
@@ -162,6 +166,7 @@ const PROFILES={
     description:'Monoplace · haute adhérence',
 
     physics:{
+      drivetrain:'RWD',
       topSpeedKmh:350,
       accel:13.2,
 
@@ -176,11 +181,19 @@ const PROFILES={
       // More steering authority at high speed.
       maxSteerLow:0.44,
       maxSteerHigh:0.165,
-      steeringResponseHigh:10.0,
+
+      // V19.2: preserve full lock, but soften tiny analog corrections and
+      // reduce the very nervous high-speed steering response.
+      steeringInputExponent:1.45,
+      steeringResponseHigh:7.2,
 
       // Higher asphalt grip / lateral-G ceiling.
       roadGripMultiplier:1.72,
       lateralAccelLimit:18.5,
+
+      // High-downforce RWD: only subtle throttle-on rear slip.
+      powerOversteerGripLoss:0.035,
+      powerOversteerYaw:0.018,
 
       offroadGrip:0.34,
       offroadDrag:2.25
@@ -212,6 +225,7 @@ const PROFILES={
     description:'Supercar V12 des années 80 · propulsion',
 
     physics:{
+      drivetrain:'RWD',
       topSpeedKmh:320,
 
       // Fast, raw 1980s supercar: noticeably stronger than the road sedans,
@@ -231,6 +245,11 @@ const PROFILES={
 
       roadGripMultiplier:1.16,
       lateralAccelLimit:10.3,
+
+      // V19.2: old-school supercar. Under power the rear gives up lateral grip
+      // before rotating, preserving the heavy cornering feel.
+      powerOversteerGripLoss:0.18,
+      powerOversteerYaw:0.055,
 
       // Very much a road car despite its exotic shape.
       offroadGrip:0.42,
@@ -264,6 +283,7 @@ const PROFILES={
     description:'Citadine électrique propulsion',
 
     physics:{
+      drivetrain:'RWD',
       topSpeedKmh:200,
       accel:6.9,
       brake:9.4,
@@ -276,6 +296,10 @@ const PROFILES={
       steeringResponseHigh:5.3,
       roadGripMultiplier:1.00,
       lateralAccelLimit:8.1,
+
+      powerOversteerGripLoss:0.08,
+      powerOversteerYaw:0.030,
+
       offroadGrip:0.55,
       offroadDrag:1.18
     },

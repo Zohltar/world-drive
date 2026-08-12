@@ -5,11 +5,16 @@ export function createSkidMarkSystem({
   scene,
   getWorldOffset,
   getRoadSurface,
-  maxSegments=1800
+  maxSegments=7200
 }){
   const MIN_SEGMENT=.12;
   const MAX_SEGMENT=3.0;
   const REMOTE_DRAW_DISTANCE=520;
+
+  // V19.0: recent rubber is protected from circular-pool recycling.
+  // If every slot is still younger than this, new marks are temporarily
+  // skipped instead of erasing marks in front of the player.
+  const MIN_RECYCLE_AGE_MS=20000;
 
   const geometry=new THREE.PlaneGeometry(1,1);
   geometry.rotateX(-Math.PI/2);
@@ -43,6 +48,7 @@ export function createSkidMarkSystem({
     width:.2,
     length:0,
     shade:.05,
+    bornAt:0,
     quaternion:new THREE.Quaternion()
   }));
 
@@ -164,6 +170,31 @@ export function createSkidMarkSystem({
     if(mesh.instanceColor)mesh.instanceColor.needsUpdate=true;
   }
 
+  function acquireWritableSlot(){
+    const now=performance.now();
+
+    for(let attempt=0;attempt<maxSegments;attempt++){
+      const index=nextSlot;
+      const slot=slots[index];
+
+      nextSlot=
+        (nextSlot+1)%
+        maxSegments;
+
+      if(
+        !slot.active||
+        now-slot.bornAt>=MIN_RECYCLE_AGE_MS
+      ){
+        return {
+          index,
+          now
+        };
+      }
+    }
+
+    return null;
+  }
+
   function placeSegment(start,end,intensity,tireWidth){
     const dx=end.absX-start.absX;
     const dz=end.absZ-start.absZ;
@@ -199,8 +230,22 @@ export function createSkidMarkSystem({
     correctedForward.crossVectors(right,road.up).normalize();
     basis.makeBasis(right,road.up,correctedForward);
 
-    const slot=slots[nextSlot];
+    const writable=
+      acquireWritableSlot();
+
+    // Capacity saturated with recent marks: consume this path sample without
+    // drawing it. This preserves existing rubber instead of popping it away.
+    if(!writable){
+      return true;
+    }
+
+    const slot=
+      slots[
+        writable.index
+      ];
+
     slot.active=true;
+    slot.bornAt=writable.now;
     slot.absX=midX;
     slot.absZ=midZ;
     slot.y=y;
@@ -215,9 +260,8 @@ export function createSkidMarkSystem({
     // Darker as slip increases; opacity remains modest so it blends into roads.
     slot.shade=.025+(1-intensity)*.075;
 
-    write(nextSlot);
+    write(writable.index);
 
-    nextSlot=(nextSlot+1)%maxSegments;
     mesh.instanceMatrix.needsUpdate=true;
     if(mesh.instanceColor)mesh.instanceColor.needsUpdate=true;
     return true;
@@ -443,6 +487,7 @@ export function createSkidMarkSystem({
 
     for(let i=0;i<slots.length;i++){
       slots[i].active=false;
+      slots[i].bornAt=0;
       hide(i);
     }
 

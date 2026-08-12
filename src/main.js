@@ -954,7 +954,10 @@ const skidMarks=createSkidMarkSystem({
   scene,
   getWorldOffset:()=>worldOffset,
   getRoadSurface:(x,z)=>roadSurfaceAt(x,z),
-  maxSegments:1800
+
+  // V19.0: larger shared pool + age-protected recycling keeps remote skid
+  // trails visible while following another player through a long slide.
+  maxSegments:7200
 });
 
 function clearGroup(g){while(g.children.length){const c=g.children.pop();c.traverse?.(o=>{if(o.geometry)o.geometry.dispose();if(o.material&&![roadMat,shoulderMat,lineYellow,lineWhite,treeTrunkMat,treeMat].includes(o.material)){if(Array.isArray(o.material))o.material.forEach(m=>m.dispose());else o.material.dispose()}})}}
@@ -2612,6 +2615,22 @@ function updateDrive(dt){
  const surfaceGrip=onPavement?roadSurfaceGrip():1;
  const grip=onPavement?surfaceGrip:VEHICLE.offroadGrip;
 
+ // V19.0 terrain behavior.
+ // Every vehicle loses 20% propulsion and top speed away from pavement.
+ // AWD keeps a meaningful traction advantage in loose terrain.
+ const offroadPowerFactor=
+   onPavement
+     ?1
+     :.80;
+
+ const isAWD=
+   VEHICLE.drivetrain==='AWD';
+
+ const awdOffroadGripBonus=
+   !onPavement&&isAWD
+     ?1.18
+     :1;
+
  let accel=0;
  if(throttle>0){
    if(speed>=0){
@@ -2629,11 +2648,20 @@ function updateDrive(dt){
          )
        );
      const powerTaper=1-.38*speedRatio;
-     accel+=VEHICLE.accel*throttle*powerTaper;
+     accel+=
+       VEHICLE.accel*
+       offroadPowerFactor*
+       throttle*
+       powerTaper;
    }else accel+=VEHICLE.brake*throttle; // brake reverse motion before going forward
  }else if(throttle<0){
    if(speed>0)accel+=VEHICLE.brake*throttle;
-   else accel+=VEHICLE.reverseAccel*throttle;
+   else{
+     accel+=
+       VEHICLE.reverseAccel*
+       offroadPowerFactor*
+       throttle;
+   }
  }
 
  // Rolling + aerodynamic resistance. Off-road adds substantial drag but no
@@ -2649,6 +2677,27 @@ function updateDrive(dt){
  }
 
  speed+=accel*dt;
+
+ // Terrain top speed is 80% of the driver's currently selected maximum.
+ // If the car leaves the road already above that limit, bleed the excess
+ // quickly instead of snapping instantaneously to the new cap.
+ if(!onPavement&&speed>0){
+   const offroadMax=
+     MAX*.80;
+
+   if(speed>offroadMax){
+     const offroadOverspeedDecel=12.5; // m/s²
+
+     speed=
+       Math.max(
+         offroadMax,
+         speed-
+         offroadOverspeedDecel*
+         dt
+       );
+   }
+ }
+
  speed=Math.max(REV,Math.min(MAX,speed));
  if(previousSpeed>0&&speed<0&&!throttle)speed=0;
  if(previousSpeed<0&&speed>0&&!throttle)speed=0;
@@ -2666,7 +2715,53 @@ function updateDrive(dt){
  // Soft center dead-zone and self-centering. Digital keyboard input remains full
  // left/right, but releasing the key now brings steering cleanly back to zero.
  let steerTarget=turn;
- if(Math.abs(steerTarget)<.08)steerTarget=0;
+ if(Math.abs(steerTarget)<.08){
+   steerTarget=0;
+ }else{
+   // V19.2: optional vehicle-specific analog steering curve.
+   // Exponent > 1 softens small joystick corrections without reducing full lock.
+   const vehicleSteeringExponent=
+     VEHICLE.steeringInputExponent??1;
+
+   // V19.3: all cars get a progressively softer analog center as speed rises.
+   // Full stick remains exactly full stick because 1^exponent is still 1.
+   //
+   // The effect starts around 30 km/h and reaches full strength around
+   // 125 km/h. This specifically targets tiny joystick corrections without
+   // reducing the vehicle's maximum steering authority.
+   const highSpeedSteerT=
+     Math.max(
+       0,
+       Math.min(
+         1,
+         (
+           speedAbs-8.3
+         )/
+         26.4
+       )
+     );
+
+   const highSpeedSteerSmooth=
+     highSpeedSteerT*
+     highSpeedSteerT*
+     (
+       3-
+       2*
+       highSpeedSteerT
+     );
+
+   const steeringInputExponent=
+     vehicleSteeringExponent+
+     .95*
+     highSpeedSteerSmooth;
+
+   steerTarget=
+     Math.sign(steerTarget)*
+     Math.pow(
+       Math.abs(steerTarget),
+       steeringInputExponent
+     );
+ }
 
  // Slower steering buildup around low speed; faster return to center.
  const highSpeedSteerResponse=VEHICLE.steeringResponseHigh??3.8;
@@ -2682,6 +2777,53 @@ function updateDrive(dt){
  const steerAngle=steer*maxRoadWheelAngle;
  currentSteerAngle=steerAngle;
 
+ // V19.1 — drivetrain personality under power.
+ //
+ // FWD: front tires must both steer and pull, so strong acceleration reduces
+ //      yaw authority progressively -> natural power understeer.
+ // RWD: rear-wheel torque helps rotate the car while cornering -> mild power
+ //      oversteer.
+ // AWD: deliberately neutral baseline.
+ //
+ // The effect needs BOTH positive throttle and steering demand. Straight-line
+ // acceleration is therefore completely unchanged.
+ const positiveThrottle=
+   speed>=0
+     ?Math.max(
+        0,
+        Math.min(
+          1,
+          throttle
+        )
+      )
+     :0;
+
+ const powerHandlingSpeedGate=
+   Math.max(
+     0,
+     Math.min(
+       1,
+       (
+         speedAbs-3
+       )/
+       12
+     )
+   );
+
+ const steeringDemand=
+   Math.max(
+     0,
+     Math.min(
+       1,
+       Math.abs(steer)
+     )
+   );
+
+ const powerCorneringLoad=
+   positiveThrottle*
+   powerHandlingSpeedGate*
+   steeringDemand;
+
  // Off-road should behave like pavement at manoeuvring speeds. Grip loss becomes
  // progressively relevant only as speed rises.
  const offroadGripBlend=Math.min(1,Math.max(0,(speedAbs-8)/18));
@@ -2689,19 +2831,89 @@ function updateDrive(dt){
  // Each vehicle can now have a distinct paved-road cornering personality.
  // ID4 remains at 1.00; WRX gets slightly more front-end authority.
  const roadGripMultiplier=VEHICLE.roadGripMultiplier??1;
+
+ const effectiveOffroadGrip=
+   Math.min(
+     .96,
+     (VEHICLE.offroadGrip??.60)*
+     awdOffroadGripBonus
+   );
+
  const effectiveGrip=onPavement
    ?surfaceGrip*roadGripMultiplier
-   :(1+(VEHICLE.offroadGrip-1)*offroadGripBlend);
+   :(
+      1+
+      (effectiveOffroadGrip-1)*
+      offroadGripBlend
+    );
 
- let yawRate=(speed/VEHICLE.wheelbase)*Math.tan(steerAngle)*effectiveGrip;
+ let yawRate=
+   (
+     speed/
+     VEHICLE.wheelbase
+   )*
+   Math.tan(steerAngle)*
+   effectiveGrip;
+
+ const drivetrain=
+   VEHICLE.drivetrain||
+   'AWD';
+
+ if(drivetrain==='FWD'){
+   // Front tires share steering + propulsion: power understeer.
+   yawRate*=
+     1-
+     .20*
+     powerCorneringLoad;
+ }
+
+ // V19.2 RWD philosophy:
+ // Do NOT increase bicycle-model yaw directly. That felt like artificial extra
+ // grip. Rear-drive character now comes from a reduction in available lateral
+ // grip under power plus a small rear-slip yaw moment applied later.
+ const powerOversteerGripLoss=
+   drivetrain==='RWD'
+     ?(
+        VEHICLE.powerOversteerGripLoss??
+        .07
+      )
+     :0;
 
  // Vehicle-specific lateral acceleration ceiling.
  // This was previously hard-coded to 7.0 m/s² for every vehicle, which made
  // the WRX understeer like the heavier ID4 in high-speed bends.
  const requestedLatAccel=Math.abs(speed*yawRate);
- const offroadLatLimit=speedAbs<10?7.0:3.8;
+
+ const offroadLatLimit=
+   (
+     speedAbs<10
+       ?7.0
+       :3.8
+   )*
+   awdOffroadGripBonus;
+
  const roadLatLimit=VEHICLE.lateralAccelLimit??7.0;
- const latLimit=onPavement?roadLatLimit:offroadLatLimit;
+
+ const baseLatLimit=
+   onPavement
+     ?roadLatLimit
+     :offroadLatLimit;
+
+ // Under power, RWD cars progressively give up lateral capacity instead of
+ // gaining artificial yaw authority.
+ const rwdPowerGripFactor=
+   drivetrain==='RWD'
+     ?Math.max(
+        .72,
+        1-
+        powerOversteerGripLoss*
+        powerCorneringLoad
+      )
+     :1;
+
+ const latLimit=
+   baseLatLimit*
+   rwdPowerGripFactor;
 
  // Raw tire demand is measured exactly where the physics reaches its grip
  // ceiling, rather than reconstructed later from joystick/steering angle.
@@ -2728,6 +2940,32 @@ function updateDrive(dt){
  if(requestedLatAccel>latLimit&&requestedLatAccel>0){
    yawRate*=latLimit/requestedLatAccel;
  }
+
+ if(
+   drivetrain==='RWD'&&
+   powerCorneringLoad>.05
+ ){
+   // Small rear-slip yaw moment after the lateral-grip reduction.
+   // Vehicle profiles tune this independently: Countach can rotate more,
+   // while the high-downforce F1 stays much calmer.
+   const powerOversteerYaw=
+     VEHICLE.powerOversteerYaw??
+     .035;
+
+   const rearSlipYaw=
+     Math.sign(steer||1)*
+     powerOversteerYaw*
+     powerCorneringLoad*
+     Math.min(
+       1,
+       speedAbs/18
+     );
+
+   yawRate+=
+     rearSlipYaw*
+     Math.sign(speed||1);
+ }
+
  heading+=yawRate*dt;
 
  // Road assist / lane keeping.

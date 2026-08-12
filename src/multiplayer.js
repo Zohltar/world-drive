@@ -1,4 +1,4 @@
-// World Drive V18J - N-player LAN client with remote skid-state relay.
+// World Drive V19.0 - buffered N-player LAN interpolation + remote skid state.
 // No remote physics/collisions: each peer only broadcasts presentation state.
 
 const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
@@ -36,6 +36,200 @@ function geographicOffsetMeters(
     x:dLon*GEO_EARTH*Math.cos(midLat),
     z:-dLat*GEO_EARTH
   };
+}
+
+// Render remote cars slightly in the past so two real network snapshots are
+// normally available to interpolate between. This absorbs LAN packet jitter
+// instead of making the car chase the newest packet.
+const INTERPOLATION_DELAY_MS=110;
+const MAX_EXTRAPOLATION_MS=90;
+const SNAPSHOT_HISTORY_MS=900;
+
+function finiteOr(value,fallback=0){
+  return Number.isFinite(value)
+    ?value
+    :fallback;
+}
+
+function snapshotFromMessage(message,peer,receivedAt){
+  return {
+    receivedAt,
+    seq:Number(message.seq)||0,
+
+    lat:finiteOr(message.lat,peer.lat),
+    lon:finiteOr(message.lon,peer.lon),
+    y:finiteOr(message.y,peer.y),
+
+    heading:finiteOr(message.heading,peer.heading),
+    steer:finiteOr(message.steer,peer.steer),
+    speed:finiteOr(message.speed,peer.speed),
+
+    braking:!!message.braking,
+    onRoad:
+      typeof message.onRoad==='boolean'
+        ?message.onRoad
+        :peer.onRoad,
+
+    skidFront:clamp(
+      finiteOr(message.skidFront,peer.skidFront),
+      0,
+      1
+    ),
+
+    skidRear:clamp(
+      finiteOr(message.skidRear,peer.skidRear),
+      0,
+      1
+    ),
+
+    bodyPitch:finiteOr(message.bodyPitch,peer.bodyPitch),
+    bodyYaw:finiteOr(message.bodyYaw,peer.bodyYaw),
+    bodyRoll:finiteOr(message.bodyRoll,peer.bodyRoll),
+    bodyY:finiteOr(message.bodyY,peer.bodyY),
+    wheelPitch:finiteOr(message.wheelPitch,peer.wheelPitch),
+    wheelRoll:finiteOr(message.wheelRoll,peer.wheelRoll)
+  };
+}
+
+function interpolateSnapshot(a,b,t){
+  return {
+    lat:lerp(a.lat,b.lat,t),
+    lon:lerp(a.lon,b.lon,t),
+    y:lerp(a.y,b.y,t),
+
+    heading:angleLerp(a.heading,b.heading,t),
+    steer:lerp(a.steer,b.steer,t),
+    speed:lerp(a.speed,b.speed,t),
+
+    braking:t<.5?a.braking:b.braking,
+    onRoad:t<.5?a.onRoad:b.onRoad,
+
+    skidFront:lerp(a.skidFront,b.skidFront,t),
+    skidRear:lerp(a.skidRear,b.skidRear,t),
+
+    bodyPitch:lerp(a.bodyPitch,b.bodyPitch,t),
+    bodyYaw:angleLerp(a.bodyYaw,b.bodyYaw,t),
+    bodyRoll:lerp(a.bodyRoll,b.bodyRoll,t),
+    bodyY:lerp(a.bodyY,b.bodyY,t),
+    wheelPitch:lerp(a.wheelPitch,b.wheelPitch,t),
+    wheelRoll:lerp(a.wheelRoll,b.wheelRoll,t)
+  };
+}
+
+function extrapolateSnapshot(snapshot,aheadMs){
+  const dt=
+    Math.max(
+      0,
+      Math.min(
+        MAX_EXTRAPOLATION_MS,
+        aheadMs
+      )
+    )/
+    1000;
+
+  if(dt<=0){
+    return snapshot;
+  }
+
+  // Network heading uses the same World Drive axes:
+  // +X east, +Z south, heading 0 = +Z.
+  const dx=
+    Math.sin(snapshot.heading)*
+    snapshot.speed*
+    dt;
+
+  const dz=
+    Math.cos(snapshot.heading)*
+    snapshot.speed*
+    dt;
+
+  const rad=Math.PI/180;
+  const cosLat=
+    Math.max(
+      .15,
+      Math.cos(snapshot.lat*rad)
+    );
+
+  return {
+    ...snapshot,
+    lat:
+      snapshot.lat-
+      (
+        dz/
+        GEO_EARTH
+      )/
+      rad,
+
+    lon:
+      snapshot.lon+
+      (
+        dx/
+        (
+          GEO_EARTH*
+          cosLat
+        )
+      )/
+      rad
+  };
+}
+
+function samplePeerSnapshot(peer,renderAt){
+  const snapshots=peer.snapshots;
+
+  if(!snapshots?.length){
+    return null;
+  }
+
+  // Keep the snapshot immediately before renderAt plus all newer snapshots.
+  while(
+    snapshots.length>2&&
+    snapshots[1].receivedAt<=renderAt
+  ){
+    snapshots.shift();
+  }
+
+  const first=snapshots[0];
+
+  if(renderAt<=first.receivedAt){
+    return first;
+  }
+
+  if(snapshots.length>=2){
+    const second=snapshots[1];
+
+    if(renderAt<=second.receivedAt){
+      const span=
+        Math.max(
+          1,
+          second.receivedAt-first.receivedAt
+        );
+
+      return interpolateSnapshot(
+        first,
+        second,
+        clamp(
+          (
+            renderAt-first.receivedAt
+          )/
+          span,
+          0,
+          1
+        )
+      );
+    }
+  }
+
+  const latest=
+    snapshots[
+      snapshots.length-1
+    ];
+
+  // A short packet gap is predicted from speed + heading instead of snapping
+  // or freezing. The cap prevents runaway extrapolation if a client stalls.
+  return extrapolateSnapshot(
+    latest,
+    renderAt-latest.receivedAt
+  );
 }
 
 function makeLabelTexture(THREE,text){
@@ -394,7 +588,10 @@ export function createMultiplayerClient({
         targetSkidFront:Number(message.skidFront)||0,
         skidRear:Number(message.skidRear)||0,
         targetSkidRear:Number(message.skidRear)||0,
-        lastSeq:Number(message.seq)||0,
+
+        // V19.0 interpolation history.
+        snapshots:[],
+        lastSeq:0,
 
         bodyPitch:Number(message.bodyPitch)||0,
         targetBodyPitch:Number(message.bodyPitch)||0,
@@ -425,7 +622,12 @@ export function createMultiplayerClient({
     if(!peer)return;
 
     const seq=Number(message.seq)||0;
-    if(seq>0&&peer.lastSeq>0&&seq<peer.lastSeq)return;
+    if(
+      seq>0&&
+      peer.lastSeq>0&&
+      seq<=peer.lastSeq
+    )return;
+
     if(seq>0)peer.lastSeq=seq;
 
     const vehicleId=message.vehicleId||peer.vehicleId;
@@ -434,6 +636,30 @@ export function createMultiplayerClient({
     if(vehicleId!==peer.vehicleId||name!==peer.name){
       peer.name=name;
       replacePeerVisual(peer,vehicleId);
+
+      // Do not interpolate through a vehicle/model replacement.
+      peer.snapshots.length=0;
+      peer.renderY=null;
+    }
+
+    const receivedAt=performance.now();
+
+    peer.snapshots.push(
+      snapshotFromMessage(
+        message,
+        peer,
+        receivedAt
+      )
+    );
+
+    const historyCutoff=
+      receivedAt-SNAPSHOT_HISTORY_MS;
+
+    while(
+      peer.snapshots.length>2&&
+      peer.snapshots[0].receivedAt<historyCutoff
+    ){
+      peer.snapshots.shift();
     }
 
     if(Number.isFinite(message.lat))peer.targetLat=message.lat;
@@ -628,61 +854,37 @@ export function createMultiplayerClient({
     const localState=getLocalState?.();
     const localRender=getLocalRenderPosition?.();
 
-    // Compatibility fallback only. Normal V18C placement does not use this.
+    // Compatibility fallback only. Normal V18C/V19 placement does not use this.
     const offset=getWorldOffset?.();
-    const interp=1-Math.exp(-dt*10.5);
-    const steerInterp=1-Math.exp(-dt*13);
-    const skidInterp=1-Math.exp(-dt*14);
+    const renderAt=
+      now-
+      INTERPOLATION_DELAY_MS;
 
     for(const peer of peers.values()){
-      peer.lat=lerp(peer.lat,peer.targetLat,interp);
-      peer.lon=lerp(peer.lon,peer.targetLon,interp);
-      peer.y=lerp(peer.y,peer.targetY,interp);
-      peer.heading=angleLerp(peer.heading,peer.targetHeading,interp);
-      peer.steer=lerp(peer.steer,peer.targetSteer,steerInterp);
+      const sampled=
+        samplePeerSnapshot(
+          peer,
+          renderAt
+        );
 
-      peer.skidFront=lerp(
-        peer.skidFront,
-        peer.targetSkidFront,
-        skidInterp
-      );
-
-      peer.skidRear=lerp(
-        peer.skidRear,
-        peer.targetSkidRear,
-        skidInterp
-      );
-
-      peer.bodyPitch=lerp(
-        peer.bodyPitch,
-        peer.targetBodyPitch,
-        interp
-      );
-      peer.bodyYaw=angleLerp(
-        peer.bodyYaw,
-        peer.targetBodyYaw,
-        interp
-      );
-      peer.bodyRoll=lerp(
-        peer.bodyRoll,
-        peer.targetBodyRoll,
-        interp
-      );
-      peer.bodyY=lerp(
-        peer.bodyY,
-        peer.targetBodyY,
-        interp
-      );
-      peer.wheelPitch=lerp(
-        peer.wheelPitch,
-        peer.targetWheelPitch,
-        interp
-      );
-      peer.wheelRoll=lerp(
-        peer.wheelRoll,
-        peer.targetWheelRoll,
-        interp
-      );
+      if(sampled){
+        peer.lat=sampled.lat;
+        peer.lon=sampled.lon;
+        peer.y=sampled.y;
+        peer.heading=sampled.heading;
+        peer.steer=sampled.steer;
+        peer.speed=sampled.speed;
+        peer.braking=sampled.braking;
+        peer.onRoad=sampled.onRoad;
+        peer.skidFront=sampled.skidFront;
+        peer.skidRear=sampled.skidRear;
+        peer.bodyPitch=sampled.bodyPitch;
+        peer.bodyYaw=sampled.bodyYaw;
+        peer.bodyRoll=sampled.bodyRoll;
+        peer.bodyY=sampled.bodyY;
+        peer.wheelPitch=sampled.wheelPitch;
+        peer.wheelRoll=sampled.wheelRoll;
+      }
 
       let rx;
       let rz;

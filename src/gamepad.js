@@ -21,6 +21,7 @@ export function createGamepadController({
     throttle:0,
     brake:0,
     hand:false,
+    reverseView:false,
     prevButtons:[],
     activeIndex:null,
     lastInputAt:0
@@ -94,6 +95,7 @@ export function createGamepadController({
     state.throttle=0;
     state.brake=0;
     state.hand=false;
+    state.reverseView=false;
     state.prevButtons=[];
   }
 
@@ -151,6 +153,10 @@ export function createGamepadController({
     state.brake=Math.max(0,Math.min(1,lt));
     state.throttle=Math.max(0,Math.min(1,rt));
     state.hand=button(gp,0); // A
+
+    // V19.3: standard XInput button 11 = right-stick click (R3).
+    // Held state, not a toggle: hold to look behind, release to return.
+    state.reverseView=button(gp,11);
 
     if(audio&&!audio.isRunning())audio.showActivationHint();
 
