@@ -8,6 +8,18 @@ La **V20.13** représente une refonte majeure de la conduite. La physique vertic
 
 ---
 
+## Aperçu visuel
+
+<p align="center">
+  <img src="docs/images/world-drive-gameplay.png" alt="World Drive - aperçu du gameplay" width="1000">
+</p>
+
+<p align="center">
+  <em>Conduite sur route réelle avec relief, imagerie, carte du trajet et instrumentation dynamique.</em>
+</p>
+
+---
+
 ## Statut
 
 **V20.13 · stable**
