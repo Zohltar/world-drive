@@ -1,4 +1,4 @@
-// World Drive - vehicle audio
+// World Drive V21.9 - vehicle audio
 // Profile-aware WebAudio synthesis.
 // F1 uses a dedicated dark 12,000-rpm V8 model with no aggressive high harmonics.
 
@@ -244,6 +244,12 @@ export function createVehicleAudio({
   let brakeGain=null;
   let brakeFilter=null;
   let brakeBuffer=null;
+
+  // V21.9: perceptual tire-squeal envelope. The raw adhesion cue remains
+  // immediate, but a genuine sustained slide gets a slower release so the
+  // sample cannot disappear between small frame-to-frame grip oscillations.
+  let tireDynamicsLevel=0;
+  let lastTireDynamicsAt=0;
 
   const TIRE_SAMPLE_URL='./assets/audio/tire-squeal.mp3';
   const BRAKE_SAMPLE_URL='./assets/audio/brake-squeal.mp3';
@@ -862,10 +868,25 @@ export function createVehicleAudio({
       );
     }
 
-    // V18K — lateral tire audio now uses the SAME grip saturation value as
-    // vehicle physics. Steering input by itself can no longer trigger squeal.
+    // V21.9 — tire audio and visible rubber share the SAME slip model.
+    // skidmarks.js exposes an early warning level before it is willing to
+    // deposit rubber, then raises that level from the exact raw skid intensity.
+    // This makes the sound a useful adhesion cue instead of an unrelated effect.
     const speed=state.speed||0;
 
+    const sharedTireLevel=
+      Number(state.tireSquealLevel);
+
+    const sharedBrakeLevel=
+      Number(state.brakeSquealLevel);
+
+    const hasSharedTireLevel=
+      Number.isFinite(sharedTireLevel);
+
+    const hasSharedBrakeLevel=
+      Number.isFinite(sharedBrakeLevel);
+
+    // Compatibility fallback for builds that do not yet provide V21.9 levels.
     const gripUsage=
       Math.max(
         0,
@@ -878,14 +899,12 @@ export function createVehicleAudio({
         -(state.longitudinalAccel||0)/9.81
       );
 
-    // Start only at the real adhesion limit. The small .98 allowance avoids
-    // numerical flutter exactly around 1.00 after the shared physical buildup.
     const lateralNorm=
       Math.max(
         0,
         Math.min(
           1,
-          (gripUsage-.98)/.17
+          (gripUsage-.88)/.32
         )
       );
 
@@ -894,19 +913,35 @@ export function createVehicleAudio({
         0,
         Math.min(
           1,
-          (brakingG-.22)/.78
+          (brakingG-.55)/.50
         )
       );
 
-    const tireLevel=
+    const fallbackTireLevel=
       lateralNorm*lateralNorm*
       (3-2*lateralNorm);
 
-    // Brake sample is now purely longitudinal. A corner by itself should not
-    // produce brake squeal in addition to the tire scrub sample.
-    const brakeLevel=
+    const fallbackBrakeLevel=
       brakingNorm*brakingNorm*
       (3-2*brakingNorm);
+
+    const sharedOrFallbackTireLevel=
+      hasSharedTireLevel
+        ?Math.max(
+           0,
+           Math.min(1,sharedTireLevel)
+         )
+        :fallbackTireLevel;
+
+    // Brake sample remains purely longitudinal, but now also follows the
+    // shared lock/scrub precursor rather than ordinary braking deceleration.
+    const brakeLevel=
+      hasSharedBrakeLevel
+        ?Math.max(
+           0,
+           Math.min(1,sharedBrakeLevel)
+         )
+        :fallbackBrakeLevel;
 
     const speedGate=
       Math.max(
@@ -917,9 +952,187 @@ export function createVehicleAudio({
         )
       );
 
+    // Visible skid-mark intensity is the authoritative "dark rubber" cue.
+    // updateSource() applies the same smoothstep before choosing mark darkness,
+    // so this mirrors what the player actually sees on the road.
+    const visibleSkidRaw=
+      Math.max(
+        0,
+        Number(state.skidFrontLevel)||0,
+        Number(state.skidRearLevel)||0
+      );
+
+    const visibleSkidT=
+      Math.max(
+        0,
+        Math.min(
+          1,
+          visibleSkidRaw
+        )
+      );
+
+    const visibleSkidLevel=
+      visibleSkidT*
+      visibleSkidT*
+      (
+        3-
+        2*visibleSkidT
+      );
+
+    // V21.9: during a real prolonged slide the instantaneous friction-circle
+    // demand can briefly fall even though the chassis is still moving sideways.
+    // Use the already-computed handling slip and actual trajectory/chassis
+    // angle only to SUSTAIN the audio; they do not change grip or skid marks.
+    const handlingSlip=
+      Math.max(
+        0,
+        Math.min(
+          1,
+          Math.max(
+            Number(state.frontSlipAmount)||0,
+            Number(state.rearSlipAmount)||0
+          )
+        )
+      );
+
+    const slipAngle=
+      Math.max(
+        0,
+        Number(state.chassisSlipAngle)||0
+      );
+
+    const handlingSlipT=
+      Math.max(
+        0,
+        Math.min(
+          1,
+          (handlingSlip-.38)/.50
+        )
+      );
+
+    const handlingSlipCue=
+      handlingSlipT*
+      handlingSlipT*
+      (
+        3-
+        2*handlingSlipT
+      );
+
+    const slipAngleT=
+      Math.max(
+        0,
+        Math.min(
+          1,
+          (slipAngle-.035)/.16
+        )
+      );
+
+    const slipAngleCue=
+      slipAngleT*
+      slipAngleT*
+      (
+        3-
+        2*slipAngleT
+      );
+
+    const sustainedSlideCue=
+      Math.max(
+        handlingSlipCue,
+        slipAngleCue
+      )*
+      speedGate;
+
+    // The precursor remains exactly the early warning from V21.8.
+    // Once rubber is visible, sound gets a strong floor and rises with mark
+    // darkness. A genuine long slide also gets a sustain floor even if the
+    // instantaneous grip signal oscillates for a few frames.
+    const visibleSkidSound=
+      visibleSkidLevel>.01
+        ?Math.min(
+           1,
+           .48+
+           visibleSkidLevel*.52
+         )
+        :0;
+
+    const sustainedSlideSound=
+      sustainedSlideCue>.03
+        ?Math.min(
+           1,
+           .30+
+           sustainedSlideCue*.67
+         )
+        :0;
+
+    const tireTargetLevel=
+      Math.max(
+        sharedOrFallbackTireLevel,
+        visibleSkidSound,
+        sustainedSlideSound
+      );
+
+    const audioDt=
+      lastTireDynamicsAt>0
+        ?Math.max(
+           .001,
+           Math.min(
+             .05,
+             now-
+             lastTireDynamicsAt
+           )
+         )
+        :.016;
+
+    lastTireDynamicsAt=now;
+
+    const tireResponse=
+      tireTargetLevel>
+      tireDynamicsLevel
+        ?20
+        :(
+           visibleSkidLevel>.01||
+           sustainedSlideCue>.03
+             ?3.2
+             :7.0
+         );
+
+    tireDynamicsLevel+=
+      (
+        tireTargetLevel-
+        tireDynamicsLevel
+      )*
+      (
+        1-
+        Math.exp(
+          -audioDt*
+          tireResponse
+        )
+      );
+
+    if(
+      tireDynamicsLevel<.001&&
+      tireTargetLevel===0
+    ){
+      tireDynamicsLevel=0;
+    }
+
+    const tireLevel=
+      Math.max(
+        0,
+        Math.min(
+          1,
+          tireDynamicsLevel
+        )
+      );
+
+    // Preserve the V21.8 timbre at light scrub. At deep slip, cap the upward
+    // filter sweep so the sample keeps body instead of becoming thin/inaudible.
     tireFilter?.frequency.setTargetAtTime(
       950+
-      tireLevel*1100+
+      Math.min(
+        780,
+        tireLevel*1100
+      )+
       Math.min(260,kmh*.95),
       now,
       .04
@@ -935,7 +1148,14 @@ export function createVehicleAudio({
 
     const tireVol=
       tireBuffer
-        ?tireLevel*speedGate*.42
+        ?tireLevel*
+         speedGate*
+         (
+           .42+
+           .18*
+           tireLevel*
+           tireLevel
+         )
         :0;
 
     const brakeVol=
@@ -968,6 +1188,8 @@ export function createVehicleAudio({
     motorGain?.gain.setTargetAtTime(.0001,now,.025);
     exhaustGain?.gain.setTargetAtTime(.0001,now,.025);
     turboGain?.gain.setTargetAtTime(.0001,now,.025);
+    tireDynamicsLevel=0;
+    lastTireDynamicsAt=now;
     tireGain?.gain.setTargetAtTime(.0001,now,.018);
     brakeGain?.gain.setTargetAtTime(.0001,now,.018);
   }

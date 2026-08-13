@@ -1,4 +1,4 @@
-// World Drive V20.0 — pooled skid-mark renderer.
+// World Drive V21.8 — pooled skid-mark renderer + shared tire-audio slip cue.
 // Local rubber is driven by independent per-wheel adhesion loss; multiplayer
 // keeps the compact front/rear aggregate state.
 export function createSkidMarkSystem({
@@ -69,6 +69,8 @@ export function createSkidMarkSystem({
     front:0,
     rear:0,
     wheels:[0,0,0,0],
+    tireAudio:0,
+    brakeAudio:0,
     onRoad:false
   };
 
@@ -384,6 +386,10 @@ export function createSkidMarkSystem({
     steerAngle,
     lateralGripUsage,
     wheelGripUsage,
+    wheelSlipLevels,
+    wheelLateralUsage,
+    wheelLongitudinalUsage,
+    contacts,
     longitudinalAccel,
     handbrake,
     vehicle,
@@ -401,16 +407,24 @@ export function createSkidMarkSystem({
         front:0,
         rear:0,
         wheels:[0,0,0,0],
+        tireAudio:0,
+        brakeAudio:0,
         onRoad:!!onRoad
       };
     }
 
-    // V20.0: if the physics supplied four independent friction-circle values,
-    // use them directly. No steering-angle reconstruction is needed.
+    // V21.7: visible rubber is based on DEEP, sustained tire slip rather than
+    // merely reaching the friction-circle limit. A tire working hard is not
+    // automatically a tire that is depositing rubber on the pavement.
+    //
+    // The physics now supplies:
+    // - wheelSlipLevels: normalized deep combined slip (0..1)
+    // - wheelLateralUsage: per-wheel lateral utilization
+    // - wheelLongitudinalUsage: per-wheel drive/brake utilization
+    //
+    // wheelGripUsage remains accepted as a compatibility fallback only.
     if(
-      Array.isArray(
-        wheelGripUsage
-      )&&
+      Array.isArray(wheelGripUsage)&&
       wheelGripUsage.length===4
     ){
       const safeDt=
@@ -426,58 +440,356 @@ export function createSkidMarkSystem({
         smoothstep01(
           (
             Math.abs(speed)*3.6-
-            12
+            16
           )/
           18
         );
 
+      const handbrakeSpeedGate=
+        smoothstep01(
+          (
+            Math.abs(speed)*3.6-
+            10
+          )/
+          16
+        );
+
+      const hasDeepSlip=
+        Array.isArray(wheelSlipLevels)&&
+        wheelSlipLevels.length===4;
+
+      const hasLateralUsage=
+        Array.isArray(wheelLateralUsage)&&
+        wheelLateralUsage.length===4;
+
+      const hasLongitudinalUsage=
+        Array.isArray(wheelLongitudinalUsage)&&
+        wheelLongitudinalUsage.length===4;
+
+      const accelerating=
+        Number(longitudinalAccel)>0.20;
+
+      const braking=
+        Number(longitudinalAccel)<-0.20;
+
+      // V21.7: rubber deposition is intentionally more conservative than the
+      // tire-load model. In particular, an unloaded/drooping tire may reach a
+      // high utilization ratio without having enough normal load to scrub a
+      // dark mark into the pavement. This also prevents the downhill wheel on
+      // a cambered road from becoming the easiest wheel to paint the road.
+      const globalLateralUsage=
+        Math.max(
+          0,
+          Number(lateralGripUsage)||0
+        );
+
+      // Visible cornering rubber now requires the WHOLE vehicle to be clearly
+      // beyond the normal lateral envelope. Per-wheel utilization only biases
+      // which tire is darkest; it can no longer trigger a mark by itself.
+      const globalLateralRubber=
+        smoothstep01(
+          (
+            globalLateralUsage-
+            1.15
+          )/
+          .20
+        );
+
+      // V21.8: audible scrub begins BEFORE visible rubber. At ~84% of the
+      // vehicle-wide lateral envelope it is only a faint warning; around the
+      // actual limit it becomes clearly audible. The skid-mark threshold
+      // remains unchanged at 1.15+, so sound is the driver's early cue.
+      const lateralAdhesionCue=
+        smoothstep01(
+          (
+            globalLateralUsage-
+            .84
+          )/
+          .36
+        )*
+        .38*
+        speedGate;
+
+      const tireAudioWheels=[0,0,0,0];
+      const brakeAudioWheels=[0,0,0,0];
+
       const wheels=
         wheelGripUsage.map(
           (usage,index)=>{
-            const raw=
-              smoothstep01(
-                (
-                  Math.max(
-                    0,
-                    Number(usage)||0
-                  )-
-                  1.06
-                )/
-                .26
-              );
-
             const rear=
               index===0||
               index===2;
 
-            // Handbrake remains an immediate rear-wheel event.
+            // Handbrake remains the deliberate exception: a locked/sliding
+            // rear tire can paint rubber immediately when the car is moving.
             if(handbrake&&rear){
               wheelSlipTime[index]=
                 Math.max(
                   wheelSlipTime[index],
-                  .50
+                  .80
                 );
 
-              return Math.max(
-                raw,
-                speedGate
-              );
+              tireAudioWheels[index]=
+                handbrakeSpeedGate;
+
+              return handbrakeSpeedGate;
             }
 
-            if(raw>.001){
+            const contactMeta=
+              Array.isArray(contacts)
+                ?contacts[index]
+                :null;
+
+            const contactFactor=
+              contactMeta?.contact===false
+                ?0
+                :Math.max(
+                   0,
+                   Math.min(
+                     1,
+                     Number(
+                       contactMeta?.contactFactor
+                     )||1
+                   )
+                 );
+
+            // A lightly loaded tire can spin or scrub, but it deposits much
+            // less rubber. Below roughly 55% support it is effectively unable
+            // to create a persistent dark mark. Full weight returns gradually.
+            const rubberLoadGate=
+              smoothstep01(
+                (
+                  contactFactor-
+                  .55
+                )/
+                .35
+              );
+
+            const deepSlip=
+              hasDeepSlip
+                ?Math.max(
+                   0,
+                   Math.min(
+                     1,
+                     Number(wheelSlipLevels[index])||0
+                   )
+                 )
+                :smoothstep01(
+                   (
+                     Math.max(
+                       0,
+                       Number(usage)||0
+                     )-
+                     1.16
+                   )/
+                   .34
+                 );
+
+            const lateralUtil=
+              hasLateralUsage
+                ?Math.max(
+                   0,
+                   Number(wheelLateralUsage[index])||0
+                 )
+                :0;
+
+            const longitudinalUtil=
+              hasLongitudinalUsage
+                ?Math.max(
+                   0,
+                   Number(wheelLongitudinalUsage[index])||0
+                 )
+                :0;
+
+            // Do not let suspension unloading/camber blow one wheel's visual
+            // lateral demand to several times the vehicle-wide demand. The
+            // per-wheel value is only a modest distribution bias now.
+            const conservativeLateralUtil=
+              Math.min(
+                lateralUtil,
+                globalLateralUsage*1.18+.06
+              );
+
+            const wheelLateralBias=
+              .62+
+              .38*
+              smoothstep01(
+                (
+                  conservativeLateralUtil-
+                  1.02
+                )/
+                .30
+              );
+
+            const lateralRubber=
+              globalLateralRubber*
+              wheelLateralBias*
+              rubberLoadGate;
+
+            // Acceleration is deliberately very strict. High utilization is
+            // not enough: require deep slip, substantial longitudinal overload,
+            // sustained time AND useful tire load. Brief crest/bank unloading
+            // therefore cannot create acceleration skid marks.
+            const driveRubber=
+              accelerating&&
+              hasLongitudinalUsage
+                ?smoothstep01(
+                   (
+                     longitudinalUtil-
+                     1.40
+                   )/
+                   .34
+                 )*
+                 smoothstep01(
+                   (
+                     deepSlip-
+                     .82
+                   )/
+                   .18
+                 )*
+                 rubberLoadGate
+                :0;
+
+            // Braking marks are also reserved for a genuine lock/scrub rather
+            // than ordinary near-limit braking.
+            const brakeRubber=
+              braking&&
+              hasLongitudinalUsage
+                ?smoothstep01(
+                   (
+                     longitudinalUtil-
+                     1.26
+                   )/
+                   .30
+                 )*
+                 smoothstep01(
+                   (
+                     deepSlip-
+                     .76
+                   )/
+                   .24
+                 )*
+                 rubberLoadGate
+                :0;
+
+            // Audio precursors use the same wheel-state inputs as rubber, but
+            // intentionally lower thresholds. They never change handling.
+            // A loaded drive tire can therefore warn of incipient wheelspin
+            // before it is severe/sustained enough to paint the road.
+            const driveAudio=
+              accelerating&&
+              hasLongitudinalUsage
+                ?smoothstep01(
+                   (
+                     longitudinalUtil-
+                     1.08
+                   )/
+                   .32
+                 )*
+                 smoothstep01(
+                   (
+                     deepSlip-
+                     .42
+                   )/
+                   .42
+                 )*
+                 rubberLoadGate
+                :0;
+
+            const brakeAudio=
+              braking&&
+              hasLongitudinalUsage
+                ?smoothstep01(
+                   (
+                     longitudinalUtil-
+                     .95
+                   )/
+                   .34
+                 )*
+                 smoothstep01(
+                   (
+                     deepSlip-
+                     .34
+                   )/
+                   .42
+                 )*
+                 rubberLoadGate
+                :0;
+
+            // Combined cornering + throttle/brake can still leave rubber, but
+            // only when the vehicle-wide lateral state is already extreme.
+            // This is no longer an independent shortcut around the thresholds.
+            const mixedRubber=
+              globalLateralRubber>.02&&
+              lateralUtil>.85&&
+              longitudinalUtil>.48
+                ?globalLateralRubber*
+                 smoothstep01(
+                   (
+                     deepSlip-
+                     .84
+                   )/
+                   .16
+                 )*
+                 rubberLoadGate*
+                 .82
+                :0;
+
+            const raw=
+              Math.max(
+                lateralRubber,
+                driveRubber,
+                brakeRubber,
+                mixedRubber
+              )*
+              speedGate;
+
+            // Once the same deep-slip state that can create a mark appears,
+            // the squeal follows its intensity directly. Because visible
+            // rubber still has a time delay, this sound naturally arrives
+            // first; after a mark appears, darker rubber means louder squeal.
+            const markLinkedAudio=
+              raw>.02
+                ?Math.min(
+                   1,
+                   .30+raw*.70
+                 )
+                :0;
+
+            tireAudioWheels[index]=
+              Math.max(
+                markLinkedAudio,
+                driveAudio*.72*speedGate,
+                brakeAudio*.48*speedGate
+              );
+
+            brakeAudioWheels[index]=
+              Math.max(
+                brakeAudio*.78*speedGate,
+                brakeRubber>0
+                  ?Math.min(
+                     1,
+                     .26+brakeRubber*.74
+                   )*speedGate
+                  :0
+              );
+
+            if(raw>.035){
               wheelSlipTime[index]+=
                 safeDt;
             }else{
               wheelSlipTime[index]=0;
             }
 
-            // Because this signal already comes from an actual friction-circle
-            // calculation, the visual delay can be shorter than old G-based
-            // heuristics while still avoiding one-frame rubber flashes.
+            // V21.7: even a severe slide needs a fraction of a second of
+            // continuous contact before visible rubber appears. Marginal
+            // candidates need almost a full second.
             const delay=
-              raw>.72
-                ?.30
-                :.52;
+              raw>.86
+                ?.42
+                :raw>.62
+                  ?.64
+                  :.92;
 
             return wheelSlipTime[index]>=delay
               ?raw
@@ -497,6 +809,15 @@ export function createSkidMarkSystem({
             wheels[2]||0
           ),
         wheels,
+        tireAudio:
+          Math.max(
+            lateralAdhesionCue,
+            ...tireAudioWheels
+          ),
+        brakeAudio:
+          Math.max(
+            ...brakeAudioWheels
+          ),
         onRoad:true
       };
     }
@@ -599,6 +920,15 @@ export function createSkidMarkSystem({
         rear,
         front
       ],
+      // Fallback path preserves the same contract: audible warning comes
+      // immediately, visible rubber still waits for its sustained-slip delay.
+      tireAudio:
+        Math.max(
+          lateralSqueal*.82*speedGate,
+          handbrakeSlip
+        ),
+      brakeAudio:
+        rawBrakeSlip*speedGate*.82,
       onRoad:true
     };
   }

@@ -12,7 +12,8 @@ export function createGamepadController({
   onShiftDown,
   onResetToRoad,
   isAutopilotEnabled,
-  disableAutopilot
+  disableAutopilot,
+  getBindings=()=>({})
 }) {
   const state={
     connected:false,
@@ -57,6 +58,88 @@ export function createGamepadController({
   function axisTrigger(v){
     if(!Number.isFinite(v))return 0;
     return Math.max(0,Math.min(1,(v+1)/2));
+  }
+
+  function bindings(){
+    return getBindings?.()||{};
+  }
+
+  function joystickSensitivity(){
+    const raw=
+      Number(
+        bindings()?.joystickSensitivity
+      );
+
+    return Number.isFinite(raw)
+      ?Math.max(.5,Math.min(2,raw))
+      :1;
+  }
+
+  function applyJoystickSensitivity(v){
+    const a=Math.abs(v);
+
+    if(a<=0)return 0;
+
+    const sensitivity=
+      joystickSensitivity();
+
+    // V21.11 — deliberately strong sensitivity curve.
+    //
+    // V21.10 used a mild rational curve which preserved full stick travel, but
+    // the difference was largely hidden by the vehicle's own high-speed analog
+    // steering curve and by camera smoothing.  This exponential curve keeps the
+    // same important property (full stick is always full stick) while making the
+    // center and mid-travel response unmistakably different.
+    //
+    //  50%  -> exponent 2.50 : very fine center / calm corrections
+    // 100%  -> exponent 1.00 : linear
+    // 200%  -> exponent 0.55 : quick / sensitive center
+    let exponent;
+
+    if(sensitivity<=1){
+      exponent=
+        1+
+        (1-sensitivity)*3;
+    }else{
+      exponent=
+        1-
+        (sensitivity-1)*.45;
+    }
+
+    const shaped=
+      Math.pow(
+        Math.max(0,Math.min(1,a)),
+        exponent
+      );
+
+    return Math.sign(v)*shaped;
+  }
+
+  function mappedButton(name,fallback=null){
+    const raw=
+      bindings()?.[name];
+
+    if(raw===null){
+      return null;
+    }
+
+    const value=
+      Number(raw);
+
+    return Number.isInteger(value)
+      ?value
+      :fallback;
+  }
+
+  function mappedAxis(name,fallback){
+    const value=
+      Number(
+        bindings()?.[name]
+      );
+
+    return Number.isInteger(value)
+      ?value
+      :fallback;
   }
 
   function activity(gp){
@@ -129,13 +212,68 @@ export function createGamepadController({
       :(gp.mapping==='standard'?'Gamepad standard':'Gamepad');
     setStatus(shortId);
 
-    // Standard Xbox/GuliKit XInput mapping.
-    state.steer=deadzone(Number(gp.axes?.[0])||0);
-    state.lookX=deadzone(Number(gp.axes?.[2])||0,.12);
-    state.lookY=deadzone(Number(gp.axes?.[3])||0,.12);
+    // Standard Xbox/GuliKit XInput mapping, configurable in V21.
+    state.steer=
+      applyJoystickSensitivity(
+        deadzone(
+          Number(
+            gp.axes?.[
+              mappedAxis(
+                'steerAxis',
+                0
+              )
+            ]
+          )||0
+        )
+      );
 
-    let lt=buttonValue(gp,6);
-    let rt=buttonValue(gp,7);
+    state.lookX=
+      applyJoystickSensitivity(
+        deadzone(
+          Number(
+            gp.axes?.[
+              mappedAxis(
+                'lookXAxis',
+                2
+              )
+            ]
+          )||0,
+          .12
+        )
+      );
+
+    state.lookY=
+      applyJoystickSensitivity(
+        deadzone(
+          Number(
+            gp.axes?.[
+              mappedAxis(
+                'lookYAxis',
+                3
+              )
+            ]
+          )||0,
+          .12
+        )
+      );
+
+    let lt=
+      buttonValue(
+        gp,
+        mappedButton(
+          'brakeButton',
+          6
+        )
+      );
+
+    let rt=
+      buttonValue(
+        gp,
+        mappedButton(
+          'throttleButton',
+          7
+        )
+      );
 
     // HID/DInput fallbacks only. In standard/XInput mode, axes 2/3 belong to
     // the right stick and must never be reused as trigger axes.
@@ -155,27 +293,104 @@ export function createGamepadController({
     state.brake=Math.max(0,Math.min(1,lt));
     state.throttle=Math.max(0,Math.min(1,rt));
 
-    // V20.12: B is now the held handbrake input.
-    state.hand=button(gp,1); // B
+    state.hand=
+      button(
+        gp,
+        mappedButton(
+          'handbrakeButton',
+          1
+        )
+      );
 
-    // V19.3: standard XInput button 11 = right-stick click (R3).
     // Held state, not a toggle: hold to look behind, release to return.
-    state.reverseView=button(gp,11);
+    state.reverseView=
+      button(
+        gp,
+        mappedButton(
+          'reverseViewButton',
+          11
+        )
+      );
 
     if(audio&&!audio.isRunning())audio.showActivationHint();
 
-    if(pressedEdge(gp,3))onCycleCamera?.();       // Y
+    const cameraButton=
+      mappedButton(
+        'cameraButton',
+        3
+      );
 
-    // V20.13 manual gearbox:
-    // A = upshift, X = downshift.
-    if(pressedEdge(gp,0))onShiftUp?.();            // A
-    if(pressedEdge(gp,2))onShiftDown?.();          // X
+    const shiftUpButton=
+      mappedButton(
+        'shiftUpButton',
+        0
+      );
 
-    // B used to toggle autopilot. Preserve that function by moving it to
-    // View / Back (button 8) instead of deleting the command.
-    if(pressedEdge(gp,8))onToggleAutopilot?.();    // View / Back
+    const shiftDownButton=
+      mappedButton(
+        'shiftDownButton',
+        2
+      );
 
-    if(pressedEdge(gp,9))onResetToRoad?.();        // Menu / Start
+    const assistButton=
+      mappedButton(
+        'assistButton',
+        null
+      );
+
+    const autopilotButton=
+      mappedButton(
+        'autopilotButton',
+        8
+      );
+
+    const resetButton=
+      mappedButton(
+        'resetButton',
+        9
+      );
+
+    if(
+      cameraButton!==null&&
+      pressedEdge(gp,cameraButton)
+    ){
+      onCycleCamera?.();
+    }
+
+    if(
+      shiftUpButton!==null&&
+      pressedEdge(gp,shiftUpButton)
+    ){
+      onShiftUp?.();
+    }
+
+    if(
+      shiftDownButton!==null&&
+      pressedEdge(gp,shiftDownButton)
+    ){
+      onShiftDown?.();
+    }
+
+    if(
+      assistButton!==null&&
+      pressedEdge(gp,assistButton)
+    ){
+      onToggleAssist?.();
+    }
+
+    if(
+      autopilotButton!==null&&
+      pressedEdge(gp,autopilotButton)
+    ){
+      onToggleAutopilot?.();
+    }
+
+    if(
+      resetButton!==null&&
+      pressedEdge(gp,resetButton)
+    ){
+      onResetToRoad?.();
+    }
 
     if(
       isAutopilotEnabled?.() &&

@@ -183,3 +183,268 @@ input[type=range]{width:100%}
 @media(max-width:700px){
   #speedometerDock{display:none!important}
 }
+
+
+/* ---------- 17S competitive run ---------- */
+.runChallenge{
+  margin-top:10px;
+  padding:11px;
+  border:1px solid rgba(255,255,255,.09);
+  border-radius:11px;
+  background:rgba(2,8,14,.24);
+}
+.runChallengeHead{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+  margin-bottom:9px;
+}
+.runState{
+  margin-top:2px;
+  font-size:11px;
+  font-weight:800;
+  letter-spacing:.08em;
+  color:#8fa3b5;
+}
+.runChallenge.running .runState{
+  color:#73e2a7;
+}
+.runChallenge.finished .runState{
+  color:#ffd46b;
+}
+.runResetBtn{
+  width:auto;
+  flex:none;
+  padding-left:10px;
+  padding-right:10px;
+}
+.runStats{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:7px;
+}
+.runMetric{
+  padding:8px 9px;
+  border-radius:8px;
+  background:rgba(255,255,255,.045);
+}
+.runMetric span{
+  display:block;
+  margin-bottom:2px;
+  color:#8196a9;
+  font-size:9px;
+  text-transform:uppercase;
+  letter-spacing:.055em;
+}
+.runMetric b{
+  color:#edf5fb;
+  font-size:16px;
+  font-variant-numeric:tabular-nums;
+}
+.qualityMetric b{
+  color:#71e29f;
+}
+.qualityTrack{
+  height:5px;
+  margin-top:8px;
+  overflow:hidden;
+  border-radius:999px;
+  background:rgba(255,255,255,.08);
+}
+.qualityFill{
+  width:100%;
+  height:100%;
+  border-radius:inherit;
+  background:#55d98b;
+  transform-origin:left center;
+  transition:width .18s linear,background-color .18s linear;
+}
+.runRule{
+  margin-top:5px;
+  color:#687e90;
+  font-size:9px;
+  text-align:right;
+}
+
+
+/* ---------- 17S.1 route challenge subsection ---------- */
+.routeSubsection{
+  margin-top:12px;
+  border-top:1px solid rgba(255,255,255,.08);
+  padding-top:8px;
+}
+.routeSubsectionHead{
+  width:100%;
+  display:grid;
+  grid-template-columns:1fr auto auto;
+  align-items:center;
+  gap:8px;
+  padding:8px 9px;
+  border:0;
+  border-radius:8px;
+  background:rgba(255,255,255,.045);
+  color:#dce8f1;
+  text-align:left;
+  cursor:pointer;
+}
+.routeSubsectionHead:hover{
+  background:rgba(255,255,255,.07);
+}
+.routeSubsectionHead > span:first-child{
+  font-size:11px;
+  font-weight:700;
+}
+.routeSubsectionState{
+  color:#8196a9;
+  font-size:9px;
+  font-weight:800;
+  letter-spacing:.06em;
+}
+.routeSubsectionChevron{
+  width:14px;
+  color:#8196a9;
+  font-size:14px;
+  text-align:center;
+}
+.routeSubsectionBody{
+  display:block;
+}
+.routeSubsection.collapsed .routeSubsectionBody{
+  display:none;
+}
+.routeSubsection .runChallenge{
+  margin-top:7px;
+  border-top:0;
+}
+
+
+/* ---------- 17S.2 challenge inside Carte du trajet ---------- */
+#mapbox .routeSubsection{
+  margin:6px 8px 8px;
+  padding-top:6px;
+}
+#mapbox .routeSubsectionHead{
+  padding:6px 8px;
+}
+#mapbox .routeSubsectionBody{
+  max-height:240px;
+  overflow:auto;
+}
+#mapbox .runChallenge{
+  margin-top:5px;
+  padding:8px;
+}
+#mapbox .runStats{
+  gap:5px;
+}
+#mapbox .runMetric{
+  padding:6px 7px;
+}
+#mapbox .runMetric b{
+  font-size:14px;
+}
+#mapbox.map-collapsed .routeSubsection{
+  display:none;
+}
+
+
+/* ---------- 17S.3 readability / opacity ---------- */
+#mapbox{
+  background:rgba(5,12,19,.94);
+}
+
+#mapbox .routeSubsectionHead{
+  background:rgba(16,29,40,.96);
+  border:1px solid rgba(255,255,255,.10);
+}
+
+#mapbox .routeSubsectionHead:hover{
+  background:rgba(22,38,51,.98);
+}
+
+#mapbox .runChallenge{
+  background:rgba(5,14,22,.96);
+  border:1px solid rgba(255,255,255,.11);
+}
+
+#mapbox .runMetric{
+  background:rgba(20,34,46,.96);
+}
+
+#mapbox .runMetric span,
+#mapbox .runRule{
+  color:#9eb1c1;
+}
+
+#mapbox .runMetric b{
+  color:#f4f8fb;
+}
+
+
+/* ---------- 17S.4 simplified competitive HUD ---------- */
+#mapbox .runStats{
+  grid-template-columns:1fr 1fr;
+}
+#mapbox .runMetric{
+  text-align:center;
+  padding:8px 7px;
+}
+#mapbox .runMetric b{
+  font-size:17px;
+}
+
+/* ---------- V18A LAN multiplayer ---------- */
+.multiplayerBox{
+  display:flex;
+  flex-direction:column;
+  gap:7px;
+}
+#multiplayerName{
+  width:100%;
+  min-height:32px;
+  box-sizing:border-box;
+  border:1px solid rgba(255,255,255,.12);
+  background:rgba(255,255,255,.06);
+  color:#fff;
+  border-radius:8px;
+  padding:6px 8px;
+  font-size:11px;
+}
+.multiplayerStats{
+  margin-top:2px;
+}
+.multiplayerState[data-state="on"]{
+  color:#65e389;
+}
+.multiplayerState[data-state="connecting"]{
+  color:#f0c96a;
+}
+.multiplayerState[data-state="error"]{
+  color:#ff7676;
+}
+.multiplayerServerLine{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:8px;
+  padding:7px 8px;
+  border-radius:8px;
+  background:rgba(255,255,255,.045);
+  color:#8fa6bf;
+  font-size:9px;
+}
+.multiplayerServerLine code{
+  color:#c9d8e5;
+  font-size:9px;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+.multiplayerConnectBtn{
+  width:100%;
+}
+.multiplayerHint{
+  margin-top:0;
+  line-height:1.35;
+}

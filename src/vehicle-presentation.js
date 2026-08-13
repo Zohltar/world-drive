@@ -1,4 +1,4 @@
-// World Drive V20.0 — vehicle presentation + lightweight vertical dynamics.
+// World Drive V21.5 — vehicle presentation + frame-rate-independent vertical dynamics.
 // Four-wheel suspension, airborne motion, body pose and projected contact shadow.
 export function createVehiclePresentation({
   THREE,
@@ -38,6 +38,9 @@ export function createVehiclePresentation({
       depthTest:true,
       side:THREE.DoubleSide,
       blending:THREE.NormalBlending,
+      polygonOffset:true,
+      polygonOffsetFactor:-2,
+      polygonOffsetUnits:-2,
 
       vertexShader:`
         varying vec2 vUv;
@@ -202,14 +205,52 @@ export function createVehiclePresentation({
   // ground-facing rotation, so updating the rig can never stand the shadow upright.
   vehicleShadowRig.rotation.order='YXZ';
 
+  // The shadow is a lightly tessellated decal instead of one rigid quad.
+  // Its vertices are projected onto the road/terrain every frame, allowing the
+  // silhouette to follow crests, cambers and road transitions without clipping
+  // through the driving surface. 35 vertices keeps this inexpensive.
+  const vehicleShadowGeometry=
+    new THREE.PlaneGeometry(
+      3.35,
+      6.25,
+      4,
+      6
+    );
+
+  const vehicleShadowPositions=
+    vehicleShadowGeometry.attributes.position;
+
+  vehicleShadowPositions.setUsage?.(
+    THREE.DynamicDrawUsage
+  );
+
+  const vehicleShadowLocalX=
+    new Float32Array(
+      vehicleShadowPositions.count
+    );
+
+  const vehicleShadowLocalZ=
+    new Float32Array(
+      vehicleShadowPositions.count
+    );
+
+  for(
+    let i=0;
+    i<vehicleShadowPositions.count;
+    i++
+  ){
+    vehicleShadowLocalX[i]=
+      vehicleShadowPositions.getX(i);
+
+    // PlaneGeometry starts in XY. After the permanent -90° X rotation below,
+    // geometry Y becomes local -Z. Geometry Z becomes vertical displacement.
+    vehicleShadowLocalZ[i]=
+      -vehicleShadowPositions.getY(i);
+  }
+
   const vehicleShadow=
     new THREE.Mesh(
-      new THREE.PlaneGeometry(
-        3.35,
-        6.25,
-        1,
-        1
-      ),
+      vehicleShadowGeometry,
       vehicleShadowMaterial
     );
 
@@ -547,40 +588,186 @@ export function createVehiclePresentation({
     const gravity=9.81;
 
     if(!airborne){
-      // If the support surface drops below the car's ballistic path at a crest,
-      // the tires cannot pull the chassis downward: the vehicle leaves the road.
+      // V21.5 — frame-rate-independent crest / speed-bump launch detection.
+      //
+      // The old test predicted only one render frame ahead. Because ballistic
+      // separation grows with dt², high-refresh clients (120/144+ FPS) were
+      // effectively glued to the road while 30 FPS clients could launch.
+      //
+      // Instead, sample the support surface in SPACE and predict over a fixed
+      // physical horizon. This makes the lift-off criterion depend on road
+      // curvature + vehicle speed, not render-frame duration.
+      const supportYAtCenter=(centerX,centerZ)=>{
+        let totalGround=0;
+
+        for(const w of suspensionWheels){
+          const lx=w.pivot.position.x;
+          const lz=w.pivot.position.z;
+
+          const wx=
+            centerX+
+            lx*c+
+            lz*sn;
+
+          const wz=
+            centerZ-
+            lx*sn+
+            lz*c;
+
+          let ground;
+
+          if(onRoad){
+            const roadSample=
+              roadSurfaceAt(
+                wx,
+                wz
+              );
+
+            if(
+              roadSample&&
+              Math.abs(
+                roadSample.lateral
+              )<
+              ROAD_WHEEL_CONTACT_HALF_WIDTH
+            ){
+              ground=roadSample.y;
+            }
+          }
+
+          if(!Number.isFinite(ground)){
+            ground=
+              groundHeightForWheel(
+                wx,
+                wz
+              );
+          }
+
+          if(!Number.isFinite(ground)){
+            return NaN;
+          }
+
+          totalGround+=ground;
+        }
+
+        return (
+          totalGround/
+          suspensionWheels.length+
+          effectiveWheelRadius+
+          TIRE_VISUAL_CLEARANCE
+        );
+      };
+
+      const supportAtTravel=travel=>
+        supportYAtCenter(
+          absX+travel*sn,
+          absZ+travel*c
+        );
+
+      // Spatial slope probe: deliberately independent of dt. A slightly longer
+      // probe at very high speed suppresses tiny terrain/mesh noise without
+      // hiding real crests.
+      const launchSlopeProbe=
+        clamp(
+          Math.abs(speed)*.035,
+          .70,
+          1.80
+        );
+
+      const supportBehind=
+        supportAtTravel(
+          -launchSlopeProbe
+        );
+
+      const supportAhead=
+        supportAtTravel(
+          launchSlopeProbe
+        );
+
+      const spatialSupportVelocity=
+        Number.isFinite(supportBehind)&&
+        Number.isFinite(supportAhead)
+          ?clamp(
+              (
+                supportAhead-
+                supportBehind
+              )/
+              (2*launchSlopeProbe)*
+              speed,
+              -22,
+              22
+            )
+          :filteredSupportVelocity;
+
+      // Fixed physical look-ahead. At 120 km/h this is ~2.5 m; at 200 km/h
+      // ~4.2 m. The exact same horizon is used at 30, 60, 120 or 144 FPS.
+      const launchPredictionTime=.075;
+      const futureTravel=
+        speed*
+        launchPredictionTime;
+
+      const futureSupportY=
+        supportAtTravel(
+          futureTravel
+        );
+
       const predictedBallisticY=
-        car.position.y+
-        verticalVelocity*
-        safeDt-
+        supportY+
+        spatialSupportVelocity*
+        launchPredictionTime-
         .5*
         gravity*
-        safeDt*
-        safeDt;
+        launchPredictionTime*
+        launchPredictionTime;
 
-      const launchGap=
-        .016+
-        Math.min(
-          .045,
-          Math.abs(speed)*
-          .0010
-        );
+      const predictedGap=
+        Number.isFinite(futureSupportY)
+          ?predictedBallisticY-
+            futureSupportY
+          :0;
+
+      // Required vertical acceleration for the chassis to remain glued to the
+      // sampled support curve. If the road would have to pull the car downward
+      // faster than gravity can accelerate it, normal force reaches zero and
+      // the vehicle must leave the surface. A small acceleration margin filters
+      // numerical noise and imperceptible road tessellation ripples.
+      const requiredSupportAccel=
+        Number.isFinite(futureSupportY)
+          ?2*
+            (
+              futureSupportY-
+              supportY-
+              spatialSupportVelocity*
+              launchPredictionTime
+            )/
+            (
+              launchPredictionTime*
+              launchPredictionTime
+            )
+          :0;
+
+      const launchAccelMargin=1.25;
 
       const canLaunch=
         Math.abs(speed)>7.5&&
-        verticalVelocity>.55&&
-        predictedBallisticY>
-          supportY+
-          launchGap;
+        predictedGap>.003&&
+        requiredSupportAccel<
+          -(
+            gravity+
+            launchAccelMargin
+          );
 
       if(canLaunch){
         airborne=true;
         airborneTime=0;
+
+        // Carry the actual spatial road tangent into the ballistic phase. This
+        // also removes the remaining one-frame dependency from takeoff velocity.
+        verticalVelocity=
+          spatialSupportVelocity;
       }else{
         car.position.y=supportY;
 
-        // Carry the vertical component of road velocity into the next frame.
-        // This is what gives a car real upward velocity before a crest.
+        // Preserve the existing supported-motion filtering and landing feel.
         verticalVelocity=
           filteredSupportVelocity;
       }
@@ -1019,64 +1206,77 @@ export function createVehiclePresentation({
       suspensionHeave;
   }
 
+  function shadowGroundAt(absSampleX,absSampleZ){
+    // Prefer the rendered road surface only while the sample is actually inside
+    // the road envelope. Outside it, project onto the terrain instead. This
+    // prevents the decal from floating over shoulders or cutting under the road.
+    const roadSample=
+      roadSurfaceAt(
+        absSampleX,
+        absSampleZ
+      );
+
+    if(
+      roadSample&&
+      Number.isFinite(roadSample.y)&&
+      Math.abs(
+        Number(roadSample.lateral)||0
+      )<
+        ROAD_WHEEL_CONTACT_HALF_WIDTH+
+        .95
+    ){
+      return roadSample.y;
+    }
+
+    const terrainY=
+      terrainAbs(
+        absSampleX,
+        absSampleZ
+      );
+
+    return Number.isFinite(terrainY)
+      ?terrainY
+      :0;
+  }
+
   function updateContactShadow(){
-    const {roadContact,absX,absZ,heading,timeOfDay}=getDrivingState();
-    const roadSurface=
-      roadContact
-        ?roadSurfaceAt(absX,absZ)
-        :null;
+    const {
+      absX,
+      absZ,
+      heading,
+      timeOfDay
+    }=getDrivingState();
 
     const groundY=
-      roadSurface?.y??
-      terrainAbs(absX,absZ);
-
-    // Keep the projection on the actual support plane.
-    vehicleShadowRig.position.set(
-      car.position.x,
-      groundY+.032,
-      car.position.z
-    );
-
-    const surfacePitch=
-      roadContact
-        ?wheelPlanePitch
-        :0;
-
-    const surfaceRoll=
-      roadContact
-        ?wheelPlaneRoll
-        :0;
-
-    // The rig follows vehicle heading + road support plane.
-    // The child quad remains permanently horizontal relative to this rig.
-    vehicleShadowRig.rotation.set(
-      -surfacePitch,
-      heading,
-      -surfaceRoll
-    );
+      shadowGroundAt(
+        absX,
+        absZ
+      );
 
     const rideGap=
       Math.max(
         0,
-        car.position.y-groundY-.35
+        car.position.y-
+        groundY-
+        .35
       );
 
     // Contact shadow is strongest near the road and softens/spreads if the car
     // becomes airborne or crests a sharp grade.
     vehicleShadowUniforms.uHeightFade.value=
       Math.max(
-        .22,
+        .18,
         Math.min(
           1,
-          1-rideGap*.52
+          1-rideGap*.58
         )
       );
 
     const spread=
       1+
       Math.min(
-        .20,
-        rideGap*.12
+        .14,
+        rideGap*.075
       );
 
     vehicleShadow.scale.set(
@@ -1084,6 +1284,67 @@ export function createVehiclePresentation({
       spread,
       1
     );
+
+    // Keep the rig itself simple and stable: vehicle yaw only. Pitch/roll are no
+    // longer approximated with one large plane; every decal vertex gets the real
+    // road/terrain height below it.
+    vehicleShadowRig.position.set(
+      car.position.x,
+      groundY,
+      car.position.z
+    );
+
+    vehicleShadowRig.rotation.set(
+      0,
+      heading,
+      0
+    );
+
+    const cosH=Math.cos(heading);
+    const sinH=Math.sin(heading);
+    const decalLift=.026;
+
+    for(
+      let i=0;
+      i<vehicleShadowPositions.count;
+      i++
+    ){
+      const localX=
+        vehicleShadowLocalX[i]*
+        spread;
+
+      const localZ=
+        vehicleShadowLocalZ[i]*
+        spread;
+
+      const sampleX=
+        absX+
+        localX*cosH+
+        localZ*sinH;
+
+      const sampleZ=
+        absZ-
+        localX*sinH+
+        localZ*cosH;
+
+      const sampleGround=
+        shadowGroundAt(
+          sampleX,
+          sampleZ
+        );
+
+      // Geometry Z becomes vertical after vehicleShadow.rotation.x=-PI/2.
+      // A small lift plus polygon offset keeps the decal visibly above the road
+      // without creating a perceivable gap beneath the tires.
+      vehicleShadowPositions.setZ(
+        i,
+        sampleGround-
+        groundY+
+        decalLift
+      );
+    }
+
+    vehicleShadowPositions.needsUpdate=true;
 
     // Use the current time-of-day sun only as a DIRECTION INPUT.
     // The shadow shader never moves or modifies the actual sun.
@@ -1100,9 +1361,6 @@ export function createVehiclePresentation({
       sun.position.z/sunLen;
 
     // Rotate world sun direction into vehicle-local axes.
-    const sinH=Math.sin(heading);
-    const cosH=Math.cos(heading);
-
     const localSide=
       sunX*cosH-
       sunZ*sinH;
@@ -1113,8 +1371,8 @@ export function createVehiclePresentation({
 
     // Shadow extends opposite the incoming sun direction.
     vehicleShadowUniforms.uSunTail.value.set(
-      -localSide*.16,
-      -localForward*.24
+      -localSide*.14,
+      -localForward*.20
     );
 
     // Slightly stronger at daytime, but never enough to override the global
@@ -1130,8 +1388,8 @@ export function createVehiclePresentation({
       );
 
     vehicleShadowUniforms.uOpacity.value=
-      .62+
-      daylight*.13;
+      .60+
+      daylight*.12;
   }
 
   function updateWheels(dt,speed,visualSteer){

@@ -5,7 +5,14 @@ import { createCameraController } from './camera.js';
 import { createRoutingGeometry, angleDelta, nearestPointOnPolyline } from './routing.js';
 import { createRoutingService } from './routing-service.js';
 import { createGeocodingService, validLatLon } from './geocoding.js';
-import { WorldCache, OsmCache } from './cache.js';
+import {
+  WorldCache,
+  OsmCache,
+  WorldSettings,
+  DEFAULT_WORLD_SETTINGS,
+  getWorldCacheStats,
+  clearWorldDriveCache
+} from './cache.js';
 import { createOverpassClient } from './overpass.js';
 import { createSignDataService } from './signs.js';
 import { createBridgeManager } from './bridges.js';
@@ -54,6 +61,957 @@ const routePointAtCum=cum=>routingGeometry.routePointAtCum(cum);
 const $=id=>document.getElementById(id);
 const loading=$('loading'),loadingText=$('loadingText'),statusEl=$('status'),notice=$('notice'),routingStatus=$('routingStatus');
 
+// ---------- V21 application settings / startup state ----------
+let appSettings=
+  JSON.parse(
+    JSON.stringify(
+      DEFAULT_WORLD_SETTINGS
+    )
+  );
+
+let settingsLoaded=false;
+let settingsSaveTimer=null;
+let gameStarted=false;
+let v21MenuOpen=false;
+let keyboardRebindAction=null;
+let v21BootMode='loading';
+let v21MenuEl=null;
+let v21MenuButton=null;
+let v21SelectedStartupVehicle=null;
+
+function queueSettingsSave(){
+  if(!settingsLoaded)return;
+
+  clearTimeout(settingsSaveTimer);
+
+  settingsSaveTimer=setTimeout(
+    ()=>{
+      WorldSettings
+        .save(appSettings)
+        .catch(error=>
+          console.warn(
+            'Settings save failed',
+            error
+          )
+        );
+    },
+    120
+  );
+}
+
+function cloneDefaultControls(){
+  return JSON.parse(
+    JSON.stringify(
+      DEFAULT_WORLD_SETTINGS.controls
+    )
+  );
+}
+
+function installV21BaseStyle(){
+  if(document.getElementById('v21BaseStyle')){
+    return;
+  }
+
+  const style=
+    document.createElement('style');
+
+  style.id='v21BaseStyle';
+
+  style.textContent=`
+  #hud,
+  #help{
+    display:none!important;
+  }
+
+  #speedControl{
+    display:none!important;
+  }
+
+  #showControlsBtn{
+    display:none!important;
+  }
+
+  #speedometerDock{
+    pointer-events:none;
+  }
+
+  #v21MenuButton{
+    position:fixed;
+    left:14px;
+    top:14px;
+    z-index:42;
+    display:none;
+    min-width:92px;
+    height:40px;
+    padding:0 14px;
+    border:1px solid rgba(255,255,255,.15);
+    border-radius:12px;
+    background:rgba(5,12,20,.88);
+    color:#f6f8fb;
+    font:800 12px/1 system-ui,sans-serif;
+    letter-spacing:.08em;
+    box-shadow:0 10px 30px rgba(0,0,0,.34);
+    backdrop-filter:blur(12px);
+    cursor:pointer;
+  }
+
+  #v21MenuButton:hover{
+    background:rgba(12,25,39,.94);
+  }
+
+  #v21MenuButton.hidden{
+    opacity:0!important;
+    pointer-events:none!important;
+    transform:translateX(-10px)!important;
+  }
+
+  #v21MapChallenge{
+    position:absolute;
+    top:40px;
+    right:12px;
+    z-index:6;
+    min-width:78px;
+    pointer-events:none;
+    color:#f3f7fb;
+    text-align:left;
+    font-family:ui-monospace,SFMono-Regular,Consolas,monospace;
+    text-shadow:0 1px 3px rgba(0,0,0,.95);
+  }
+
+  #v21MapChallenge .v21ChallengeLabel{
+    margin-top:7px;
+    color:#d9e3ec;
+    font-size:9px;
+    font-weight:800;
+    letter-spacing:.03em;
+  }
+
+  #v21MapChallenge .v21ChallengeValue{
+    margin-top:1px;
+    color:#fff;
+    font-size:10px;
+    font-weight:900;
+    line-height:1.15;
+    white-space:nowrap;
+  }
+
+  #mapbox.collapsed #v21MapChallenge{
+    display:none;
+  }
+
+  #v21Menu{
+    position:fixed;
+    inset:0;
+    z-index:41;
+    display:none;
+    pointer-events:none;
+    background:rgba(0,0,0,.18);
+  }
+
+  #v21Menu.open{
+    display:block;
+    pointer-events:auto;
+  }
+
+  #v21MenuPanel{
+    position:absolute;
+    left:0;
+    top:0;
+    bottom:0;
+    width:min(760px,94vw);
+    display:grid;
+    grid-template-columns:180px minmax(0,1fr);
+    background:linear-gradient(180deg,#07111b 0%,#050b12 100%);
+    border-right:1px solid rgba(255,255,255,.12);
+    box-shadow:22px 0 60px rgba(0,0,0,.5);
+    color:#edf3f8;
+    overflow:hidden;
+  }
+
+  .v21MenuNav{
+    padding:20px 12px 16px;
+    border-right:1px solid rgba(255,255,255,.08);
+    background:rgba(255,255,255,.018);
+  }
+
+  .v21Brand{
+    margin:0 6px 18px;
+  }
+
+  .v21Brand strong{
+    display:block;
+    font-size:18px;
+    letter-spacing:.05em;
+  }
+
+  .v21Brand span{
+    display:block;
+    margin-top:4px;
+    color:#7792a9;
+    font-size:10px;
+    letter-spacing:.08em;
+  }
+
+  .v21Tab{
+    width:100%;
+    display:flex;
+    align-items:center;
+    gap:9px;
+    margin:3px 0;
+    padding:10px 11px;
+    border:0;
+    border-radius:9px;
+    background:transparent;
+    color:#aebdca;
+    text-align:left;
+    font:700 12px/1.2 system-ui,sans-serif;
+    cursor:pointer;
+  }
+
+  .v21Tab:hover{
+    background:rgba(255,255,255,.055);
+    color:#fff;
+  }
+
+  .v21Tab.active{
+    background:#17314a;
+    color:#fff;
+  }
+
+  .v21MenuMain{
+    min-width:0;
+    display:flex;
+    flex-direction:column;
+  }
+
+  .v21MenuTop{
+    position:relative;
+    height:62px;
+    flex:0 0 auto;
+    display:flex;
+    align-items:center;
+    padding:0 52px 0 20px;
+    border-bottom:1px solid rgba(255,255,255,.08);
+  }
+
+  .v21MenuTop h2{
+    margin:0;
+    font:800 17px/1 system-ui,sans-serif;
+  }
+
+  #v21MenuClose{
+    position:absolute!important;
+    top:19px!important;
+    right:14px!important;
+
+    width:24px!important;
+    min-width:24px!important;
+    max-width:24px!important;
+
+    height:24px!important;
+    min-height:24px!important;
+    max-height:24px!important;
+
+    margin:0!important;
+    padding:0!important;
+    box-sizing:border-box!important;
+    flex:0 0 24px!important;
+
+    display:grid!important;
+    place-items:center!important;
+
+    border:1px solid rgba(255,255,255,.13)!important;
+    border-radius:5px!important;
+    background:rgba(255,255,255,.055)!important;
+    color:#dce5ed!important;
+
+    font:700 16px/1 system-ui,sans-serif!important;
+    text-align:center!important;
+    letter-spacing:0!important;
+
+    cursor:pointer;
+  }
+
+  #v21MenuClose:hover{
+    background:rgba(255,255,255,.11)!important;
+    color:#fff!important;
+  }
+
+  .v21Panel{
+    display:none;
+    flex:1 1 auto;
+    min-height:0;
+    overflow:auto;
+    padding:20px;
+  }
+
+  .v21Panel.active{
+    display:block;
+  }
+
+  .v21Section{
+    margin-bottom:18px;
+    padding:14px;
+    border:1px solid rgba(255,255,255,.09);
+    border-radius:12px;
+    background:rgba(255,255,255,.025);
+  }
+
+  .v21SectionTitle{
+    margin:0 0 11px;
+    color:#8da4b8;
+    font:800 10px/1 system-ui,sans-serif;
+    text-transform:uppercase;
+    letter-spacing:.13em;
+  }
+
+  .v21Row{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:14px;
+    min-height:38px;
+    border-top:1px solid rgba(255,255,255,.05);
+  }
+
+  .v21Row:first-of-type{
+    border-top:0;
+  }
+
+  .v21Row label,
+  .v21Row .v21Label{
+    color:#dce6ee;
+    font-size:12px;
+    font-weight:650;
+  }
+
+  .v21Row small{
+    display:block;
+    margin-top:2px;
+    color:#7890a5;
+    font-size:9px;
+    font-weight:500;
+  }
+
+  .v21MenuSelect,
+  .v21MenuInput,
+  #v21Menu select,
+  #v21Menu input[type="text"],
+  #v21Menu input[type="number"],
+  #v21Menu textarea{
+    max-width:100%;
+    border:1px solid rgba(255,255,255,.13);
+    border-radius:7px;
+    background:#111d28;
+    color:#fff;
+  }
+
+  .v21MenuSelect,
+  #v21Menu select{
+    min-width:148px;
+    padding:7px 9px;
+  }
+
+  .v21MenuBtn{
+    padding:7px 10px;
+    border:1px solid rgba(255,255,255,.12);
+    border-radius:7px;
+    background:#172838;
+    color:#fff;
+    font:750 11px/1 system-ui,sans-serif;
+    cursor:pointer;
+  }
+
+  .v21MenuBtn:hover{
+    background:#20384f;
+  }
+
+  .v21MenuBtn.danger{
+    border-color:rgba(255,92,98,.25);
+    background:#3a1519;
+  }
+
+  .v21Toggle{
+    min-width:58px;
+    padding:6px 9px;
+    border:1px solid rgba(255,255,255,.12);
+    border-radius:999px;
+    background:#22303c;
+    color:#aab9c7;
+    font:800 10px/1 system-ui,sans-serif;
+    cursor:pointer;
+  }
+
+  .v21Toggle.on{
+    background:#174a36;
+    color:#a8ffd5;
+  }
+
+  .v21InfoGrid{
+    display:grid;
+    grid-template-columns:repeat(2,minmax(0,1fr));
+    gap:8px;
+  }
+
+  .v21InfoCard{
+    padding:10px;
+    border-radius:9px;
+    background:rgba(255,255,255,.04);
+  }
+
+  .v21InfoCard span{
+    display:block;
+    color:#7f97aa;
+    font-size:9px;
+    text-transform:uppercase;
+    letter-spacing:.08em;
+  }
+
+  .v21InfoCard b{
+    display:block;
+    margin-top:4px;
+    font-size:13px;
+  }
+
+  .v21ControlsGrid{
+    display:grid;
+    grid-template-columns:1fr auto;
+    gap:0 10px;
+  }
+
+  .v21ControlName,
+  .v21ControlValue{
+    min-height:38px;
+    display:flex;
+    align-items:center;
+    border-top:1px solid rgba(255,255,255,.05);
+  }
+
+  .v21ControlName{
+    font-size:11px;
+    color:#d9e3ea;
+  }
+
+  .v21ControlValue button{
+    min-width:110px;
+  }
+
+  .v21JoystickSensitivity{
+    display:flex;
+    align-items:center;
+    gap:9px;
+  }
+
+  .v21JoystickSensitivity input[type="range"]{
+    width:138px;
+    accent-color:#70b7ff;
+    cursor:pointer;
+  }
+
+  .v21JoystickSensitivity span{
+    min-width:42px;
+    color:#dce6ee;
+    font-size:10px;
+    font-weight:800;
+    text-align:right;
+  }
+
+  .v21StatusLine{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:12px;
+    padding:6px 0;
+    color:#9fb2c1;
+    font-size:10px;
+    border-top:1px solid rgba(255,255,255,.05);
+  }
+
+  .v21StatusLine:first-child{
+    border-top:0;
+  }
+
+  .v21StatusLine b{
+    color:#eef5fa;
+    font-size:11px;
+    text-align:right;
+  }
+
+  #v21Startup{
+    position:fixed;
+    inset:0;
+    z-index:90;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    padding:24px;
+    background:
+      radial-gradient(circle at 50% 42%,rgba(21,47,67,.42),transparent 42%),
+      rgba(2,7,11,.94);
+    color:#f2f7fb;
+    backdrop-filter:blur(10px);
+  }
+
+  #v21Startup.hidden{
+    display:none;
+  }
+
+  .v21StartupCard{
+    width:min(760px,94vw);
+    max-height:90vh;
+    overflow:auto;
+    padding:26px;
+    border:1px solid rgba(255,255,255,.12);
+    border-radius:18px;
+    background:linear-gradient(180deg,rgba(12,24,34,.96),rgba(5,12,19,.98));
+    box-shadow:0 30px 90px rgba(0,0,0,.58);
+  }
+
+  .v21StartupBrand{
+    margin-bottom:20px;
+  }
+
+  .v21StartupBrand h1{
+    margin:0;
+    font:900 28px/1 system-ui,sans-serif;
+    letter-spacing:.04em;
+  }
+
+  .v21StartupBrand p{
+    margin:7px 0 0;
+    color:#7892a8;
+    font-size:11px;
+  }
+
+  .v21BootRows{
+    display:grid;
+    gap:7px;
+    margin:18px 0;
+  }
+
+  .v21BootRow{
+    display:grid;
+    grid-template-columns:20px 1fr auto;
+    gap:9px;
+    align-items:center;
+    padding:9px 10px;
+    border-radius:9px;
+    background:rgba(255,255,255,.035);
+    color:#aebdca;
+    font-size:11px;
+  }
+
+  .v21BootRow[data-state="done"]{
+    color:#b8f4d2;
+  }
+
+  .v21BootRow[data-state="warn"]{
+    color:#ffd28c;
+  }
+
+  .v21BootDot{
+    width:9px;
+    height:9px;
+    border-radius:50%;
+    background:#526474;
+    box-shadow:0 0 0 3px rgba(255,255,255,.025);
+  }
+
+  .v21BootRow[data-state="loading"] .v21BootDot{
+    background:#64b5ff;
+    animation:v21Pulse 1s infinite ease-in-out;
+  }
+
+  .v21BootRow[data-state="done"] .v21BootDot{
+    background:#55d98b;
+  }
+
+  .v21BootRow[data-state="warn"] .v21BootDot{
+    background:#ffb857;
+  }
+
+  @keyframes v21Pulse{
+    0%,100%{opacity:.45}
+    50%{opacity:1}
+  }
+
+  .v21VehicleGrid{
+    display:grid;
+    grid-template-columns:repeat(2,minmax(0,1fr));
+    gap:10px;
+    margin-top:14px;
+  }
+
+  .v21VehicleChoice{
+    padding:13px;
+    border:1px solid rgba(255,255,255,.09);
+    border-radius:11px;
+    background:rgba(255,255,255,.025);
+    color:#eef5fa;
+    text-align:left;
+    cursor:pointer;
+  }
+
+  .v21VehicleChoice:hover{
+    background:rgba(255,255,255,.055);
+  }
+
+  .v21VehicleChoice.selected{
+    border-color:#4da4e8;
+    background:#12324a;
+  }
+
+  .v21VehicleChoice b{
+    display:block;
+    font-size:13px;
+  }
+
+  .v21VehicleChoice span{
+    display:block;
+    margin-top:4px;
+    color:#8199ad;
+    font-size:10px;
+  }
+
+  #v21StartButton{
+    width:100%;
+    margin-top:16px;
+    padding:12px;
+    border:0;
+    border-radius:10px;
+    background:#1f7bc0;
+    color:#fff;
+    font:850 12px/1 system-ui,sans-serif;
+    cursor:pointer;
+  }
+
+  #v21StartButton:disabled{
+    opacity:.38;
+    cursor:not-allowed;
+  }
+
+  .v21RouteSummary{
+    display:flex;
+    justify-content:space-between;
+    gap:12px;
+    padding:11px 12px;
+    border-radius:9px;
+    background:rgba(255,255,255,.035);
+    color:#9db1c1;
+    font-size:11px;
+  }
+
+  .v21RouteSummary b{
+    color:#fff;
+  }
+
+  #v21Menu #plannerBox,
+  #v21Menu #jumpBox,
+  #v21Menu .multiplayerBox{
+    margin:0!important;
+    width:auto!important;
+  }
+
+  #v21Menu .presetGrid{
+    grid-template-columns:1fr!important;
+  }
+
+  #v21Menu .placeRow{
+    display:grid!important;
+    grid-template-columns:minmax(0,1fr) auto!important;
+  }
+
+  @media(max-width:760px){
+    #v21MenuPanel{
+      grid-template-columns:1fr;
+      width:min(430px,100vw);
+    }
+
+    .v21MenuNav{
+      display:flex;
+      gap:4px;
+      overflow:auto;
+      padding:8px;
+      border-right:0;
+      border-bottom:1px solid rgba(255,255,255,.08);
+    }
+
+    .v21Brand{
+      display:none;
+    }
+
+    .v21Tab{
+      width:auto;
+      flex:0 0 auto;
+      padding:8px 9px;
+    }
+
+    .v21MenuMain{
+      min-height:0;
+    }
+
+    .v21VehicleGrid{
+      grid-template-columns:1fr;
+    }
+  }
+  `;
+
+  document.head.appendChild(style);
+}
+
+function createV21BootOverlay(){
+  installV21BaseStyle();
+
+  if(document.getElementById('v21Startup')){
+    return;
+  }
+
+  const overlay=
+    document.createElement('div');
+
+  overlay.id='v21Startup';
+
+  overlay.innerHTML=`
+    <div class="v21StartupCard">
+      <div class="v21StartupBrand">
+        <h1>WORLD DRIVE</h1>
+        <p>V21.11 alpha · initialisation du monde</p>
+      </div>
+
+      <div id="v21BootContent">
+        <div class="v21RouteSummary">
+          <span>Trajet par défaut</span>
+          <b>Manic-2 → Manic-5</b>
+        </div>
+
+        <div class="v21BootRows">
+          <div class="v21BootRow" id="v21BootRoute" data-state="loading">
+            <span class="v21BootDot"></span>
+            <span>Trajet</span>
+            <b>Préparation…</b>
+          </div>
+
+          <div class="v21BootRow" id="v21BootHydro" data-state="waiting">
+            <span class="v21BootDot"></span>
+            <span>Hydrographie initiale</span>
+            <b>En attente</b>
+          </div>
+
+          <div class="v21BootRow" id="v21BootSettings" data-state="loading">
+            <span class="v21BootDot"></span>
+            <span>Réglages</span>
+            <b>Chargement…</b>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(overlay);
+
+  document.title=
+    'World Drive V21.11';
+
+  const oldLoadingTitle=
+    loading?.querySelector('h1');
+
+  if(oldLoadingTitle){
+    oldLoadingTitle.textContent=
+      'World Drive V21.11';
+  }
+
+  if(loading){
+    loading.classList.add('hidden');
+  }
+}
+
+function setV21BootProgress(
+  key,
+  state,
+  text
+){
+  const map={
+    route:'v21BootRoute',
+    hydro:'v21BootHydro',
+    settings:'v21BootSettings'
+  };
+
+  const row=$(
+    map[key]
+  );
+
+  if(!row)return;
+
+  row.dataset.state=
+    state;
+
+  const value=
+    row.querySelector('b');
+
+  if(value){
+    value.textContent=text;
+  }
+}
+
+function showV21VehicleChooser(){
+  const content=
+    $('v21BootContent');
+
+  if(!content)return;
+
+  v21BootMode='chooser';
+  v21SelectedStartupVehicle=null;
+
+  const vehicles=
+    vehicleSystem.list();
+
+  content.innerHTML=`
+    <div class="v21RouteSummary">
+      <span>Trajet prêt</span>
+      <b>${ROUTE_START.name} → ${ROUTE_END.name}</b>
+    </div>
+
+    <div style="margin-top:18px">
+      <div style="font-size:11px;color:#8aa0b3;text-transform:uppercase;letter-spacing:.12em;font-weight:800">
+        Choisissez votre véhicule
+      </div>
+      <div class="v21VehicleGrid" id="v21VehicleGrid"></div>
+    </div>
+
+    <button id="v21StartButton" disabled>
+      DÉMARRER
+    </button>
+  `;
+
+  const grid=
+    $('v21VehicleGrid');
+
+  for(const vehicle of vehicles){
+    const button=
+      document.createElement('button');
+
+    button.type='button';
+    button.className=
+      'v21VehicleChoice';
+
+    button.dataset.vehicleId=
+      vehicle.id;
+
+    button.innerHTML=`
+      <b>${vehicle.name}</b>
+      <span>${vehicle.description}</span>
+    `;
+
+    button.addEventListener(
+      'click',
+      ()=>{
+        v21SelectedStartupVehicle=
+          vehicle.id;
+
+        grid
+          .querySelectorAll(
+            '.v21VehicleChoice'
+          )
+          .forEach(
+            item=>
+              item.classList.toggle(
+                'selected',
+                item===button
+              )
+          );
+
+        const startButton=
+          $('v21StartButton');
+
+        if(startButton){
+          startButton.disabled=false;
+        }
+      }
+    );
+
+    grid.appendChild(button);
+  }
+
+  $('v21StartButton')
+    ?.addEventListener(
+      'click',
+      async()=>{
+        if(!v21SelectedStartupVehicle){
+          return;
+        }
+
+        const startButton=
+          $('v21StartButton');
+
+        if(startButton){
+          startButton.disabled=true;
+          startButton.textContent=
+            'DÉMARRAGE…';
+        }
+
+        applyVehicleSelection(
+          v21SelectedStartupVehicle,
+          {
+            announce:false
+          }
+        );
+
+        transmissionMode=
+          appSettings.transmissionMode===
+          'manual'
+            ?'manual'
+            :'automatic';
+
+        if(transmissionModeSelect){
+          transmissionModeSelect.value=
+            transmissionMode;
+        }
+
+        try{
+          await vehicleAudio.setEnabled(
+            !!appSettings.audioEnabled
+          );
+        }catch(error){
+          console.warn(
+            'Default audio activation failed',
+            error
+          );
+        }
+
+        gameStarted=true;
+        v21BootMode='done';
+
+        const overlay=
+          $('v21Startup');
+
+        overlay?.classList.add(
+          'hidden'
+        );
+
+        if(v21MenuButton){
+          v21MenuButton.style.display=
+            'block';
+        }
+
+        const speedDock=
+          $('speedometerDock');
+
+        speedDock?.classList.add(
+          'visible'
+        );
+
+        syncV21RuntimeControls();
+        syncV21VehicleInfo();
+
+        toast(
+          `Bonne route · ${vehicleSystem.active.name}`
+        );
+      }
+    );
+}
+
+createV21BootOverlay();
+
 // ---------- competitive route challenge ----------
 const runChallengeEl=$('runChallenge');
 const runStateEl=$('runState');
@@ -64,6 +1022,32 @@ const resetRunBtn=$('resetRunBtn');
 const challengeSubsection=$('challengeSubsection');
 const challengeSubsectionToggle=$('challengeSubsectionToggle');
 const challengeSubsectionSummary=$('challengeSubsectionSummary');
+
+// V21.3: the route challenge now lives inside the route map instead of in a
+// separate bar below it. Keep the original DOM nodes alive for compatibility
+// with the challenge logic, but remove that old presentation from view.
+if(challengeSubsection){
+  challengeSubsection.style.display='none';
+}
+
+if(runChallengeEl){
+  runChallengeEl.style.display='none';
+}
+
+const v21MapChallenge=
+  document.createElement('div');
+
+v21MapChallenge.id='v21MapChallenge';
+v21MapChallenge.innerHTML=`
+  <div class="v21ChallengeLabel">Temps :</div>
+  <div class="v21ChallengeValue" id="v21ChallengeTime">00:00.000 sec</div>
+  <div class="v21ChallengeLabel">Qualité :</div>
+  <div class="v21ChallengeValue" id="v21ChallengeQuality">100 %</div>
+`;
+
+$('mapbox')?.appendChild(
+  v21MapChallenge
+);
 
 challengeSubsectionToggle?.addEventListener(
   'click',
@@ -113,6 +1097,35 @@ function formatRunTime(ms){
   );
 }
 
+function formatRunTimeDetailed(ms){
+  const safe=
+    Math.max(
+      0,
+      Math.floor(ms||0)
+    );
+
+  const milliseconds=
+    safe%1000;
+
+  const totalSeconds=
+    Math.floor(safe/1000);
+
+  const seconds=
+    totalSeconds%60;
+
+  const minutes=
+    Math.floor(totalSeconds/60);
+
+  return (
+    String(minutes).padStart(2,'0')+
+    ':'+
+    String(seconds).padStart(2,'0')+
+    '.'+
+    String(milliseconds).padStart(3,'0')+
+    ' sec'
+  );
+}
+
 function runElapsedMs(now=performance.now()){
   if(!runChallenge.running&&!runChallenge.finished){
     return 0;
@@ -144,18 +1157,42 @@ function updateRunChallengeHUD(now=performance.now()){
       100-penalty
     );
 
-  runTimerEl.textContent=
-    formatRunTime(
-      runElapsedMs(now)
-    );
+  const mapChallengeTime=
+    $('v21ChallengeTime');
 
-  runQualityEl.textContent=
-    String(quality);
+  const mapChallengeQuality=
+    $('v21ChallengeQuality');
 
-  qualityFillEl.style.width=
-    quality+'%';
+  if(mapChallengeTime){
+    mapChallengeTime.textContent=
+      formatRunTimeDetailed(
+        runElapsedMs(now)
+      );
+  }
 
-  qualityFillEl.style.backgroundColor=
+  if(mapChallengeQuality){
+    mapChallengeQuality.textContent=
+      String(quality)+
+      ' %';
+  }
+
+  if(runTimerEl){
+    runTimerEl.textContent=
+      formatRunTime(
+        runElapsedMs(now)
+      );
+  }
+
+  if(runQualityEl){
+    runQualityEl.textContent=
+      String(quality);
+  }
+
+  if(qualityFillEl){
+    qualityFillEl.style.width=
+      quality+'%';
+
+    qualityFillEl.style.backgroundColor=
     quality>=90
       ?'#55d98b'
       :quality>=70
@@ -163,8 +1200,10 @@ function updateRunChallengeHUD(now=performance.now()){
         :quality>=45
           ?'#e28b50'
           :'#df5a61';
+  }
 
-  runQualityEl.style.color=
+  if(runQualityEl){
+    runQualityEl.style.color=
     quality>=90
       ?'#71e29f'
       :quality>=70
@@ -172,6 +1211,7 @@ function updateRunChallengeHUD(now=performance.now()){
         :quality>=45
           ?'#f1a263'
           :'#f06a71';
+  }
 
   runChallengeEl.classList.toggle(
     'running',
@@ -2237,7 +3277,12 @@ async function createRequestedRoute(start,end,waypoints=[]){
   resetWorldCaches();
   resetRunChallenge();
 
-  loading.classList.remove('hidden');
+  if(gameStarted){
+    loading.classList.remove('hidden');
+  }else{
+    loading.classList.add('hidden');
+  }
+
   loadingText.textContent='Initialisation du trajet…';
   routingStatus.textContent='Connexion…';
   statusEl.textContent='Création du trajet…';
@@ -2251,14 +3296,62 @@ async function createRequestedRoute(start,end,waypoints=[]){
       statusEl.textContent='Routage trop lent — tu peux réessayer';
       toast('Le routeur ne répond pas');
     }
-  },11000);
+  },15000);
 
   try{
+    setV21BootProgress(
+      'route',
+      'loading',
+      `Calcul du trajet ${start.name||'Départ'} → ${end.name||'Arrivée'}`
+    );
+
     await loadRoute();
+
+    setV21BootProgress(
+      'route',
+      'done',
+      'Trajet prêt'
+    );
+
     prepMap();
     placeAt(0);
-    completed=true;
+
+    // Routing failsafe no longer owns the hydrography wait.
     clearTimeout(failsafe);
+
+    loadingText.textContent=
+      'Chargement de l’hydrographie initiale…';
+
+    setV21BootProgress(
+      'hydro',
+      'loading',
+      'Hydrographie initiale'
+    );
+
+    const hydroReady=
+      await loadWaterAround(
+        absX,
+        absZ
+      ).catch(error=>{
+        console.warn(
+          'Initial hydrography failed',
+          error
+        );
+
+        return false;
+      });
+
+    setV21BootProgress(
+      'hydro',
+      hydroReady
+        ?'done'
+        :'warn',
+      hydroReady
+        ?'Hydrographie prête'
+        :'Hydrographie indisponible'
+    );
+
+    completed=true;
     loading.classList.add('hidden');
 
     loadElevationAround(absX,absZ).catch(()=>{elevStatus.textContent='Démo'});
@@ -2284,7 +3377,7 @@ async function createRequestedRoute(start,end,waypoints=[]){
 
 // ---------- V5 subsystem facade ----------
 const WorldDrive={
-  version:'5.0-alpha',
+  version:'21.0-alpha',
   route:{generation:0},
   streaming:{generation:0},
   vehicle:{generation:0},
@@ -2372,6 +3465,10 @@ let dynamicYawRate=0;
 // 1.0 = wheel has reached its estimated adhesion limit.
 let wheelGripUsage=[0,0,0,0];
 let wheelSlipLevels=[0,0,0,0];
+// V21.11 skid/audio diagnostics. These expose the already-computed tire demand
+// components to the renderer without changing vehicle handling.
+let wheelLateralUsage=[0,0,0,0];
+let wheelLongitudinalUsage=[0,0,0,0];
 
 // Handling slip is LATTERAL slip by axle. Longitudinal tire stress is still
 // available for skid marks, but cannot by itself make the rear of the car yaw.
@@ -2999,6 +4096,8 @@ function estimateWheelGripUsage({
   const smoothed=[];
   const slip=[];
   const lateralSlip=[];
+  const lateralUsage=[];
+  const longitudinalUsage=[];
 
   for(let i=0;i<4;i++){
     const meta={
@@ -3123,6 +4222,20 @@ function estimateWheelGripUsage({
         );
     }
 
+    // Diagnostic components shared by V21.11 skid-mark rendering and tire audio.
+    // They do not feed back into yaw, grip clamps or propulsion.
+    lateralUsage[i]=
+      Math.max(
+        0,
+        lateralUtil
+      );
+
+    longitudinalUsage[i]=
+      Math.max(
+        0,
+        longitudinalUtil
+      );
+
     const combined=
       airborne
         ?0
@@ -3191,6 +4304,8 @@ function estimateWheelGripUsage({
     smoothed,
     slip,
     lateralSlip,
+    lateralUsage,
+    longitudinalUsage,
 
     frontCombined:
       Math.max(
@@ -3233,6 +4348,23 @@ const vehicleAudio=createVehicleAudio({
     longitudinalAccel,
     currentSteerAngle,
     lateralGripUsage,
+    tireSquealLevel:skidMarks.localState.tireAudio,
+    brakeSquealLevel:skidMarks.localState.brakeAudio,
+
+    // V21.11 — keep the squeal alive during a real sustained slide even when
+    // instantaneous friction-circle demand oscillates from frame to frame.
+    // Visible skid intensity remains the authoritative "dark rubber" signal.
+    skidFrontLevel:skidMarks.localState.front,
+    skidRearLevel:skidMarks.localState.rear,
+    frontSlipAmount,
+    rearSlipAmount,
+    chassisSlipAngle:Math.abs(
+      angleDelta(
+        heading,
+        velocityHeading
+      )
+    ),
+
     engineRpm,
     transmissionGear,
     shifting:transmissionShifting,
@@ -3343,48 +4475,242 @@ const gamepad=createGamepadController({
 
   onResetToRoad:()=>resetToRoad(),
   isAutopilotEnabled:()=>autopilot,
-  disableAutopilot:message=>setAutopilot(false,message)
+  disableAutopilot:message=>setAutopilot(false,message),
+  getBindings:()=>appSettings.controls.gamepad
 });
 const gamepadState=gamepad.state;
 
-const keys={};addEventListener('keydown',e=>{
- keys[e.code]=true;
- if([
-   'ArrowUp',
-   'ArrowDown',
-   'ArrowLeft',
-   'ArrowRight',
-   'Space',
-   'BracketLeft',
-   'BracketRight'
- ].includes(e.code))e.preventDefault();
+const keys={};
 
- if(
-   !e.repeat&&
-   e.code==='BracketRight'
- ){
-   requestManualShift(1);
- }
+function keyboardCodes(action){
+  const configured=
+    appSettings?.controls?.keyboard?.[
+      action
+    ];
 
- if(
-   !e.repeat&&
-   e.code==='BracketLeft'
- ){
-   requestManualShift(-1);
- }
+  const fallback=
+    DEFAULT_WORLD_SETTINGS
+      .controls
+      .keyboard[
+        action
+      ]||
+    [];
 
- if(e.code==='KeyC')cameraController.cycle();
- if(e.code==='KeyL')toggleAssist();
- if(e.code==='KeyP')toggleAutopilot();
- if(e.code==='KeyR')resetToRoad();
+  return Array.isArray(configured)&&
+    configured.length
+      ?configured
+      :fallback;
+}
 
- // Immediate manual takeover: steering, braking or reverse cancels autopilot.
- if(autopilot && ['KeyA','KeyD','ArrowLeft','ArrowRight','KeyS','ArrowDown','Space'].includes(e.code)){
-   setAutopilot(false,'Reprise manuelle');
- }
-});addEventListener('keyup',e=>keys[e.code]=false);
-let maxSpeedKmh=200;let MAX=maxSpeedKmh/3.6;const REV=-10;
-let obeyRoadSpeedLimits=localStorage.getItem('worlddrive_obey_speed_limits')!=='0';
+function keyboardActionDown(action){
+  return keyboardCodes(action)
+    .some(code=>!!keys[code]);
+}
+
+function keyboardActionMatches(action,code){
+  return keyboardCodes(action)
+    .includes(code);
+}
+
+function clearKeyboardState(){
+  for(const key of Object.keys(keys)){
+    delete keys[key];
+  }
+}
+
+function assignKeyboardBinding(action,code){
+  const controls=
+    appSettings.controls.keyboard;
+
+  // One primary key can only control one action after rebinding.
+  for(const otherAction of Object.keys(controls)){
+    if(otherAction===action)continue;
+
+    controls[otherAction]=
+      (controls[otherAction]||[])
+        .filter(
+          existing=>
+            existing!==code
+        );
+  }
+
+  controls[action]=[code];
+  queueSettingsSave();
+}
+
+addEventListener('keydown',e=>{
+  if(keyboardRebindAction){
+    e.preventDefault();
+    e.stopPropagation();
+
+    if(e.code==='Escape'){
+      keyboardRebindAction=null;
+      window.dispatchEvent(
+        new CustomEvent(
+          'worlddrive-keyboard-rebind-cancel'
+        )
+      );
+      return;
+    }
+
+    const action=
+      keyboardRebindAction;
+
+    keyboardRebindAction=null;
+    assignKeyboardBinding(
+      action,
+      e.code
+    );
+
+    window.dispatchEvent(
+      new CustomEvent(
+        'worlddrive-keyboard-rebound',
+        {
+          detail:{
+            action,
+            code:e.code
+          }
+        }
+      )
+    );
+
+    return;
+  }
+
+  const inputTag=
+    String(
+      e.target?.tagName||
+      ''
+    ).toUpperCase();
+
+  if(
+    !gameStarted||
+    v21MenuOpen||
+    inputTag==='INPUT'||
+    inputTag==='TEXTAREA'||
+    inputTag==='SELECT'||
+    e.target?.isContentEditable
+  ){
+    return;
+  }
+
+  keys[e.code]=true;
+
+  if(
+    [
+      'ArrowUp',
+      'ArrowDown',
+      'ArrowLeft',
+      'ArrowRight',
+      'Space',
+      'BracketLeft',
+      'BracketRight'
+    ].includes(e.code)
+  ){
+    e.preventDefault();
+  }
+
+  if(
+    !e.repeat&&
+    keyboardActionMatches(
+      'shiftUp',
+      e.code
+    )
+  ){
+    requestManualShift(1);
+  }
+
+  if(
+    !e.repeat&&
+    keyboardActionMatches(
+      'shiftDown',
+      e.code
+    )
+  ){
+    requestManualShift(-1);
+  }
+
+  if(
+    !e.repeat&&
+    keyboardActionMatches(
+      'camera',
+      e.code
+    )
+  ){
+    cameraController.cycle();
+  }
+
+  if(
+    !e.repeat&&
+    keyboardActionMatches(
+      'assist',
+      e.code
+    )
+  ){
+    toggleAssist();
+  }
+
+  if(
+    !e.repeat&&
+    keyboardActionMatches(
+      'autopilot',
+      e.code
+    )
+  ){
+    toggleAutopilot();
+  }
+
+  if(
+    !e.repeat&&
+    keyboardActionMatches(
+      'reset',
+      e.code
+    )
+  ){
+    resetToRoad();
+  }
+
+  // Immediate manual takeover: steering, braking or handbrake cancels autopilot.
+  if(
+    autopilot&&
+    (
+      keyboardActionMatches(
+        'steerLeft',
+        e.code
+      )||
+      keyboardActionMatches(
+        'steerRight',
+        e.code
+      )||
+      keyboardActionMatches(
+        'brake',
+        e.code
+      )||
+      keyboardActionMatches(
+        'handbrake',
+        e.code
+      )
+    )
+  ){
+    setAutopilot(
+      false,
+      'Reprise manuelle'
+    );
+  }
+});
+
+addEventListener(
+  'keyup',
+  e=>{
+    keys[e.code]=false;
+  }
+);
+
+let maxSpeedKmh=200;
+let MAX=maxSpeedKmh/3.6;
+const REV=-10;
+
+let obeyRoadSpeedLimits=true;
 let roadContact=false;
 
 function setAutopilot(enabled,message=''){
@@ -3393,6 +4719,8 @@ function setAutopilot(enabled,message=''){
   autopilotStatus.textContent=autopilot?'ACTIF':'OFF';
   if(autopilot){
     assist=true;
+    appSettings.assist=true;
+    queueSettingsSave();
     $('assist').textContent='Assist: ON';
     roadContact=true;
     const n=nearestRoute(absX,absZ);
@@ -3405,6 +4733,8 @@ function setAutopilot(enabled,message=''){
     autopilotSteer=0;
     toast(message||'Pilote automatique désactivé');
   }
+
+  syncV21RuntimeControls();
 }
 function toggleAutopilot(){ setAutopilot(!autopilot); }
 
@@ -3491,14 +4821,68 @@ function updateDrive(dt){
  const airborneNow=
    !!vehiclePresentation.airborne;
 
- const keyboardThrottle=((keys.KeyW||keys.ArrowUp?1:0)-(keys.KeyS||keys.ArrowDown?1:0));
- const keyboardTurn=((keys.KeyA||keys.ArrowLeft?1:0)-(keys.KeyD||keys.ArrowRight?1:0));
- let manualThrottle=keyboardThrottle,manualTurn=keyboardTurn,manualHand=!!keys.Space;
+ const keyboardThrottle=
+   (
+     keyboardActionDown('accelerate')
+       ?1
+       :0
+   )-
+   (
+     keyboardActionDown('brake')
+       ?1
+       :0
+   );
 
- if(gamepadState.connected){
-   if(gamepadState.throttle>.02||gamepadState.brake>.02)manualThrottle=gamepadState.throttle-gamepadState.brake;
-   if(Math.abs(gamepadState.steer)>.001)manualTurn=-gamepadState.steer;
-   manualHand=manualHand||gamepadState.hand;
+ const keyboardTurn=
+   (
+     keyboardActionDown('steerLeft')
+       ?1
+       :0
+   )-
+   (
+     keyboardActionDown('steerRight')
+       ?1
+       :0
+   );
+
+ let manualThrottle=
+   v21MenuOpen
+     ?0
+     :keyboardThrottle;
+
+ let manualTurn=
+   v21MenuOpen
+     ?0
+     :keyboardTurn;
+
+ let manualHand=
+   v21MenuOpen
+     ?false
+     :keyboardActionDown(
+        'handbrake'
+      );
+
+ if(
+   gamepadState.connected&&
+   !v21MenuOpen
+ ){
+   if(
+     gamepadState.throttle>.02||
+     gamepadState.brake>.02
+   ){
+     manualThrottle=
+       gamepadState.throttle-
+       gamepadState.brake;
+   }
+
+   if(Math.abs(gamepadState.steer)>.001){
+     manualTurn=
+       -gamepadState.steer;
+   }
+
+   manualHand=
+     manualHand||
+     gamepadState.hand;
  }
 
  const throttle=autopilot?ap.throttle:manualThrottle;
@@ -3932,6 +5316,12 @@ function updateDrive(dt){
 
  wheelSlipLevels=
    perWheelGrip.slip;
+
+ wheelLateralUsage=
+   perWheelGrip.lateralUsage;
+
+ wheelLongitudinalUsage=
+   perWheelGrip.longitudinalUsage;
 
  const targetFrontSlip=
    perWheelGrip.frontLateral;
@@ -4401,6 +5791,9 @@ function updateDrive(dt){
    steerAngle,
    lateralGripUsage,
    wheelGripUsage,
+   wheelSlipLevels,
+   wheelLateralUsage,
+   wheelLongitudinalUsage,
    longitudinalAccel,
    handbrake:hand,
    vehicle:VEHICLE,
@@ -4420,43 +5813,75 @@ function updateDrive(dt){
 function toggleAssist(){
  if(autopilot){setAutopilot(false,'Pilote auto désactivé');}
  assist=!assist;
+ appSettings.assist=assist;
+ queueSettingsSave();
  $('assist').textContent='Assist: '+(assist?'ON':'OFF');
+ syncV21RuntimeControls();
  toast('Assistance '+(assist?'activée':'désactivée'));
 }
 
-function placeAt(frac){const p=routePointAt(frac);absX=p.x;absZ=p.z;heading=p.angle;speed=0;steer=0;visualSteer=0;currentSteerAngle=0;longitudinalAccel=0;lateralGripUsage=0;wheelGripUsage=[0,0,0,0];wheelSlipLevels=[0,0,0,0];frontSlipAmount=0;rearSlipAmount=0;dynamicYawRate=0;velocityHeading=heading;resetTransmissionState();vehiclePresentation.reset();skidMarks.resetSource('local');roadContact=true;recenterIfNeeded(absX,absZ,true);ensureRoadProfileNear(absX,absZ);const placedRoadSurface=roadSurfaceAt(absX,absZ);
+function placeAt(frac){const p=routePointAt(frac);absX=p.x;absZ=p.z;heading=p.angle;speed=0;steer=0;visualSteer=0;currentSteerAngle=0;longitudinalAccel=0;lateralGripUsage=0;wheelGripUsage=[0,0,0,0];wheelSlipLevels=[0,0,0,0];wheelLateralUsage=[0,0,0,0];wheelLongitudinalUsage=[0,0,0,0];frontSlipAmount=0;rearSlipAmount=0;dynamicYawRate=0;velocityHeading=heading;resetTransmissionState();vehiclePresentation.reset();skidMarks.resetSource('local');roadContact=true;recenterIfNeeded(absX,absZ,true);ensureRoadProfileNear(absX,absZ);const placedRoadSurface=roadSurfaceAt(absX,absZ);
 car.position.set(
   0,
   (placedRoadSurface?.y??roadHeightAt(absX,absZ)+ROAD_SURFACE_OFFSET)+.38+TIRE_VISUAL_CLEARANCE,
   0
 );drawMap(p.cum)}
-function resetToRoad(){const n=nearestRoute(absX,absZ);if(n){absX=n.px;absZ=n.pz;heading=n.angle;speed=0;steer=0;visualSteer=0;currentSteerAngle=0;longitudinalAccel=0;lateralGripUsage=0;wheelGripUsage=[0,0,0,0];wheelSlipLevels=[0,0,0,0];frontSlipAmount=0;rearSlipAmount=0;dynamicYawRate=0;velocityHeading=heading;resetTransmissionState();vehiclePresentation.reset();skidMarks.resetSource('local');roadContact=true;recenterIfNeeded(absX,absZ,true);ensureRoadProfileNear(absX,absZ)}}
+function resetToRoad(){const n=nearestRoute(absX,absZ);if(n){absX=n.px;absZ=n.pz;heading=n.angle;speed=0;steer=0;visualSteer=0;currentSteerAngle=0;longitudinalAccel=0;lateralGripUsage=0;wheelGripUsage=[0,0,0,0];wheelSlipLevels=[0,0,0,0];wheelLateralUsage=[0,0,0,0];wheelLongitudinalUsage=[0,0,0,0];frontSlipAmount=0;rearSlipAmount=0;dynamicYawRate=0;velocityHeading=heading;resetTransmissionState();vehiclePresentation.reset();skidMarks.resetSource('local');roadContact=true;recenterIfNeeded(absX,absZ,true);ensureRoadProfileNear(absX,absZ)}}
 
-const maxSpeedSlider=$('maxSpeedSlider'),maxSpeedLabel=$('maxSpeedLabel');
+const maxSpeedSlider=$('maxSpeedSlider');
+const maxSpeedLabel=$('maxSpeedLabel');
 const speedLimitModeBtn=$('speedLimitModeBtn');
 
 function updateSpeedLimitModeUI(){
   if(!speedLimitModeBtn)return;
+
   speedLimitModeBtn.textContent=
-    'Limites route: '+(obeyRoadSpeedLimits?'ON':'OFF');
-  speedLimitModeBtn.classList.toggle('active',obeyRoadSpeedLimits);
-  speedLimitModeBtn.title=obeyRoadSpeedLimits
-    ? 'Le pilote automatique respecte les limites OSM'
-    : 'Le pilote automatique ignore les limites OSM';
+    'Limites route: '+
+    (
+      obeyRoadSpeedLimits
+        ?'ON'
+        :'OFF'
+    );
+
+  speedLimitModeBtn.classList.toggle(
+    'active',
+    obeyRoadSpeedLimits
+  );
+
+  speedLimitModeBtn.title=
+    obeyRoadSpeedLimits
+      ?'Le pilote automatique respecte les limites OSM'
+      :'Le pilote automatique ignore les limites OSM';
 }
 
 function toggleRoadSpeedLimits(){
-  obeyRoadSpeedLimits=!obeyRoadSpeedLimits;
-  localStorage.setItem(
-    'worlddrive_obey_speed_limits',
-    obeyRoadSpeedLimits?'1':'0'
-  );
-  updateSpeedLimitModeUI();
+  obeyRoadSpeedLimits=
+    !obeyRoadSpeedLimits;
 
-  if(obeyRoadSpeedLimits&&activeRoadMeta.maxspeed){
-    toast(`Limites route ON · ${Math.round(activeRoadMeta.maxspeed)} km/h`);
+  appSettings.obeyRoadSpeedLimits=
+    obeyRoadSpeedLimits;
+
+  queueSettingsSave();
+
+  updateSpeedLimitModeUI();
+  syncV21RuntimeControls();
+
+  if(
+    obeyRoadSpeedLimits&&
+    activeRoadMeta.maxspeed
+  ){
+    toast(
+      `Limites route ON · ${Math.round(activeRoadMeta.maxspeed)} km/h`
+    );
   }else{
-    toast('Limites route '+(obeyRoadSpeedLimits?'ON':'OFF'));
+    toast(
+      'Limites route '+
+      (
+        obeyRoadSpeedLimits
+          ?'ON'
+          :'OFF'
+      )
+    );
   }
 }
 
@@ -4478,62 +5903,36 @@ function vehicleTopSpeedKmh(){
   );
 }
 
-function syncVehicleSpeedCapability({
-  useVehicleMaximum=false
-}={}){
+// V21: the player speed slider is gone.
+// MAX now follows the vehicle's real mechanical/electronic capability.
+function syncVehicleSpeedCapability(){
   const top=
     vehicleTopSpeedKmh();
 
-  maxSpeedSlider.max=
-    String(top);
+  maxSpeedKmh=top;
+  MAX=top/3.6;
 
-  if(useVehicleMaximum){
-    maxSpeedSlider.value=
-      String(top);
-    setMaxSpeed(top);
-  }else if(maxSpeedKmh>top){
-    maxSpeedSlider.value=
-      String(top);
-    setMaxSpeed(top);
+  if(maxSpeedSlider){
+    maxSpeedSlider.max=String(top);
+    maxSpeedSlider.value=String(top);
+    maxSpeedSlider.disabled=true;
   }
 
-  maxSpeedLabel.textContent=
-    Math.round(maxSpeedKmh);
-}
-
-function setMaxSpeed(kmh){
-  const vehicleTop=
-    vehicleTopSpeedKmh();
-
-  maxSpeedKmh=
-    Math.max(
-      20,
-      Math.min(
-        vehicleTop,
-        Number(kmh)||100
-      )
-    );
-
-  MAX=maxSpeedKmh/3.6;
-  maxSpeedLabel.textContent=Math.round(maxSpeedKmh);
-  // Only an intentionally lower driver/electronic cap clamps current speed.
-  // At the vehicle's full setting, mechanical gearing + redline limiter own
-  // the top speed.
-  if(
-    maxSpeedKmh<
-      vehicleTop-.5&&
-    speed>MAX
-  ){
-    speed=MAX;
+  if(maxSpeedLabel){
+    maxSpeedLabel.textContent=
+      Math.round(top);
   }
-  toast(`Vitesse max: ${Math.round(maxSpeedKmh)} km/h`);
+
+  syncV21VehicleInfo();
 }
-maxSpeedSlider.addEventListener('input',e=>setMaxSpeed(e.target.value));
-if(speedLimitModeBtn)speedLimitModeBtn.onclick=toggleRoadSpeedLimits;
+
+if(speedLimitModeBtn){
+  speedLimitModeBtn.onclick=
+    toggleRoadSpeedLimits;
+}
+
 updateSpeedLimitModeUI();
-syncVehicleSpeedCapability({
-  useVehicleMaximum:true
-});
+syncVehicleSpeedCapability();
 
 resetTransmissionState();
 
@@ -4601,6 +6000,12 @@ transmissionModeSelect.addEventListener(
 
     manualShiftRequest=null;
 
+    appSettings.transmissionMode=
+      transmissionMode;
+
+    queueSettingsSave();
+    syncV21RuntimeControls();
+
     toast(
       transmissionMode==='manual'
         ?'Transmission manuelle · [ / X rétrograder · ] / A monter'
@@ -4620,44 +6025,95 @@ if(vehicleSelect?.parentElement){
   );
 }
 
+function applyVehicleSelection(
+  id,
+  {
+    announce=true
+  }={}
+){
+  const exists=
+    vehicleSystem
+      .list()
+      .some(
+        profile=>
+          profile.id===id
+      );
+
+  if(!exists){
+    return false;
+  }
+
+  if(autopilot){
+    setAutopilot(
+      false,
+      'Pilote auto désactivé'
+    );
+  }
+
+  const changed=
+    vehicleSystem.select(id);
+
+  if(
+    !changed&&
+    vehicleSystem.activeId!==id
+  ){
+    return false;
+  }
+
+  speed=0;
+  steer=0;
+  visualSteer=0;
+  currentSteerAngle=0;
+  longitudinalAccel=0;
+  lateralGripUsage=0;
+  wheelGripUsage=[0,0,0,0];
+  wheelSlipLevels=[0,0,0,0];
+  wheelLateralUsage=[0,0,0,0];
+  wheelLongitudinalUsage=[0,0,0,0];
+  frontSlipAmount=0;
+  rearSlipAmount=0;
+  dynamicYawRate=0;
+  velocityHeading=heading;
+
+  resetTransmissionState();
+  vehiclePresentation.reset();
+
+  vehicleVisuals.applyVehicleVisualProfile();
+  vehicleAudio.setProfile(
+    vehicleSystem.active.audio
+  );
+
+  syncVehicleSpeedCapability();
+
+  if(vehicleSelect){
+    vehicleSelect.value=
+      vehicleSystem.activeId;
+  }
+
+  syncV21VehicleInfo();
+
+  if(announce){
+    toast(
+      `Véhicule: ${vehicleSystem.active.name} · ${vehicleSystem.active.description}`
+    );
+  }
+
+  return true;
+}
+
 if(vehicleSelect){
-  vehicleSystem.populateSelect(vehicleSelect);
+  vehicleSystem.populateSelect(
+    vehicleSelect
+  );
 
-  vehicleSelect.addEventListener('change',event=>{
-    const changed=vehicleSystem.select(event.target.value);
-
-    if(changed){
-      if(autopilot)setAutopilot(false,'Pilote auto désactivé');
-
-      speed=0;
-      steer=0;
-      visualSteer=0;
-      currentSteerAngle=0;
-      longitudinalAccel=0;
-      lateralGripUsage=0;
-      wheelGripUsage=[0,0,0,0];
-      wheelSlipLevels=[0,0,0,0];
-      frontSlipAmount=0;
-      rearSlipAmount=0;
-      dynamicYawRate=0;
-      velocityHeading=heading;
-      resetTransmissionState();
-      vehiclePresentation.reset();
-
-      vehicleVisuals.applyVehicleVisualProfile();
-      vehicleAudio.setProfile(vehicleSystem.active.audio);
-
-      // Each car exposes its own real top-speed capability.
-      // Selecting a vehicle starts its speed limiter at that vehicle's maximum.
-      syncVehicleSpeedCapability({
-        useVehicleMaximum:true
-      });
-
-      toast(
-        `Véhicule: ${vehicleSystem.active.name} · ${vehicleSystem.active.description}`
+  vehicleSelect.addEventListener(
+    'change',
+    event=>{
+      applyVehicleSelection(
+        event.target.value
       );
     }
-  });
+  );
 }
 
 $('autopilotBtn').onclick=toggleAutopilot;
@@ -4821,11 +6277,6 @@ function setGameControlsHidden(hidden){
   speedometerDock?.setAttribute(
     'aria-hidden',
     hidden?'false':'true'
-  );
-
-  localStorage.setItem(
-    'worlddrive_hide_controls',
-    hidden?'1':'0'
   );
 
   if(!hidden){
@@ -5596,9 +7047,9 @@ function drawSpeedometer(){
   );
 }
 
-setGameControlsHidden(
-  localStorage.getItem('worlddrive_hide_controls')==='1'
-);
+// V21 always starts with the compact instrument cluster visible.
+// Visibility is now persisted in IndexedDB through appSettings.display.
+setGameControlsHidden(true);
 
 // ---------- compass ----------
 const compassCanvas=$('compass'),compassCtx=compassCanvas.getContext('2d'),compassHeading=$('compassHeading');
@@ -5826,6 +7277,74 @@ const worldStreaming=createWorldStreaming({
     fetchOverpassCached(namespace,ll,query,timeoutMs,ttlMs)
 });
 
+const DISPLAY_DISTANCE_PROFILES={
+  low:{
+    label:'Basse',
+    cameraFar:3200,
+    fogDensity:.00102,
+    streamingScale:.78
+  },
+
+  medium:{
+    label:'Moyenne',
+    cameraFar:4500,
+    fogDensity:.00082,
+    streamingScale:1
+  },
+
+  high:{
+    label:'Haute',
+    cameraFar:6500,
+    fogDensity:.00058,
+    streamingScale:1.35
+  }
+};
+
+function applyDisplayDistanceProfile(
+  requestedProfile,
+  {
+    save=false
+  }={}
+){
+  const key=
+    DISPLAY_DISTANCE_PROFILES[
+      requestedProfile
+    ]
+      ?requestedProfile
+      :'high';
+
+  const profile=
+    DISPLAY_DISTANCE_PROFILES[key];
+
+  appSettings.displayDistance=key;
+
+  camera.far=
+    profile.cameraFar;
+
+  camera.updateProjectionMatrix();
+
+  if(scene.fog){
+    scene.fog.density=
+      profile.fogDensity;
+  }
+
+  worldStreaming.setDistanceScale?.(
+    profile.streamingScale
+  );
+
+  if(save){
+    queueSettingsSave();
+  }
+
+  const select=$('v21DisplayDistance');
+
+  if(select){
+    select.value=key;
+  }
+
+  return key;
+}
+
 // ---------- V5 time-of-day prototype ----------
 const timeSlider=$('timeSlider'),timeLabel=$('timeLabel');
 let timeOfDay=12;
@@ -5916,12 +7435,1702 @@ function setTimeOfDay(hour){
 }
 timeSlider.addEventListener('input',e=>setTimeOfDay(e.target.value));
 
+// ---------- V21 reorganized menu ----------
+const KEYBOARD_ACTION_LABELS={
+  accelerate:'Accélérer',
+  brake:'Freiner / reculer',
+  steerLeft:'Tourner à gauche',
+  steerRight:'Tourner à droite',
+  handbrake:'Frein à main',
+  shiftUp:'Rapport +',
+  shiftDown:'Rapport −',
+  camera:'Changer caméra',
+  assist:'Assistance voie',
+  autopilot:'Pilote automatique',
+  reset:'Replacer sur la route'
+};
+
+const GAMEPAD_ACTION_LABELS={
+  shiftUpButton:'Rapport +',
+  shiftDownButton:'Rapport −',
+  handbrakeButton:'Frein à main',
+  cameraButton:'Changer caméra',
+  assistButton:'Assistance voie',
+  autopilotButton:'Pilote automatique',
+  resetButton:'Replacer sur la route',
+  reverseViewButton:'Vue arrière'
+};
+
+const GAMEPAD_BUTTONS=[
+  [0,'A'],
+  [1,'B'],
+  [2,'X'],
+  [3,'Y'],
+  [4,'LB'],
+  [5,'RB'],
+  [6,'LT'],
+  [7,'RT'],
+  [8,'View / Back'],
+  [9,'Menu / Start'],
+  [10,'L3'],
+  [11,'R3'],
+  [12,'D-pad haut'],
+  [13,'D-pad bas'],
+  [14,'D-pad gauche'],
+  [15,'D-pad droite']
+];
+
+const GAMEPAD_AXES=[
+  [0,'Stick gauche X'],
+  [1,'Stick gauche Y'],
+  [2,'Stick droit X'],
+  [3,'Stick droit Y']
+];
+
+function prettyKeyCode(code){
+  const aliases={
+    Space:'Espace',
+    ArrowUp:'↑',
+    ArrowDown:'↓',
+    ArrowLeft:'←',
+    ArrowRight:'→',
+    BracketLeft:'[',
+    BracketRight:']',
+    Escape:'Échap'
+  };
+
+  if(aliases[code]){
+    return aliases[code];
+  }
+
+  if(/^Key[A-Z]$/.test(code)){
+    return code.slice(3);
+  }
+
+  if(/^Digit\d$/.test(code)){
+    return code.slice(5);
+  }
+
+  return code||'—';
+}
+
+function prettyKeyboardBinding(action){
+  const codes=
+    keyboardCodes(action);
+
+  return codes
+    .map(prettyKeyCode)
+    .join(' / ');
+}
+
+function formatCacheBytes(bytes){
+  const value=
+    Math.max(
+      0,
+      Number(bytes)||0
+    );
+
+  if(value<1024){
+    return `${Math.round(value)} o`;
+  }
+
+  if(value<1024*1024){
+    return `${(value/1024).toFixed(1)} Ko`;
+  }
+
+  if(value<1024*1024*1024){
+    return `${(value/1024/1024).toFixed(1)} Mo`;
+  }
+
+  return `${(value/1024/1024/1024).toFixed(2)} Go`;
+}
+
+function v21SetToggle(
+  id,
+  enabled,
+  {
+    on='ON',
+    off='OFF'
+  }={}
+){
+  const button=$(id);
+  if(!button)return;
+
+  button.textContent=
+    enabled
+      ?on
+      :off;
+
+  button.classList.toggle(
+    'on',
+    !!enabled
+  );
+}
+
+function syncV21VehicleInfo(){
+  const active=
+    vehicleSystem?.active;
+
+  if(!active)return;
+
+  const drivetrain=
+    $('v21VehicleDrivetrain');
+
+  const gears=
+    $('v21VehicleGears');
+
+  const redline=
+    $('v21VehicleRedline');
+
+  const top=
+    $('v21VehicleTop');
+
+  if(drivetrain){
+    drivetrain.textContent=
+      active.physics?.drivetrain||
+      '—';
+  }
+
+  if(gears){
+    gears.textContent=
+      active.audio?.type==='combustion'
+        ?`${active.audio.gearCount||active.audio.gearRatios?.length||'—'} rapports`
+        :'Électrique';
+  }
+
+  if(redline){
+    redline.textContent=
+      active.audio?.type==='combustion'
+        ?`${Math.round(active.audio.redlineRpm||0)} RPM`
+        :'—';
+  }
+
+  if(top){
+    top.textContent=
+      `${Math.round(vehicleTopSpeedKmh())} km/h`;
+  }
+}
+
+function applyV21DisplayVisibility(){
+  const display=
+    appSettings.display||
+    DEFAULT_WORLD_SETTINGS.display;
+
+  const dock=
+    $('speedometerDock');
+
+  if(dock){
+    dock.style.display=
+      display.cluster
+        ?''
+        :'none';
+
+    if(display.cluster){
+      dock.classList.add('visible');
+    }
+  }
+
+  const map=
+    $('mapbox');
+
+  if(map){
+    map.style.display=
+      display.minimap
+        ?''
+        :'none';
+  }
+
+  const compass=
+    $('compassWrap');
+
+  if(compass){
+    compass.style.display=
+      display.compass
+        ?''
+        :'none';
+  }
+}
+
+function syncV21RuntimeControls(){
+  v21SetToggle(
+    'v21AssistToggle',
+    !!assist
+  );
+
+  v21SetToggle(
+    'v21RoadLimitsToggle',
+    !!obeyRoadSpeedLimits
+  );
+
+  v21SetToggle(
+    'v21ImageryToggle',
+    !!imageryService?.enabled
+  );
+
+  v21SetToggle(
+    'v21AudioToggle',
+    !!appSettings.audioEnabled
+  );
+
+  v21SetToggle(
+    'v21ClusterToggle',
+    !!appSettings.display?.cluster
+  );
+
+  v21SetToggle(
+    'v21MinimapToggle',
+    !!appSettings.display?.minimap
+  );
+
+  v21SetToggle(
+    'v21CompassToggle',
+    !!appSettings.display?.compass
+  );
+
+  const distance=
+    $('v21DisplayDistance');
+
+  if(distance){
+    distance.value=
+      appSettings.displayDistance||
+      'high';
+  }
+
+  if(transmissionModeSelect){
+    transmissionModeSelect.value=
+      transmissionMode;
+  }
+
+  const autoStatus=
+    $('v21AutopilotState');
+
+  if(autoStatus){
+    autoStatus.textContent=
+      autopilot
+        ?'ON'
+        :'OFF';
+  }
+
+  syncV21VehicleInfo();
+  refreshV21KeyboardBindings();
+}
+
+async function refreshV21CacheStats(){
+  const sizeEl=
+    $('v21CacheSize');
+
+  const recordsEl=
+    $('v21CacheRecords');
+
+  if(sizeEl){
+    sizeEl.textContent='Calcul…';
+  }
+
+  try{
+    const stats=
+      await getWorldCacheStats();
+
+    if(sizeEl){
+      sizeEl.textContent=
+        formatCacheBytes(
+          stats.bytes
+        );
+    }
+
+    if(recordsEl){
+      recordsEl.textContent=
+        `${stats.records} éléments`;
+    }
+  }catch(error){
+    console.warn(
+      'Cache stats failed',
+      error
+    );
+
+    if(sizeEl){
+      sizeEl.textContent='—';
+    }
+
+    if(recordsEl){
+      recordsEl.textContent='Indisponible';
+    }
+  }
+}
+
+function refreshV21KeyboardBindings(){
+  const container=
+    $('v21KeyboardControls');
+
+  if(!container)return;
+
+  for(const button of container.querySelectorAll('[data-keyboard-action]')){
+    const action=
+      button.dataset.keyboardAction;
+
+    button.textContent=
+      prettyKeyboardBinding(
+        action
+      );
+  }
+}
+
+function buildV21KeyboardControls(){
+  const wrap=
+    document.createElement('div');
+
+  wrap.id=
+    'v21KeyboardControls';
+
+  wrap.className=
+    'v21ControlsGrid';
+
+  for(
+    const [action,label]
+    of Object.entries(
+      KEYBOARD_ACTION_LABELS
+    )
+  ){
+    const name=
+      document.createElement('div');
+
+    name.className=
+      'v21ControlName';
+
+    name.textContent=
+      label;
+
+    const value=
+      document.createElement('div');
+
+    value.className=
+      'v21ControlValue';
+
+    const button=
+      document.createElement('button');
+
+    button.type='button';
+    button.className=
+      'v21MenuBtn';
+
+    button.dataset.keyboardAction=
+      action;
+
+    button.textContent=
+      prettyKeyboardBinding(
+        action
+      );
+
+    button.addEventListener(
+      'click',
+      ()=>{
+        keyboardRebindAction=
+          action;
+
+        button.textContent=
+          'Appuyez sur une touche…';
+      }
+    );
+
+    value.appendChild(button);
+    wrap.append(name,value);
+  }
+
+  return wrap;
+}
+
+function gamepadOptionHtml(
+  selectedValue,
+  {
+    allowNone=false
+  }={}
+){
+  const parts=[];
+
+  if(allowNone){
+    parts.push(
+      `<option value="" ${selectedValue===null?'selected':''}>—</option>`
+    );
+  }
+
+  for(const [value,label] of GAMEPAD_BUTTONS){
+    parts.push(
+      `<option value="${value}" ${Number(selectedValue)===value?'selected':''}>${label}</option>`
+    );
+  }
+
+  return parts.join('');
+}
+
+function buildV21GamepadControls(){
+  const wrap=
+    document.createElement('div');
+
+  wrap.className=
+    'v21ControlsGrid';
+
+  const controls=
+    appSettings.controls.gamepad;
+
+  const sensitivityName=
+    document.createElement('div');
+
+  sensitivityName.className=
+    'v21ControlName';
+
+  sensitivityName.textContent=
+    'Sensibilité joysticks';
+
+  const sensitivityValue=
+    document.createElement('div');
+
+  sensitivityValue.className=
+    'v21ControlValue v21JoystickSensitivity';
+
+  const sensitivitySlider=
+    document.createElement('input');
+
+  sensitivitySlider.type='range';
+  sensitivitySlider.min='50';
+  sensitivitySlider.max='200';
+  sensitivitySlider.step='5';
+  sensitivitySlider.setAttribute(
+    'aria-label',
+    'Sensibilité des joysticks de la manette'
+  );
+
+  const rawSensitivity=
+    Number(controls.joystickSensitivity);
+
+  const sensitivity=
+    Number.isFinite(rawSensitivity)
+      ?Math.max(.5,Math.min(2,rawSensitivity))
+      :1;
+
+  sensitivitySlider.value=
+    String(Math.round(sensitivity*100));
+
+  const sensitivityLabel=
+    document.createElement('span');
+
+  const syncSensitivityLabel=()=>{
+    sensitivityLabel.textContent=
+      `${sensitivitySlider.value} %`;
+  };
+
+  syncSensitivityLabel();
+
+  sensitivitySlider.addEventListener(
+    'input',
+    ()=>{
+      controls.joystickSensitivity=
+        Number(sensitivitySlider.value)/100;
+
+      syncSensitivityLabel();
+      queueSettingsSave();
+    }
+  );
+
+  sensitivityValue.append(
+    sensitivitySlider,
+    sensitivityLabel
+  );
+
+  wrap.append(
+    sensitivityName,
+    sensitivityValue
+  );
+
+  const addSelect=(
+    label,
+    key,
+    choices,
+    {
+      allowNone=false
+    }={}
+  )=>{
+    const name=
+      document.createElement('div');
+
+    name.className=
+      'v21ControlName';
+
+    name.textContent=label;
+
+    const value=
+      document.createElement('div');
+
+    value.className=
+      'v21ControlValue';
+
+    const select=
+      document.createElement('select');
+
+    select.className=
+      'v21MenuSelect';
+
+    if(choices==='buttons'){
+      select.innerHTML=
+        gamepadOptionHtml(
+          controls[key],
+          {
+            allowNone
+          }
+        );
+    }else{
+      select.innerHTML=
+        choices
+          .map(
+            ([index,text])=>
+              `<option value="${index}" ${Number(controls[key])===index?'selected':''}>${text}</option>`
+          )
+          .join('');
+    }
+
+    select.addEventListener(
+      'change',
+      ()=>{
+        controls[key]=
+          allowNone&&
+          select.value===''
+            ?null
+            :Number(
+               select.value
+             );
+
+        queueSettingsSave();
+      }
+    );
+
+    value.appendChild(select);
+    wrap.append(name,value);
+  };
+
+  addSelect(
+    'Direction',
+    'steerAxis',
+    GAMEPAD_AXES
+  );
+
+  addSelect(
+    'Caméra horizontale',
+    'lookXAxis',
+    GAMEPAD_AXES
+  );
+
+  addSelect(
+    'Caméra verticale',
+    'lookYAxis',
+    GAMEPAD_AXES
+  );
+
+  addSelect(
+    'Accélérateur',
+    'throttleButton',
+    'buttons'
+  );
+
+  addSelect(
+    'Frein / recul',
+    'brakeButton',
+    'buttons'
+  );
+
+  for(
+    const [key,label]
+    of Object.entries(
+      GAMEPAD_ACTION_LABELS
+    )
+  ){
+    addSelect(
+      label,
+      key,
+      'buttons',
+      {
+        allowNone:
+          key==='assistButton'
+      }
+    );
+  }
+
+  return wrap;
+}
+
+function createV21Section(
+  title,
+  content
+){
+  const section=
+    document.createElement('section');
+
+  section.className='v21Section';
+
+  if(title){
+    const heading=
+      document.createElement('div');
+
+    heading.className=
+      'v21SectionTitle';
+
+    heading.textContent=
+      title;
+
+    section.appendChild(
+      heading
+    );
+  }
+
+  if(content){
+    section.appendChild(
+      content
+    );
+  }
+
+  return section;
+}
+
+function createV21Row(
+  label,
+  control,
+  subtext=''
+){
+  const row=
+    document.createElement('div');
+
+  row.className='v21Row';
+
+  const labelWrap=
+    document.createElement('div');
+
+  labelWrap.className=
+    'v21Label';
+
+  labelWrap.textContent=
+    label;
+
+  if(subtext){
+    const small=
+      document.createElement('small');
+
+    small.textContent=
+      subtext;
+
+    labelWrap.appendChild(
+      small
+    );
+  }
+
+  row.append(
+    labelWrap,
+    control
+  );
+
+  return row;
+}
+
+function createV21ToggleButton(
+  id,
+  handler
+){
+  const button=
+    document.createElement('button');
+
+  button.type='button';
+  button.id=id;
+  button.className=
+    'v21Toggle';
+
+  button.addEventListener(
+    'click',
+    handler
+  );
+
+  return button;
+}
+
+function setV21MenuOpen(open){
+  v21MenuOpen=
+    !!open;
+
+  if(v21MenuEl){
+    v21MenuEl.classList.toggle(
+      'open',
+      v21MenuOpen
+    );
+  }
+
+  if(v21MenuButton){
+    v21MenuButton.textContent=
+      '☰ MENU';
+
+    v21MenuButton.classList.toggle(
+      'hidden',
+      v21MenuOpen
+    );
+
+    v21MenuButton.setAttribute(
+      'aria-hidden',
+      v21MenuOpen
+        ?'true'
+        :'false'
+    );
+  }
+
+  if(v21MenuOpen){
+    clearKeyboardState();
+    refreshV21CacheStats();
+    syncV21RuntimeControls();
+  }
+}
+
+function activateV21Tab(name){
+  if(!v21MenuEl)return;
+
+  for(const tab of v21MenuEl.querySelectorAll('.v21Tab')){
+    tab.classList.toggle(
+      'active',
+      tab.dataset.tab===name
+    );
+  }
+
+  for(const panel of v21MenuEl.querySelectorAll('.v21Panel')){
+    panel.classList.toggle(
+      'active',
+      panel.dataset.panel===name
+    );
+  }
+
+  const title=
+    v21MenuEl.querySelector(
+      '#v21MenuTitle'
+    );
+
+  const activeTab=
+    v21MenuEl.querySelector(
+      `.v21Tab[data-tab="${name}"]`
+    );
+
+  if(
+    title&&
+    activeTab
+  ){
+    title.textContent=
+      activeTab.dataset.title||
+      activeTab.textContent.trim();
+  }
+}
+
+function installV21Menu(){
+  if(v21MenuEl)return;
+
+  installV21BaseStyle();
+
+  const oldHud=
+    $('hud');
+
+  if(oldHud){
+    oldHud.style.display='none';
+  }
+
+  const oldHelp=
+    $('help');
+
+  if(oldHelp){
+    oldHelp.style.display='none';
+  }
+
+  const oldShowControls=
+    $('showControlsBtn');
+
+  if(oldShowControls){
+    oldShowControls.style.display='none';
+  }
+
+  v21MenuButton=
+    document.createElement('button');
+
+  v21MenuButton.id=
+    'v21MenuButton';
+
+  v21MenuButton.type='button';
+  v21MenuButton.textContent=
+    '☰ MENU';
+
+  v21MenuButton.addEventListener(
+    'click',
+    ()=>{
+      setV21MenuOpen(
+        !v21MenuOpen
+      );
+    }
+  );
+
+  document.body.appendChild(
+    v21MenuButton
+  );
+
+  v21MenuEl=
+    document.createElement('div');
+
+  v21MenuEl.id=
+    'v21Menu';
+
+  v21MenuEl.innerHTML=`
+    <div id="v21MenuPanel">
+      <nav class="v21MenuNav">
+        <div class="v21Brand">
+          <strong>WORLD DRIVE</strong>
+          <span>V21.11 ALPHA</span>
+        </div>
+
+        <button class="v21Tab active" data-tab="vehicle" data-title="Véhicule">🚗 Véhicule</button>
+        <button class="v21Tab" data-tab="world" data-title="Carte & monde">🗺️ Carte & monde</button>
+        <button class="v21Tab" data-tab="route" data-title="Trajet">🧭 Trajet</button>
+        <button class="v21Tab" data-tab="driving" data-title="Conduite">🎮 Conduite</button>
+        <button class="v21Tab" data-tab="audio" data-title="Audio & affichage">🔊 Audio & affichage</button>
+        <button class="v21Tab" data-tab="multiplayer" data-title="Multijoueur">👥 Multijoueur</button>
+        <button class="v21Tab" data-tab="advanced" data-title="Avancé">⚙️ Avancé</button>
+      </nav>
+
+      <div class="v21MenuMain">
+        <header class="v21MenuTop">
+          <h2 id="v21MenuTitle">Véhicule</h2>
+          <button id="v21MenuClose" type="button" aria-label="Fermer le menu">×</button>
+        </header>
+
+        <div class="v21Panel active" data-panel="vehicle"></div>
+        <div class="v21Panel" data-panel="world"></div>
+        <div class="v21Panel" data-panel="route"></div>
+        <div class="v21Panel" data-panel="driving"></div>
+        <div class="v21Panel" data-panel="audio"></div>
+        <div class="v21Panel" data-panel="multiplayer"></div>
+        <div class="v21Panel" data-panel="advanced"></div>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(
+    v21MenuEl
+  );
+
+  v21MenuEl
+    .querySelectorAll(
+      '.v21Tab'
+    )
+    .forEach(
+      tab=>
+        tab.addEventListener(
+          'click',
+          ()=>activateV21Tab(
+            tab.dataset.tab
+          )
+        )
+    );
+
+  $('v21MenuClose')
+    ?.addEventListener(
+      'click',
+      ()=>setV21MenuOpen(false)
+    );
+
+  v21MenuEl.addEventListener(
+    'click',
+    event=>{
+      if(event.target===v21MenuEl){
+        setV21MenuOpen(false);
+      }
+    }
+  );
+
+  addEventListener(
+    'keydown',
+    event=>{
+      if(
+        event.code==='Escape'&&
+        v21MenuOpen&&
+        !keyboardRebindAction
+      ){
+        setV21MenuOpen(false);
+      }
+    }
+  );
+
+  const vehiclePanel=
+    v21MenuEl.querySelector(
+      '[data-panel="vehicle"]'
+    );
+
+  const vehicleControls=
+    document.createElement('div');
+
+  if(vehicleSelect){
+    vehicleSelect.classList.add(
+      'v21MenuSelect'
+    );
+
+    vehicleControls.appendChild(
+      createV21Row(
+        'Modèle',
+        vehicleSelect
+      )
+    );
+  }
+
+  if(transmissionModeSelect){
+    transmissionModeSelect.classList.add(
+      'v21MenuSelect'
+    );
+
+    vehicleControls.appendChild(
+      createV21Row(
+        'Transmission',
+        transmissionModeSelect
+      )
+    );
+  }
+
+  vehiclePanel.appendChild(
+    createV21Section(
+      'Véhicule',
+      vehicleControls
+    )
+  );
+
+  const vehicleInfo=
+    document.createElement('div');
+
+  vehicleInfo.className=
+    'v21InfoGrid';
+
+  vehicleInfo.innerHTML=`
+    <div class="v21InfoCard">
+      <span>Transmission</span>
+      <b id="v21VehicleDrivetrain">—</b>
+    </div>
+    <div class="v21InfoCard">
+      <span>Boîte</span>
+      <b id="v21VehicleGears">—</b>
+    </div>
+    <div class="v21InfoCard">
+      <span>Redline</span>
+      <b id="v21VehicleRedline">—</b>
+    </div>
+    <div class="v21InfoCard">
+      <span>Vitesse mécanique</span>
+      <b id="v21VehicleTop">—</b>
+    </div>
+  `;
+
+  vehiclePanel.appendChild(
+    createV21Section(
+      'Informations',
+      vehicleInfo
+    )
+  );
+
+  const vehicleActions=
+    document.createElement('div');
+
+  const resetVehicleButton=
+    document.createElement('button');
+
+  resetVehicleButton.type='button';
+  resetVehicleButton.className=
+    'v21MenuBtn';
+  resetVehicleButton.textContent=
+    'Replacer sur la route';
+  resetVehicleButton.addEventListener(
+    'click',
+    ()=>resetToRoad()
+  );
+
+  vehicleActions.appendChild(
+    resetVehicleButton
+  );
+
+  vehiclePanel.appendChild(
+    createV21Section(
+      '',
+      vehicleActions
+    )
+  );
+
+  // Map & world
+  const worldPanel=
+    v21MenuEl.querySelector(
+      '[data-panel="world"]'
+    );
+
+  const worldControls=
+    document.createElement('div');
+
+  const imageryToggle=
+    createV21ToggleButton(
+      'v21ImageryToggle',
+      ()=>{
+        const enabled=
+          imageryService.toggle();
+
+        appSettings.imageryEnabled=
+          enabled;
+
+        queueSettingsSave();
+        syncV21RuntimeControls();
+      }
+    );
+
+  worldControls.appendChild(
+    createV21Row(
+      'Photo / imagerie',
+      imageryToggle
+    )
+  );
+
+  const distanceSelect=
+    document.createElement('select');
+
+  distanceSelect.id=
+    'v21DisplayDistance';
+
+  distanceSelect.className=
+    'v21MenuSelect';
+
+  distanceSelect.innerHTML=`
+    <option value="low">Basse</option>
+    <option value="medium">Moyenne</option>
+    <option value="high">Haute</option>
+  `;
+
+  distanceSelect.addEventListener(
+    'change',
+    ()=>{
+      applyDisplayDistanceProfile(
+        distanceSelect.value,
+        {
+          save:true
+        }
+      );
+    }
+  );
+
+  worldControls.appendChild(
+    createV21Row(
+      'Distance d’affichage',
+      distanceSelect,
+      'Haute par défaut'
+    )
+  );
+
+  if(timeSlider){
+    timeSlider.style.width='170px';
+
+    const timeWrap=
+      document.createElement('div');
+
+    timeWrap.style.display='flex';
+    timeWrap.style.alignItems='center';
+    timeWrap.style.gap='8px';
+
+    timeWrap.append(
+      timeSlider,
+      timeLabel
+    );
+
+    worldControls.appendChild(
+      createV21Row(
+        'Heure',
+        timeWrap
+      )
+    );
+  }
+
+  worldPanel.appendChild(
+    createV21Section(
+      'Monde',
+      worldControls
+    )
+  );
+
+  const cacheWrap=
+    document.createElement('div');
+
+  cacheWrap.innerHTML=`
+    <div class="v21InfoGrid">
+      <div class="v21InfoCard">
+        <span>Taille cache</span>
+        <b id="v21CacheSize">Calcul…</b>
+      </div>
+      <div class="v21InfoCard">
+        <span>Entrées persistantes</span>
+        <b id="v21CacheRecords">—</b>
+      </div>
+    </div>
+  `;
+
+  const clearButton=
+    document.createElement('button');
+
+  clearButton.type='button';
+  clearButton.className=
+    'v21MenuBtn danger';
+
+  clearButton.style.marginTop='10px';
+  clearButton.textContent=
+    'Vider la cache';
+
+  clearButton.addEventListener(
+    'click',
+    async()=>{
+      const confirmed=
+        window.confirm(
+          'Vider toute la cache et réinitialiser tous les réglages V21 ?'
+        );
+
+      if(!confirmed)return;
+
+      clearButton.disabled=true;
+      clearButton.textContent=
+        'Vidage…';
+
+      try{
+        await clearWorldDriveCache();
+
+        location.reload();
+      }catch(error){
+        console.warn(
+          'Full cache clear failed',
+          error
+        );
+
+        clearButton.disabled=false;
+        clearButton.textContent=
+          'Vider la cache';
+
+        toast(
+          'Impossible de vider la cache'
+        );
+      }
+    }
+  );
+
+  cacheWrap.appendChild(
+    clearButton
+  );
+
+  worldPanel.appendChild(
+    createV21Section(
+      'Cache',
+      cacheWrap
+    )
+  );
+
+  // Route
+  const routePanel=
+    v21MenuEl.querySelector(
+      '[data-panel="route"]'
+    );
+
+  const planner=
+    $('plannerBox');
+
+  if(planner){
+    routePanel.appendChild(
+      createV21Section(
+        'Planifier',
+        planner
+      )
+    );
+  }
+
+  const jump=
+    $('jumpBox');
+
+  if(jump){
+    routePanel.appendChild(
+      createV21Section(
+        'Progression',
+        jump
+      )
+    );
+  }
+
+  // Driving
+  const drivingPanel=
+    v21MenuEl.querySelector(
+      '[data-panel="driving"]'
+    );
+
+  const drivingControls=
+    document.createElement('div');
+
+  const assistToggle=
+    createV21ToggleButton(
+      'v21AssistToggle',
+      ()=>toggleAssist()
+    );
+
+  drivingControls.appendChild(
+    createV21Row(
+      'Assistance voie',
+      assistToggle
+    )
+  );
+
+  const autoButton=
+    document.createElement('button');
+
+  autoButton.type='button';
+  autoButton.className=
+    'v21MenuBtn';
+  autoButton.innerHTML=
+    'Pilote auto · <span id="v21AutopilotState">OFF</span>';
+
+  autoButton.addEventListener(
+    'click',
+    ()=>{
+      toggleAutopilot();
+      syncV21RuntimeControls();
+    }
+  );
+
+  drivingControls.appendChild(
+    createV21Row(
+      'Pilote automatique',
+      autoButton
+    )
+  );
+
+  const roadLimitToggle=
+    createV21ToggleButton(
+      'v21RoadLimitsToggle',
+      ()=>toggleRoadSpeedLimits()
+    );
+
+  drivingControls.appendChild(
+    createV21Row(
+      'Respect limites OSM',
+      roadLimitToggle
+    )
+  );
+
+  const cameraButton=
+    document.createElement('button');
+
+  cameraButton.type='button';
+  cameraButton.className=
+    'v21MenuBtn';
+  cameraButton.textContent=
+    'Changer caméra';
+  cameraButton.addEventListener(
+    'click',
+    ()=>cameraController.cycle()
+  );
+
+  drivingControls.appendChild(
+    createV21Row(
+      'Caméra',
+      cameraButton
+    )
+  );
+
+  drivingPanel.appendChild(
+    createV21Section(
+      'Conduite',
+      drivingControls
+    )
+  );
+
+  const keyboardDetails=
+    document.createElement('details');
+
+  keyboardDetails.className=
+    'v21Section';
+
+  keyboardDetails.innerHTML=
+    '<summary class="v21SectionTitle" style="cursor:pointer;margin:0">Clavier · configurer</summary>';
+
+  keyboardDetails.appendChild(
+    buildV21KeyboardControls()
+  );
+
+  const keyboardReset=
+    document.createElement('button');
+
+  keyboardReset.type='button';
+  keyboardReset.className=
+    'v21MenuBtn';
+  keyboardReset.style.marginTop='10px';
+  keyboardReset.textContent=
+    'Réinitialiser clavier';
+
+  keyboardReset.addEventListener(
+    'click',
+    ()=>{
+      appSettings.controls.keyboard=
+        cloneDefaultControls()
+          .keyboard;
+
+      queueSettingsSave();
+      refreshV21KeyboardBindings();
+    }
+  );
+
+  keyboardDetails.appendChild(
+    keyboardReset
+  );
+
+  drivingPanel.appendChild(
+    keyboardDetails
+  );
+
+  const gamepadDetails=
+    document.createElement('details');
+
+  gamepadDetails.className=
+    'v21Section';
+
+  gamepadDetails.innerHTML=
+    '<summary class="v21SectionTitle" style="cursor:pointer;margin:0">Manette · configurer</summary>';
+
+  gamepadDetails.appendChild(
+    buildV21GamepadControls()
+  );
+
+  const gamepadReset=
+    document.createElement('button');
+
+  gamepadReset.type='button';
+  gamepadReset.className=
+    'v21MenuBtn';
+  gamepadReset.style.marginTop='10px';
+  gamepadReset.textContent=
+    'Réinitialiser manette';
+
+  gamepadReset.addEventListener(
+    'click',
+    ()=>{
+      appSettings.controls.gamepad=
+        cloneDefaultControls()
+          .gamepad;
+
+      queueSettingsSave();
+
+      // Rebuild the editable list so all selects show their defaults.
+      const fresh=
+        buildV21GamepadControls();
+
+      const current=
+        gamepadDetails.querySelector(
+          '.v21ControlsGrid'
+        );
+
+      current?.replaceWith(
+        fresh
+      );
+    }
+  );
+
+  gamepadDetails.appendChild(
+    gamepadReset
+  );
+
+  drivingPanel.appendChild(
+    gamepadDetails
+  );
+
+  // Audio & display
+  const audioPanel=
+    v21MenuEl.querySelector(
+      '[data-panel="audio"]'
+    );
+
+  const audioControls=
+    document.createElement('div');
+
+  const audioToggle=
+    createV21ToggleButton(
+      'v21AudioToggle',
+      async()=>{
+        const next=
+          !appSettings.audioEnabled;
+
+        appSettings.audioEnabled=
+          next;
+
+        queueSettingsSave();
+
+        try{
+          await vehicleAudio.setEnabled(
+            next
+          );
+        }catch(error){
+          console.warn(
+            'Audio setting failed',
+            error
+          );
+        }
+
+        syncV21RuntimeControls();
+      }
+    );
+
+  audioControls.appendChild(
+    createV21Row(
+      'Audio',
+      audioToggle,
+      'ON par défaut'
+    )
+  );
+
+  const clusterToggle=
+    createV21ToggleButton(
+      'v21ClusterToggle',
+      ()=>{
+        appSettings.display.cluster=
+          !appSettings.display.cluster;
+
+        queueSettingsSave();
+        applyV21DisplayVisibility();
+        syncV21RuntimeControls();
+      }
+    );
+
+  audioControls.appendChild(
+    createV21Row(
+      'Compteurs',
+      clusterToggle
+    )
+  );
+
+  const minimapToggle=
+    createV21ToggleButton(
+      'v21MinimapToggle',
+      ()=>{
+        appSettings.display.minimap=
+          !appSettings.display.minimap;
+
+        queueSettingsSave();
+        applyV21DisplayVisibility();
+        syncV21RuntimeControls();
+      }
+    );
+
+  audioControls.appendChild(
+    createV21Row(
+      'Mini-carte',
+      minimapToggle
+    )
+  );
+
+  const compassToggle=
+    createV21ToggleButton(
+      'v21CompassToggle',
+      ()=>{
+        appSettings.display.compass=
+          !appSettings.display.compass;
+
+        queueSettingsSave();
+        applyV21DisplayVisibility();
+        syncV21RuntimeControls();
+      }
+    );
+
+  audioControls.appendChild(
+    createV21Row(
+      'Boussole',
+      compassToggle
+    )
+  );
+
+  audioPanel.appendChild(
+    createV21Section(
+      'Audio & affichage',
+      audioControls
+    )
+  );
+
+  // Multiplayer
+  const multiplayerPanel=
+    v21MenuEl.querySelector(
+      '[data-panel="multiplayer"]'
+    );
+
+  const multiplayerBox=
+    document.querySelector(
+      '.multiplayerBox'
+    );
+
+  if(multiplayerBox){
+    multiplayerPanel.appendChild(
+      createV21Section(
+        'Multijoueur LAN',
+        multiplayerBox
+      )
+    );
+  }
+
+  // Advanced live status
+  const advancedPanel=
+    v21MenuEl.querySelector(
+      '[data-panel="advanced"]'
+    );
+
+  const advanced=
+    document.createElement('div');
+
+  const statusSources=[
+    ['Relief','elevStatus'],
+    ['Hydrographie','waterStatus'],
+    ['Ponts OSM','bridgeStatus'],
+    ['Décor réel','sceneryStatus'],
+    ['Imagerie','imageryStatus'],
+    ['Routage','routingStatus'],
+    ['Route active','roadTypeStatus'],
+    ['Surface','roadSurfaceStatus'],
+    ['Limite OSM','osmSpeedStatus'],
+    ['Panneaux OSM','signStatus'],
+    ['Manette','gamepadStatus'],
+    ['Audio','audioStatus']
+  ];
+
+  for(const [label,id] of statusSources){
+    const row=
+      document.createElement('div');
+
+    row.className=
+      'v21StatusLine';
+
+    row.innerHTML=`
+      <span>${label}</span>
+      <b data-v21-status-source="${id}">—</b>
+    `;
+
+    advanced.appendChild(row);
+  }
+
+  advancedPanel.appendChild(
+    createV21Section(
+      'État des sous-systèmes',
+      advanced
+    )
+  );
+
+  const statusTimer=
+    setInterval(
+      ()=>{
+        if(
+          !v21MenuOpen||
+          !v21MenuEl
+        ){
+          return;
+        }
+
+        v21MenuEl
+          .querySelectorAll(
+            '[data-v21-status-source]'
+          )
+          .forEach(
+            target=>{
+              const source=$(
+                target.dataset.v21StatusSource
+              );
+
+              target.textContent=
+                source?.textContent?.trim()||
+                '—';
+            }
+          );
+      },
+      500
+    );
+
+  v21MenuEl.dataset.statusTimer=
+    String(statusTimer);
+
+  addEventListener(
+    'worlddrive-keyboard-rebound',
+    ()=>refreshV21KeyboardBindings()
+  );
+
+  addEventListener(
+    'worlddrive-keyboard-rebind-cancel',
+    ()=>refreshV21KeyboardBindings()
+  );
+
+  syncV21RuntimeControls();
+  syncV21VehicleInfo();
+  applyV21DisplayVisibility();
+}
+
+async function applyLoadedV21Settings(){
+  transmissionMode=
+    appSettings.transmissionMode===
+    'manual'
+      ?'manual'
+      :'automatic';
+
+  assist=
+    appSettings.assist!==false;
+
+  obeyRoadSpeedLimits=
+    appSettings.obeyRoadSpeedLimits!==false;
+
+  updateSpeedLimitModeUI();
+
+  if(
+    imageryService.enabled!==
+    !!appSettings.imageryEnabled
+  ){
+    imageryService.toggle();
+  }
+
+  applyDisplayDistanceProfile(
+    appSettings.displayDistance||
+    'high'
+  );
+
+  applyV21DisplayVisibility();
+
+  if($('assist')){
+    $('assist').textContent=
+      'Assist: '+
+      (
+        assist
+          ?'ON'
+          :'OFF'
+      );
+  }
+
+  if(transmissionModeSelect){
+    transmissionModeSelect.value=
+      transmissionMode;
+  }
+
+  syncV21RuntimeControls();
+}
+
 $('clearHydroCacheBtn').addEventListener('click',async()=>{
   try{
-    await OsmCache.clear();
-    await updateHydroCacheHUD();
-    toast('Cache OSM IndexedDB vidé');
-  }catch(e){console.warn(e);toast('Impossible de vider le cache')}
+    const confirmed=
+      window.confirm(
+        'Vider toute la cache World Drive et réinitialiser les réglages par défaut ?'
+      );
+
+    if(!confirmed)return;
+
+    await clearWorldDriveCache();
+
+    toast(
+      'Cache vidée · retour aux réglages par défaut'
+    );
+
+    setTimeout(
+      ()=>location.reload(),
+      260
+    );
+  }catch(e){
+    console.warn(e);
+    toast('Impossible de vider le cache');
+  }
 });
 
 setTimeOfDay(12);
@@ -5933,19 +9142,37 @@ function animate(now){
  requestAnimationFrame(animate);
  const dt=Math.min(.033,(now-last)/1000||.016);last=now;
  try{
-   gamepad.update();
-   updateDrive(dt);
-   vehiclePresentation.updateContactShadow();
-   multiplayer.update(dt);
-
-   try{vehicleAudio.update()}catch(audioErr){
-     console.warn('Audio frame error',audioErr);
-     vehicleAudio.showError();
+   if(
+     gameStarted&&
+     !v21MenuOpen
+   ){
+     gamepad.update();
+     updateDrive(dt);
    }
+
+   if(gameStarted){
+     multiplayer.update(dt);
+   }
+
+   vehiclePresentation.updateContactShadow();
+
+   if(gameStarted){
+     try{
+       vehicleAudio.update();
+     }catch(audioErr){
+       console.warn('Audio frame error',audioErr);
+       vehicleAudio.showError();
+     }
+   }
+
    cameraController.update(dt);
    updateMoonSkyPosition();
 
-   if(now>=nextDirectionalPrefetchAt){
+   if(
+     gameStarted&&
+     !v21MenuOpen&&
+     now>=nextDirectionalPrefetchAt
+   ){
      nextDirectionalPrefetchAt=now+100;
      worldStreaming.prefetchDirectional(absX,absZ);
    }
@@ -5963,14 +9190,61 @@ function animate(now){
 addEventListener('resize',()=>{camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight);drawMap();drawCompass();drawSpeedometer()});
 
 (async()=>{
- // Start the renderer first. Network/routing is now an independent startup step.
+ // Renderer starts immediately so the loading / chooser screens sit over a
+ // live world rather than a frozen blank page.
  requestAnimationFrame(t=>{last=t;animate(t)});
+
  try{
-   await createRequestedRoute({...MANIC2},{...MANIC5});
+   setV21BootProgress(
+     'settings',
+     'loading',
+     'Lecture IndexedDB…'
+   );
+
+   appSettings=
+     await WorldSettings.load();
+
+   settingsLoaded=true;
+
+   setV21BootProgress(
+     'settings',
+     'done',
+     'Réglages prêts'
+   );
+
+   installV21Menu();
+   await applyLoadedV21Settings();
+
+   // Manic-2 -> Manic-5 remains the first-route preset by design.
+   const startupRouteReady=
+     await createRequestedRoute(
+       {...MANIC2},
+       {...MANIC5}
+     );
+
+   if(!startupRouteReady){
+     setV21BootProgress(
+       'route',
+       'warn',
+       'Trajet indisponible'
+     );
+
+     return;
+   }
+
+   showV21VehicleChooser();
  }catch(e){
    console.error('Startup error',e);
+
    loading.classList.add('hidden');
    routingStatus.textContent='Erreur';
-   statusEl.textContent='Erreur de démarrage — utilise Preset 389 ou Créer le trajet';
+   statusEl.textContent=
+     'Erreur de démarrage — recharge la page';
+
+   setV21BootProgress(
+     'route',
+     'warn',
+     'Erreur de démarrage'
+   );
  }
 })();

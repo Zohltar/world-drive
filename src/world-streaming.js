@@ -51,6 +51,18 @@ export function createWorldStreaming({
   let lastPrefetchCum=-Infinity;
   let prefetchBusy=false;
   let routePreloadTimers=[];
+  let distanceScale=1;
+
+  function setDistanceScale(scale){
+    const numeric=Number(scale);
+
+    distanceScale=
+      Number.isFinite(numeric)
+        ?Math.max(.65,Math.min(1.6,numeric))
+        :1;
+
+    return distanceScale;
+  }
 
   function distanceExceeded(x,z,center,distance){
     if(!center)return true;
@@ -73,7 +85,14 @@ export function createWorldStreaming({
   function maybeLoad(service,x,z,distance,label){
     if(!service||service.loading)return false;
 
-    if(!distanceExceeded(x,z,service.center,distance)){
+    if(
+      !distanceExceeded(
+        x,
+        z,
+        service.center,
+        distance*distanceScale
+      )
+    ){
       return false;
     }
 
@@ -163,7 +182,7 @@ export function createWorldStreaming({
 
     if(
       Number.isFinite(lastPrefetchCum) &&
-      nearest.cum-lastPrefetchCum<prefetch.step
+      nearest.cum-lastPrefetchCum<prefetch.step*distanceScale
     ){
       return false;
     }
@@ -175,11 +194,11 @@ export function createWorldStreaming({
       const maxCum=Math.max(0,routeLength-1);
 
       const near=routePointAtCum(
-        Math.min(maxCum,nearest.cum+prefetch.near)
+        Math.min(maxCum,nearest.cum+prefetch.near*distanceScale)
       );
 
       const far=routePointAtCum(
-        Math.min(maxCum,nearest.cum+prefetch.far)
+        Math.min(maxCum,nearest.cum+prefetch.far*distanceScale)
       );
 
       await Promise.allSettled([
@@ -272,6 +291,11 @@ export function createWorldStreaming({
     prefetchDirectional,
     preloadRoute,
     reset,
+    setDistanceScale,
+
+    get distanceScale(){
+      return distanceScale;
+    },
 
     get prefetchBusy(){
       return prefetchBusy;
