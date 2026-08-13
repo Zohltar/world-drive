@@ -1,0 +1,18 @@
+Validation locale V21.19
+
+- node --check src/main.js : PASS
+- node --check src/terrain.js : PASS
+- Test synthétique de cadres de route : PASS
+  * ligne droite
+  * virage 90°
+  * virage 135°
+  * quasi demi-tour
+  * point dupliqué
+  * switchback
+- Facteur de miter maximal mesuré : 1.480 (limite volontaire 1.48)
+- Les accotements n'occupent plus la zone centrale sous l'asphalte.
+- SHA256 terrain.js identique à V21.18 : 700e933712c17b8110f93ca8d1998d051748b5bc897538e9c0f91594b4227ada
+
+Limite du test local : le trajet Yungas réel dépend des données de routage/DEM
+chargées dans le navigateur; la validation finale doit donc être faite au même
+endroit que le screenshot utilisateur.

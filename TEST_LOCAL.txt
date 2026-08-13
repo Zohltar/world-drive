@@ -1,0 +1,34 @@
+World Drive V21.16 - Terrain Artifact Test 3
+
+Local validation:
+
+1. JavaScript syntax
+   node --check src/terrain.js -> OK
+
+2. Baseline integrity
+   src/main.js SHA256 matches V21.16 rollback exactly.
+   package.json SHA256 matches V21.16 rollback exactly.
+
+3. Synthetic stacked-switchback selection
+   Two nearby parallel road branches were simulated at different elevations.
+   Outside the hard road-clearance corridor, the old planar-only selector can choose the
+   lower branch even when the DEM elevation is near the upper branch. The new scoring
+   correctly chooses the elevation-compatible branch in those cases.
+
+4. Road clearance failsafe
+   Inside roadHalfWidth + 1 m, planar nearest branch remains mandatory, so elevation-aware
+   selection cannot make terrain remain above the visible road.
+
+5. Transition-over-road fuse
+   Each terrain triangle checks all 3 vertices, all 3 edge midpoints and its centroid.
+   If any sample is inside the protected road corridor of any branch, that triangle is not drawn.
+
+6. Visual band correction
+   Transition mesh colours use untouched DEM height/slope with the same near-terrain altitude
+   range, instead of shading the artificial cut surface itself.
+
+User test target:
+- same Yungas sector;
+- Photo OFF first;
+- verify the dark-green ribbon/terrace is reduced or gone;
+- verify no green transition polygon appears on top of asphalt.

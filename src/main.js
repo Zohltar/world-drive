@@ -41,6 +41,15 @@ const R169_END={lat:48.650002,lon:-72.449997,name:'Saint‑Félicien'};
 const R132_START={lat:48.849998,lon:-67.533333,name:'Matane'};
 const R132_END={lat:48.533333,lon:-64.216667,name:'Percé'};
 
+// Bolivia · Camino de la Muerte / North Yungas Road.
+// Chuspipata -> Yolosa is the historic Death Road section; the midpoint
+// waypoint pins the router onto the old Yungas road instead of the newer route.
+const YUNGAS_START={lat:-16.29911,lon:-67.81891,name:'Chuspipata · Yungas'};
+const YUNGAS_END={lat:-16.23312,lon:-67.73975,name:'Yolosa · Yungas'};
+const YUNGAS_WAYPOINTS=[
+  {lat:-16.2577,lon:-67.7861,name:'Camino de la Muerte'}
+];
+
 let ROUTE_START={...MANIC2};
 let ROUTE_END={...MANIC5};
 let ROUTE_WAYPOINTS=[];
@@ -775,7 +784,7 @@ function createV21BootOverlay(){
     <div class="v21StartupCard">
       <div class="v21StartupBrand">
         <h1>WORLD DRIVE</h1>
-        <p>V21.11 alpha · initialisation du monde</p>
+        <p>V21.19 alpha · initialisation du monde</p>
       </div>
 
       <div id="v21BootContent">
@@ -810,14 +819,14 @@ function createV21BootOverlay(){
   document.body.appendChild(overlay);
 
   document.title=
-    'World Drive V21.11';
+    'World Drive V21.19';
 
   const oldLoadingTitle=
     loading?.querySelector('h1');
 
   if(oldLoadingTitle){
     oldLoadingTitle.textContent=
-      'World Drive V21.11';
+      'World Drive V21.19';
   }
 
   if(loading){
@@ -2264,57 +2273,135 @@ const rebuildBridgeSpans=()=>bridgeManager.rebuild();
 const bridgeHeightAtCum=cum=>bridgeManager.heightAtCum(cum);
 
 // ---------- continuous road ribbon ----------
-function buildRibbon(points,width,material,yOffset=0){
+// V21.19 — robust lateral frames for extreme mountain roads.
+//
+// A simple "next - previous" normal works on gentle curves, but on very sharp
+// hairpins it can rotate or grow unpredictably. Every road layer then builds a
+// slightly different twisted quad and the wider shoulder can poke through the
+// asphalt as diagonal beige wedges. Use one bounded miter frame for every road
+// layer so asphalt, shoulders, edge lines and the solid road body agree exactly.
+function roadLateralFrame(points,i){
+  const p=points[i];
+
+  function unitSegment(a,b){
+    let x=b.x-a.x;
+    let z=b.z-a.z;
+    const len=Math.hypot(x,z);
+    if(len<1e-5)return null;
+    return {x:x/len,z:z/len};
+  }
+
+  let incoming=i>0?unitSegment(points[i-1],p):null;
+  let outgoing=i<points.length-1?unitSegment(p,points[i+1]):null;
+
+  if(!incoming){
+    for(let k=i-1;k>=0&&!incoming;k--)incoming=unitSegment(points[k],p);
+  }
+  if(!outgoing){
+    for(let k=i+1;k<points.length&&!outgoing;k++)outgoing=unitSegment(p,points[k]);
+  }
+
+  const base=outgoing||incoming||{x:0,z:1};
+  const baseNormal={x:-base.z,z:base.x};
+
+  if(!incoming||!outgoing){
+    return {x:baseNormal.x,z:baseNormal.z,scale:1};
+  }
+
+  const n0={x:-incoming.z,z:incoming.x};
+  const n1={x:-outgoing.z,z:outgoing.x};
+
+  let mx=n0.x+n1.x;
+  let mz=n0.z+n1.z;
+  const ml=Math.hypot(mx,mz);
+
+  // Near a 180° reversal the mathematical miter is undefined. A bounded
+  // outgoing normal is visually far safer than an enormous spike.
+  if(ml<0.18){
+    return {x:n1.x,z:n1.z,scale:1};
+  }
+
+  mx/=ml;
+  mz/=ml;
+
+  if(mx*n1.x+mz*n1.z<0){
+    mx=-mx;
+    mz=-mz;
+  }
+
+  const denom=Math.abs(mx*n1.x+mz*n1.z);
+  let scale=denom>0.15?1/denom:1;
+
+  // 90° corners naturally want ~1.414x. Allow that, but never permit the huge
+  // miters produced by switchbacks approaching 180°.
+  scale=Math.max(0.92,Math.min(1.48,scale));
+
+  return {x:mx*scale,z:mz*scale,scale};
+}
+
+function buildLateralBand(points,leftOffset,rightOffset,material,yOffset=0){
   if(points.length<2)return null;
+
   const pos=[],uv=[],idx=[];
   let cumulative=0;
+
   for(let i=0;i<points.length;i++){
     const p=points[i];
-    const prev=points[Math.max(0,i-1)],next=points[Math.min(points.length-1,i+1)];
-    let tx=next.x-prev.x,tz=next.z-prev.z;
-    const tl=Math.hypot(tx,tz)||1;tx/=tl;tz/=tl;
-    const nx=-tz,nz=tx;
-    if(i>0)cumulative+=Math.hypot(p.x-points[i-1].x,p.z-points[i-1].z);
+    const lat=roadLateralFrame(points,i);
 
-    const roll=Number.isFinite(p.roll)
-      ?p.roll
-      :0;
-
-    const half=width/2;
-
-    // Positive roll raises the left side (+normal) and lowers the right side.
-    const leftY=
-      p.y+
-      yOffset+
-      Math.tan(roll)*half;
-
-    const rightY=
-      p.y+
-      yOffset-
-      Math.tan(roll)*half;
-
-    pos.push(
-      p.x-worldOffset.x+nx*half,
-      leftY,
-      p.z-worldOffset.z+nz*half
+    if(i>0)cumulative+=Math.hypot(
+      p.x-points[i-1].x,
+      p.z-points[i-1].z
     );
 
-    pos.push(
-      p.x-worldOffset.x-nx*half,
-      rightY,
-      p.z-worldOffset.z-nz*half
-    );
+    const roll=Number.isFinite(p.roll)?p.roll:0;
+    const rollSlope=Math.tan(roll);
+
+    const pushOffset=(off)=>{
+      const effectiveOff=off*lat.scale;
+      pos.push(
+        p.x-worldOffset.x+lat.x*off,
+        p.y+yOffset+rollSlope*effectiveOff,
+        p.z-worldOffset.z+lat.z*off
+      );
+    };
+
+    // Vertices stay ordered left-to-right so triangle winding stays upward.
+    pushOffset(leftOffset);
+    pushOffset(rightOffset);
     uv.push(0,cumulative/8,1,cumulative/8);
+
     if(i<points.length-1){
       const a=i*2;
       idx.push(a,a+2,a+1,a+2,a+3,a+1);
     }
   }
+
   const g=new THREE.BufferGeometry();
   g.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));
   g.setAttribute('uv',new THREE.Float32BufferAttribute(uv,2));
-  g.setIndex(idx);g.computeVertexNormals();
-  const m=new THREE.Mesh(g,material);m.receiveShadow=true;return m;
+  g.setIndex(idx);
+  g.computeVertexNormals();
+
+  const m=new THREE.Mesh(g,material);
+  m.receiveShadow=true;
+  return m;
+}
+
+function buildRibbon(points,width,material,yOffset=0){
+  const half=width/2;
+  return buildLateralBand(points,half,-half,material,yOffset);
+}
+
+function buildOffsetRibbon(points,offset,width,material,yOffset=0){
+  const half=width/2;
+  return buildLateralBand(
+    points,
+    offset+half,
+    offset-half,
+    material,
+    yOffset
+  );
 }
 
 function buildRoadVolume(profile){
@@ -2339,20 +2426,12 @@ function buildRoadVolume(profile){
 
   function basisAt(i){
     const p=profile[i];
-    const prev=profile[Math.max(0,i-1)];
-    const next=profile[Math.min(profile.length-1,i+1)];
-
-    let tx=next.x-prev.x;
-    let tz=next.z-prev.z;
-    const len=Math.hypot(tx,tz)||1;
-
-    tx/=len;
-    tz/=len;
-
+    const lat=roadLateralFrame(profile,i);
     return {
       p,
-      nx:-tz,
-      nz:tx
+      nx:lat.x,
+      nz:lat.z,
+      lateralScale:lat.scale
     };
   }
 
@@ -2366,7 +2445,7 @@ function buildRoadVolume(profile){
   // 6 right shoulder top
   // 7 right toe bottom
   for(let i=0;i<profile.length;i++){
-    const {p,nx,nz}=basisAt(i);
+    const {p,nx,nz,lateralScale}=basisAt(i);
 
     const roll=Number.isFinite(p.roll)
       ?p.roll
@@ -2377,7 +2456,7 @@ function buildRoadVolume(profile){
     const push=(off,y)=>{
       edgePos.push(
         p.x-worldOffset.x+nx*off,
-        p.y+y+rollSlope*off,
+        p.y+y+rollSlope*(off*lateralScale),
         p.z-worldOffset.z+nz*off
       );
     };
@@ -2394,11 +2473,11 @@ function buildRoadVolume(profile){
     // Bottom slab vertices, kept separate for a darker underside material.
     underPos.push(
       p.x-worldOffset.x+nx*asphaltHalf,
-      p.y+slabBottom+rollSlope*asphaltHalf,
+      p.y+slabBottom+rollSlope*(asphaltHalf*lateralScale),
       p.z-worldOffset.z+nz*asphaltHalf,
 
       p.x-worldOffset.x-nx*asphaltHalf,
-      p.y+slabBottom-rollSlope*asphaltHalf,
+      p.y+slabBottom-rollSlope*(asphaltHalf*lateralScale),
       p.z-worldOffset.z-nz*asphaltHalf
     );
   }
@@ -2499,25 +2578,57 @@ function buildRoadVolume(profile){
 }
 
 function buildRoadProfile(){
-  // Find a little more than the visible corridor so the ribbon never ends at screen edge.
-  const R=1050,R2=R*R,raw=[];
+  // V21.15.2 — build ONE CONTIGUOUS route window around the vehicle.
+  //
+  // The old spatial-radius filter could select two nearby hairpins while
+  // skipping the route between them when that intermediate section left the
+  // 1.05 km circle. buildRibbon() then joined those disconnected samples with
+  // one giant triangle strip. Extreme switchback roads such as Yungas expose
+  // this immediately. A cumulative-distance window stays contiguous by design.
+  const nr=nearestRoute(absX,absZ);
+  const centerCum=nr?.cum||0;
+  const minCum=Math.max(0,centerCum-1800);
+  const maxCum=Math.min(routeLength,centerCum+3600);
+  const raw=[];
+  let lastIncluded=null;
+
   for(const seg of segments){
-    const mx=(seg.ax+seg.bx)/2,mz=(seg.az+seg.bz)/2,dx=mx-worldOffset.x,dz=mz-worldOffset.z;
-    if(dx*dx+dz*dz>R2)continue;
-    const steps=Math.max(1,Math.ceil(seg.len/5)); // <=5 m vertical samples
+    const segStart=seg.cum;
+    const segEnd=seg.cum+seg.len;
+    if(segEnd<minCum||segStart>maxCum)continue;
+
+    const t0=seg.len>0?Math.max(0,(minCum-segStart)/seg.len):0;
+    const t1=seg.len>0?Math.min(1,(maxCum-segStart)/seg.len):1;
+    if(t1<t0)continue;
+
+    const sampledLen=Math.max(0,seg.len*(t1-t0));
+    const steps=Math.max(1,Math.ceil(sampledLen/5)); // <=5 m vertical samples
+
     for(let k=0;k<steps;k++){
-      const t=k/steps,x=seg.ax+(seg.bx-seg.ax)*t,z=seg.az+(seg.bz-seg.az)*t,cum=seg.cum+seg.len*t;
-      if(!raw.length||Math.hypot(x-raw[raw.length-1].x,z-raw[raw.length-1].z)>.4)raw.push({x,z,y:terrainAbs(x,z),cum});
+      const u=k/steps;
+      const t=t0+(t1-t0)*u;
+      const x=seg.ax+(seg.bx-seg.ax)*t;
+      const z=seg.az+(seg.bz-seg.az)*t;
+      const cum=segStart+seg.len*t;
+      if(!raw.length||Math.hypot(x-raw[raw.length-1].x,z-raw[raw.length-1].z)>.4){
+        raw.push({x,z,y:terrainAbs(x,z),cum});
+      }
     }
+
+    lastIncluded={seg,t:t1};
   }
   if(!raw.length)return raw;
 
-  // Add last endpoint.
-  const lastSeg=segments.findLast ? segments.findLast(seg=>{
-    const mx=(seg.ax+seg.bx)/2,mz=(seg.az+seg.bz)/2,dx=mx-worldOffset.x,dz=mz-worldOffset.z;
-    return dx*dx+dz*dz<=R2;
-  }) : null;
-  if(lastSeg)raw.push({x:lastSeg.bx,z:lastSeg.bz,y:terrainAbs(lastSeg.bx,lastSeg.bz),cum:lastSeg.cum+lastSeg.len});
+  // Add the exact clipped endpoint of the contiguous window.
+  if(lastIncluded){
+    const {seg,t}=lastIncluded;
+    const x=seg.ax+(seg.bx-seg.ax)*t;
+    const z=seg.az+(seg.bz-seg.az)*t;
+    const cum=seg.cum+seg.len*t;
+    if(Math.hypot(x-raw[raw.length-1].x,z-raw[raw.length-1].z)>.05){
+      raw.push({x,z,y:terrainAbs(x,z),cum});
+    }
+  }
 
   // Two-pass weighted smoothing on HEIGHT ONLY.
   // Horizontal geometry remains the exact routing polyline, preserving every curve.
@@ -2545,6 +2656,36 @@ function buildRoadProfile(){
       if(nearBridge)finalH[i]=(heights[i-1]+2*heights[i]+heights[i+1])/4;
     }
   }
+  // V21.18 — guaranteed flat departure platform.
+  //
+  // Some routes begin on an extreme mountainside or immediately beside a stacked
+  // switchback. Starting with the raw DEM profile can therefore put the car on a
+  // severe pitch/roll before the player has even moved. Keep the first 28 m of
+  // road perfectly level, then ease back to the untouched profile over the next
+  // 72 m. Horizontal route geometry is never changed.
+  const hasRouteStart=(raw[0]?.cum||0)<=1;
+  const startPlatformY=finalH[0];
+  const START_FLAT_LENGTH=28;
+  const START_BLEND_LENGTH=72;
+  const START_BLEND_END=START_FLAT_LENGTH+START_BLEND_LENGTH;
+
+  function startProfileWeight(cum){
+    // Once streaming has moved the contiguous profile window away from route
+    // kilometre 0, this feature must become a complete no-op. Otherwise every
+    // streaming window would accidentally acquire its own artificial flat start.
+    if(!hasRouteStart)return 1;
+    const d=Math.max(0,cum);
+    if(d<=START_FLAT_LENGTH)return 0;
+    if(d>=START_BLEND_END)return 1;
+    const t=(d-START_FLAT_LENGTH)/START_BLEND_LENGTH;
+    return t*t*(3-2*t);
+  }
+
+  const startSafeH=finalH.map((height,i)=>{
+    const weight=startProfileWeight(raw[i].cum);
+    return startPlatformY+(height-startPlatformY)*weight;
+  });
+
   // Terrain-aligned road roll/camber.
   // Sample terrain across the road instead of keeping every cross-section horizontal.
   // A wider probe reduces sensitivity to tiny DEM noise.
@@ -2607,19 +2748,24 @@ function buildRoadProfile(){
   const maxRoadRoll=
     12*Math.PI/180;
 
-  return raw.map((p,i)=>({
-    x:p.x,
-    z:p.z,
-    y:finalH[i],
-    cum:p.cum,
-    roll:Math.max(
-      -maxRoadRoll,
-      Math.min(
-        maxRoadRoll,
-        smoothedRoll[i]
+  return raw.map((p,i)=>{
+    const startWeight=startProfileWeight(p.cum);
+    return {
+      x:p.x,
+      z:p.z,
+      y:startSafeH[i],
+      cum:p.cum,
+      // The departure pad is truly flat crosswise too. Camber is restored with
+      // the same smooth transition used for longitudinal height.
+      roll:startWeight*Math.max(
+        -maxRoadRoll,
+        Math.min(
+          maxRoadRoll,
+          smoothedRoll[i]
+        )
       )
-    )
-  }));
+    };
+  });
 }
 let activeRoadProfile=[];
 function roadFrameAt(x,z){
@@ -2649,6 +2795,61 @@ function roadFrameAt(x,z){
   }
   return best;
 }
+function roadProfileFrameAtCum(cum){
+  if(activeRoadProfile.length<2)return null;
+
+  const target=Math.max(
+    activeRoadProfile[0].cum||0,
+    Math.min(
+      activeRoadProfile[activeRoadProfile.length-1].cum||0,
+      Number.isFinite(cum)?cum:0
+    )
+  );
+
+  // Profiles are ordered by cumulative route distance. Binary search avoids the
+  // ambiguity of an X/Z nearest-point lookup when two Yungas switchbacks overlap.
+  let lo=0;
+  let hi=activeRoadProfile.length-2;
+  while(lo<=hi){
+    const mid=(lo+hi)>>1;
+    const a=activeRoadProfile[mid];
+    const b=activeRoadProfile[mid+1];
+    if(target<a.cum){
+      hi=mid-1;
+      continue;
+    }
+    if(target>b.cum){
+      lo=mid+1;
+      continue;
+    }
+
+    const span=Math.max(.001,b.cum-a.cum);
+    const t=Math.max(0,Math.min(1,(target-a.cum)/span));
+    const vx=b.x-a.x;
+    const vz=b.z-a.z;
+    const horizontal=Math.hypot(vx,vz)||1;
+    return {
+      x:a.x+(b.x-a.x)*t,
+      z:a.z+(b.z-a.z)*t,
+      y:a.y+(b.y-a.y)*t,
+      angle:Math.atan2(vx,vz),
+      pitch:Math.atan2(b.y-a.y,horizontal),
+      roll:(a.roll||0)+((b.roll||0)-(a.roll||0))*t,
+      cum:target,
+      index:mid,
+      t
+    };
+  }
+
+  const p=target<=(activeRoadProfile[0].cum||0)
+    ?activeRoadProfile[0]
+    :activeRoadProfile[activeRoadProfile.length-1];
+  return {
+    x:p.x,z:p.z,y:p.y,
+    angle:0,pitch:0,roll:p.roll||0,cum:target,index:0,t:0
+  };
+}
+
 function roadHeightAt(x,z){
   const f=roadFrameAt(x,z);
   return f?f.y:terrainAbs(x,z);
@@ -3045,10 +3246,30 @@ function rebuildLocalWorld(){
  // Cut terrain fragments directly below the road corridor so coarse DEM
  // triangles can never protrude through asphalt or shoulders.
  terrainService.setRoadBed(profile,{
-   roadHalfWidth:5.2,
-   terrainCutHalfWidth:13.5,
-   blendWidth:12.0,
-   surfaceOffset:0.14
+   // V21.15.2: geometry-only road clearance. No stencil/depth trickery.
+   // The safety cut extends well past the shoulder so coarse mountain
+   // triangles cannot bridge across the pavement on extreme cross-slopes.
+   roadHalfWidth:5.4,
+   terrainCutHalfWidth:16.5,
+   blendWidth:14.0,
+   surfaceOffset:0.20,
+
+   // A small terrain platform is tied to the FIRST route sample, not to the
+   // nearest X/Z branch. This keeps every departure stable even when another
+   // switchback passes almost directly above or below it.
+   startPad:profile.length>1&&(profile[0].cum||0)<=1?{
+     x:profile[0].x,
+     z:profile[0].z,
+     y:profile[0].y-0.20,
+     angle:Math.atan2(
+       profile[1].x-profile[0].x,
+       profile[1].z-profile[0].z
+     ),
+     forwardOffset:7,
+     halfLength:20,
+     halfWidth:10,
+     blendWidth:22
+   }:null
  });
 
  if(profile.length>1){
@@ -3056,25 +3277,56 @@ function rebuildLocalWorld(){
    const roadVolume=buildRoadVolume(profile);
    if(roadVolume)roadGroup.add(roadVolume);
 
-   const shoulder=buildRibbon(profile,10.4,shoulderMat,.035);if(shoulder)roadGroup.add(shoulder);
-   const asphaltRoad=buildRibbon(profile,7.5,roadMat,ROAD_SURFACE_OFFSET);if(asphaltRoad)roadGroup.add(asphaltRoad);
-   const center=buildRibbon(profile,.13,lineYellow,.165);if(center)roadGroup.add(center);
+   // V21.19: shoulders are SIDE-ONLY bands. The old 10.4 m shoulder ribbon
+   // continued underneath the entire 7.5 m asphalt ribbon. On highly twisted
+   // mountain quads those two triangulated surfaces could intersect and show up
+   // as the large diagonal beige wedges seen in extreme terrain.
+   const leftShoulder=buildLateralBand(
+     profile,
+     5.20,
+     3.75,
+     shoulderMat,
+     .035
+   );
+   if(leftShoulder)roadGroup.add(leftShoulder);
 
-   // Edge lines: derive horizontally offset profiles but reuse the exact smoothed height.
-   for(const side of [-1,1]){
-     const edge=[];
-     for(let i=0;i<profile.length;i++){
-       const p=profile[i],prev=profile[Math.max(0,i-1)],next=profile[Math.min(profile.length-1,i+1)];
-       let tx=next.x-prev.x,tz=next.z-prev.z,tl=Math.hypot(tx,tz)||1;tx/=tl;tz/=tl;
-       const nx=-tz,nz=tx,off=3.45*side;
-       edge.push({
-         x:p.x+nx*off,
-         z:p.z+nz*off,
-         y:p.y+Math.tan(p.roll||0)*off,
-         roll:p.roll||0
-       });
-     }
-     const em=buildRibbon(edge,.10,lineWhite,.16);if(em)roadGroup.add(em);
+   const rightShoulder=buildLateralBand(
+     profile,
+     -3.75,
+     -5.20,
+     shoulderMat,
+     .035
+   );
+   if(rightShoulder)roadGroup.add(rightShoulder);
+
+   const asphaltRoad=buildRibbon(
+     profile,
+     7.5,
+     roadMat,
+     ROAD_SURFACE_OFFSET
+   );
+   if(asphaltRoad)roadGroup.add(asphaltRoad);
+
+   const center=buildOffsetRibbon(
+     profile,
+     0,
+     .13,
+     lineYellow,
+     .165
+   );
+   if(center)roadGroup.add(center);
+
+   // White edge lines use the same bounded cross-section frame as the asphalt.
+   // They can no longer calculate their own conflicting tangent on a hairpin.
+   for(const off of [-3.45,3.45]){
+     const em=buildOffsetRibbon(
+       profile,
+       off,
+       .10,
+       lineWhite,
+       .16
+     );
+     if(em)roadGroup.add(em);
    }
  }
 
@@ -3377,7 +3629,7 @@ async function createRequestedRoute(start,end,waypoints=[]){
 
 // ---------- V5 subsystem facade ----------
 const WorldDrive={
-  version:'21.0-alpha',
+  version:'21.18-alpha',
   route:{generation:0},
   streaming:{generation:0},
   vehicle:{generation:0},
@@ -4454,9 +4706,25 @@ const cameraController=createCameraController({
   camera,
   camTarget,
   car,
+  bodyGroup,
   modeStatusEl:$('camMode'),
   getHeading:()=>heading,
-  getLookState:()=>gamepadState
+  getLookState:()=>gamepadState,
+
+  // V21.13 camera collision uses the same rendered road/terrain support as the
+  // world. Coordinates received here are render-space coordinates.
+  getGroundHeight:(renderX,renderZ)=>{
+    const worldX=renderX+worldOffset.x;
+    const worldZ=renderZ+worldOffset.z;
+    const terrainY=terrainAbs(worldX,worldZ);
+    const road=roadSurfaceAt(worldX,worldZ);
+
+    if(road&&road.distance<8.5){
+      return Math.max(terrainY,road.y);
+    }
+
+    return terrainY;
+  }
 });
 
 const gamepad=createGamepadController({
@@ -5820,12 +6088,35 @@ function toggleAssist(){
  toast('Assistance '+(assist?'activée':'désactivée'));
 }
 
-function placeAt(frac){const p=routePointAt(frac);absX=p.x;absZ=p.z;heading=p.angle;speed=0;steer=0;visualSteer=0;currentSteerAngle=0;longitudinalAccel=0;lateralGripUsage=0;wheelGripUsage=[0,0,0,0];wheelSlipLevels=[0,0,0,0];wheelLateralUsage=[0,0,0,0];wheelLongitudinalUsage=[0,0,0,0];frontSlipAmount=0;rearSlipAmount=0;dynamicYawRate=0;velocityHeading=heading;resetTransmissionState();vehiclePresentation.reset();skidMarks.resetSource('local');roadContact=true;recenterIfNeeded(absX,absZ,true);ensureRoadProfileNear(absX,absZ);const placedRoadSurface=roadSurfaceAt(absX,absZ);
-car.position.set(
-  0,
-  (placedRoadSurface?.y??roadHeightAt(absX,absZ)+ROAD_SURFACE_OFFSET)+.38+TIRE_VISUAL_CLEARANCE,
-  0
-);drawMap(p.cum)}
+function placeAt(frac){
+ const p=routePointAt(frac);
+ absX=p.x;absZ=p.z;heading=p.angle;
+ speed=0;steer=0;visualSteer=0;currentSteerAngle=0;
+ longitudinalAccel=0;lateralGripUsage=0;
+ wheelGripUsage=[0,0,0,0];wheelSlipLevels=[0,0,0,0];
+ wheelLateralUsage=[0,0,0,0];wheelLongitudinalUsage=[0,0,0,0];
+ frontSlipAmount=0;rearSlipAmount=0;dynamicYawRate=0;velocityHeading=heading;
+ resetTransmissionState();vehiclePresentation.reset();skidMarks.resetSource('local');
+ roadContact=true;recenterIfNeeded(absX,absZ,true);ensureRoadProfileNear(absX,absZ);
+
+ // On stacked mountain roads, roadSurfaceAt(X,Z) can legitimately see two
+ // branches at the same horizontal position. Spawn by ROUTE CUMULATIVE DISTANCE
+ // instead so 0% always means the actual first road segment.
+ const placedFrame=roadProfileFrameAtCum(p.cum);
+ if(placedFrame){
+   absX=placedFrame.x;
+   absZ=placedFrame.z;
+   heading=placedFrame.angle;
+   velocityHeading=heading;
+ }
+ const placedY=(placedFrame?.y??roadHeightAt(absX,absZ))+ROAD_SURFACE_OFFSET;
+ car.position.set(
+   absX-worldOffset.x,
+   placedY+.38+TIRE_VISUAL_CLEARANCE,
+   absZ-worldOffset.z
+ );
+ drawMap(p.cum);
+}
 function resetToRoad(){const n=nearestRoute(absX,absZ);if(n){absX=n.px;absZ=n.pz;heading=n.angle;speed=0;steer=0;visualSteer=0;currentSteerAngle=0;longitudinalAccel=0;lateralGripUsage=0;wheelGripUsage=[0,0,0,0];wheelSlipLevels=[0,0,0,0];wheelLateralUsage=[0,0,0,0];wheelLongitudinalUsage=[0,0,0,0];frontSlipAmount=0;rearSlipAmount=0;dynamicYawRate=0;velocityHeading=heading;resetTransmissionState();vehiclePresentation.reset();skidMarks.resetSource('local');roadContact=true;recenterIfNeeded(absX,absZ,true);ensureRoadProfileNear(absX,absZ)}}
 
 const maxSpeedSlider=$('maxSpeedSlider');
@@ -6198,17 +6489,47 @@ $('buildRouteBtn').addEventListener('click',async()=>{
     console.error(e);toast('Impossible de préparer le trajet');
   }finally{btn.textContent=old;btn.disabled=false}
 });
-function applyPreset(start,end){
-  $('waypointsInput').value='';
+function applyPreset(start,end,waypoints=[]){
+  const presetWaypoints=Array.isArray(waypoints)?waypoints:[];
+
+  $('waypointsInput').value=
+    presetWaypoints
+      .map(point=>point.name||`${point.lat}, ${point.lon}`)
+      .join('\n');
+
   selectedStart={...start};selectedEnd={...end};
   $('startPlace').value=start.name;$('endPlace').value=end.name;
   $('startLat').value=start.lat;$('startLon').value=start.lon;
   $('endLat').value=end.lat;$('endLon').value=end.lon;
-  createRequestedRoute({...start},{...end});
+  createRequestedRoute(
+    {...start},
+    {...end},
+    presetWaypoints.map(point=>({...point}))
+  );
 }
 $('preset389Btn').addEventListener('click',()=>applyPreset(MANIC2,MANIC5));
 $('preset169Btn').addEventListener('click',()=>applyPreset(R169_START,R169_END));
 $('preset132Btn').addEventListener('click',()=>applyPreset(R132_START,R132_END));
+
+// V21.14: add Yungas without requiring an index.html replacement. The planner
+// is later moved wholesale into the V21 Route tab, so this button follows it.
+const presetGrid=document.querySelector('#plannerBox .presetGrid');
+if(presetGrid&&!$('presetYungasBtn')){
+  const button=document.createElement('button');
+  button.id='presetYungasBtn';
+  button.type='button';
+  button.textContent='☠ Yungas · Chuspipata → Yolosa';
+  button.title='Camino de la Muerte · Bolivie';
+  button.addEventListener(
+    'click',
+    ()=>applyPreset(
+      YUNGAS_START,
+      YUNGAS_END,
+      YUNGAS_WAYPOINTS
+    )
+  );
+  presetGrid.appendChild(button);
+}
 
 
 document.querySelectorAll('.sectionHead').forEach(btn=>{
@@ -8279,7 +8600,7 @@ function installV21Menu(){
       <nav class="v21MenuNav">
         <div class="v21Brand">
           <strong>WORLD DRIVE</strong>
-          <span>V21.11 ALPHA</span>
+          <span>V21.19 ALPHA</span>
         </div>
 
         <button class="v21Tab active" data-tab="vehicle" data-title="Véhicule">🚗 Véhicule</button>

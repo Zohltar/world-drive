@@ -1,0 +1,13 @@
+World Drive V21.18 validation
+
+PASS - node --check src/main.js
+PASS - node --check src/terrain.js
+PASS - synthetic steep-start profile: first 28 m remains exactly flat
+PASS - synthetic profile: original elevation fully restored at 100 m
+PASS - streaming-window guard: profiles not containing route cum=0 receive no start flattening
+PASS - oriented terrain pad: flat core + smooth blend back to natural terrain
+PASS - spawn uses cumulative route position instead of ambiguous planar nearest-road lookup
+PASS - horizontal route coordinates / routing geometry code unchanged
+
+Primary visual test requested:
+Chuspipata -> Yungas, immediately after route load, both Photo OFF and Photo ON.
