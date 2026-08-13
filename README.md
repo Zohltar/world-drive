@@ -1,10 +1,10 @@
-# World Drive V20.13
+# World Drive V21.20.1
 
-**World Drive** est un simulateur de conduite 3D dans le navigateur construit avec **Three.js** et **Vite**.
+**World Drive** est un simulateur de conduite 3D construit avec **Three.js** et **Vite**, jouable dans le navigateur et disponible comme application **Windows/Electron**.
 
 Le projet combine des routes réelles, du relief, de l’imagerie, des données OpenStreetMap, plusieurs véhicules procéduraux, une physique de conduite semi-réaliste, de l’audio moteur dynamique et un mode multijoueur LAN sans collisions.
 
-La **V20.13** représente une refonte majeure de la conduite. La physique verticale, la suspension, l’adhérence, la dérive, la transmission, le régime moteur et l’interface d’instrumentation sont maintenant liés dans un même modèle cohérent.
+La **V21.20.1** consolide la physique et l’instrumentation de la V20, améliore fortement la génération des routes et du terrain en montagne extrême, stabilise les points de départ et ajoute une version Windows avec **multijoueur LAN intégré** et accès OSM adapté à Electron.
 
 ---
 
@@ -22,7 +22,7 @@ La **V20.13** représente une refonte majeure de la conduite. La physique vertic
 
 ## Statut
 
-**V20.13 · stable**
+**V21.20.1 · stable**
 
 Workflow Git :
 
@@ -30,6 +30,39 @@ Workflow Git :
 dev   → développement et tests
 main  → version stable
 ```
+
+La version Windows distribuée est produite avec **Electron Forge**. Le numéro de version applicatif actuel est `21.20.1`.
+
+---
+
+# Nouveautés V21.20.1
+
+## Version Windows
+
+- Application desktop Electron native pour Windows
+- **Héberger une session** multijoueur directement depuis le menu
+- **Se connecter** à une session LAN par adresse IP ou nom du PC
+- Relais WebSocket embarqué sur le port TCP `8081`
+- Adresse IPv4 LAN de l’hôte affichée dans l’interface
+- Proxy local Electron/Node pour les requêtes Overpass
+- Origine locale stable `127.0.0.1:17317` lorsque disponible, afin de conserver IndexedDB, caches et réglages entre les lancements
+- Fallback automatique vers un port local dynamique si `17317` est déjà occupé
+
+## Routes et terrain
+
+- Maillage routier renforcé dans les épingles, lacets et changements de direction extrêmes
+- Accotements et lignes de route construits avec un repère transversal commun
+- Limitation des raccords géométriques anormalement longs dans les virages serrés
+- Terrain mieux adapté aux routes superposées à différentes altitudes
+- Réduction des artefacts triangulaires sur les reliefs extrêmes
+- Départ des trajets stabilisé avec une zone plane et une transition progressive vers la pente réelle
+
+## OSM / monde dynamique
+
+- Hydrographie et décor réel fonctionnent aussi dans la version Windows via le proxy local Electron
+- Le navigateur/Vite continue d’interroger Overpass directement
+- Les réponses OSM réussies sont mises en cache dans IndexedDB
+- Le premier chargement du **Décor réel** peut être sensiblement plus long dans les régions très détaillées; les chargements suivants profitent du cache
 
 ---
 
@@ -52,7 +85,7 @@ main  → version stable
 
 ---
 
-# Physique de conduite V20
+# Physique de conduite
 
 ## Suspension et contact au sol
 
@@ -104,7 +137,7 @@ Les traces de pneus et les sons de crissement utilisent cette estimation d’adh
 
 ### Comportement en virage
 
-La V20 sépare maintenant :
+Le modèle de conduite sépare :
 
 - la saturation latérale des pneus
 - le stress longitudinal accélération / freinage
@@ -259,7 +292,7 @@ Les véhicules électriques gardent leur logique de limitation électronique, pu
 
 # Instrumentation
 
-La V20 possède un nouveau combiné d’instruments entièrement dessiné en Canvas.
+Depuis la V20, World Drive possède un combiné d’instruments entièrement dessiné en Canvas.
 
 Aucun asset d’image n’est nécessaire.
 
@@ -448,47 +481,47 @@ L’absence de collisions est volontaire afin de garder le multijoueur léger et
 
 ## Lancer une partie LAN
 
-Sur le PC qui héberge la partie, ouvrir deux terminaux.
+### Application Windows — méthode recommandée
 
-### Terminal 1 — serveur multijoueur
+Aucun terminal n’est nécessaire.
 
-```bash
-node server/multiplayer-server.mjs
-```
+Sur le PC hôte :
 
-Port par défaut :
+1. Ouvrir **Menu > Multijoueur**.
+2. Cliquer **Héberger une session**.
+3. Noter l’adresse affichée, par exemple `192.168.1.20`.
+4. Si Windows le demande, autoriser World Drive sur le réseau privé.
+
+Sur les autres PC :
+
+1. Ouvrir **Menu > Multijoueur**.
+2. Entrer l’adresse IP de l’hôte, par exemple `192.168.1.20`.
+3. Cliquer **Se connecter**.
+
+Le serveur LAN utilise par défaut le port TCP :
 
 ```text
 8081
 ```
 
-### Terminal 2 — World Drive
+Le bouton **Arrêter** ferme proprement l’hébergement ou la connexion active.
+
+### Navigateur / développement Vite
+
+Le mode historique reste disponible pour le développement. Sur le PC hôte :
 
 ```bash
+node server/multiplayer-server.mjs
 npm run dev -- --host 0.0.0.0
 ```
 
-Vite utilise normalement :
-
-```text
-5173
-```
-
-Sur le PC hôte :
-
-```text
-http://localhost:5173
-```
-
-Sur les autres ordinateurs du réseau :
+Les autres ordinateurs ouvrent ensuite :
 
 ```text
 http://ADRESSE_IP_DU_PC_HOTE:5173
 ```
 
-Le client multijoueur utilise automatiquement le même nom d’hôte avec le port `8081`.
-
-Au besoin, autoriser les ports **5173** et **8081** dans le pare-feu du PC hôte.
+Le client multijoueur utilise le port `8081` pour le WebSocket. Au besoin, autoriser les ports **5173** et **8081** dans le pare-feu du PC hôte.
 
 ---
 
@@ -505,47 +538,86 @@ La carte du trajet contient un mode challenge léger.
 
 # Installation
 
-## Prérequis
+## Utilisateur Windows
+
+La méthode recommandée est d’utiliser l’une des archives publiées dans les **GitHub Releases** :
+
+- `WorldDriveSetup.exe` — installateur Windows
+- archive `.zip` — version portable
+
+La version Windows nécessite une connexion Internet pour récupérer les données géographiques qui ne sont pas encore présentes dans les caches locaux.
+
+## Développement
+
+### Prérequis
 
 - Node.js LTS
 - npm
-- navigateur moderne avec WebGL
-- Chrome / Edge / Firefox récent recommandé
+- navigateur moderne avec WebGL pour le mode web
 
-## Premier lancement
+### Premier lancement web
 
 ```bash
 npm install
 npm run dev
 ```
 
-Vite affichera une adresse locale, généralement :
+Vite affiche généralement :
 
 ```text
 http://localhost:5173
 ```
 
-Sous Windows, `START_WORLD_DRIVE.bat` peut également être utilisé si présent dans le projet.
+### Tester l’application Windows
+
+```powershell
+npm run desktop
+```
+
+Cette commande construit d’abord le projet Vite, puis ouvre l’application Electron.
 
 ---
 
-# Build de production
+# Build et release Windows
+
+## Build web
 
 ```bash
 npm run build
 ```
 
-Le résultat est généré dans :
+Le résultat est généré dans `dist/`.
+
+## Générer les paquets Windows
+
+```powershell
+npm run make
+```
+
+ou :
 
 ```text
-dist/
+BUILD_WINDOWS_RELEASE.bat
 ```
 
-Pour tester le build :
+Electron Forge génère les artefacts sous :
 
-```bash
-npm run preview
+```text
+out\make\
 ```
+
+Les sorties attendues comprennent notamment l’installateur Squirrel Windows et une archive ZIP portable.
+
+## Publication GitHub
+
+Exemple pour taguer la version stable :
+
+```powershell
+git tag -a v21.20.1 -m "World Drive V21.20.1"
+git push origin v21.20.1
+```
+
+Ensuite, créer une **GitHub Release** à partir du tag `v21.20.1` et joindre l’installateur ainsi que le ZIP portable générés par `npm run make`.
 
 ---
 
@@ -559,6 +631,14 @@ world-drive/
 ├── index.html
 ├── package.json
 ├── START_WORLD_DRIVE.bat
+├── BUILD_WINDOWS_RELEASE.bat
+├── forge.config.cjs
+├── vite.config.js
+│
+├── electron/
+│   ├── main.cjs
+│   ├── preload.cjs
+│   └── multiplayer-runtime.cjs
 │
 ├── server/
 │   └── multiplayer-server.mjs
@@ -691,6 +771,20 @@ Reproduit localement :
 - support au sol
 - suspension
 
+### `electron/main.cjs`
+
+Gère la version desktop Windows :
+
+- serveur statique local
+- fenêtre Electron
+- proxy OSM / Overpass
+- origine locale persistante
+- IPC multijoueur
+
+### `electron/multiplayer-runtime.cjs`
+
+Gère l’hébergement LAN et le relais local utilisé pour rejoindre une session distante depuis Electron.
+
 ### `world-streaming.js`
 
 Coordonne le chargement dynamique des éléments du monde autour de la voiture.
@@ -724,30 +818,25 @@ World Drive utilise ou peut utiliser des données provenant notamment de :
 - services d’élévation
 - imagerie cartographique
 
-La précision et la disponibilité des données peuvent varier selon la région.
+La précision et la disponibilité des données peuvent varier selon la région. Dans Electron, les requêtes Overpass passent par le proxy local Node intégré; dans le navigateur, elles sont effectuées directement par le client web.
 
 ---
 
-# V20.13 — résumé
+# V21.20.1 — résumé
 
-La V20.13 stabilise principalement :
+La V21.20.1 stabilise et regroupe notamment :
 
-- physique verticale et véhicule réellement capable de quitter le sol
-- suspension indépendante aux quatre roues
-- estimation d’adhérence roue par roue
-- traces de pneus par roue
-- survirage / sous-virage plus naturels
-- direction haute vitesse plus progressive
-- dérive visuelle et physique améliorée
-- rapports mécaniques
-- transmission automatique / manuelle
-- changement de rapport avec coupure de propulsion
-- régime moteur cohérent avec le rapport engagé
-- rev limiter
-- vitesse maximale dérivée des ratios et du redline
-- réduction de 30 % du redline hors route
-- nouveau combiné d’instruments
-- contrôles manette mis à jour
-- amélioration majeure du rendu sonore des moteurs
+- application Windows Electron distribuable
+- hébergement et connexion multijoueur LAN directement dans le menu
+- proxy OSM/Overpass spécifique à Windows
+- cache IndexedDB persistant grâce à une origine desktop stable
+- génération routière robuste dans les lacets et reliefs extrêmes
+- corrections des artefacts de terrain près des routes superposées
+- zone de départ plane sur les trajets difficiles
+- physique verticale et suspension indépendante aux quatre roues
+- adhérence, glisse et skid marks roue par roue
+- transmission automatique / manuelle et rapports mécaniques
+- instrumentation Canvas et audio moteur dynamique
+- streaming du relief, de l’imagerie, de l’hydrographie et du décor OSM
 
-**V20.13 est la version stable actuelle de World Drive.**
+**V21.20.1 est la version stable actuelle de World Drive.**
