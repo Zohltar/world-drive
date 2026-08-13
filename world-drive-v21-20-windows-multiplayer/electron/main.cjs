@@ -49,146 +49,6 @@ function safeFilePath(root,requestPath){
   return candidate;
 }
 
-const DESKTOP_HTTP_PORT=17317;
-const OVERPASS_PROXY_HOSTS=new Set([
-  'overpass-api.de',
-  'overpass.kumi.systems',
-  'overpass.nchc.org.tw'
-]);
-
-function readRequestBody(req,maxBytes=1024*1024){
-  return new Promise((resolve,reject)=>{
-    const chunks=[];
-    let total=0;
-
-    req.on('data',chunk=>{
-      total+=chunk.length;
-      if(total>maxBytes){
-        reject(new Error('Request body too large'));
-        req.destroy();
-        return;
-      }
-      chunks.push(chunk);
-    });
-
-    req.once('end',()=>resolve(Buffer.concat(chunks)));
-    req.once('error',reject);
-  });
-}
-
-function validateOverpassTarget(value){
-  try{
-    const target=new URL(String(value||''));
-    if(target.protocol!=='https:')return null;
-    if(!OVERPASS_PROXY_HOSTS.has(target.hostname))return null;
-    if(!/\/api\/interpreter\/?$/i.test(target.pathname))return null;
-    return target;
-  }catch{
-    return null;
-  }
-}
-
-async function proxyOverpassRequest(req,res,requestUrl){
-  const target=validateOverpassTarget(
-    requestUrl.searchParams.get('target')
-  );
-
-  if(!target){
-    res.writeHead(400,{'Content-Type':'text/plain; charset=utf-8'});
-    res.end('Invalid Overpass target');
-    return;
-  }
-
-  const method=String(req.method||'GET').toUpperCase();
-  if(method!=='GET'&&method!=='POST'){
-    res.writeHead(405,{'Content-Type':'text/plain; charset=utf-8'});
-    res.end('Method not allowed');
-    return;
-  }
-
-  const controller=new AbortController();
-  const timer=setTimeout(()=>controller.abort(),20000);
-  const abortUpstream=()=>{
-    if(!res.writableEnded)controller.abort();
-  };
-
-  req.once('aborted',abortUpstream);
-  res.once('close',abortUpstream);
-
-  try{
-    const body=method==='POST'
-      ?await readRequestBody(req)
-      :undefined;
-
-    const headers={
-      'Accept':'application/json',
-      'User-Agent':'WorldDrive/21.20.1 (Windows; Electron Overpass proxy)'
-    };
-
-    if(req.headers['content-type']){
-      headers['Content-Type']=req.headers['content-type'];
-    }
-
-    const upstream=await fetch(target,{ 
-      method,
-      headers,
-      body:method==='POST'?body:undefined,
-      signal:controller.signal,
-      redirect:'follow'
-    });
-
-    const payload=Buffer.from(
-      await upstream.arrayBuffer()
-    );
-
-    if(res.writableEnded)return;
-
-    res.writeHead(upstream.status,{
-      'Content-Type':upstream.headers.get('content-type')||'application/json; charset=utf-8',
-      'Content-Length':String(payload.length),
-      'Cache-Control':'no-store',
-      'X-World-Drive-Proxy':'overpass'
-    });
-    res.end(payload);
-  }catch(error){
-    if(res.writableEnded)return;
-    const aborted=error?.name==='AbortError';
-    res.writeHead(aborted?504:502,{
-      'Content-Type':'application/json; charset=utf-8',
-      'Cache-Control':'no-store'
-    });
-    res.end(JSON.stringify({
-      error:aborted?'Overpass timeout':'Overpass proxy failed',
-      detail:String(error?.message||error)
-    }));
-  }finally{
-    clearTimeout(timer);
-    req.off('aborted',abortUpstream);
-    res.off('close',abortUpstream);
-  }
-}
-
-function listenHttpServer(server,port){
-  return new Promise((resolve,reject)=>{
-    const cleanup=()=>{
-      server.off('error',onError);
-      server.off('listening',onListening);
-    };
-    const onError=error=>{
-      cleanup();
-      reject(error);
-    };
-    const onListening=()=>{
-      cleanup();
-      resolve(server.address());
-    };
-
-    server.once('error',onError);
-    server.once('listening',onListening);
-    server.listen(port,'127.0.0.1');
-  });
-}
-
 function startStaticServer(){
   const distRoot=path.resolve(__dirname,'..','dist');
   const indexFile=path.join(distRoot,'index.html');
@@ -202,18 +62,6 @@ function startStaticServer(){
   return new Promise((resolve,reject)=>{
     const server=http.createServer((req,res)=>{
       const requestUrl=new URL(req.url || '/','http://127.0.0.1');
-
-      if(requestUrl.pathname==='/__worlddrive_proxy/overpass'){
-        proxyOverpassRequest(req,res,requestUrl).catch(error=>{
-          console.error('Overpass proxy handler failed:',error);
-          if(!res.headersSent){
-            res.writeHead(500,{'Content-Type':'text/plain; charset=utf-8'});
-          }
-          if(!res.writableEnded)res.end('Overpass proxy error');
-        });
-        return;
-      }
-
       let filePath=safeFilePath(distRoot,requestUrl.pathname);
 
       if(!filePath){
@@ -252,21 +100,12 @@ function startStaticServer(){
       });
     });
 
-    (async()=>{
-      let address;
-      try{
-        address=await listenHttpServer(server,DESKTOP_HTTP_PORT);
-      }catch(error){
-        if(error?.code!=='EADDRINUSE')throw error;
-        console.warn(
-          `Desktop port ${DESKTOP_HTTP_PORT} already in use; falling back to a dynamic port.`
-        );
-        address=await listenHttpServer(server,0);
-      }
-
+    server.once('error',reject);
+    server.listen(0,'127.0.0.1',()=>{
+      const address=server.address();
       staticServer=server;
       resolve(`http://127.0.0.1:${address.port}`);
-    })().catch(reject);
+    });
   });
 }
 
@@ -292,7 +131,7 @@ function createWindow(){
     show:false,
     autoHideMenuBar:true,
     backgroundColor:'#08111c',
-    title:'World Drive V21.20.1',
+    title:'World Drive V21.20',
     webPreferences:{
       preload:path.join(__dirname,'preload.cjs'),
       nodeIntegration:false,

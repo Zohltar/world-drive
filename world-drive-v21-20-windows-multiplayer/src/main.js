@@ -31,75 +31,6 @@ import { createMultiplayerVisualSystem } from './multiplayer-visuals.js';
 import { createVehiclePresentation } from './vehicle-presentation.js';
 import { createSkidMarkSystem } from './skidmarks.js';
 
-
-// ---------- V21.20.1 desktop Overpass transport ----------
-// The browser build talks to Overpass directly. The Windows/Electron build
-// uses a same-origin local proxy hosted by electron/main.cjs. This avoids
-// Chromium/Electron POST/CORS/network differences while leaving every OSM
-// consumer (hydrography, scenery, signs, metadata, bridges) unchanged.
-function installDesktopOverpassTransport(){
-  if(
-    !window.worldDriveDesktop?.isDesktop||
-    window.__worldDriveOverpassTransportInstalled
-  ){
-    return;
-  }
-
-  const nativeFetch=window.fetch.bind(window);
-  const allowedHosts=new Set([
-    'overpass-api.de',
-    'overpass.kumi.systems',
-    'overpass.nchc.org.tw'
-  ]);
-
-  window.fetch=(input,init)=>{
-    let sourceUrl='';
-
-    try{
-      if(typeof input==='string'||input instanceof URL){
-        sourceUrl=String(input);
-      }else if(input&&typeof input.url==='string'){
-        sourceUrl=input.url;
-      }
-
-      const parsed=new URL(sourceUrl,window.location.href);
-
-      if(
-        parsed.protocol==='https:'&&
-        allowedHosts.has(parsed.hostname)&&
-        /\/api\/interpreter\/?$/i.test(parsed.pathname)
-      ){
-        const proxy=new URL(
-          '/__worlddrive_proxy/overpass',
-          window.location.origin
-        );
-
-        proxy.searchParams.set(
-          'target',
-          parsed.toString()
-        );
-
-        return nativeFetch(
-          proxy.toString(),
-          init
-        );
-      }
-    }catch(error){
-      console.warn(
-        'Desktop Overpass proxy routing failed; using direct fetch',
-        error
-      );
-    }
-
-    return nativeFetch(input,init);
-  };
-
-  window.__worldDriveOverpassTransportInstalled=true;
-  console.info('World Drive desktop Overpass proxy enabled');
-}
-
-installDesktopOverpassTransport();
-
 // Default test route. V4 can replace these coordinates at runtime.
 const MANIC2={lat:49.3213,lon:-68.3467,name:'Manic‑2'};
 const MANIC5={lat:50.6451065,lon:-68.7271214,name:'Manic‑5'};
@@ -915,7 +846,7 @@ function createV21BootOverlay(){
     <div class="v21StartupCard">
       <div class="v21StartupBrand">
         <h1>WORLD DRIVE</h1>
-        <p>V21.20.1 alpha · initialisation du monde</p>
+        <p>V21.20 alpha · initialisation du monde</p>
       </div>
 
       <div id="v21BootContent">
@@ -950,14 +881,14 @@ function createV21BootOverlay(){
   document.body.appendChild(overlay);
 
   document.title=
-    'World Drive V21.20.1';
+    'World Drive V21.20';
 
   const oldLoadingTitle=
     loading?.querySelector('h1');
 
   if(oldLoadingTitle){
     oldLoadingTitle.textContent=
-      'World Drive V21.20.1';
+      'World Drive V21.20';
   }
 
   if(loading){
@@ -8977,7 +8908,7 @@ function installV21Menu(){
       <nav class="v21MenuNav">
         <div class="v21Brand">
           <strong>WORLD DRIVE</strong>
-          <span>V21.20.1 ALPHA</span>
+          <span>V21.20 ALPHA</span>
         </div>
 
         <button class="v21Tab active" data-tab="vehicle" data-title="Véhicule">🚗 Véhicule</button>

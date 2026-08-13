@@ -1,4 +1,4 @@
-# World Drive V21.20.1 — Windows LAN intégré
+# World Drive V21.20 — Windows LAN intégré
 
 Cette version part de la baseline V21.19 et ajoute le multijoueur LAN directement dans l'application Windows Electron.
 
@@ -17,7 +17,7 @@ Le navigateur/Vite conserve son comportement multijoueur existant. Les nouveaux 
 
 Le client multijoueur historique de World Drive se connecte à `ws://<nom-hôte-de-la-page>:8081`. Dans Electron, la page du jeu est servie sur `127.0.0.1`, donc le client cherche naturellement `127.0.0.1:8081`.
 
-V21.20.1 conserve ce client intact :
+V21.20 conserve ce client intact :
 
 - en mode **Héberger**, Electron ouvre le vrai serveur LAN sur `0.0.0.0:8081` ;
 - en mode **Se connecter**, Electron ouvre un petit proxy TCP sur `127.0.0.1:8081` qui transmet la connexion WebSocket vers le PC hôte.
