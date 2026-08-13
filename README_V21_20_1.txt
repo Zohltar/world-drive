@@ -14,3 +14,5 @@ Test focus:
 2. Load Manic-5 or Yungas
 3. Advanced: Hydrographie should become OSM/Cache, Decor reel should populate, Ponts/Panneaux may populate when mapped.
 4. Close/reopen desktop: OSM cache should persist because the desktop origin is stable.
+
+README principal mis à jour : README.md (V21.20.1 stable, Windows, multijoueur LAN, build/release GitHub).
