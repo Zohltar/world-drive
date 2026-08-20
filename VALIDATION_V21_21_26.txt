@@ -1,0 +1,75 @@
+World Drive V21.21.26 — Validation
+==================================
+
+RESULT: AUTOMATED QA PASS — candidate requires visual/driving validation.
+
+New V21.21.26 QA
+----------------
+PASS behavior calibration for all 7 current vehicles:
+- 0-100 km/h shift-aware simulations
+- 112.7-0 km/h braking-distance simulations
+- base lateral-g targets
+- selected top-speed references
+- left/right steering symmetry from 0 to 320 km/h
+- finite steering-rack timing
+- full-throttle straight-line no-lateral-slip checks
+- F1 aero progression regression
+- 175,000 deterministic extreme-state combinations
+
+PASS traction consistency:
+- 34,160 throttle/brake/fixed-point cases
+- 7 vehicles
+- road and low-grip surface coefficients
+- 0 to 250 km/h
+- more valid driver throttle/brake never reduces delivered force
+- load-transfer solver converges against delivered rather than impossible
+  requested acceleration
+
+Representative V21.21.26 outputs
+--------------------------------
+ID.4       0-100 5.02 s | 70-0 51.5 m | 0.86 g | 160 km/h
+WRX        0-100 5.75 s | 70-0 47.6 m | 0.95 g | 225 km/h
+Civic      0-100 9.15 s | 70-0 51.8 m | 0.87 g | 180 km/h
+Sonata     0-100 7.69 s | 70-0 50.9 m | 0.82 g | 205 km/h
+F1 2010    0-100 2.60 s | 70-0 23.1 m | 2.09 g base | 350 km/h
+Countach   0-100 5.17 s | 70-0 60.9 m | 0.82 g | 295 km/h
+i3         0-100 6.90 s | 70-0 53.9 m | 0.77 g | 150 km/h
+
+Regression QA rerun
+-------------------
+PASS V21.21 physics schema / generalized axles / route stress / 30-240 Hz
+PASS 50,000-state randomized dynamics fuzz, up to 5 axles / 20 wheels
+PASS V21.21.10 friction circle
+PASS V21.21.12 force-coupled drift
+PASS V21.21.15 low-speed traction
+PASS V21.21.16 launch-corner behavior
+PASS V21.21.16 steering-force sign
+PASS V21.21.17 braking + momentum
+PASS V21.21.19 right-lane assist
+PASS V21.21.20 graphics policy
+PASS V21.21.23 F1 stability / aero
+PASS V21.21.24 F1 steering
+PASS V21.21.25 steering rack
+PASS V21.21.3 road-index/performance regression
+
+Selected retained physics observations
+--------------------------------------
+- WRX handbrake at 72 km/h still produces ~25.7 deg max sideslip.
+- 120 km/h sideways landing still preserves momentum; braking reduces the
+  available lateral trajectory correction instead of creating magic grip.
+- F1 at 200 km/h retains ~4.28 g aero-assisted lateral capacity.
+- North-American lane assist still targets the driver's right lane.
+- Road-over-water stencil ownership remains enabled.
+
+Performance QA
+--------------
+V21.21.3 synthetic allocation-light dynamics: ~1.45 us/frame in this run.
+V21.21.26 traction-limit local microbenchmark: ~0.29 us/call / 1,000,000 calls.
+No representative GPU/browser benchmark is possible on the user's machine from
+this QA environment.
+
+Build/syntax
+------------
+Full Vite/Electron build not run because this candidate package has no installed
+node_modules/package-lock in the QA environment. Modified JS syntax and package
+JSON are checked separately before packaging.

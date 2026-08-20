@@ -1,0 +1,9 @@
+V21.21.17 BRAKING + MOMENTUM QA: PASS
+WRX lateral capacity: coast 9.36 m/s², half brake 8.23, full brake 3.00
+80 km/h max momentum-turn rate: coast 24.13°/s, full brake 7.73°/s
+100 km/h max momentum-turn rate: coast 19.30°/s, full brake 6.18°/s
+120 km/h max momentum-turn rate: coast 16.09°/s, full brake 5.15°/s
+150 km/h max momentum-turn rate: coast 12.87°/s, full brake 4.12°/s
+WRX full-brake tire utilization: 94.6% / 94.6% / 94.6% / 94.6%
+120 km/h, one-frame 35° correction request: coast 0.268°, full brake 0.086°, airborne 0.000°
+35° sideways landing after 0.75 s: coast 22.88° remaining, full brake 30.57° remaining (91.4 km/h)

@@ -1,4 +1,5 @@
-// World Drive V21.18 - flat departure platform + elevation-aware switchback terrain blend
+// World Drive V21.21.27 - terrain service (V21.18 road-bed logic preserved)
+// V21.21.27 receives a larger near-terrain extent and denser/farther seamless LOD rings.
 // Owns procedural fallback relief, near-ground mesh and far-horizon LOD rings.
 // Elevation tile loading remains in elevation.js; global world reconstruction stays in main.js.
 
@@ -1153,18 +1154,18 @@ export function createTerrainService({
     // the hand-off preserve mountain ridges; spacing grows with distance.
     const halfExtents=[
       nearHalf,
-      nearHalf+120,
-      nearHalf+280,
-      nearHalf+480,
-      nearHalf+720,
-      nearHalf+1000,
-      nearHalf+1320,
-      nearHalf+1680,
-      nearHalf+2080,
-      nearHalf+2520,
-      nearHalf+3000,
-      nearHalf+3520,
-      nearHalf+4080
+      nearHalf+100,
+      nearHalf+230,
+      nearHalf+390,
+      nearHalf+590,
+      nearHalf+830,
+      nearHalf+1120,
+      nearHalf+1470,
+      nearHalf+1890,
+      nearHalf+2380,
+      nearHalf+2940,
+      nearHalf+3570,
+      nearHalf+4260
     ];
 
     const positions=[];

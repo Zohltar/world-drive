@@ -1,0 +1,50 @@
+WORLD DRIVE V21.21.10 — VALIDATION / QA
+
+STATUS
+Candidate. Automated/static tests passed; user driving feel validation remains required.
+
+CHANGE SCOPE
+- Modified handling logic: src/vehicle-dynamics.js
+- Version/comment metadata: src/main.js, package.json, electron/main.cjs
+- No terrain, presentation, multiplayer runtime, preload, Forge or Vite behavior changes.
+
+FRICTION CIRCLE
+The previous model computed combined tire stress but rear handling slip was based only on lateral demand. V21.21.10 computes remaining lateral capacity from normalized longitudinal demand:
+  lateralCapacity = sqrt(max(0, 1 - longitudinalUtil^2))
+Then effective lateral utilization is evaluated against that remaining capacity.
+A small numerical floor avoids division instability for a fully locked wheel.
+
+EXPECTED RESULT
+- corner + handbrake -> rear-dominant lateral saturation / drift initiation
+- straight + handbrake -> longitudinal lock/stress but zero artificial lateral-slip demand
+- combined service brake + corner -> less lateral reserve than cornering alone
+
+DEDICATED QA
+PASS all 7 current vehicle profiles:
+- ID.4
+- WRX
+- Civic
+- Sonata
+- F1 2010
+- Countach 80s
+- BMW i3 2017
+For each: moderate cornering alone stays below rear-slip threshold, the same corner with handbrake drives rear lateral slip > 0.90, front axle is not directly stripped of lateral grip, and straight handbrake creates zero lateral slip demand.
+
+REGRESSION QA
+- node --check critical JS/CJS: PASS
+- V21.21 physics QA: PASS
+- randomized dynamics fuzz, 50,000 states / up to 20 wheels: PASS
+- V21.21.7 render policy QA: PASS
+- V21.21.9 terrain orientation/frame-pacing QA: PASS 12/12
+
+UNCHANGED BYTE-FOR-BYTE VS V21.21.9
+- src/terrain.js
+- src/vehicle-system.js
+- src/vehicle-presentation.js
+- electron/preload.cjs
+- electron/multiplayer-runtime.cjs
+- forge.config.cjs
+- vite.config.js
+
+PERFORMANCE
+The new sqrt/divide executes only in the secondary per-wheel grip solver (20 Hz). Node synthetic microbenchmark measured ~0.581 us/call before vs ~0.618 us/call after (~+6.5% inside that tiny solver, ~0.037 us absolute per call). This should be negligible relative to a rendered frame, but it is not a browser FPS guarantee.

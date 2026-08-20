@@ -30,6 +30,19 @@ import { createVehicleVisualSystem } from './vehicle-visuals.js';
 import { createMultiplayerVisualSystem } from './multiplayer-visuals.js';
 import { createVehiclePresentation } from './vehicle-presentation.js';
 import { createSkidMarkSystem } from './skidmarks.js';
+import {
+  clampDynamics as physicsClamp,
+  smoothstep01 as physicsSmoothstep01,
+  computeGradeAcceleration,
+  longitudinalTractionLimit,
+  steeringCommand,
+  advanceSteeringRack,
+  lateralDynamicsEnvelope,
+  estimateWheelGripUsage,
+  yawResponseRate,
+  limitMomentumHeadingDelta,
+  laneKeepAssistCommand
+} from './vehicle-dynamics.js';
 
 
 // ---------- V21.20.1 desktop Overpass transport ----------
@@ -133,6 +146,60 @@ const routingGeometry=createRoutingGeometry({
   getRouteLength:()=>routeLength
 });
 const nearestRoute=(x,z)=>routingGeometry.nearestRoute(x,z);
+
+// V21.21.5 vehicle-local route lookup. The general nearestRoute() remains
+// untouched for OSM/sign/metadata projections, but the driving loop exploits
+// temporal locality: between frames the car can only move a few route segments.
+// A bounded local scan avoids walking the entire route polyline every frame.
+let vehicleNearestHint=-1;
+let vehicleNearestLastX=Infinity;
+let vehicleNearestLastZ=Infinity;
+const vehicleNearestScratch={};
+function nearestRouteForVehicle(x,z){
+  const count=segments.length;
+  if(!count)return null;
+
+  const movedSq=(x-vehicleNearestLastX)**2+(z-vehicleNearestLastZ)**2;
+  const hintValid=vehicleNearestHint>=0&&vehicleNearestHint<count&&movedSq<120*120;
+  if(!hintValid){
+    const full=nearestRoute(x,z);
+    if(full&&Number.isInteger(full.i))vehicleNearestHint=full.i;
+    vehicleNearestLastX=x;vehicleNearestLastZ=z;
+    return full;
+  }
+
+  const first=Math.max(0,vehicleNearestHint-40);
+  const last=Math.min(count-1,vehicleNearestHint+40);
+  let bd=Infinity,bestI=-1,bestT=0,bestPx=0,bestPz=0;
+  for(let i=first;i<=last;i++){
+    const seg=segments[i];
+    const vx=seg.bx-seg.ax,vz=seg.bz-seg.az,wx=x-seg.ax,wz=z-seg.az;
+    const vv=vx*vx+vz*vz||1;
+    const t=Math.max(0,Math.min(1,(wx*vx+wz*vz)/vv));
+    const px=seg.ax+t*vx,pz=seg.az+t*vz,dx=x-px,dz=z-pz,d2=dx*dx+dz*dz;
+    if(d2<bd){bd=d2;bestI=i;bestT=t;bestPx=px;bestPz=pz;}
+  }
+
+  // Far from the hinted corridor, fall back to the exact global lookup. This
+  // handles teleports and deliberate off-road shortcuts cleanly.
+  if(bestI<0||bd>20*20){
+    const full=nearestRoute(x,z);
+    if(full&&Number.isInteger(full.i))vehicleNearestHint=full.i;
+    vehicleNearestLastX=x;vehicleNearestLastZ=z;
+    return full;
+  }
+
+  const seg=segments[bestI];
+  const out=vehicleNearestScratch;
+  out.i=bestI;out.t=bestT;out.px=bestPx;out.pz=bestPz;out.d=Math.sqrt(bd);
+  out.angle=Math.atan2(seg.bx-seg.ax,seg.bz-seg.az);
+  out.cum=seg.cum+bestT*seg.len;
+  out.ax=seg.ax;out.az=seg.az;out.bx=seg.bx;out.bz=seg.bz;out.len=seg.len;
+  vehicleNearestHint=bestI;
+  vehicleNearestLastX=x;vehicleNearestLastZ=z;
+  return out;
+}
+
 const routePointAt=frac=>routingGeometry.routePointAt(frac);
 const routePointAtCum=cum=>routingGeometry.routePointAtCum(cum);
 
@@ -915,7 +982,7 @@ function createV21BootOverlay(){
     <div class="v21StartupCard">
       <div class="v21StartupBrand">
         <h1>WORLD DRIVE</h1>
-        <p>V21.20.1 alpha · initialisation du monde</p>
+        <p>V21.21.26 alpha · initialisation du monde</p>
       </div>
 
       <div id="v21BootContent">
@@ -950,14 +1017,14 @@ function createV21BootOverlay(){
   document.body.appendChild(overlay);
 
   document.title=
-    'World Drive V21.20.1';
+    'World Drive V21.21.26';
 
   const oldLoadingTitle=
     loading?.querySelector('h1');
 
   if(oldLoadingTitle){
     oldLoadingTitle.textContent=
-      'World Drive V21.20.1';
+      'World Drive V21.21.26';
   }
 
   if(loading){
@@ -1282,8 +1349,11 @@ function runElapsedMs(now=performance.now()){
   );
 }
 
-function updateRunChallengeHUD(now=performance.now()){
+let nextRunChallengeHudAt=0;
+function updateRunChallengeHUD(now=performance.now(),force=false){
   if(!runChallengeEl)return;
+  if(!force&&now<nextRunChallengeHudAt)return;
+  nextRunChallengeHudAt=now+100; // 10 Hz is visually smooth for timer/quality text.
 
   const penalty=
     Math.floor(
@@ -1392,7 +1462,7 @@ function resetRunChallenge(){
   runChallenge.lastSampleAt=0;
   runChallenge.offroadMs=0;
 
-  updateRunChallengeHUD();
+  updateRunChallengeHUD(performance.now(),true);
 }
 
 function startRunChallenge(now){
@@ -1407,7 +1477,7 @@ function startRunChallenge(now){
   runChallenge.startedAt=now;
   runChallenge.lastSampleAt=now;
 
-  updateRunChallengeHUD(now);
+  updateRunChallengeHUD(now,true);
 }
 
 function finishRunChallenge(now){
@@ -1418,7 +1488,7 @@ function finishRunChallenge(now){
   runChallenge.finishedAt=now;
   runChallenge.lastSampleAt=now;
 
-  updateRunChallengeHUD(now);
+  updateRunChallengeHUD(now,true);
   toast(
     'Parcours terminé · '+
     formatRunTime(
@@ -1508,10 +1578,120 @@ function geoDist(a,b){
 // ---------- Three ----------
 const scene=new THREE.Scene();scene.background=new THREE.Color(0x91b5d1);scene.fog=new THREE.FogExp2(0x91b5d1,0.00082);
 const camera=new THREE.PerspectiveCamera(65,innerWidth/innerHeight,.1,4500);
+// V21.21.21: stencil is required for road-over-hydro pixel ownership.
 const renderer=new THREE.WebGLRenderer({antialias:true,powerPreference:'high-performance',stencil:true});
-renderer.setSize(innerWidth,innerHeight);renderer.setPixelRatio(Math.min(devicePixelRatio,1.6));renderer.shadowMap.enabled=true;renderer.shadowMap.type=THREE.PCFSoftShadowMap;renderer.outputColorSpace=THREE.SRGBColorSpace;renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=1.02;$('app').appendChild(renderer.domElement);
+renderer.setSize(innerWidth,innerHeight);renderer.setPixelRatio(Math.min(devicePixelRatio||1,1.35));renderer.shadowMap.enabled=true;renderer.shadowMap.type=THREE.PCFShadowMap;renderer.outputColorSpace=THREE.SRGBColorSpace;renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=1.02;$('app').appendChild(renderer.domElement);
+
+// V21.21.21 balanced-quality frame-pacing governor (MSAA + modest supersampling, no FXAA).
+// Keep the simulation model unchanged; only expensive visual refresh work is
+// reduced when the measured frame rate is low.
+// Full directional shadow maps are disabled in the 60-FPS performance path.
+// The projected vehicle contact shadow remains active and much cheaper.
+renderer.shadowMap.autoUpdate=false;
+
+const fpsHud=document.createElement('div');
+fpsHud.id='fpsHud';
+fpsHud.textContent='FPS --';
+Object.assign(fpsHud.style,{
+  position:'fixed',
+  left:'12px',
+  bottom:'12px',
+  zIndex:'10050',
+  padding:'5px 8px',
+  borderRadius:'7px',
+  background:'rgba(5,10,16,.72)',
+  border:'1px solid rgba(255,255,255,.16)',
+  color:'#f4f7fa',
+  font:'700 12px/1.2 system-ui, sans-serif',
+  letterSpacing:'.03em',
+  pointerEvents:'none',
+  userSelect:'none'
+});
+document.body.appendChild(fpsHud);
+
+const perfGovernor={
+  level:0,
+  fps:60,
+  hasSample:false,
+  frames:0,
+  sampleStart:performance.now(),
+  nextAdjustAt:0,
+  nextShadowProjectionAt:0,
+  nextShadowMapAt:0,
+  nextMoonAt:0,
+  simMs:0,
+  renderSubmitMs:0,
+  nextPerfLogAt:0
+};
+
+function performanceIntervals(){
+  if(perfGovernor.level>=3)return {shadowProjection:260,shadowMap:1400,moon:800};
+  if(perfGovernor.level===2)return {shadowProjection:220,shadowMap:1100,moon:650};
+  if(perfGovernor.level===1)return {shadowProjection:170,shadowMap:850,moon:500};
+  return {shadowProjection:120,shadowMap:500,moon:400};
+}
+
+function applyPerformanceLevel(level){
+  const next=Math.max(0,Math.min(3,Math.round(level)||0));
+  const changed=next!==perfGovernor.level;
+  perfGovernor.level=next;
+
+  // V21.21.21 keeps MSAA and raises the internal render scale slightly at every
+  // governor level. This improves lane-line edge quality without returning to
+  // the expensive post-process AA experiment from V21.21.6.
+  const ratioCap=next>=3?.76:(next===2?.84:(next===1?.96:1.08));
+  const targetRatio=Math.min(devicePixelRatio||1,ratioCap);
+  if(Math.abs(renderer.getPixelRatio()-targetRatio)>.01){
+    renderer.setPixelRatio(targetRatio);
+    renderer.setSize(innerWidth,innerHeight,false);
+  }
+
+  const wantFullShadows=next<2;
+  if(renderer.shadowMap.enabled!==wantFullShadows){
+    renderer.shadowMap.enabled=wantFullShadows;
+    renderer.shadowMap.needsUpdate=wantFullShadows;
+  }
+
+  if(changed){
+    perfGovernor.nextShadowProjectionAt=0;
+    perfGovernor.nextShadowMapAt=0;
+  }
+}
+
+function updateFpsAndGovernor(now){
+  perfGovernor.frames++;
+  const elapsed=now-perfGovernor.sampleStart;
+  if(elapsed<500)return;
+
+  const measured=perfGovernor.frames*1000/Math.max(1,elapsed);
+  perfGovernor.fps=perfGovernor.hasSample
+    ?perfGovernor.fps*.55+measured*.45
+    :measured;
+  perfGovernor.hasSample=true;
+  fpsHud.textContent=`FPS ${Math.round(perfGovernor.fps)}`;
+  perfGovernor.frames=0;
+  perfGovernor.sampleStart=now;
+
+  if(now<perfGovernor.nextAdjustAt)return;
+  perfGovernor.nextAdjustAt=now+2500;
+
+  // 60 FPS remains the target; V21.21.9 keeps V21.21.7 image quality while reducing CPU spikes while preserving MSAA, view distance and scene detail.
+  // Shadows are disabled before the renderer reaches the lower resolution steps.
+  if(perfGovernor.fps<43){
+    applyPerformanceLevel(3);
+  }else if(perfGovernor.fps<52){
+    applyPerformanceLevel(Math.max(2,perfGovernor.level));
+  }else if(perfGovernor.fps<59){
+    applyPerformanceLevel(Math.max(1,perfGovernor.level));
+  }else if(perfGovernor.fps>66){
+    applyPerformanceLevel(0);
+  }else if(perfGovernor.fps>62&&perfGovernor.level>0){
+    applyPerformanceLevel(perfGovernor.level-1);
+  }
+}
+
 const hemi=new THREE.HemisphereLight(0xd6ecff,0x4e6345,2.15);scene.add(hemi);
-const sun=new THREE.DirectionalLight(0xfff2d2,2.6);sun.position.set(-180,260,-120);sun.castShadow=true;sun.shadow.mapSize.set(2048,2048);sun.shadow.camera.left=-300;sun.shadow.camera.right=300;sun.shadow.camera.top=300;sun.shadow.camera.bottom=-300;scene.add(sun);
+const sun=new THREE.DirectionalLight(0xfff2d2,2.6);sun.position.set(-180,260,-120);sun.castShadow=true;sun.shadow.mapSize.set(1024,1024);sun.shadow.camera.left=-300;sun.shadow.camera.right=300;sun.shadow.camera.top=300;sun.shadow.camera.bottom=-300;scene.add(sun);
 
 // ---------- V18G crescent moon + subtle moonlight ----------
 // The moon is intentionally much weaker than the sun. Its role is mainly to
@@ -1637,7 +1817,8 @@ function updateMoonSkyPosition(){
 const world=new THREE.Group(),
       terrainDetailGroup=new THREE.Group(),
       waterGroup=new THREE.Group(),
-      infrastructureGroup=new THREE.Group(), // bridges + road signs only
+      infrastructureGroup=new THREE.Group(), // bridges / fixed road infrastructure
+      signGroup=new THREE.Group(), // dynamic OSM + road metadata signs
       sceneryInfrastructureGroup=new THREE.Group(),
       buildingGroup=new THREE.Group(),
       roadGroup=new THREE.Group(),
@@ -1648,6 +1829,7 @@ world.add(
   terrainDetailGroup,
   waterGroup,
   infrastructureGroup,
+  signGroup,
   sceneryInfrastructureGroup,
   buildingGroup,
   roadGroup,
@@ -1656,9 +1838,29 @@ world.add(
   horizonGroup
 );
 scene.add(world);
+
+// V21.21.9 FRAME PACING: streamed world geometry is static between rebuilds.
+// Freezing local matrices removes thousands of redundant matrix recomputations
+// from ordinary render frames without changing geometry, lighting or materials.
+function freezeStaticMatrices(root){
+  root.traverse(obj=>{
+    if(obj.matrixAutoUpdate){
+      obj.updateMatrix();
+      obj.matrixAutoUpdate=false;
+    }
+  });
+}
+freezeStaticMatrices(world);
+
+// V21.21.27: larger high-detail terrain/imagery footprint. The old 2.4 km
+// patch left only ~680 m of guaranteed forward terrain at the floating-origin
+// threshold. 3.2 km keeps substantially more real relief visible ahead while
+// preserving roughly the same ~12.5 m main-grid spacing.
+const NEAR_TERRAIN_SIZE=3200;
+const NEAR_TERRAIN_SEGMENTS=256;
 const groundMat=new THREE.MeshStandardMaterial({color:0xffffff,roughness:1,metalness:0});
-const ground=new THREE.Mesh(new THREE.PlaneGeometry(2000,2000,88,88),groundMat);
-ground.rotation.x=-Math.PI/2;ground.receiveShadow=true;scene.add(ground);
+const ground=new THREE.Mesh(new THREE.PlaneGeometry(NEAR_TERRAIN_SIZE,NEAR_TERRAIN_SIZE,88,88),groundMat);
+ground.rotation.x=-Math.PI/2;ground.receiveShadow=true;scene.add(ground); // keep matrixAutoUpdate ON: terrain rebuilds reset rotation after rotating geometry into XZ
 
 // Local rendering origin follows the car to avoid large-coordinate precision loss.
 let worldOffset={x:0,z:0};
@@ -1702,12 +1904,14 @@ const terrainService=createTerrainService({
   ground,
   horizonGroup,
   getWorldOffset:()=>worldOffset,
-  applyImagery:()=>applyImageryToGround()
+  applyImagery:()=>applyImageryToGround(),
+  groundSize:NEAR_TERRAIN_SIZE,
+  groundSegments:NEAR_TERRAIN_SEGMENTS
 });
 
 const terrainAbs=(x,z)=>terrainService.heightAt(x,z);
 const rebuildGroundTerrain=()=>terrainService.rebuildGround();
-const rebuildHorizon=()=>terrainService.rebuildHorizon();
+const rebuildHorizon=()=>{terrainService.rebuildHorizon();freezeStaticMatrices(horizonGroup);};
 
 async function loadElevationAround(absx,absz){
   const result=await elevationService.loadAround(absx,absz);
@@ -1716,9 +1920,9 @@ async function loadElevationAround(absx,absz){
     // Several DEM requests can complete almost together. A synchronous full
     // rebuild here caused visible hitches while driving. Coalesce them.
     scheduleVisualJob(
-      'elevation-world',
+      'world-rebuild',
       rebuildLocalWorld,
-      260
+      720
     );
 
     toast(
@@ -1734,12 +1938,102 @@ async function loadElevationAround(absx,absz){
 }
 
 // ---------- Materials ----------
-function makeAsphalt(){
- const c=document.createElement('canvas');c.width=c.height=128;const ctx=c.getContext('2d');ctx.fillStyle='#555a5e';ctx.fillRect(0,0,128,128);
- const d=ctx.getImageData(0,0,128,128);for(let i=0;i<d.data.length;i+=4){const n=(Math.random()-.5)*22;d.data[i]+=n;d.data[i+1]+=n;d.data[i+2]+=n}ctx.putImageData(d,0,0);
- const t=new THREE.CanvasTexture(c);t.wrapS=t.wrapT=THREE.RepeatWrapping;t.repeat.set(1,4);t.colorSpace=THREE.SRGBColorSpace;return t;
+function makeRoadSurfaceTextures(kind='asphalt'){
+  const size=512;
+  const colorCanvas=document.createElement('canvas');
+  const bumpCanvas=document.createElement('canvas');
+  const roughCanvas=document.createElement('canvas');
+  colorCanvas.width=colorCanvas.height=size;
+  bumpCanvas.width=bumpCanvas.height=size;
+  roughCanvas.width=roughCanvas.height=size;
+
+  const cctx=colorCanvas.getContext('2d');
+  const bctx=bumpCanvas.getContext('2d');
+  const rctx=roughCanvas.getContext('2d');
+  const colorImage=cctx.createImageData(size,size);
+  const bumpImage=bctx.createImageData(size,size);
+  const roughImage=rctx.createImageData(size,size);
+
+  // Deterministic procedural texture: stable between launches/rebuilds and
+  // dense enough that the road no longer reads as one flat grey ribbon.
+  let seed=kind==='asphalt'?0x21_21_27:0x51_0A_27;
+  const rand=()=>{
+    seed=(Math.imul(seed,1664525)+1013904223)>>>0;
+    return seed/4294967296;
+  };
+
+  for(let y=0;y<size;y++){
+    for(let x=0;x<size;x++){
+      const i=(y*size+x)*4;
+      const macro=
+        Math.sin(x*.041)+
+        Math.sin(y*.033)+
+        Math.sin((x+y)*.017);
+      const grain=(rand()-.5);
+
+      if(kind==='asphalt'){
+        // Blue-neutral charcoal asphalt with low-frequency patching and fine aggregate.
+        const base=72+macro*2.2+grain*16;
+        const tyreBand=
+          Math.exp(-Math.pow((x/size-.24)/.055,2))+
+          Math.exp(-Math.pow((x/size-.76)/.055,2));
+        const polished=tyreBand*2.3;
+        colorImage.data[i]=Math.max(0,Math.min(255,base-polished));
+        colorImage.data[i+1]=Math.max(0,Math.min(255,base+1-polished));
+        colorImage.data[i+2]=Math.max(0,Math.min(255,base+2-polished));
+        const bump=128+grain*54+macro*5;
+        const rough=232-grain*18-tyreBand*10;
+        bumpImage.data[i]=bumpImage.data[i+1]=bumpImage.data[i+2]=Math.max(0,Math.min(255,bump));
+        roughImage.data[i]=roughImage.data[i+1]=roughImage.data[i+2]=Math.max(0,Math.min(255,rough));
+      }else{
+        // Compact gravel shoulder: warmer, more irregular and visibly rougher.
+        const base=126+macro*5+grain*30;
+        colorImage.data[i]=Math.max(0,Math.min(255,base+8));
+        colorImage.data[i+1]=Math.max(0,Math.min(255,base+5));
+        colorImage.data[i+2]=Math.max(0,Math.min(255,base-4));
+        const bump=128+grain*88+macro*8;
+        const rough=246-grain*8;
+        bumpImage.data[i]=bumpImage.data[i+1]=bumpImage.data[i+2]=Math.max(0,Math.min(255,bump));
+        roughImage.data[i]=roughImage.data[i+1]=roughImage.data[i+2]=Math.max(0,Math.min(255,rough));
+      }
+      colorImage.data[i+3]=bumpImage.data[i+3]=roughImage.data[i+3]=255;
+    }
+  }
+
+  cctx.putImageData(colorImage,0,0);
+  bctx.putImageData(bumpImage,0,0);
+  rctx.putImageData(roughImage,0,0);
+
+  // Sparse aggregate flecks break up the pixel noise at medium distance.
+  cctx.globalAlpha=kind==='asphalt'?.22:.34;
+  for(let i=0;i<(kind==='asphalt'?1800:2600);i++){
+    const x=rand()*size,y=rand()*size;
+    const radius=kind==='asphalt'?.35+rand()*1.15:.55+rand()*1.75;
+    const light=rand()>.52;
+    cctx.fillStyle=kind==='asphalt'
+      ?(light?'#74787a':'#36393b')
+      :(light?'#b3aa93':'#6f6a5e');
+    cctx.beginPath();cctx.arc(x,y,radius,0,Math.PI*2);cctx.fill();
+  }
+  cctx.globalAlpha=1;
+
+  const makeTexture=(canvas,{srgb=false}={})=>{
+    const texture=new THREE.CanvasTexture(canvas);
+    texture.wrapS=texture.wrapT=THREE.RepeatWrapping;
+    texture.repeat.set(1,1);
+    texture.anisotropy=Math.min(16,renderer.capabilities.getMaxAnisotropy());
+    if(srgb)texture.colorSpace=THREE.SRGBColorSpace;
+    return texture;
+  };
+
+  return {
+    color:makeTexture(colorCanvas,{srgb:true}),
+    bump:makeTexture(bumpCanvas),
+    roughness:makeTexture(roughCanvas)
+  };
 }
-const asphalt=makeAsphalt();
+const asphaltTextures=makeRoadSurfaceTextures('asphalt');
+const shoulderTextures=makeRoadSurfaceTextures('gravel');
 // ----- Road / vehicle visual contact constants -----
 const ROAD_SURFACE_OFFSET=.10;
 const TIRE_VISUAL_CLEARANCE=.018;
@@ -1749,8 +2043,11 @@ const ROAD_WHEEL_CONTACT_HALF_WIDTH=8.5;
 
 const roadMat=new THREE.MeshStandardMaterial({
   color:0xffffff,
-  map:asphalt,
-  roughness:.96,
+  map:asphaltTextures.color,
+  bumpMap:asphaltTextures.bump,
+  bumpScale:.045,
+  roughnessMap:asphaltTextures.roughness,
+  roughness:.94,
   polygonOffset:true,
   polygonOffsetFactor:-2,
   polygonOffsetUnits:-2,
@@ -1764,7 +2061,11 @@ const roadMat=new THREE.MeshStandardMaterial({
   stencilZPass:THREE.ReplaceStencilOp
 });
 const shoulderMat=new THREE.MeshStandardMaterial({
-  color:0x89867a,
+  color:0xffffff,
+  map:shoulderTextures.color,
+  bumpMap:shoulderTextures.bump,
+  bumpScale:.075,
+  roughnessMap:shoulderTextures.roughness,
   roughness:1,
   polygonOffset:true,
   polygonOffsetFactor:-1,
@@ -1805,14 +2106,18 @@ const roadUnderMat=new THREE.MeshStandardMaterial({
   stencilZPass:THREE.ReplaceStencilOp
 });
 
-const lineYellow=new THREE.MeshBasicMaterial({
-  color:0xe6c94f,
+const lineYellow=new THREE.MeshStandardMaterial({
+  color:0xe2c34a,
+  roughness:.72,
+  metalness:0,
   polygonOffset:true,
   polygonOffsetFactor:-3,
   polygonOffsetUnits:-3
 });
-const lineWhite=new THREE.MeshBasicMaterial({
-  color:0xe8e8e6,
+const lineWhite=new THREE.MeshStandardMaterial({
+  color:0xe3e3df,
+  roughness:.72,
+  metalness:0,
   polygonOffset:true,
   polygonOffsetFactor:-3,
   polygonOffsetUnits:-3
@@ -1889,7 +2194,9 @@ const signData=createSignDataService({
     fetchOverpassCached(namespace,ll,query,timeoutMs,ttlMs),
   getGeneration:()=>WorldDrive?.route?.generation??0,
   onChanged:()=>{
-    if(activeRoadProfile.length)rebuildLocalWorld();
+    if(activeRoadProfile.length){
+      scheduleVisualJob('road-signs',refreshRoadSignsOnly,420);
+    }
   }
 });
 const geographicSigns=signData.signs;
@@ -1982,7 +2289,7 @@ const imageryService=createImageryService({
   toWorld:(lat,lon)=>llToXZ(lat,lon),
   getWorldOffset:()=>worldOffset,
   zoom:16,
-  groundSize:2000
+  groundSize:NEAR_TERRAIN_SIZE
 });
 
 const buildImageryMosaic=(x,z)=>imageryService.buildMosaic(x,z);
@@ -2034,18 +2341,24 @@ const sceneryRenderer=createSceneryRenderer({
   getWorldOffset:()=>worldOffset
 });
 
-const rebuildLocalScenery=()=>sceneryRenderer.rebuild();
+const rebuildLocalScenery=()=>{sceneryRenderer.rebuild();freezeStaticMatrices(terrainDetailGroup);freezeStaticMatrices(sceneryInfrastructureGroup);freezeStaticMatrices(buildingGroup);freezeStaticMatrices(sceneryForestGroup);};
 
 // Heavy streamed visuals should not all rebuild inside the same animation frame.
 // Coalesce duplicate requests and let the browser place them between frames.
-const deferredVisualJobs=new Set();
+const deferredVisualJobs=new Map();
+let deferredVisualJobSerial=0;
 
 function scheduleVisualJob(key,job,timeout=180){
+  // One pending job per subsystem. This coalesces several network/cache
+  // completions into one geometry rebuild instead of producing back-to-back
+  // 25-35 FPS spikes.
   if(deferredVisualJobs.has(key))return;
 
-  deferredVisualJobs.add(key);
+  const token=++deferredVisualJobSerial;
+  deferredVisualJobs.set(key,token);
 
   const run=()=>{
+    if(deferredVisualJobs.get(key)!==token)return;
     deferredVisualJobs.delete(key);
 
     try{
@@ -2064,8 +2377,12 @@ function scheduleVisualJob(key,job,timeout=180){
       {timeout}
     );
   }else{
-    setTimeout(run,0);
+    setTimeout(run,Math.min(120,timeout));
   }
+}
+
+function cancelVisualJob(key){
+  deferredVisualJobs.delete(key);
 }
 
 
@@ -2209,7 +2526,9 @@ async function loadRoadMetadataAround(absx,absz){
 
   lastRoadMetaCenter={x:absx,z:absz};
   updateRoadMetaHUD();
-  if(activeRoadProfile.length)rebuildLocalWorld();
+  if(activeRoadProfile.length){
+    scheduleVisualJob('road-signs',refreshRoadSignsOnly,420);
+  }
   roadMetaLoading=false;
   return !!winner;
 }
@@ -2733,7 +3052,7 @@ function buildRoadProfile(){
     if(t1<t0)continue;
 
     const sampledLen=Math.max(0,seg.len*(t1-t0));
-    const steps=Math.max(1,Math.ceil(sampledLen/5)); // <=5 m vertical samples
+    const steps=Math.max(1,Math.ceil(sampledLen/3)); // V21.21.27: <=3 m road samples for smoother pavement/marking ribbons
 
     for(let k=0;k<steps;k++){
       const u=k/steps;
@@ -2899,34 +3218,134 @@ function buildRoadProfile(){
   });
 }
 let activeRoadProfile=[];
-function roadFrameAt(x,z){
-  // Returns height + the local 3D road tangent from the closest profile segment.
-  let best=null,bd=Infinity;
+
+// V21.21.3 PERFORMANCE: spatial index for the local road profile.
+// roadSurfaceAt() is called many times by wheel support, skid marks and the
+// projected contact shadow. Previously each call scanned the whole ~2 km
+// profile. The 48 m grid keeps the exact same nearest-segment result while
+// limiting normal queries to nearby profile segments. Stacked switchbacks are
+// still all evaluated because every segment sharing the neighboring cells is
+// retained in the candidate set.
+const ROAD_PROFILE_INDEX_CELL=48;
+// Nested numeric maps avoid creating "cx:cz" strings in every wheel query.
+let roadProfileSpatialIndex=new Map(); // Map<cx, Map<cz, number[]>>
+let roadProfileVisitMarks=new Uint32Array(0);
+let roadProfileVisitStamp=1;
+const roadFrameSearchState={
+  found:false,
+  bd:Infinity,
+  y:0,angle:0,pitch:0,roll:0,px:0,pz:0,index:0,t:0,distance:0
+};
+
+function roadProfileCellList(cx,cz,create=false){
+  let column=roadProfileSpatialIndex.get(cx);
+  if(!column){
+    if(!create)return null;
+    column=new Map();
+    roadProfileSpatialIndex.set(cx,column);
+  }
+  let list=column.get(cz);
+  if(!list&&create){
+    list=[];
+    column.set(cz,list);
+  }
+  return list||null;
+}
+
+function rebuildRoadProfileSpatialIndex(){
+  roadProfileSpatialIndex=new Map();
+  roadProfileVisitMarks=new Uint32Array(Math.max(0,activeRoadProfile.length-1));
+  roadProfileVisitStamp=1;
+
   for(let i=0;i<activeRoadProfile.length-1;i++){
     const a=activeRoadProfile[i],b=activeRoadProfile[i+1];
-    const vx=b.x-a.x,vz=b.z-a.z,wx=x-a.x,wz=z-a.z;
-    const vv=vx*vx+vz*vz||1,t=Math.max(0,Math.min(1,(wx*vx+wz*vz)/vv));
-    const px=a.x+t*vx,pz=a.z+t*vz,d2=(x-px)**2+(z-pz)**2;
-    if(d2<bd){
-      const horizontal=Math.hypot(vx,vz)||1;
-      const pitch=Math.atan2(b.y-a.y,horizontal);
-      bd=d2;
-      best={
-        y:a.y+(b.y-a.y)*t,
-        angle:Math.atan2(vx,vz),
-        pitch,
-        roll:
-          (a.roll||0)+
-          ((b.roll||0)-(a.roll||0))*t,
-        px,pz,
-        index:i,t,
-        distance:Math.sqrt(d2)
-      };
+    const minCx=Math.floor(Math.min(a.x,b.x)/ROAD_PROFILE_INDEX_CELL);
+    const maxCx=Math.floor(Math.max(a.x,b.x)/ROAD_PROFILE_INDEX_CELL);
+    const minCz=Math.floor(Math.min(a.z,b.z)/ROAD_PROFILE_INDEX_CELL);
+    const maxCz=Math.floor(Math.max(a.z,b.z)/ROAD_PROFILE_INDEX_CELL);
+
+    for(let cx=minCx;cx<=maxCx;cx++){
+      for(let cz=minCz;cz<=maxCz;cz++){
+        roadProfileCellList(cx,cz,true).push(i);
+      }
     }
   }
-  return best;
 }
-function roadProfileFrameAtCum(cum){
+
+function evaluateRoadProfileSegmentInto(i,x,z,state){
+  const a=activeRoadProfile[i],b=activeRoadProfile[i+1];
+  if(!a||!b)return;
+  const vx=b.x-a.x,vz=b.z-a.z,wx=x-a.x,wz=z-a.z;
+  const vv=vx*vx+vz*vz||1,t=Math.max(0,Math.min(1,(wx*vx+wz*vz)/vv));
+  const px=a.x+t*vx,pz=a.z+t*vz,dx=x-px,dz=z-pz,d2=dx*dx+dz*dz;
+  // Match the legacy full scan exactly on X/Z ties: earlier route segment wins.
+  // This matters on stacked switchbacks that can overlap almost perfectly in plan.
+  if(d2>state.bd+1e-12)return;
+  if(Math.abs(d2-state.bd)<=1e-12&&state.found&&i>=state.index)return;
+  const horizontal=Math.sqrt(vx*vx+vz*vz)||1;
+  state.found=true;
+  state.bd=d2;
+  state.y=a.y+(b.y-a.y)*t;
+  state.angle=Math.atan2(vx,vz);
+  state.pitch=Math.atan2(b.y-a.y,horizontal);
+  state.roll=(a.roll||0)+((b.roll||0)-(a.roll||0))*t;
+  state.px=px;state.pz=pz;state.index=i;state.t=t;state.distance=Math.sqrt(d2);
+}
+
+function roadFrameAt(x,z,out=null){
+  const segmentCount=activeRoadProfile.length-1;
+  if(segmentCount<=0)return null;
+
+  const state=roadFrameSearchState;
+  state.found=false;
+  state.bd=Infinity;
+
+  const cx=Math.floor(x/ROAD_PROFILE_INDEX_CELL);
+  const cz=Math.floor(z/ROAD_PROFILE_INDEX_CELL);
+
+  roadProfileVisitStamp=(roadProfileVisitStamp+1)>>>0;
+  if(roadProfileVisitStamp===0){
+    roadProfileVisitMarks.fill(0);
+    roadProfileVisitStamp=1;
+  }
+  const stamp=roadProfileVisitStamp;
+
+  for(let dx=-1;dx<=1;dx++){
+    const column=roadProfileSpatialIndex.get(cx+dx);
+    if(!column)continue;
+    for(let dz=-1;dz<=1;dz++){
+      const list=column.get(cz+dz);
+      if(!list)continue;
+      for(let k=0;k<list.length;k++){
+        const i=list[k];
+        if(roadProfileVisitMarks[i]===stamp)continue;
+        roadProfileVisitMarks[i]=stamp;
+        evaluateRoadProfileSegmentInto(i,x,z,state);
+      }
+    }
+  }
+
+  if(!(state.found&&state.bd<=ROAD_PROFILE_INDEX_CELL*ROAD_PROFILE_INDEX_CELL)){
+    for(let i=0;i<segmentCount;i++){
+      if(roadProfileVisitMarks[i]===stamp)continue;
+      evaluateRoadProfileSegmentInto(i,x,z,state);
+    }
+  }
+
+  if(!state.found)return null;
+  const result=out||{};
+  result.y=state.y;
+  result.angle=state.angle;
+  result.pitch=state.pitch;
+  result.roll=state.roll;
+  result.px=state.px;
+  result.pz=state.pz;
+  result.index=state.index;
+  result.t=state.t;
+  result.distance=state.distance;
+  return result;
+}
+function roadProfileFrameAtCum(cum,out=null){
   if(activeRoadProfile.length<2)return null;
 
   const target=Math.max(
@@ -2959,26 +3378,20 @@ function roadProfileFrameAtCum(cum){
     const vx=b.x-a.x;
     const vz=b.z-a.z;
     const horizontal=Math.hypot(vx,vz)||1;
-    return {
-      x:a.x+(b.x-a.x)*t,
-      z:a.z+(b.z-a.z)*t,
-      y:a.y+(b.y-a.y)*t,
-      angle:Math.atan2(vx,vz),
-      pitch:Math.atan2(b.y-a.y,horizontal),
-      roll:(a.roll||0)+((b.roll||0)-(a.roll||0))*t,
-      cum:target,
-      index:mid,
-      t
-    };
+    const result=out||{};
+    result.x=a.x+(b.x-a.x)*t;result.z=a.z+(b.z-a.z)*t;result.y=a.y+(b.y-a.y)*t;
+    result.angle=Math.atan2(vx,vz);result.pitch=Math.atan2(b.y-a.y,horizontal);
+    result.roll=(a.roll||0)+((b.roll||0)-(a.roll||0))*t;result.cum=target;result.index=mid;result.t=t;
+    return result;
   }
 
   const p=target<=(activeRoadProfile[0].cum||0)
     ?activeRoadProfile[0]
     :activeRoadProfile[activeRoadProfile.length-1];
-  return {
-    x:p.x,z:p.z,y:p.y,
-    angle:0,pitch:0,roll:p.roll||0,cum:target,index:0,t:0
-  };
+  const result=out||{};
+  result.x=p.x;result.z=p.z;result.y=p.y;result.angle=0;result.pitch=0;result.roll=p.roll||0;
+  result.cum=target;result.index=0;result.t=0;
+  return result;
 }
 
 function roadHeightAt(x,z){
@@ -2986,38 +3399,18 @@ function roadHeightAt(x,z){
   return f?f.y:terrainAbs(x,z);
 }
 
-function roadSurfaceAt(x,z){
-  const frame=roadFrameAt(x,z);
-
-  if(!frame){
-    return null;
-  }
-
-  // Match buildRibbon() exactly:
-  // tangent=(sin(angle),cos(angle)), transverse normal=(-cos(angle),sin(angle)).
+function roadSurfaceAt(x,z,out=null){
+  const frame=roadFrameAt(x,z,out);
+  if(!frame)return null;
   const normalX=-Math.cos(frame.angle);
   const normalZ= Math.sin(frame.angle);
-
   const dx=x-frame.px;
   const dz=z-frame.pz;
-
-  const lateral=
-    dx*normalX+
-    dz*normalZ;
-
-  const roll=
-    Number.isFinite(frame.roll)
-      ?frame.roll
-      :0;
-
-  return {
-    ...frame,
-    lateral,
-    y:
-      frame.y+
-      Math.tan(roll)*lateral+
-      ROAD_SURFACE_OFFSET
-  };
+  const lateral=dx*normalX+dz*normalZ;
+  const roll=Number.isFinite(frame.roll)?frame.roll:0;
+  frame.lateral=lateral;
+  frame.y=frame.y+Math.tan(roll)*lateral+ROAD_SURFACE_OFFSET;
+  return frame;
 }
 
 function terrainFrameAt(x,z,heading){
@@ -3103,7 +3496,7 @@ const waterRenderer=createWaterRenderer({
   buildRibbon
 });
 
-const rebuildLocalWater=()=>waterRenderer.rebuild();
+const rebuildLocalWater=()=>{waterRenderer.rebuild();freezeStaticMatrices(waterGroup);};
 
 
 
@@ -3131,7 +3524,11 @@ async function loadWaterAround(absx,absz){
   sceneryRenderer.removeTreesOverWater();
 
   bridgeManager.updateStatus();
-  rebuildLocalWorld();
+  scheduleVisualJob(
+    'world-rebuild',
+    rebuildLocalWorld,
+    720
+  );
 
   return true;
 }
@@ -3191,7 +3588,7 @@ function addRoadSignAt(p,text,kind='speed',side=1){
  const face=new THREE.Mesh(geom,new THREE.MeshStandardMaterial({map:makeSignTexture(text,kind),side:THREE.DoubleSide,roughness:.72}));
  face.position.y=2.28;face.rotation.y=side>0?Math.PI:0;g.add(face);
  const back=new THREE.Mesh(geom,signBackMat);back.position.copy(face.position);back.rotation.y=face.rotation.y+Math.PI;g.add(back);
- g.position.set(p.x+nx*lateral-worldOffset.x,p.y+.02,p.z+nz*lateral-worldOffset.z);g.rotation.y=ang;infrastructureGroup.add(g);
+ g.position.set(p.x+nx*lateral-worldOffset.x,p.y+.02,p.z+nz*lateral-worldOffset.z);g.rotation.y=ang;signGroup.add(g);
 }
 function addBridgeRailFromProfile(a,b,side){
  const dx=b.x-a.x,dz=b.z-a.z,len=Math.hypot(dx,dz);if(len<.4)return;
@@ -3360,10 +3757,17 @@ function addCurrentRoadSigns(){
  }
 }
 
+function refreshRoadSignsOnly(){
+  clearGroup(signGroup);
+  addCurrentRoadSigns();
+  addGeographicRoadSigns();
+  freezeStaticMatrices(signGroup);
+}
+
 // Build only a corridor around the current location, preserving every source polyline curve.
 function rebuildLocalWorld(){
  clearGroup(roadGroup);clearGroup(forestGroup);
- clearGroup(infrastructureGroup);
+ clearGroup(infrastructureGroup);clearGroup(signGroup);
  sceneryRenderer.clear();
 
  // CRITICAL: bridge deck heights depend on terrain elevation at their approaches.
@@ -3373,6 +3777,7 @@ function rebuildLocalWorld(){
 
  const profile=buildRoadProfile();
  activeRoadProfile=profile;
+ rebuildRoadProfileSpatialIndex();
 
  // Cut terrain fragments directly below the road corridor so coarse DEM
  // triangles can never protrude through asphalt or shoulders.
@@ -3575,8 +3980,14 @@ function rebuildLocalWorld(){
  );
 
  addEnhancedBridgeFurniture();
- addCurrentRoadSigns();
- addGeographicRoadSigns();
+ refreshRoadSignsOnly();
+
+ // Static meshes keep their exact V21.21.7 visual quality; only matrix update
+ // bookkeeping is removed from subsequent frames.
+ freezeStaticMatrices(roadGroup);
+ freezeStaticMatrices(forestGroup);
+ freezeStaticMatrices(infrastructureGroup);
+ freezeStaticMatrices(signGroup);
 
  scheduleVisualJob(
    'horizon',
@@ -3586,7 +3997,7 @@ function rebuildLocalWorld(){
 }
 function recenterIfNeeded(absx,absz,force=false){
  const dx=absx-worldOffset.x,dz=absz-worldOffset.z;
- if(force||dx*dx+dz*dz>360*360){
+ if(force||dx*dx+dz*dz>520*520){
    // Preserve camera/car relative geometry across the floating-origin shift.
    // Before: render coordinate = absolute - oldOffset
    // After : render coordinate = absolute - newOffset
@@ -3605,6 +4016,10 @@ function recenterIfNeeded(absx,absz,force=false){
    car.position.x -= shiftX;
    car.position.z -= shiftZ;
 
+   // A recenter already rebuilds the complete local corridor. Cancel any
+   // deferred elevation/hydro rebuild that would otherwise repeat the same
+   // expensive work a moment later.
+   cancelVisualJob('world-rebuild');
    rebuildLocalWorld();
    applyImageryToGround();
    return true;
@@ -3615,10 +4030,15 @@ function recenterIfNeeded(absx,absz,force=false){
 
 function resetWorldCaches(){
   worldStreaming.reset();
+  aheadStreamingBuckets?.clear?.();
+  nextAheadStreamingAt=0;
+  lastAheadTerrainRefreshAt=0;
+  lastImageryRefreshAt=0;
   waterData.reset();
   skidMarks.clear();
 
   route.length=0;segments.length=0;routeLength=0;
+  vehicleNearestHint=-1;vehicleNearestLastX=Infinity;vehicleNearestLastZ=Infinity;
   bridgeManager.reset();
   bridgeStatus.textContent='0';
   waterRenderer.clear();
@@ -3637,9 +4057,11 @@ function resetWorldCaches(){
   roadMetaLoading=false;
   updateRoadMetaHUD();
   activeRoadProfile=[];
+  rebuildRoadProfileSpatialIndex();
   terrainService.clearRoadBed();
   clearGroup(roadGroup);clearGroup(forestGroup);
-  clearGroup(infrastructureGroup);
+  clearGroup(infrastructureGroup);clearGroup(signGroup);
+  deferredVisualJobs.clear();
   sceneryRenderer.clear();
   terrainService.clearHorizon();
 }
@@ -3739,6 +4161,7 @@ async function createRequestedRoute(start,end,waypoints=[]){
 
     loadElevationAround(absX,absZ).catch(()=>{elevStatus.textContent='Démo'});
     worldStreaming.preloadRoute(absX,absZ);
+    prefetchRouteAhead();
     loadSceneryAround(absX,absZ).catch(()=>{sceneryStatus.textContent='Indisponible'});
     buildImageryMosaic(absX,absZ).catch(()=>{imageryStatus.textContent='Fallback'});
     loadRoadMetadataAround(absX,absZ).catch(()=>{});
@@ -3760,7 +4183,7 @@ async function createRequestedRoute(start,end,waypoints=[]){
 
 // ---------- V5 subsystem facade ----------
 const WorldDrive={
-  version:'21.18-alpha',
+  version:'21.21.26-alpha',
   route:{generation:0},
   streaming:{generation:0},
   vehicle:{generation:0},
@@ -3786,6 +4209,7 @@ async function loadRoute(){
   route.length=0;
   segments.length=0;
   routeLength=0;
+  vehicleNearestHint=-1;vehicleNearestLastX=Infinity;vehicleNearestLastZ=Infinity;
 
   for(let i=0;i<coordsGeo.length;i++){
     const [lon,lat]=coordsGeo[i];
@@ -3853,8 +4277,9 @@ let wheelSlipLevels=[0,0,0,0];
 let wheelLateralUsage=[0,0,0,0];
 let wheelLongitudinalUsage=[0,0,0,0];
 
-// Handling slip is LATTERAL slip by axle. Longitudinal tire stress is still
-// available for skid marks, but cannot by itself make the rear of the car yaw.
+// Handling slip is derived from the friction circle by axle. Longitudinal
+// demand can consume lateral grip, but it still cannot create yaw without an
+// actual lateral demand (steering / cornering force).
 let frontSlipAmount=0;
 let rearSlipAmount=0;
 
@@ -4397,328 +4822,26 @@ function updateTransmission(dt,requestedThrottle,onPavement=true){
   return requestedThrottle;
 }
 
-function physicsClamp(value,min,max){
-  return Math.max(min,Math.min(max,value));
-}
-
-function physicsSmoothstep01(value){
-  const t=physicsClamp(Number(value)||0,0,1);
-  return t*t*(3-2*t);
-}
-
-function estimateWheelGripUsage({
-  requestedLatAccel,
-  signedLatAccel,
-  latLimit,
-  longitudinalAccel,
-  throttle,
-  handbrake,
-  airborne,
-  vehicle,
-  dt
-}){
-  const contacts=
-    vehiclePresentation?.wheelContacts||
-    [];
-
-  const defaults=[
-    {front:false,side:'left'},
-    {front:true,side:'left'},
-    {front:false,side:'right'},
-    {front:true,side:'right'}
-  ];
-
-  const drivetrain=
-    vehicle.drivetrain||
-    'AWD';
-
-  const lateralDemand=
-    latLimit>0
-      ?Math.max(
-         0,
-         requestedLatAccel/
-         latLimit
-       )
-      :0;
-
-  // Positive longitudinal acceleration transfers load rearward.
-  const longitudinalTransfer=
-    physicsClamp(
-      (
-        longitudinalAccel/
-        9.81
-      )*.11,
-      -.18,
-      .18
-    );
-
-  // Positive yaw in World Drive = right turn; load moves to the outside/left.
-  const lateralTransfer=
-    physicsClamp(
-      (
-        signedLatAccel/
-        9.81
-      )*.085,
-      -.22,
-      .22
-    );
-
-  const accelCapability=
-    Math.max(
-      1,
-      Number(vehicle.accel)||6
-    );
-
-  const brakeCapability=
-    Math.max(
-      1,
-      Number(vehicle.brake)||9.8
-    );
-
-  const raw=[];
-  const smoothed=[];
-  const slip=[];
-  const lateralSlip=[];
-  const lateralUsage=[];
-  const longitudinalUsage=[];
-
-  for(let i=0;i<4;i++){
-    const meta={
-      ...defaults[i],
-      ...(contacts[i]||{})
-    };
-
-    const axleLoad=
-      meta.front
-        ?1-longitudinalTransfer
-        :1+longitudinalTransfer;
-
-    const sideLoad=
-      meta.side==='left'
-        ?1+lateralTransfer
-        :1-lateralTransfer;
-
-    const support=
-      airborne||
-      meta.contact===false
-        ?0
-        :physicsClamp(
-           Number(
-             meta.contactFactor
-           )||1,
-           .15,
-           1
-         );
-
-    const loadFactor=
-      airborne
-        ?.05
-        :physicsClamp(
-           axleLoad*
-           sideLoad*
-           support,
-           .10,
-           1.55
-         );
-
-    // Lateral force is shared by all four tires, but an unloaded tire reaches
-    // its friction limit sooner.
-    const lateralUtil=
-      airborne
-        ?0
-        :lateralDemand/
-         Math.max(
-           .20,
-           loadFactor
-         );
-
-    let longitudinalUtil=0;
-
-    if(longitudinalAccel<-.15){
-      // Road cars typically have a front-biased brake load.
-      const brakeDemand=
-        Math.min(
-          1.45,
-          -longitudinalAccel/
-          brakeCapability
-        );
-
-      // V20.2: ordinary maximum braking should load the tire heavily, but not
-      // automatically count as a full friction-circle failure in a straight
-      // line. Cornering + braking can still push the combined demand over 1.
-      longitudinalUtil=
-        brakeDemand*
-        (
-          meta.front
-            ?.82
-            :.54
-        )/
-        Math.max(
-          .25,
-          loadFactor
-        );
-    }else if(
-      longitudinalAccel>.15&&
-      throttle>0
-    ){
-      const accelDemand=
-        Math.min(
-          1.35,
-          longitudinalAccel/
-          accelCapability
-        );
-
-      let drivenFactor=.05;
-
-      if(drivetrain==='FWD'){
-        drivenFactor=
-          meta.front
-            ?.78
-            :.04;
-      }else if(drivetrain==='RWD'){
-        drivenFactor=
-          meta.front
-            ?.04
-            :.78;
-      }else{
-        drivenFactor=.46;
-      }
-
-      longitudinalUtil=
-        accelDemand*
-        drivenFactor/
-        Math.max(
-          .25,
-          loadFactor
-        );
-    }
-
-    if(
-      handbrake&&
-      !meta.front&&
-      !airborne
-    ){
-      longitudinalUtil=
-        Math.max(
-          longitudinalUtil,
-          1.28
-        );
-    }
-
-    // Diagnostic components shared by V21.11 skid-mark rendering and tire audio.
-    // They do not feed back into yaw, grip clamps or propulsion.
-    lateralUsage[i]=
-      Math.max(
-        0,
-        lateralUtil
-      );
-
-    longitudinalUsage[i]=
-      Math.max(
-        0,
-        longitudinalUtil
-      );
-
-    const combined=
-      airborne
-        ?0
-        :Math.sqrt(
-           lateralUtil*lateralUtil+
-           longitudinalUtil*longitudinalUtil
-         );
-
-    raw[i]=
-      Math.min(
-        1.65,
-        combined
-      );
-
-    const old=
-      Number(
-        wheelGripUsage[i]
-      )||0;
-
-    const response=
-      raw[i]>old
-        ?11
-        :17;
-
-    smoothed[i]=
-      old+
-      (
-        raw[i]-
-        old
-      )*
-      (
-        1-
-        Math.exp(
-          -Math.min(.05,dt)*
-          response
-        )
-      );
-
-    slip[i]=
-      physicsSmoothstep01(
-        (
-          smoothed[i]-
-          .98
-        )/
-        .24
-      );
-
-    // Lateral handling slip is intentionally separate from combined tire
-    // stress. Straight-line acceleration/braking can therefore make a tire
-    // work hard (and eventually leave rubber) without generating fake
-    // oversteer.
-    lateralSlip[i]=
-      airborne
-        ?0
-        :physicsSmoothstep01(
-           (
-             lateralUtil-
-             1.00
-           )/
-           .30
-         );
-  }
-
-  return {
-    raw,
-    smoothed,
-    slip,
-    lateralSlip,
-    lateralUsage,
-    longitudinalUsage,
-
-    frontCombined:
-      Math.max(
-        slip[1]||0,
-        slip[3]||0
-      ),
-
-    rearCombined:
-      Math.max(
-        slip[0]||0,
-        slip[2]||0
-      ),
-
-    frontLateral:
-      Math.max(
-        lateralSlip[1]||0,
-        lateralSlip[3]||0
-      ),
-
-    rearLateral:
-      Math.max(
-        lateralSlip[0]||0,
-        lateralSlip[2]||0
-      )
-  };
-}
+// V21.21: generalized vehicle dynamics math lives in vehicle-dynamics.js.
 
 // Mutable object identity is intentional: audio/physics keep the same reference
 // when future vehicles are selected.
 const VEHICLE=vehicleSystem.physics;
+// Reusable V21.21.3 dynamics results: avoid per-frame result/array churn while
+// keeping the exact generalized equations used for future multi-axle vehicles.
+const dynamicsScratch={
+  drive:{axleLoads:[]},
+  brake:{axleLoads:[]},
+  handbrake:{axleLoads:[]},
+  grade:{},
+  steering:{},
+  lateral:{},
+  grip:{
+    axleLoads:[],_lateralTransfer:[],raw:[],smoothed:[],slip:[],
+    lateralSlip:[],lateralUsage:[],longitudinalUsage:[]
+  }
+};
+const physicsRoadFrameScratch={};
 const autopilotStatus=$('autopilotStatus');
 
 const vehicleAudio=createVehicleAudio({
@@ -5201,18 +5324,78 @@ function autopilotControl(dt,nr){
 }
 
 
-function groundHeightForWheel(absx,absz){
-  const rs=roadSurfaceAt(absx,absz);
-  if(rs&&Math.abs(rs.lateral)<ROAD_WHEEL_CONTACT_HALF_WIDTH){
-    return rs.y;
+const groundHeightRoadScratch={};
+
+// V21.21.5 CPU fast path. While the vehicle is fully on the road, wheel support
+// is evaluated from the already-resolved center road plane instead of repeating
+// four spatial nearest-segment searches every frame. Precise lookups remain
+// available for crest/jump probes and for wheels outside the road corridor.
+const fastWheelRoadSupport={
+  active:false,
+  centerX:0,
+  centerZ:0,
+  centerY:0,
+  sinAngle:0,
+  cosAngle:1,
+  tanPitch:0,
+  tanRoll:0,
+  halfWidth:ROAD_WHEEL_CONTACT_HALF_WIDTH
+};
+let currentOnPavementForInstruments=true;
+
+function setFastWheelRoadSupport(active,roadFrame,centerY){
+  if(!active||!roadFrame||!Number.isFinite(centerY)){
+    fastWheelRoadSupport.active=false;
+    return;
   }
+  fastWheelRoadSupport.active=true;
+  fastWheelRoadSupport.centerX=absX;
+  fastWheelRoadSupport.centerZ=absZ;
+  fastWheelRoadSupport.centerY=centerY;
+  fastWheelRoadSupport.sinAngle=Math.sin(roadFrame.angle||0);
+  fastWheelRoadSupport.cosAngle=Math.cos(roadFrame.angle||0);
+  fastWheelRoadSupport.tanPitch=Math.tan(roadFrame.pitch||0);
+  fastWheelRoadSupport.tanRoll=Math.tan(roadFrame.roll||0);
+}
+
+function groundHeightForWheel(absx,absz,preferLocalRoadPlane=false){
+  if(preferLocalRoadPlane&&fastWheelRoadSupport.active){
+    const dx=absx-fastWheelRoadSupport.centerX;
+    const dz=absz-fastWheelRoadSupport.centerZ;
+    const along=dx*fastWheelRoadSupport.sinAngle+dz*fastWheelRoadSupport.cosAngle;
+    const lateral=-dx*fastWheelRoadSupport.cosAngle+dz*fastWheelRoadSupport.sinAngle;
+    if(
+      Math.abs(lateral)<fastWheelRoadSupport.halfWidth&&
+      Math.abs(along)<8.5
+    ){
+      return fastWheelRoadSupport.centerY+
+        fastWheelRoadSupport.tanPitch*along+
+        fastWheelRoadSupport.tanRoll*lateral;
+    }
+  }
+
+  const rs=roadSurfaceAt(absx,absz,groundHeightRoadScratch);
+  if(rs&&Math.abs(rs.lateral)<ROAD_WHEEL_CONTACT_HALF_WIDTH)return rs.y;
   return terrainAbs(absx,absz);
 }
 
 
 
+// V21.21.3 PERFORMANCE: simulation stays per-frame, but DOM/canvas telemetry does
+// not need render-frame cadence. This avoids repeatedly invalidating layout and
+// redrawing the full route map when the GPU/CPU is already under load.
+let driveHudAccumulator=0;
+let minimapAccumulator=0;
+let gripSolverAccumulator=1/20;
+let worldStreamingAccumulator=0;
+let lastContactModeText='';
+const DRIVE_HUD_INTERVAL=.10;   // 10 Hz
+const MINIMAP_INTERVAL=.20;     // 5 Hz
+const GRIP_SOLVER_INTERVAL=1/20; // secondary per-wheel tire state at 20 Hz
+const WORLD_STREAMING_INTERVAL=.12; // boundary checks ~8 Hz; load radii are hundreds of metres
+
 function updateDrive(dt){
- const nr=nearestRoute(absX,absZ);
+ const nr=nearestRouteForVehicle(absX,absZ);
  const ap=autopilotControl(dt,nr);
 
  // Presentation vertical physics was solved on the previous frame.
@@ -5293,6 +5476,7 @@ function updateDrive(dt){
      nr&&
      nr.d<8.5
    );
+ currentOnPavementForInstruments=onPavement;
 
  const driveThrottle=
    updateTransmission(
@@ -5301,18 +5485,11 @@ function updateDrive(dt){
      onPavement
    );
 
- // Lane-keep is allowed only when the driver is not actively steering.
- // This keeps manual input authoritative at all times.
- const steeringNeutral=
-   !autopilot &&
-   Math.abs(manualTurn)<.055;
-
  const brakeRequested=hand||(throttle<-.04&&speed>.15);
  vehicleVisuals.updateBrakeLights(dt,brakeRequested);
  // ----- V4.1 longitudinal dynamics -----
  const previousSpeed=speed;
  const surfaceGrip=onPavement?roadSurfaceGrip():1;
- const grip=onPavement?surfaceGrip:VEHICLE.offroadGrip;
 
  // Terrain behavior:
  // every vehicle still loses 20% propulsion away from pavement.
@@ -5331,50 +5508,116 @@ function updateDrive(dt){
      ?1.18
      :1;
 
- let accel=0;
+ // V21.21 — longitudinal force model. Propulsion and service braking are
+ // resolved independently so axle load, drivetrain and surface grip can cap
+ // the requested force before rolling/aero/grade forces are added.
+ let requestedDriveAccel=0;
+ let requestedBrakeAccel=0;
+
  if(driveThrottle>0){
    if(speed>=0){
-     // Power falls progressively with road speed. Mechanical gearing/redline
-     // sets the upper bound; aero/rolling drag can still prevent a weak engine
-     // from actually reaching it.
-     const performanceTop=
-       vehicleTopSpeedKmh()/3.6;
-
-     const speedRatio=
-       Math.min(
-         1,
-         Math.max(
-           0,
-           speed/performanceTop
-         )
-       );
+     const performanceTop=vehicleTopSpeedKmh()/3.6;
+     const speedRatio=Math.min(1,Math.max(0,speed/performanceTop));
      const powerTaper=1-.38*speedRatio;
-     accel+=
+     requestedDriveAccel=
        VEHICLE.accel*
        offroadPowerFactor*
        driveThrottle*
        powerTaper;
-   }else accel+=VEHICLE.brake*driveThrottle; // brake reverse motion before going forward
+   }else{
+     requestedBrakeAccel=VEHICLE.brake*driveThrottle;
+   }
  }else if(driveThrottle<0){
-   if(speed>0)accel+=VEHICLE.brake*driveThrottle;
-   else{
-     accel+=
+   if(speed>0){
+     requestedBrakeAccel=VEHICLE.brake*driveThrottle;
+   }else{
+     requestedDriveAccel=
        VEHICLE.reverseAccel*
        offroadPowerFactor*
        driveThrottle;
    }
  }
 
- // Rolling + aerodynamic resistance. Off-road adds substantial drag but no
- // artificial hard speed clamp.
- if(Math.abs(speed)>.05){
-   const surfaceDrag=onPavement?Math.max(0,(1-surfaceGrip)*.75):VEHICLE.offroadDrag;
-   const resist=VEHICLE.rolling+VEHICLE.aero*speed*speed+surfaceDrag;
-   accel-=Math.sign(speed)*resist;
- }else if(!throttle)speed=0;
+ // V21.21.22 hotfix — longitudinal traction/downforce needs the current
+ // pre-integration speed. The steering/lateral speedAbs is intentionally declared
+ // later, after speed has been integrated for this frame, so do not reference it
+ // here (doing so triggers the JS temporal dead zone on the first frame).
+ const longitudinalSpeedAbs=Math.abs(speed);
 
- if(hand){
-   accel-=Math.sign(speed||1)*12;
+ // V21.21.15 — static tire bite at walking/hairpin speed. Loose terrain
+ // still has much less grip than asphalt, but a tire that is barely rolling
+ // should not behave as if it were already in a high-slip state. Fade the
+ // small static boost out before normal road speed.
+ const offroadStaticTractionT=
+   1-physicsClamp(Math.abs(speed)/7,0,1);
+ const offroadStaticTractionBoost=
+   1+.12*offroadStaticTractionT;
+
+ const longitudinalMu=onPavement
+   ?Math.max(
+      .25,
+      ((VEHICLE.longitudinalAccelLimit??VEHICLE.brake??9.8)/9.80665)*
+      surfaceGrip
+    )
+   :Math.max(
+      .22,
+      (VEHICLE.offroadGrip??.60)*
+      awdOffroadGripBonus*
+      offroadStaticTractionBoost
+    );
+
+ const driveForce=longitudinalTractionLimit({
+   vehicle:VEHICLE,requestedAccel:requestedDriveAccel,surfaceMu:longitudinalMu,mode:'drive',airborne:airborneNow,speedAbs:longitudinalSpeedAbs
+ },dynamicsScratch.drive);
+
+ const brakeForce=longitudinalTractionLimit({
+   vehicle:VEHICLE,requestedAccel:requestedBrakeAccel,surfaceMu:longitudinalMu,mode:'brake',airborne:airborneNow,speedAbs:longitudinalSpeedAbs
+ },dynamicsScratch.brake);
+
+ let accel=
+   driveForce.acceleration+
+   brakeForce.acceleration;
+
+ // Gravity is projected along the actual road/terrain grade. This is a key
+ // foundation for heavy vehicles: climbs now cost speed and descents add load
+ // instead of every route behaving as if it were level.
+ let physicsRoadFrame=onPavement&&nr
+   ?roadProfileFrameAtCum(nr.cum,physicsRoadFrameScratch)
+   :null;
+
+ if(onPavement&&!physicsRoadFrame){
+   ensureRoadProfileNear(absX,absZ);
+   physicsRoadFrame=
+     (nr?roadProfileFrameAtCum(nr.cum,physicsRoadFrameScratch):null)||
+     roadFrameAt(absX,absZ,physicsRoadFrameScratch);
+ }
+
+ const gradeForce=computeGradeAcceleration({
+   onPavement,roadFrame:physicsRoadFrame,heading,airborne:airborneNow,x:absX,z:absZ,terrainHeightAt:terrainAbs
+ },dynamicsScratch.grade);
+
+ accel+=gradeForce.acceleration;
+
+ // Rolling + aerodynamic resistance. In the air only aerodynamic resistance
+ // remains; tires cannot provide propulsion, braking or rolling resistance.
+ if(Math.abs(speed)>.05){
+   const surfaceDrag=onPavement
+     ?Math.max(0,(1-surfaceGrip)*.75)
+     :VEHICLE.offroadDrag;
+   const rollingAndSurface=airborneNow
+     ?0
+     :VEHICLE.rolling+surfaceDrag;
+   const resist=rollingAndSurface+VEHICLE.aero*speed*speed;
+   accel-=Math.sign(speed)*resist;
+ }else if(!throttle&&Math.abs(gradeForce.acceleration)<.04){
+   speed=0;
+ }
+
+ if(hand&&!airborneNow){
+   const handRequest=-Math.sign(speed||gradeForce.acceleration||1)*8.5;
+   accel+=longitudinalTractionLimit({
+     vehicle:VEHICLE,requestedAccel:handRequest,surfaceMu:longitudinalMu,mode:'handbrake',airborne:false,speedAbs:longitudinalSpeedAbs
+   },dynamicsScratch.handbrake).acceleration;
  }
 
  speed+=accel*dt;
@@ -5384,7 +5627,7 @@ function updateDrive(dt){
  // speed. If the car enters terrain above that top-gear redline speed, added
  // resistance bleeds the excess progressively rather than snapping speed.
  // EV: preserve the previous 20% off-road electronic reduction.
- if(!onPavement&&speed>0){
+ if(!airborneNow&&!onPavement&&speed>0){
    const profile=
      activeTransmissionProfile();
 
@@ -5465,250 +5708,157 @@ function updateDrive(dt){
  if(previousSpeed<0&&speed>0&&!throttle)speed=0;
  longitudinalAccel=(speed-previousSpeed)/Math.max(dt,.001);
 
- // ----- speed-sensitive bicycle steering -----
+ // ----- V21.21 generalized steering + lateral envelope -----
  const speedAbs=Math.abs(speed);
 
- // Speed-dependent mechanical steering angle.
- // Parking speeds get a tight turning circle; highway speeds progressively reduce
- // available road-wheel angle for stability.
- const speedBlend=Math.min(1,speedAbs/32);
- const maxRoadWheelAngle=VEHICLE.maxSteerLow+(VEHICLE.maxSteerHigh-VEHICLE.maxSteerLow)*(speedBlend*speedBlend);
+ // V21.21.19 — physical lane-keep assist. Normal Assist no longer edits the
+ // chassis heading or world position after the tire simulation. Instead it
+ // aims the FRONT WHEELS toward a preview point in the right-hand lane, and
+ // that steering command must pass through the same steering rack, tire
+ // friction circle and momentum model as the driver. If the tires cannot make
+ // the corner, Assist cannot magically pull the car back onto the road.
+ let assistedTurn=turn;
+ if(
+   assist&&
+   !autopilot&&
+   !airborneNow&&
+   !hand&&
+   nr&&
+   routeLength&&
+   nr.d<9.5&&
+   speed>2
+ ){
+   let routeHeading=nr.angle;
+   let routeDirection=1;
 
- // Soft center dead-zone and self-centering. Digital keyboard input remains full
- // left/right, but releasing the key now brings steering cleanly back to zero.
- let steerTarget=turn;
- if(Math.abs(steerTarget)<.08){
-   steerTarget=0;
- }else{
-   // V19.2: optional vehicle-specific analog steering curve.
-   // Exponent > 1 softens small joystick corrections without reducing full lock.
-   const vehicleSteeringExponent=
-     VEHICLE.steeringInputExponent??1;
+   if(
+     Math.abs(angleDelta(routeHeading+Math.PI,heading))<
+     Math.abs(angleDelta(routeHeading,heading))
+   ){
+     routeHeading+=Math.PI;
+     routeDirection=-1;
+   }
 
-   // V19.3: all cars get a progressively softer analog center as speed rises.
-   // Full stick remains exactly full stick because 1^exponent is still 1.
-   //
-   // The effect starts around 30 km/h and reaches full strength around
-   // 125 km/h. This specifically targets tiny joystick corrections without
-   // reducing the vehicle's maximum steering authority.
-   const highSpeedSteerT=
+   // North-American/right-hand traffic: target the centre of the lane on
+   // the driver's RIGHT, not the road centreline. World Drive maps geographic
+   // north toward -Z (llToXZ), so for forward=(sin(h),cos(h)) the driver's
+   // right-hand normal is (-cos(h),+sin(h)). V21.21.18 accidentally used the
+   // opposite normal and therefore targeted the left lane on real routes.
+   const laneOffset=1.65;
+   const lookAhead=
+     Math.max(
+       10,
+       Math.min(
+         36,
+         9+speedAbs*.72
+       )
+     );
+   const targetCum=
      Math.max(
        0,
        Math.min(
-         1,
-         (
-           speedAbs-8.3
-         )/
-         26.4
+         routeLength-1,
+         nr.cum+routeDirection*lookAhead
        )
      );
+   const target=routePointAtCum(targetCum);
 
-   const highSpeedSteerSmooth=
-     highSpeedSteerT*
-     highSpeedSteerT*
-     (
-       3-
-       2*
-       highSpeedSteerT
-     );
+   if(target){
+     const targetHeading=
+       target.angle+
+       (routeDirection<0?Math.PI:0);
+     const rightX=-Math.cos(targetHeading);
+     const rightZ=Math.sin(targetHeading);
+     const targetX=target.x+rightX*laneOffset;
+     const targetZ=target.z+rightZ*laneOffset;
+     const desiredHeading=
+       Math.atan2(
+         targetX-absX,
+         targetZ-absZ
+       );
+     const assistHeadingError=
+       angleDelta(
+         desiredHeading,
+         heading
+       );
+     const laneAssist=laneKeepAssistCommand({
+       speedAbs,
+       headingError:assistHeadingError,
+       manualInput:manualTurn,
+       frontSlipAmount,
+       rearSlipAmount,
+       airborne:false,
+       handbrake:false
+     });
 
-   const steeringInputExponent=
-     vehicleSteeringExponent+
-     1.15*
-     highSpeedSteerSmooth;
-
-   steerTarget=
-     Math.sign(steerTarget)*
-     Math.pow(
-       Math.abs(steerTarget),
-       steeringInputExponent
-     );
+     assistedTurn=
+       physicsClamp(
+         manualTurn+laneAssist.input,
+         -1,
+         1
+       );
+   }
  }
 
- // Slower steering buildup around low speed; faster return to center.
- const highSpeedSteerResponse=VEHICLE.steeringResponseHigh??3.8;
- const steeringInRate=speedAbs<5
-   ?3.7
-   :(speedAbs>25?highSpeedSteerResponse:4.5);
- const steeringOutRate=speedAbs<5?6.5:7.5;
- const steerResponse=steerTarget===0?steeringOutRate:steeringInRate;
- steer+=(steerTarget-steer)*(1-Math.exp(-dt*steerResponse));
- if(steerTarget===0&&Math.abs(steer)<.008)steer=0;
+ const steeringModel=steeringCommand({vehicle:VEHICLE,speedAbs,input:assistedTurn},dynamicsScratch.steering);
+ // V21.21.25 — finite steering-rack travel. When a profile defines a
+ // centre-to-full time, joystick input requests a wheel angle but cannot move
+ // the rack there instantaneously. This gives each vehicle a directly tunable
+ // steering nervousness without adding fake yaw or grip.
+ steer=advanceSteeringRack({
+   current:steer,
+   target:steeringModel.target,
+   dt,
+   inputSlewRate:steeringModel.inputSlewRate,
+   returnSlewRate:steeringModel.returnSlewRate,
+   inputRate:steeringModel.inputRate,
+   returnRate:steeringModel.returnRate
+ });
+ if(steeringModel.target===0&&Math.abs(steer)<.008)steer=0;
 
- // Bicycle-model yaw rate.
- const steerAngle=steer*maxRoadWheelAngle;
+ const steerAngle=steer*steeringModel.maxRoadWheelAngle;
  currentSteerAngle=steerAngle;
 
- // V19.1 — drivetrain personality under power.
- //
- // FWD: front tires must both steer and pull, so strong acceleration reduces
- //      yaw authority progressively -> natural power understeer.
- // RWD: rear-wheel torque helps rotate the car while cornering -> mild power
- //      oversteer.
- // AWD: deliberately neutral baseline.
- //
- // The effect needs BOTH positive throttle and steering demand. Straight-line
- // acceleration is therefore completely unchanged.
- const positiveThrottle=
-   speed>=0
-     ?Math.max(
-        0,
-        Math.min(
-          1,
-          driveThrottle
-        )
-      )
-     :0;
+ const lateralEnvelope=lateralDynamicsEnvelope({
+   vehicle:VEHICLE,speed,steerAngle,steerInput:steer,driveThrottle,onPavement,surfaceGrip,awdOffroadGripBonus,rearSlipAmount,airborne:airborneNow
+ },dynamicsScratch.lateral);
 
- const powerHandlingSpeedGate=
-   Math.max(
-     0,
+ let yawRate=lateralEnvelope.yawRate;
+ const drivetrain=lateralEnvelope.drivetrain;
+ const powerCorneringLoad=lateralEnvelope.powerCorneringLoad;
+ const requestedLatAccel=lateralEnvelope.requestedLatAccel;
+ const latLimit=lateralEnvelope.latLimit;
+ const signedLatAccel=lateralEnvelope.signedLatAccel;
+
+ gripSolverAccumulator+=dt;
+ let perWheelGrip=dynamicsScratch.grip;
+ if(
+   gripSolverAccumulator>=GRIP_SOLVER_INTERVAL||
+   !perWheelGrip?.smoothed?.length
+ ){
+   const gripDt=Math.min(.10,Math.max(dt,gripSolverAccumulator));
+   gripSolverAccumulator%=GRIP_SOLVER_INTERVAL;
+   // V21.21.16 — the tire solver must receive the lateral force the chassis
+   // can physically develop, not the unbounded kinematic request from full
+   // steering lock. Passing a 3–10 g request into a ~1 g tire model made all
+   // four tires appear saturated and could create a bogus opposite yaw moment.
+   const tireSolverLatAccel=
      Math.min(
-       1,
-       (
-         speedAbs-3
-       )/
-       12
-     )
-   );
+       Math.max(0,requestedLatAccel),
+       Math.max(0,latLimit)
+     );
+   const tireSolverSignedLatAccel=
+     Math.sign(signedLatAccel||steerAngle||1)*
+     tireSolverLatAccel;
 
- const steeringDemand=
-   Math.max(
-     0,
-     Math.min(
-       1,
-       Math.abs(steer)
-     )
-   );
-
- const powerCorneringLoad=
-   positiveThrottle*
-   powerHandlingSpeedGate*
-   steeringDemand;
-
- // Off-road should behave like pavement at manoeuvring speeds. Grip loss becomes
- // progressively relevant only as speed rises.
- const offroadGripBlend=Math.min(1,Math.max(0,(speedAbs-8)/18));
-
- // Each vehicle can now have a distinct paved-road cornering personality.
- // ID4 remains at 1.00; WRX gets slightly more front-end authority.
- const roadGripMultiplier=VEHICLE.roadGripMultiplier??1;
-
- const effectiveOffroadGrip=
-   Math.min(
-     .96,
-     (VEHICLE.offroadGrip??.60)*
-     awdOffroadGripBonus
-   );
-
- const effectiveGrip=onPavement
-   ?surfaceGrip*roadGripMultiplier
-   :(
-      1+
-      (effectiveOffroadGrip-1)*
-      offroadGripBlend
-    );
-
- let yawRate=
-   (
-     speed/
-     VEHICLE.wheelbase
-   )*
-   Math.tan(steerAngle)*
-   effectiveGrip;
-
- // With all four tires off the ground the steering wheel cannot produce
- // meaningful yaw. Keep a tiny residual for visual continuity.
- if(airborneNow){
-   yawRate*=.06;
+   perWheelGrip=estimateWheelGripUsage({
+     requestedLatAccel:tireSolverLatAccel,signedLatAccel:tireSolverSignedLatAccel,latLimit,longitudinalAccel,
+     propulsionAccel:driveForce.acceleration,serviceBrakeAccel:brakeForce.acceleration,
+     surfaceMu:longitudinalMu,
+     throttle:driveThrottle,handbrake:hand,airborne:airborneNow,vehicle:VEHICLE,speedAbs,
+     contacts:vehiclePresentation?.wheelContacts||[],previousUsage:wheelGripUsage,dt:gripDt
+   },dynamicsScratch.grip);
  }
-
- const drivetrain=
-   VEHICLE.drivetrain||
-   'AWD';
-
- if(drivetrain==='FWD'){
-   // Front tires share steering + propulsion: power understeer.
-   yawRate*=
-     1-
-     .20*
-     powerCorneringLoad;
- }
-
- // V19.2 RWD philosophy:
- // Do NOT increase bicycle-model yaw directly. That felt like artificial extra
- // grip. Rear-drive character now comes from a reduction in available lateral
- // grip under power plus a small rear-slip yaw moment applied later.
- const powerOversteerGripLoss=
-   drivetrain==='RWD'
-     ?(
-        VEHICLE.powerOversteerGripLoss??
-        .07
-      )
-     :0;
-
- // Vehicle-specific lateral acceleration ceiling.
- // This was previously hard-coded to 7.0 m/s² for every vehicle, which made
- // the WRX understeer like the heavier ID4 in high-speed bends.
- const requestedLatAccel=Math.abs(speed*yawRate);
-
- const offroadLatLimit=
-   (
-     speedAbs<10
-       ?7.0
-       :3.8
-   )*
-   awdOffroadGripBonus;
-
- const roadLatLimit=VEHICLE.lateralAccelLimit??7.0;
-
- const baseLatLimit=
-   onPavement
-     ?roadLatLimit
-     :offroadLatLimit;
-
- // Under power, RWD cars progressively give up lateral capacity instead of
- // gaining artificial yaw authority.
- const rwdPowerGripFactor=
-   drivetrain==='RWD'
-     ?Math.max(
-        .72,
-        1-
-        powerOversteerGripLoss*
-        powerCorneringLoad
-      )
-     :1;
-
- const slideGripFactor=
-   airborneNow
-     ?.08
-     :Math.max(
-        .78,
-        1-
-        rearSlipAmount*.16
-      );
-
- const latLimit=
-   baseLatLimit*
-   rwdPowerGripFactor*
-   slideGripFactor;
-
- const signedLatAccel=
-   speed*
-   yawRate;
-
- const perWheelGrip=
-   estimateWheelGripUsage({
-     requestedLatAccel,
-     signedLatAccel,
-     latLimit,
-     longitudinalAccel,
-     throttle:driveThrottle,
-     handbrake:hand,
-     airborne:airborneNow,
-     vehicle:VEHICLE,
-     dt
-   });
 
  wheelGripUsage=
    perWheelGrip.smoothed;
@@ -5728,11 +5878,46 @@ function updateDrive(dt){
  const targetRearSlip=
    perWheelGrip.rearLateral;
 
+ // V21.21.12 — real axle-force imbalance from the friction circle. A locked
+ // rear axle removes the counter-yaw force that normally balances the front
+ // tires, so the chassis gains yaw angular velocity while momentum initially
+ // keeps following the old trajectory. No steering/lateral demand = no moment.
+ let frictionYawAccel=
+   Number.isFinite(perWheelGrip.frictionYawAccel)
+     ?perWheelGrip.frictionYawAccel
+     :0;
+
+ // V21.21.12 — the friction circle now feeds both rotational and translational
+ // dynamics. Losing rear lateral force must not only rotate the chassis: the
+ // center-of-mass trajectory also has less lateral force available, which is
+ // what creates a visibly large slip angle instead of a car that still follows
+ // the corner almost perfectly while its nose yaws.
+ const netLateralAccel=
+   Number.isFinite(perWheelGrip.netLateralAccel)
+     ?perWheelGrip.netLateralAccel
+     :signedLatAccel;
+ const rearLateralForceScale=
+   Number.isFinite(perWheelGrip.rearLateralForceScale)
+     ?physicsClamp(perWheelGrip.rearLateralForceScale,0,1)
+     :1;
+ const rearLateralForceLoss=
+   Math.abs(signedLatAccel)>.15
+     ?1-rearLateralForceScale
+     :0;
+
  const slipDt=
    Math.min(
      .05,
      dt
    );
+
+ // V21.21.14 — at parking/neighbourhood speed, tire slip should disappear
+ // very quickly once the demand falls back under static friction. Keeping the
+ // old high-speed decay here made a tiny transient slip feel like the car was
+ // gently skating sideways in the opposite direction of the turn.
+ const lowSpeedSlipReleaseBoost=
+   1+
+   (1-physicsClamp(speedAbs/8,0,1))*1.6;
 
  frontSlipAmount+=
    (
@@ -5747,7 +5932,7 @@ function updateDrive(dt){
          targetFrontSlip>
          frontSlipAmount
            ?7.8
-           :5.8
+           :5.8*lowSpeedSlipReleaseBoost
        )
      )
    );
@@ -5765,7 +5950,7 @@ function updateDrive(dt){
          targetRearSlip>
          rearSlipAmount
            ?7.8
-           :5.8
+           :5.8*lowSpeedSlipReleaseBoost
        )
      )
    );
@@ -5888,6 +6073,20 @@ function updateDrive(dt){
    !airborneNow&&
    speedAbs>4
  ){
+   // V21.21.13 — this older rear-slip yaw helper predates the real axle-force
+   // moment added in V21.21.11/12. Keep its useful low/medium-speed character,
+   // but progressively fade it at high speed so it does not stack on top of
+   // the force-coupled model and make the rear break away too eagerly.
+   const highSpeedRearStabilityT=
+     physicsClamp(
+       (speedAbs-25)/30,
+       0,
+       1
+     );
+   const legacySlipYawScale=
+     1-
+     highSpeedRearStabilityT*.55;
+
    const slipYaw=
      Math.sign(
        yawRate||
@@ -5899,11 +6098,26 @@ function updateDrive(dt){
        .135,
        .040+
        speedAbs*.0022
-     );
+     )*
+     legacySlipYawScale;
 
    yawRate+=
      slipYaw*
      Math.sign(speed||1);
+ }
+
+ // V21.21.16 — front saturation is understeer, not reverse steering.
+ // Under AWD acceleration the old force-loss sum could be dominated by the
+ // unloaded front axle and produce a yaw acceleration opposite the commanded
+ // turn. Front slip already reduces yawRate above, so do not integrate an
+ // opposing friction moment while the driver is actively commanding a turn.
+ // Same-sign rear-loss moments (handbrake / power oversteer) remain intact.
+ if(
+   Math.abs(steerAngle)>.006&&
+   Math.abs(yawRate)>1e-5&&
+   frictionYawAccel*yawRate<0
+ ){
+   frictionYawAccel=0;
  }
 
  // ---------------------------------------------------------------
@@ -5912,31 +6126,48 @@ function updateDrive(dt){
  // The old model applied target yaw almost immediately. A real tire/chassis
  // needs time to build lateral force, and that response should become calmer
  // as speed rises.
- const yawResponseSpeedT=
-   physicsClamp(
-     (
-       speedAbs-
-       12
-     )/
-     42,
-     0,
-     1
-   );
-
- const yawResponse=
-   airborneNow
-     ?.85
-     :(
-        8.8-
-        yawResponseSpeedT*
-        5.8
-      );
+ const yawResponse=yawResponseRate({
+   vehicle:VEHICLE,
+   speedAbs,
+   airborne:airborneNow
+ });
 
  const yawReleaseBoost=
    Math.abs(yawRate)<
    Math.abs(dynamicYawRate)
      ?1.35
      :1;
+
+ // A rear axle with little lateral authority cannot also provide the strong
+ // stabilizing cornering stiffness that normally drags yaw rate back toward
+ // the bicycle-model target. Keep angular momentum while the rear is locked,
+ // then restore the normal damping as soon as rear grip returns.
+ const frictionYawLoss=
+   physicsClamp(
+     Math.abs(frictionYawAccel)/4.5,
+     0,
+     1
+   );
+ const forceCoupledSlide=
+   physicsClamp(
+     Math.max(
+       frictionYawLoss,
+       rearLateralForceLoss
+     ),
+     0,
+     1
+   );
+ const yawGripResponseScale=
+   Math.max(
+     .34,
+     1-forceCoupledSlide*.66
+   );
+
+ // Integrate the tire-force yaw moment directly. This is deliberately not a
+ // `handbrake => yaw` shortcut: frictionYawAccel is zero unless there is actual
+ // signed lateral force demand and an axle loses lateral capacity.
+ dynamicYawRate+=
+   frictionYawAccel*dt;
 
  dynamicYawRate+=
    (
@@ -5948,7 +6179,8 @@ function updateDrive(dt){
      Math.exp(
        -dt*
        yawResponse*
-       yawReleaseBoost
+       yawReleaseBoost*
+       yawGripResponseScale
      )
    );
 
@@ -5992,14 +6224,15 @@ function updateDrive(dt){
    }
  }
 
- // Road assist / lane keeping.
- // Autopilot keeps its stronger correction. In normal driving, correction only
- // acts while steering input is neutral, so the driver always wins instantly.
+ // Autopilot retains its own stronger recovery logic. Normal Assist is
+ // intentionally absent here: V21.21.19 performs lane keeping exclusively by
+ // steering the front wheels BEFORE tire forces are resolved.
  if(
    !airborneNow&&
    assist&&
+   autopilot&&
    nr&&
-   nr.d<(autopilot?12:9.5)&&
+   nr.d<12&&
    speedAbs>2
  ){
    let routeHeading=nr.angle;
@@ -6014,52 +6247,13 @@ function updateDrive(dt){
    const hErr=
      angleDelta(routeHeading,heading);
 
-   if(autopilot){
-     heading+=
-       hErr*dt*.55;
+   heading+=
+     hErr*dt*.55;
 
-     if(nr.d>.55){
-       const centerRate=.48;
-       absX+=(nr.px-absX)*(1-Math.exp(-dt*centerRate));
-       absZ+=(nr.pz-absZ)*(1-Math.exp(-dt*centerRate));
-     }
-   }else if(steeringNeutral){
-     // Gentle heading correction begins immediately at neutral.
-     // Position correction waits until the car drifts away from the center,
-     // which avoids an artificial "rail" feeling.
-     const speedAssist=
-       Math.max(
-         .22,
-         Math.min(
-           .60,
-           .22+
-           speedAbs/80
-         )
-       );
-
-     heading+=
-       hErr*dt*speedAssist;
-
-     if(nr.d>.70){
-       const drift=
-         Math.max(
-           0,
-           Math.min(
-             1,
-             (nr.d-.70)/2.8
-           )
-         );
-
-       const centerRate=
-         .08+
-         drift*.30;
-
-       const centerAlpha=
-         1-Math.exp(-dt*centerRate);
-
-       absX+=(nr.px-absX)*centerAlpha;
-       absZ+=(nr.pz-absZ)*centerAlpha;
-     }
+   if(nr.d>.55){
+     const centerRate=.48;
+     absX+=(nr.px-absX)*(1-Math.exp(-dt*centerRate));
+     absZ+=(nr.pz-absZ)*(1-Math.exp(-dt*centerRate));
    }
  }
 
@@ -6082,35 +6276,132 @@ function updateDrive(dt){
      frontSlipAmount*.45
    );
 
- const velocityFollowRate=
-   airborneNow
-     ?.45
-     :(
-        2.8+
-        27.2*
-        Math.pow(
-          1-
-          physicsClamp(
-            trajectoryRearSlip,
-            0,
-            1
-          ),
-          2
-        )
-      );
+ // When the friction circle has actually removed rear lateral force, momentum
+ // should keep travelling on its old vector longer than the normal rear-slip
+ // heuristic allowed. This is still force-driven: in a straight line
+ // frictionYawAccel is zero and the historical trajectory-follow rate is kept.
+ const frictionTrajectoryLoss=frictionYawLoss;
 
- velocityHeading+=
-   angleDelta(
-     heading,
-     velocityHeading
-   )*
-   (
-     1-
-     Math.exp(
-       -dt*
-       velocityFollowRate
-     )
-   );
+ // V21.21.14 — low-speed no-slip region. Below roughly 30 km/h, a normal
+ // unsaturated tire should behave almost kinematically: the contact patches
+ // roll where the front wheels point instead of carrying a persistent sideslip
+ // angle from the transient tire solver. This is bypassed as soon as there is
+ // a genuine breakaway (handbrake / saturated axle), so low-speed drift remains
+ // possible when the tires are actually sliding.
+ const lowSpeedNoSlip=
+   !airborneNow&&
+   speedAbs<8.5&&
+   forceCoupledSlide<.18&&
+   frontSlipAmount<.16&&
+   rearSlipAmount<.16;
+
+ if(lowSpeedNoSlip){
+   if(speedAbs<2.5){
+     velocityHeading=heading;
+   }else{
+     const lowSpeedLockT=
+       1-physicsClamp((speedAbs-2.5)/6.0,0,1);
+     const lowSpeedFollowRate=
+       34+
+       lowSpeedLockT*48;
+
+     velocityHeading+=
+       angleDelta(
+         heading,
+         velocityHeading
+       )*
+       (
+         1-
+         Math.exp(
+           -dt*lowSpeedFollowRate
+         )
+       );
+   }
+ }
+ // During a real rear breakaway, integrate the direction of travel from the
+ // *remaining net lateral tire force* rather than simply making it chase the
+ // chassis heading. V21.21.17 then caps the COMPLETE trajectory correction by
+ // a_lat / v, so neither normal cornering nor service braking can rotate linear
+ // momentum faster than the remaining tire friction physically allows.
+ else{
+   let attemptedTrajectoryDelta=0;
+
+   if(
+     !airborneNow&&
+     speedAbs>4&&
+     forceCoupledSlide>.10
+   ){
+     const signedSpeedForCurvature=
+       Math.abs(speed)>.5
+         ?speed
+         :Math.sign(speed||1)*.5;
+     const forceTrajectoryYawRate=
+       netLateralAccel/
+       signedSpeedForCurvature;
+
+     attemptedTrajectoryDelta+=
+       forceTrajectoryYawRate*dt;
+
+     const slideAlignmentRate=
+       .65+
+       (1-forceCoupledSlide)*3.20;
+
+     attemptedTrajectoryDelta+=
+       angleDelta(
+         heading,
+         velocityHeading
+       )*
+       (
+         1-
+         Math.exp(
+           -dt*slideAlignmentRate
+         )
+       );
+   }else{
+     const velocityFollowRate=
+       airborneNow
+         ?0
+         :(
+            (2.8-1.45*frictionTrajectoryLoss)+
+            27.2*
+            Math.pow(
+              1-
+              physicsClamp(
+                trajectoryRearSlip,
+                0,
+                1
+              ),
+              2
+            )
+          );
+
+     attemptedTrajectoryDelta+=
+       angleDelta(
+         heading,
+         velocityHeading
+       )*
+       (
+         1-
+         Math.exp(
+           -dt*velocityFollowRate
+         )
+       );
+   }
+
+   const trajectoryLateralCapacityAccel=
+     Number.isFinite(perWheelGrip.trajectoryLateralCapacityAccel)
+       ?Math.max(0,perWheelGrip.trajectoryLateralCapacityAccel)
+       :Math.max(0,latLimit);
+
+   velocityHeading+=
+     limitMomentumHeadingDelta({
+       attemptedDelta:attemptedTrajectoryDelta,
+       speedAbs,
+       lateralCapacityAccel:trajectoryLateralCapacityAccel,
+       dt,
+       airborne:airborneNow
+     });
+ }
 
  absX+=
    Math.sin(
@@ -6141,7 +6432,12 @@ function updateDrive(dt){
    roadFrame=ensureRoadProfileNear(absX,absZ);
  }
  const onRoad=roadContact&&roadFrame&&roadFrame.distance<18;
- $('contactMode').textContent=onRoad?'Route':'Terrain';
+ currentOnPavementForInstruments=!!onRoad;
+ const contactModeText=onRoad?'Route':'Terrain';
+ if(contactModeText!==lastContactModeText){
+   lastContactModeText=contactModeText;
+   $('contactMode').textContent=contactModeText;
+ }
 
  // Competitive run uses the same final Route/Terrain contact decision as HUD
  // and vehicle support, so penalties match what the player actually sees.
@@ -6152,15 +6448,21 @@ function updateDrive(dt){
 
  const terrainFrame=!onRoad?terrainFrameAt(absX,absZ,heading):null;
 
- // Off-road root height is terrain-driven. On-road height is solved later
- // from the four wheel contacts inside updateSuspensionVisuals().
- const centerRoadSurface=
-   onRoad
-     ?roadSurfaceAt(absX,absZ)
-     :null;
+ // V21.21.5: reuse the road frame we already resolved above. Calling
+ // roadSurfaceAt() here performed another nearest-segment search for the exact
+ // same chassis center. The equivalent rolled surface height is reconstructed
+ // directly and then reused by the four wheel support samples.
+ let centerRoadSurfaceY=null;
+ if(onRoad&&roadFrame){
+   const normalX=-Math.cos(roadFrame.angle||0);
+   const normalZ=Math.sin(roadFrame.angle||0);
+   const centerLateral=(absX-roadFrame.px)*normalX+(absZ-roadFrame.pz)*normalZ;
+   centerRoadSurfaceY=roadFrame.y+Math.tan(roadFrame.roll||0)*centerLateral+ROAD_SURFACE_OFFSET;
+ }
+ setFastWheelRoadSupport(onRoad,roadFrame,centerRoadSurfaceY);
 
  const baseGround=onRoad
-   ?(centerRoadSurface?.y??roadFrame.y+ROAD_SURFACE_OFFSET)
+   ?(centerRoadSurfaceY??roadFrame.y+ROAD_SURFACE_OFFSET)
    :(terrainFrame?terrainFrame.y:terrainAbs(absX,absZ));
 
  const targetY=
@@ -6199,14 +6501,41 @@ function updateDrive(dt){
    dt
  });
 
- $('speed').textContent=Math.round(Math.abs(speed)*3.6);
- const llNow=xzToLL(absX,absZ),realElev=elevationService.elevationAt(llNow.lat,llNow.lon);
- altitudeEl.textContent=realElev!==null&&Number.isFinite(realElev)?Math.round(realElev):'—';
- const frameNow=roadFrameAt(absX,absZ);
- $('grade').textContent=frameNow?(Math.tan(frameNow.pitch)*100).toFixed(1):'0.0';
- if(nr){const pct=100*nr.cum/routeLength;$('progress').textContent=pct.toFixed(1);$('doneKm').textContent=(nr.cum/1000).toFixed(1);$('remainKm').textContent=((routeLength-nr.cum)/1000).toFixed(1);$('roadDist').textContent=Math.round(nr.d);updatePassedSignReadout(nr);drawMap(nr.cum)}
- // Streaming policy is centralized in world-streaming.js.
- worldStreaming.updateVisible(absX,absZ);
+ driveHudAccumulator+=dt;
+ minimapAccumulator+=dt;
+
+ if(driveHudAccumulator>=DRIVE_HUD_INTERVAL){
+   driveHudAccumulator%=DRIVE_HUD_INTERVAL;
+   $('speed').textContent=Math.round(Math.abs(speed)*3.6);
+   const llNow=xzToLL(absX,absZ);
+   const realElev=elevationService.elevationAt(llNow.lat,llNow.lon);
+   altitudeEl.textContent=realElev!==null&&Number.isFinite(realElev)?Math.round(realElev):'—';
+   const frameNow=roadFrameAt(absX,absZ);
+   $('grade').textContent=frameNow?(Math.tan(frameNow.pitch)*100).toFixed(1):'0.0';
+
+   if(nr){
+     const pct=100*nr.cum/routeLength;
+     $('progress').textContent=pct.toFixed(1);
+     $('doneKm').textContent=(nr.cum/1000).toFixed(1);
+     $('remainKm').textContent=((routeLength-nr.cum)/1000).toFixed(1);
+     $('roadDist').textContent=Math.round(nr.d);
+     updatePassedSignReadout(nr);
+   }
+ }
+
+ if(nr&&minimapAccumulator>=MINIMAP_INTERVAL){
+   minimapAccumulator%=MINIMAP_INTERVAL;
+   drawMap(nr.cum);
+ }
+
+ // Streaming boundaries move slowly relative to vehicle physics. Checking
+ // them at ~8 Hz removes main-thread work from every animation frame while
+ // preserving exactly the same load distances and world detail.
+ worldStreamingAccumulator+=dt;
+ if(worldStreamingAccumulator>=WORLD_STREAMING_INTERVAL){
+   worldStreamingAccumulator%=WORLD_STREAMING_INTERVAL;
+   worldStreaming.updateVisible(absX,absZ);
+ }
 }
 
 function toggleAssist(){
@@ -6223,6 +6552,7 @@ function placeAt(frac){
  const p=routePointAt(frac);
  absX=p.x;absZ=p.z;heading=p.angle;
  speed=0;steer=0;visualSteer=0;currentSteerAngle=0;
+ driveHudAccumulator=DRIVE_HUD_INTERVAL;minimapAccumulator=MINIMAP_INTERVAL;
  longitudinalAccel=0;lateralGripUsage=0;
  wheelGripUsage=[0,0,0,0];wheelSlipLevels=[0,0,0,0];
  wheelLateralUsage=[0,0,0,0];wheelLongitudinalUsage=[0,0,0,0];
@@ -6248,7 +6578,7 @@ function placeAt(frac){
  );
  drawMap(p.cum);
 }
-function resetToRoad(){const n=nearestRoute(absX,absZ);if(n){absX=n.px;absZ=n.pz;heading=n.angle;speed=0;steer=0;visualSteer=0;currentSteerAngle=0;longitudinalAccel=0;lateralGripUsage=0;wheelGripUsage=[0,0,0,0];wheelSlipLevels=[0,0,0,0];wheelLateralUsage=[0,0,0,0];wheelLongitudinalUsage=[0,0,0,0];frontSlipAmount=0;rearSlipAmount=0;dynamicYawRate=0;velocityHeading=heading;resetTransmissionState();vehiclePresentation.reset();skidMarks.resetSource('local');roadContact=true;recenterIfNeeded(absX,absZ,true);ensureRoadProfileNear(absX,absZ)}}
+function resetToRoad(){const n=nearestRoute(absX,absZ);if(n){absX=n.px;absZ=n.pz;heading=n.angle;speed=0;driveHudAccumulator=DRIVE_HUD_INTERVAL;minimapAccumulator=MINIMAP_INTERVAL;gripSolverAccumulator=GRIP_SOLVER_INTERVAL;steer=0;visualSteer=0;currentSteerAngle=0;longitudinalAccel=0;lateralGripUsage=0;wheelGripUsage=[0,0,0,0];wheelSlipLevels=[0,0,0,0];wheelLateralUsage=[0,0,0,0];wheelLongitudinalUsage=[0,0,0,0];frontSlipAmount=0;rearSlipAmount=0;dynamicYawRate=0;velocityHeading=heading;resetTransmissionState();vehiclePresentation.reset();skidMarks.resetSource('local');roadContact=true;recenterIfNeeded(absX,absZ,true);ensureRoadProfileNear(absX,absZ)}}
 
 const maxSpeedSlider=$('maxSpeedSlider');
 const maxSpeedLabel=$('maxSpeedLabel');
@@ -6488,10 +6818,18 @@ function applyVehicleSelection(
   currentSteerAngle=0;
   longitudinalAccel=0;
   lateralGripUsage=0;
-  wheelGripUsage=[0,0,0,0];
-  wheelSlipLevels=[0,0,0,0];
-  wheelLateralUsage=[0,0,0,0];
-  wheelLongitudinalUsage=[0,0,0,0];
+  const physicsWheelCount=Math.max(
+    4,
+    (VEHICLE.axles||[]).reduce(
+      (sum,axle)=>sum+(Number(axle.wheelCount)||0),
+      0
+    )
+  );
+  wheelGripUsage=Array(physicsWheelCount).fill(0);
+  wheelSlipLevels=Array(physicsWheelCount).fill(0);
+  wheelLateralUsage=Array(physicsWheelCount).fill(0);
+  wheelLongitudinalUsage=Array(physicsWheelCount).fill(0);
+  gripSolverAccumulator=GRIP_SOLVER_INTERVAL;
   frontSlipAmount=0;
   rearSlipAmount=0;
   dynamicYawRate=0;
@@ -6852,6 +7190,8 @@ function drawGaugeBezel(
   ctx.fill();
 }
 
+let instrumentStaticBuild=false;
+
 function drawNeedle(
   ctx,
   cx,
@@ -6863,6 +7203,7 @@ function drawNeedle(
     tail=12
   }={}
 ){
+  if(instrumentStaticBuild)return;
   ctx.save();
   ctx.translate(cx,cy);
   ctx.rotate(angle);
@@ -6985,9 +7326,7 @@ function drawTachometer(
   const effectiveRedline=
     effectiveEngineRedlineRpm(
       profile,
-      !!(
-        nearestRoute(absX,absZ)?.d<8.5
-      )
+      currentOnPavementForInstruments
     );
 
   const dialMaxThousands=
@@ -7298,205 +7637,213 @@ function drawSpeedGauge(
   ctx.fill();
   ctx.stroke();
 
-  const profile=activeTransmissionProfile();
-  const isCombustion=
-    profile.type==='combustion';
+  if(!instrumentStaticBuild){
+    const profile=activeTransmissionProfile();
+    const isCombustion=
+      profile.type==='combustion';
 
+    let gearText;
+
+    if(!isCombustion){
+      gearText=
+        speed<-.25
+          ?'R'
+          :'D';
+    }else if(transmissionShifting){
+      gearText='—';
+    }else{
+      gearText=
+        transmissionGear<0
+          ?'R'
+          :String(
+             Math.max(
+               1,
+               transmissionGear
+             )
+           );
+    }
+
+    ctx.fillStyle=
+      revLimiterActive
+        ?'#ff474d'
+        :'#ff3a40';
+
+    ctx.font='900 27px Inter,system-ui,sans-serif';
+    ctx.textAlign='center';
+    ctx.textBaseline='middle';
+
+    ctx.fillText(
+      gearText,
+      cx,
+      lcdY+lcdH/2+1
+    );
+
+    const status=
+      revLimiterActive
+        ?'LIMIT'
+        :transmissionShifting
+          ?'SHIFT'
+          :transmissionMode==='manual'
+            ?'MAN'
+            :'AUTO';
+
+    if(status){
+      ctx.fillStyle=
+        revLimiterActive
+          ?'#ff575d'
+          :transmissionShifting
+            ?'#ffd36a'
+            :'rgba(220,226,232,.72)';
+
+      ctx.font=
+        transmissionShifting||
+        revLimiterActive
+          ?'900 8px Inter,system-ui,sans-serif'
+          :'800 7px Inter,system-ui,sans-serif';
+
+      ctx.fillText(
+        status,
+        cx,
+        lcdY-5
+      );
+    }
+  }
+}
+
+const instrumentStaticCanvas=document.createElement('canvas');
+const instrumentStaticCtx=instrumentStaticCanvas.getContext('2d');
+let instrumentStaticCacheKey='';
+const instrumentDynamicCache={
+  dialMax:180,
+  tachDialMaxRpm:8000,
+  isCombustion:true
+};
+
+function instrumentCacheKey(dpr){
+  return [
+    vehicleSystem.activeId,
+    currentOnPavementForInstruments?'road':'terrain',
+    dpr.toFixed(2)
+  ].join('|');
+}
+
+function drawTachometerDynamic(ctx,{cx,cy,radius}){
+  if(!instrumentDynamicCache.isCombustion)return;
+  const start=Math.PI*.75;
+  const sweep=Math.PI*1.50;
+  const rpmRatio=physicsClamp(engineRpm/instrumentDynamicCache.tachDialMaxRpm,0,1);
+  drawNeedle(ctx,cx,cy,start+sweep*rpmRatio,radius-31,{width:3.5,tail:10});
+}
+
+function drawSpeedGaugeDynamic(ctx,{cx,cy,radius}){
+  const start=Math.PI*.75;
+  const sweep=Math.PI*1.50;
+  const kmh=Math.abs(speed)*3.6;
+  const speedRatio=physicsClamp(kmh/instrumentDynamicCache.dialMax,0,1);
+  drawNeedle(ctx,cx,cy,start+sweep*speedRatio,radius-39,{width:4,tail:13});
+
+  const lcdH=44;
+  const lcdY=cy+42;
   let gearText;
-
-  if(!isCombustion){
-    gearText=
-      speed<-.25
-        ?'R'
-        :'D';
+  if(!instrumentDynamicCache.isCombustion){
+    gearText=speed<-.25?'R':'D';
   }else if(transmissionShifting){
     gearText='—';
   }else{
-    gearText=
-      transmissionGear<0
-        ?'R'
-        :String(
-           Math.max(
-             1,
-             transmissionGear
-           )
-         );
+    gearText=transmissionGear<0?'R':String(Math.max(1,transmissionGear));
   }
 
-  ctx.fillStyle=
-    revLimiterActive
-      ?'#ff474d'
-      :'#ff3a40';
-
+  ctx.fillStyle=revLimiterActive?'#ff474d':'#ff3a40';
   ctx.font='900 27px Inter,system-ui,sans-serif';
   ctx.textAlign='center';
   ctx.textBaseline='middle';
+  ctx.fillText(gearText,cx,lcdY+lcdH/2+1);
 
-  ctx.fillText(
-    gearText,
-    cx,
-    lcdY+lcdH/2+1
-  );
-
-  const status=
-    revLimiterActive
-      ?'LIMIT'
-      :transmissionShifting
-        ?'SHIFT'
-        :transmissionMode==='manual'
-          ?'MAN'
-          :'AUTO';
-
+  const status=revLimiterActive?'LIMIT':transmissionShifting?'SHIFT':transmissionMode==='manual'?'MAN':'AUTO';
   if(status){
-    ctx.fillStyle=
-      revLimiterActive
-        ?'#ff575d'
-        :transmissionShifting
-          ?'#ffd36a'
-          :'rgba(220,226,232,.72)';
+    ctx.fillStyle=revLimiterActive?'#ff575d':transmissionShifting?'#ffd36a':'rgba(220,226,232,.72)';
+    ctx.font=transmissionShifting||revLimiterActive
+      ?'900 8px Inter,system-ui,sans-serif'
+      :'800 7px Inter,system-ui,sans-serif';
+    ctx.fillText(status,cx,lcdY-5);
+  }
+}
 
-    ctx.font=
-      transmissionShifting||
-      revLimiterActive
-        ?'900 8px Inter,system-ui,sans-serif'
-        :'800 7px Inter,system-ui,sans-serif';
+function rebuildInstrumentStaticCache(dpr,cssW,cssH){
+  const profile=activeTransmissionProfile();
+  instrumentDynamicCache.isCombustion=profile.type==='combustion';
+  instrumentDynamicCache.tachDialMaxRpm=Math.max(8,Math.ceil((Number(profile.redlineRpm)||6500)/1000))*1000;
+  const mechanicalMax=Math.max(80,vehicleTopSpeedKmh());
+  instrumentDynamicCache.dialMax=Math.max(180,Math.ceil(mechanicalMax/20)*20);
 
-    ctx.fillText(
-      status,
-      cx,
-      lcdY-5
-    );
+  const pxW=Math.round(cssW*dpr);
+  const pxH=Math.round(cssH*dpr);
+  instrumentStaticCanvas.width=pxW;
+  instrumentStaticCanvas.height=pxH;
+  const ctx=instrumentStaticCtx;
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  ctx.clearRect(0,0,cssW,cssH);
+
+  const panel=ctx.createLinearGradient(0,0,0,cssH);
+  panel.addColorStop(0,'rgba(9,10,12,.92)');
+  panel.addColorStop(.38,'rgba(1,2,3,.97)');
+  panel.addColorStop(1,'rgba(0,0,0,.99)');
+  ctx.fillStyle=panel;
+  ctx.strokeStyle='rgba(118,124,130,.30)';
+  ctx.lineWidth=1.5;
+  ctx.beginPath();
+  if(ctx.roundRect)ctx.roundRect(2,2,cssW-4,cssH-4,22);else ctx.rect(2,2,cssW-4,cssH-4);
+  ctx.fill();ctx.stroke();
+
+  const hood=ctx.createLinearGradient(0,0,0,52);
+  hood.addColorStop(0,'rgba(25,27,30,.80)');
+  hood.addColorStop(1,'rgba(3,4,5,0)');
+  ctx.fillStyle=hood;
+  ctx.beginPath();
+  if(ctx.roundRect)ctx.roundRect(16,8,cssW-32,55,24);else ctx.rect(16,8,cssW-32,55);
+  ctx.fill();
+
+  instrumentStaticBuild=true;
+  try{
+    drawTachometer(ctx,{cx:108,cy:125,radius:84});
+    drawSpeedGauge(ctx,{cx:337,cy:120,radius:112});
+  }finally{
+    instrumentStaticBuild=false;
   }
 }
 
 function drawSpeedometer(){
-  if(
-    !speedometerCtx||
-    !speedometerDock?.classList.contains('visible')
-  ){
-    return;
-  }
+  if(!speedometerCtx||!speedometerDock?.classList.contains('visible'))return;
 
   const canvas=speedometerCanvas;
   const dpr=devicePixelRatio||1;
   const cssW=480;
   const cssH=236;
-
   const pxW=Math.round(cssW*dpr);
   const pxH=Math.round(cssH*dpr);
-
-  if(
-    canvas.width!==pxW||
-    canvas.height!==pxH
-  ){
+  if(canvas.width!==pxW||canvas.height!==pxH){
     canvas.width=pxW;
     canvas.height=pxH;
+    instrumentStaticCacheKey='';
+  }
+
+  const key=instrumentCacheKey(dpr);
+  if(key!==instrumentStaticCacheKey){
+    rebuildInstrumentStaticCache(dpr,cssW,cssH);
+    instrumentStaticCacheKey=key;
   }
 
   const ctx=speedometerCtx;
+  ctx.setTransform(1,0,0,1,0,0);
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  ctx.drawImage(instrumentStaticCanvas,0,0);
+  ctx.setTransform(dpr,0,0,dpr,0,0);
 
-  ctx.setTransform(
-    dpr,
-    0,
-    0,
-    dpr,
-    0,
-    0
-  );
-
-  ctx.clearRect(
-    0,
-    0,
-    cssW,
-    cssH
-  );
-
-  // One black binnacle around both instruments.
-  const panel=ctx.createLinearGradient(
-    0,
-    0,
-    0,
-    cssH
-  );
-
-  panel.addColorStop(0,'rgba(9,10,12,.92)');
-  panel.addColorStop(.38,'rgba(1,2,3,.97)');
-  panel.addColorStop(1,'rgba(0,0,0,.99)');
-
-  ctx.fillStyle=panel;
-  ctx.strokeStyle='rgba(118,124,130,.30)';
-  ctx.lineWidth=1.5;
-
-  ctx.beginPath();
-  if(ctx.roundRect){
-    ctx.roundRect(
-      2,
-      2,
-      cssW-4,
-      cssH-4,
-      22
-    );
-  }else{
-    ctx.rect(
-      2,
-      2,
-      cssW-4,
-      cssH-4
-    );
-  }
-  ctx.fill();
-  ctx.stroke();
-
-  // Slight dashboard hood at the top.
-  const hood=ctx.createLinearGradient(
-    0,
-    0,
-    0,
-    52
-  );
-
-  hood.addColorStop(0,'rgba(25,27,30,.80)');
-  hood.addColorStop(1,'rgba(3,4,5,0)');
-
-  ctx.fillStyle=hood;
-  ctx.beginPath();
-  if(ctx.roundRect){
-    ctx.roundRect(
-      16,
-      8,
-      cssW-32,
-      55,
-      24
-    );
-  }else{
-    ctx.rect(
-      16,
-      8,
-      cssW-32,
-      55
-    );
-  }
-  ctx.fill();
-
-  // Tachometer is deliberately smaller and slightly overlapped by speedometer,
-  // matching the visual hierarchy of the reference image.
-  drawTachometer(
-    ctx,
-    {
-      cx:108,
-      cy:125,
-      radius:84
-    }
-  );
-
-  drawSpeedGauge(
-    ctx,
-    {
-      cx:337,
-      cy:120,
-      radius:112
-    }
-  );
+  // Dynamic layer remains full-rate: only the two needles and the LCD text are
+  // repainted each frame. The expensive bezels, gradients, ticks and labels are
+  // pixel-identical cached content.
+  drawTachometerDynamic(ctx,{cx:108,cy:125,radius:84});
+  drawSpeedGaugeDynamic(ctx,{cx:337,cy:120,radius:112});
 }
 
 // V21 always starts with the compact instrument cluster visible.
@@ -7505,15 +7852,13 @@ setGameControlsHidden(true);
 
 // ---------- compass ----------
 const compassCanvas=$('compass'),compassCtx=compassCanvas.getContext('2d'),compassHeading=$('compassHeading');
+const compassTapeCanvas=document.createElement('canvas');
+const compassTapeCtx=compassTapeCanvas.getContext('2d');
+let compassTapeKey='';
 
 function headingDeg(){
   // World coordinates use +X = east and +Z = south because llToXZ()
   // negates latitude. Vehicle heading 0 therefore points SOUTH, not north.
-  // Convert the simulation yaw into a conventional compass bearing:
-  //   heading 0      -> 180° (S)
-  //   heading +90°   ->  90° (E)
-  //   heading 180°   ->   0° (N)
-  //   heading -90°   -> 270° (W)
   let d=(180-heading*180/Math.PI)%360;
   if(d<0)d+=360;
   return d;
@@ -7522,50 +7867,77 @@ function cardinalLabel(d){
   const labels=['N','NE','E','SE','S','SO','O','NO'];
   return labels[Math.round(d/45)%8];
 }
+
+function rebuildCompassTape(w,h,dpr){
+  const pxPerDeg=w/120;
+  const tapeCssW=w*9; // 1080 degrees: safe crop across the 0/360 wrap.
+  compassTapeCanvas.width=Math.max(1,Math.round(tapeCssW*dpr));
+  compassTapeCanvas.height=Math.max(1,Math.round(h*dpr));
+  const ctx=compassTapeCtx;
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  ctx.clearRect(0,0,tapeCssW,h);
+
+  for(let deg=0;deg<=1080;deg+=5){
+    const norm=((deg%360)+360)%360;
+    const x=deg*pxPerDeg;
+    const major=(norm%45===0);
+    const mid=(norm%15===0);
+    const tickH=major?16:mid?10:6;
+    ctx.strokeStyle=major?'rgba(255,255,255,.95)':mid?'rgba(255,255,255,.5)':'rgba(255,255,255,.28)';
+    ctx.lineWidth=major?2:1;
+    ctx.beginPath();
+    ctx.moveTo(x,12);ctx.lineTo(x,12+tickH);ctx.stroke();
+
+    if(major){
+      const txt=cardinalLabel(norm);
+      ctx.font='700 12px system-ui';
+      ctx.textAlign='center';
+      ctx.textBaseline='top';
+      ctx.fillStyle=(txt==='N')?'#ff6767':'#e4edf6';
+      ctx.fillText(txt,x,31);
+    }
+  }
+}
+
+let lastCompassHeadingText='';
 function drawCompass(){
   const dpr=devicePixelRatio||1,w=compassCanvas.clientWidth,h=compassCanvas.clientHeight;
   const W=Math.round(w*dpr),H=Math.round(h*dpr);
-  if(compassCanvas.width!==W||compassCanvas.height!==H){compassCanvas.width=W;compassCanvas.height=H}
-  compassCtx.setTransform(dpr,0,0,dpr,0,0);
-  compassCtx.clearRect(0,0,w,h);
+  if(compassCanvas.width!==W||compassCanvas.height!==H){
+    compassCanvas.width=W;compassCanvas.height=H;compassTapeKey='';
+  }
+  const tapeKey=`${W}x${H}@${dpr.toFixed(2)}`;
+  if(tapeKey!==compassTapeKey){
+    rebuildCompassTape(w,h,dpr);
+    compassTapeKey=tapeKey;
+  }
 
   const hd=headingDeg();
-  const pxPerDeg=w/120; // show ~120 degrees across the strip
+  const pxPerDeg=w/120;
   const center=w/2;
+  const sourceCssX=(hd+360)*pxPerDeg-center;
 
-  // subtle center line
+  // Full-rate refresh remains intact, but all ticks/labels come from one cached
+  // strip. Per-frame work is a single blit plus the center marker.
+  compassCtx.setTransform(1,0,0,1,0,0);
+  compassCtx.clearRect(0,0,W,H);
+  compassCtx.drawImage(
+    compassTapeCanvas,
+    sourceCssX*dpr,0,w*dpr,h*dpr,
+    0,0,W,H
+  );
+
+  compassCtx.setTransform(dpr,0,0,dpr,0,0);
   compassCtx.strokeStyle='rgba(255,255,255,.16)';
   compassCtx.lineWidth=1;
   compassCtx.beginPath();
   compassCtx.moveTo(center,10);compassCtx.lineTo(center,h-8);compassCtx.stroke();
 
-  // ticks every 5 degrees, labels every 45
-  const start=Math.floor((hd-70)/5)*5;
-  const end=Math.ceil((hd+70)/5)*5;
-  for(let deg=start;deg<=end;deg+=5){
-    let norm=((deg%360)+360)%360;
-    let delta=((deg-hd+540)%360)-180;
-    const x=center+delta*pxPerDeg;
-    if(x<-20||x>w+20)continue;
-
-    const major=(norm%45===0);
-    const mid=(norm%15===0);
-    const tickH=major?16:mid?10:6;
-    compassCtx.strokeStyle=major?'rgba(255,255,255,.95)':mid?'rgba(255,255,255,.5)':'rgba(255,255,255,.28)';
-    compassCtx.lineWidth=major?2:1;
-    compassCtx.beginPath();
-    compassCtx.moveTo(x,12);compassCtx.lineTo(x,12+tickH);compassCtx.stroke();
-
-    if(major){
-      const txt=cardinalLabel(norm);
-      compassCtx.font='700 12px system-ui';
-      compassCtx.textAlign='center';
-      compassCtx.textBaseline='top';
-      compassCtx.fillStyle=(txt==='N')?'#ff6767':'#e4edf6';
-      compassCtx.fillText(txt,x,31);
-    }
+  const headingText=`${cardinalLabel(hd)} · ${String(Math.round(hd)%360).padStart(3,'0')}°`;
+  if(headingText!==lastCompassHeadingText){
+    lastCompassHeadingText=headingText;
+    compassHeading.textContent=headingText;
   }
-  compassHeading.textContent=`${cardinalLabel(hd)} · ${String(Math.round(hd)%360).padStart(3,'0')}°`;
 }
 
 // ---------- transient sign readout on minimap ----------
@@ -7729,26 +8101,103 @@ const worldStreaming=createWorldStreaming({
     fetchOverpassCached(namespace,ll,query,timeoutMs,ttlMs)
 });
 
+// V21.21.27 — route-ahead terrain/imagery warm cache.
+// The normal streaming manager remains authoritative for what is currently
+// displayed. This lightweight pass only warms DEM and image tiles several
+// kilometres along the actual travel direction so real terrain is ready BEFORE
+// it enters the visible high-detail patch instead of popping in beside the car.
+const aheadStreamingBuckets=new Set();
+let nextAheadStreamingAt=0;
+let lastAheadTerrainRefreshAt=0;
+let lastImageryRefreshAt=0;
+
+function routeTravelSign(nr){
+  if(!nr)return 1;
+  return Math.cos(heading-nr.angle)>=0?1:-1;
+}
+
+function prefetchRouteAhead(){
+  if(!routeLength||!route.length)return;
+  const nr=nearestRoute(absX,absZ);
+  if(!nr)return;
+
+  const dir=routeTravelSign(nr);
+  const speedAbs=Math.abs(speed);
+  const leadBonus=Math.min(1400,speedAbs*24);
+  const lookaheads=[650,1250,2100,3200].map((d,i)=>d+(i?leadBonus:leadBonus*.45));
+  let requestedFreshTerrain=false;
+
+  for(const distance of lookaheads){
+    const cum=Math.max(0,Math.min(routeLength,nr.cum+dir*distance));
+    const bucket=Math.round(cum/420);
+    const key=`${dir}:${bucket}`;
+    if(aheadStreamingBuckets.has(key))continue;
+    aheadStreamingBuckets.add(key);
+
+    const p=routePointAtCum(cum);
+    if(!p)continue;
+
+    try{
+      const elevPromise=elevationService.prefetchAt?.(p.x,p.z);
+      if(elevPromise!==undefined){
+        requestedFreshTerrain=true;
+        Promise.resolve(elevPromise).then(()=>{
+          const now=performance.now();
+          if(now-lastAheadTerrainRefreshAt>2400){
+            lastAheadTerrainRefreshAt=now;
+            // Re-evaluate visible near + horizon geometry against newly cached
+            // DEM. Coalescing keeps multiple completed tile requests to one job.
+            scheduleVisualJob('ahead-dem-refresh',rebuildLocalWorld,520);
+          }
+        }).catch(()=>{});
+      }
+    }catch{}
+
+    if(imageryService.enabled){
+      try{imageryService.prefetchAt?.(p.x,p.z);}catch{}
+    }
+  }
+
+  // Bound memory used only for duplicate-suppression on very long routes.
+  if(aheadStreamingBuckets.size>320){
+    const keep=[...aheadStreamingBuckets].slice(-220);
+    aheadStreamingBuckets.clear();
+    keep.forEach(key=>aheadStreamingBuckets.add(key));
+  }
+  return requestedFreshTerrain;
+}
+
+function refreshCurrentImagerySooner(now){
+  if(!imageryService.enabled||imageryService.loading)return;
+  const center=imageryService.center;
+  if(!center||!Number.isFinite(center.x)||!Number.isFinite(center.z))return;
+  const moved=Math.hypot(absX-center.x,absZ-center.z);
+  if(moved<340||now-lastImageryRefreshAt<1100)return;
+  lastImageryRefreshAt=now;
+  buildImageryMosaic(absX,absZ).catch(()=>{});
+}
+
+
 const DISPLAY_DISTANCE_PROFILES={
   low:{
     label:'Basse',
     cameraFar:3200,
     fogDensity:.00102,
-    streamingScale:.78
+    streamingScale:.96
   },
 
   medium:{
     label:'Moyenne',
     cameraFar:4500,
     fogDensity:.00082,
-    streamingScale:1
+    streamingScale:1.32
   },
 
   high:{
     label:'Haute',
     cameraFar:6500,
     fogDensity:.00058,
-    streamingScale:1.35
+    streamingScale:1.82
   }
 };
 
@@ -8977,7 +9426,7 @@ function installV21Menu(){
       <nav class="v21MenuNav">
         <div class="v21Brand">
           <strong>WORLD DRIVE</strong>
-          <span>V21.20.1 ALPHA</span>
+          <span>V21.21.1 ALPHA</span>
         </div>
 
         <button class="v21Tab active" data-tab="vehicle" data-title="Véhicule">🚗 Véhicule</button>
@@ -9842,8 +10291,10 @@ let nextDirectionalPrefetchAt=0;
 
 function animate(now){
  requestAnimationFrame(animate);
+ updateFpsAndGovernor(now);
  const dt=Math.min(.033,(now-last)/1000||.016);last=now;
  try{
+   const simStart=performance.now();
    if(
      gameStarted&&
      !v21MenuOpen
@@ -9851,12 +10302,29 @@ function animate(now){
      gamepad.update();
      updateDrive(dt);
    }
+   const simCost=performance.now()-simStart;
+   perfGovernor.simMs=perfGovernor.simMs*.90+simCost*.10;
 
    if(gameStarted){
      multiplayer.update(dt);
    }
 
-   vehiclePresentation.updateContactShadow();
+   const perfIntervals=performanceIntervals();
+
+   // Cheap shadow transform follows the vehicle every frame; the expensive
+   // terrain projection is refreshed at a lower visual cadence.
+   const projectShadow=now>=perfGovernor.nextShadowProjectionAt;
+   if(projectShadow){
+     perfGovernor.nextShadowProjectionAt=now+perfIntervals.shadowProjection;
+   }
+   vehiclePresentation.updateContactShadow(projectShadow);
+
+   // Static world shadows do not need a full GPU shadow pass every frame.
+   // Refresh them sparsely; the cheap contact shadow still follows the car.
+   if(renderer.shadowMap.enabled && now>=perfGovernor.nextShadowMapAt){
+     renderer.shadowMap.needsUpdate=true;
+     perfGovernor.nextShadowMapAt=now+perfIntervals.shadowMap;
+   }
 
    if(gameStarted){
      try{
@@ -9868,22 +10336,55 @@ function animate(now){
    }
 
    cameraController.update(dt);
-   updateMoonSkyPosition();
+
+   if(now>=perfGovernor.nextMoonAt){
+     updateMoonSkyPosition();
+     perfGovernor.nextMoonAt=now+perfIntervals.moon;
+   }
 
    if(
      gameStarted&&
      !v21MenuOpen&&
      now>=nextDirectionalPrefetchAt
    ){
-     nextDirectionalPrefetchAt=now+100;
+     nextDirectionalPrefetchAt=now+250;
      worldStreaming.prefetchDirectional(absX,absZ);
+   }
+
+   if(
+     gameStarted&&
+     !v21MenuOpen&&
+     now>=nextAheadStreamingAt
+   ){
+     nextAheadStreamingAt=now+850;
+     prefetchRouteAhead();
+     refreshCurrentImagerySooner(now);
    }
 
    waterTex.offset.x=(waterTex.offset.x+dt*.003)%1;
    waterTex.offset.y=(waterTex.offset.y+dt*.0015)%1;
+
+   // User-facing instruments are intentionally full-rate in V21.21.5 (static instrument art is cached).
    drawCompass();
    drawSpeedometer();
+
+   const renderStart=performance.now();
    renderer.render(scene,camera);
+   const renderSubmitCost=performance.now()-renderStart;
+   perfGovernor.renderSubmitMs=perfGovernor.renderSubmitMs*.90+renderSubmitCost*.10;
+
+   if(now>=perfGovernor.nextPerfLogAt){
+     perfGovernor.nextPerfLogAt=now+5000;
+     console.info(
+       '[WorldDrive perf]',
+       `fps=${Math.round(perfGovernor.fps)}`,
+       `scale=${renderer.getPixelRatio().toFixed(2)}`,
+       `level=${perfGovernor.level}`,
+       `shadows=${renderer.shadowMap.enabled?'on':'off'}`,
+       `sim=${perfGovernor.simMs.toFixed(2)}ms`,
+       `renderSubmit=${perfGovernor.renderSubmitMs.toFixed(2)}ms`
+     );
+   }
  }catch(e){
    console.error('Frame error:',e);
    statusEl.textContent='Erreur moteur 3D: '+(e?.message||e);

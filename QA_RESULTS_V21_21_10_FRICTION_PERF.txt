@@ -1,0 +1,6 @@
+V21.21.10 friction-circle microbenchmark (Node, synthetic WRX handbrake/cornering state)
+- V21.21.9 estimateWheelGripUsage median: ~0.581 us/call
+- V21.21.10 estimateWheelGripUsage median: ~0.618 us/call
+- Delta inside this 20 Hz secondary tire solver: ~+6.5%
+- Absolute extra cost: ~0.037 us per solver call; four-wheel solver remains far below 0.1 ms/frame budget.
+This is a microbenchmark, not a browser FPS prediction.

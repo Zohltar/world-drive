@@ -1,0 +1,10 @@
+V21.21.16 STEERING FORCE SIGN QA: PASS
+80 km/h LEFT: chassis=-11.34°, trajectory=-12.69°, rearRelX=0.302 m, maxSideslip=1.34°
+80 km/h RIGHT: chassis=11.34°, trajectory=12.69°, rearRelX=-0.302 m, maxSideslip=1.34°
+100 km/h LEFT: chassis=-9.02°, trajectory=-10.10°, rearRelX=0.241 m, maxSideslip=1.08°
+100 km/h RIGHT: chassis=9.02°, trajectory=10.10°, rearRelX=-0.241 m, maxSideslip=1.08°
+120 km/h LEFT: chassis=-7.36°, trajectory=-8.26°, rearRelX=0.197 m, maxSideslip=0.90°
+120 km/h RIGHT: chassis=7.36°, trajectory=8.26°, rearRelX=-0.197 m, maxSideslip=0.90°
+150 km/h LEFT: chassis=-5.64°, trajectory=-6.38°, rearRelX=0.151 m, maxSideslip=0.74°
+150 km/h RIGHT: chassis=5.64°, trajectory=6.38°, rearRelX=-0.151 m, maxSideslip=0.74°
+WRX handbrake 72 km/h: max sideslip 26.08°, extra heading 36.98°

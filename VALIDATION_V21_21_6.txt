@@ -1,0 +1,61 @@
+WORLD DRIVE V21.21.6 — VALIDATION / QA
+
+STATUT
+Candidate de test. Les validations locales ne remplacent pas le test visuel et
+la mesure de FPS sur le PC utilisateur.
+
+DIAGNOSTIC À L'ORIGINE DU CHANGEMENT
+- V21.21.4 : ~30 FPS sur le trajet de référence utilisateur.
+- V21.21.5 : optimisations CPU de physique/HUD, mais pratiquement aucun gain FPS.
+- Conclusion de travail : la physique n'est probablement plus le goulot principal.
+- Diff V21.21.3 -> V21.21.4 montre que les gros leviers restants sont le chemin
+  graphique (MSAA/résolution/ombres), la V21.21.3 étant très fluide mais trop douce.
+
+CHANGEMENTS V21.21.6
+- WebGL MSAA : OFF.
+- Antialiasing : FXAA officiel Three.js via EffectComposer / OutputPass / FXAAPass.
+- Distance caméra : 4500 m, inchangée.
+- Résolution dynamique : 1.15 / 1.08 / 1.00 / 0.94 max selon niveau et DPR.
+- Politique d'ombres : inchangée par rapport à V21.21.5.
+- Boussole + cadrans : plein régime, inchangés.
+- Matrices des éléments statiques de monde : gelées entre rebuilds.
+- worldStreaming.updateVisible : ~8 Hz au lieu de chaque frame.
+- solveur secondaire roue-par-roue grip/slip : 20 Hz au lieu de 24 Hz.
+- Physique principale (direction, force longitudinale, pente, lacet, intégration) :
+  toujours à chaque frame.
+
+NON-RÉGRESSION BYTE-FOR-BYTE VS V21.21.5
+- src/terrain.js : identique.
+- src/vehicle-dynamics.js : identique.
+- src/vehicle-system.js : identique.
+- src/vehicle-presentation.js : identique.
+- electron/main.cjs : identique.
+- electron/preload.cjs : identique.
+- electron/multiplayer-runtime.cjs : identique.
+
+QA
+- node --check src/main.js : PASS.
+- node --check modules physique/terrain/Electron : PASS.
+- qa/V21_21_6_RENDER_QA.mjs : PASS.
+- qa/V21_21_PHYSICS_QA.mjs : PASS sur 389 / 169 / 132 / Yungas.
+- qa/V21_21_FUZZ_QA.mjs : PASS, 50 000 états jusqu'à 5 essieux / 20 roues.
+- index routier V21.21.2 perf QA : 0 mismatch, ~9x plus rapide que scan complet
+  dans ce run local.
+
+LIMITATION IMPORTANTE
+Le sandbox ne possède pas le projet complet avec tous les modules importés et ne
+peut donc pas exécuter le build Vite/WebGL final. Les chemins d'addons Three.js
+utilisés sont ceux de l'API officielle `three/addons/...` et sont fournis par la
+dépendance three 0.179.1 du projet. La validation décisive reste le lancement sur
+le poste utilisateur.
+
+TEST DEMANDÉ
+Même voiture, même preset et même endroit que le test ~30 FPS de V21.21.4/5.
+Noter :
+1) FPS après 10 secondes ;
+2) netteté des lignes de route / silhouettes ;
+3) scintillement ou jaggies éventuels ;
+4) qualité du relief et du décor lointain ;
+5) feeling physique en pente et en virage.
+
+Cible : 45-60 FPS sans retour au rendu flou de V21.21.3.

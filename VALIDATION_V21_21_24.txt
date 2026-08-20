@@ -1,0 +1,36 @@
+World Drive V21.21.24 — Validation
+
+Syntax
+PASS node --check src/main.js
+PASS node --check src/vehicle-system.js
+PASS node --check src/vehicle-dynamics.js
+PASS node --check qa/V21_21_24_F1_STEERING_QA.mjs
+
+Focused F1 steering QA
+PASS V21_21_24_F1_STEERING_QA.mjs
+- 20 km/h full lock: 19.34 deg, 0.35 g requested, no slip
+- 40 km/h full lock: 17.93 deg, 1.29 g requested, no slip
+- 60 km/h full lock: 9.53 deg, 1.51 g requested vs 2.29 g available, no slip
+- 100 km/h full lock: 3.99 deg, 1.74 g requested vs 2.64 g available, no slip
+- 150 km/h full lock: 2.23 deg, 2.19 g requested vs 3.32 g available, no slip
+- 200 km/h full lock: 1.62 deg, 2.82 g requested vs 4.28 g available, no slip
+- 300 km/h full lock: 1.05 deg, 4.14 g requested vs 6.27 g available, no slip
+- Full throttle + full steering at 20/40/60/80/100 km/h: no immediate four-wheel slide
+- Abusive left/right reversal at 40 km/h: max single-frame G change < 0.08 g; peak < 0.85 g
+
+Regression QA
+PASS V21_21_PHYSICS_QA.mjs
+PASS V21_21_FUZZ_QA.mjs — 50,000 randomized states, up to 5 axles / 20 wheels
+PASS V21_21_16_STEERING_FORCE_SIGN_QA.mjs
+PASS V21_21_17_BRAKING_MOMENTUM_QA.mjs
+PASS V21_21_19_RIGHT_LANE_ASSIST_QA.mjs
+PASS V21_21_20_GRAPHICS_QA.mjs
+PASS V21_21_21_REAL_MASS_AERO_QA.mjs
+PASS V21_21_22_LOAD_QA.mjs
+PASS V21_21_23_F1_STABILITY_QA.mjs
+
+Notes
+- V21.21.23 F1 downforce and tire grip remain intact.
+- V21.21.20 graphics recovery remains intact.
+- V21.21.19 right-lane steering assist remains intact.
+- No renderer or terrain changes in this candidate.

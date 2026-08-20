@@ -1,0 +1,45 @@
+World Drive V21.21.25 — validation
+==================================
+
+Syntax / static
+---------------
+PASS node --check src/main.js
+PASS node --check src/vehicle-system.js
+PASS node --check src/vehicle-dynamics.js
+PASS node --check src/vehicle-presentation.js
+PASS node --check electron/main.cjs
+PASS node --check electron/preload.cjs
+PASS node --check electron/multiplayer-runtime.cjs
+PASS node --check forge.config.cjs
+PASS node --check vite.config.js
+
+Focused steering QA
+-------------------
+PASS V21_21_25_STEERING_RACK_QA.mjs
+- every current vehicle has a finite centre-to-full steering time
+- F1 centre->full request: 0.42 s
+- F1 full left->full right: ~0.84 s
+- F1 high-speed steering envelope: 82% of available lateral grip
+- 200 km/h full-steering demand: ~3.51 g vs ~2.82 g in V21.21.24
+- 250 km/h full-steering demand: ~4.51 g vs ~3.63 g in V21.21.24
+- no steering-only F1 tire breakaway from 80 to 300 km/h in the QA model
+- abrupt 100 km/h joystick reversal remains rate-limited; no single-frame G spike
+
+Regression QA
+-------------
+PASS V21_21_PHYSICS_QA.mjs
+PASS V21_21_FUZZ_QA.mjs — 50,000 randomized states, up to 5 axles / 20 wheels
+PASS V21_21_17_BRAKING_MOMENTUM_QA.mjs
+PASS V21_21_19_RIGHT_LANE_ASSIST_QA.mjs
+PASS V21_21_20_GRAPHICS_QA.mjs
+PASS V21_21_21_REAL_MASS_AERO_QA.mjs
+PASS V21_21_22_LOAD_QA.mjs
+PASS V21_21_23_F1_STABILITY_QA.mjs
+PASS V21_21_24_F1_STEERING_QA.mjs (updated to use the finite rack)
+PASS V21_21_3_PERF_QA.mjs — road index mismatch 0; steering change adds no meaningful hot-path allocation
+
+Notes
+-----
+This candidate has no node_modules/package-lock in the supplied source bundle,
+so a full npm build was not run in this sandbox. User driving validation remains
+required, especially for joystick feel and sustained 150–300 km/h F1 bends.

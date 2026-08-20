@@ -1,3 +1,5 @@
+> Current development candidate: **V21.21.27 Visual / Streaming** (based on V21.21.26). Stable baseline remains unchanged until visual validation.
+
 # World Drive V21.20.1
 
 **World Drive** est un simulateur de conduite 3D construit avec **Three.js** et **Vite**, jouable dans le navigateur et disponible comme application **Windows/Electron**.
