@@ -1,0 +1,34 @@
+WORLD DRIVE V21.21.14 — VALIDATION / QA
+
+STATUS: candidate for user visual/driving validation.
+
+Automated checks
+----------------
+PASS: node --check src/main.js
+PASS: node --check src/vehicle-dynamics.js
+PASS: V21.21 generalized physics QA
+PASS: randomized dynamics fuzz — 50,000 states, up to 5 axles / 20 wheels
+PASS: V21.21.10 friction-circle QA
+PASS: V21.21.11 handbrake-yaw QA
+PASS: V21.21.12 force-coupled drift QA
+PASS: V21.21.13 high-speed stability QA
+PASS: V21.21.14 tire adhesion QA
+PASS: V21.21.7 render policy QA
+PASS: V21.21.9 terrain orientation / frame-pacing QA — 12/12
+
+V21.21.14 focused tire results (WRX, 60% steer)
+------------------------------------------------
+  5 km/h: max sideslip 0.000 deg, false tire slip 0%
+ 11 km/h: max sideslip 0.131 deg, false tire slip 0%
+ 18 km/h: max sideslip 0.319 deg, false tire slip 0%
+ 25 km/h: max sideslip 0.690 deg, false tire slip 0%
+ 72 km/h + 0.5 s handbrake: max sideslip 22.17 deg
+
+Left/right symmetry test: PASS.
+No per-side grip bias is used.
+
+Regression note
+---------------
+qa/V21_21_5_CPU_QA.mjs is intentionally stale for current render policy: it asserts the old V21.21.4 pixel-ratio floor, which was deliberately changed in later V21.21.7 rendering work. This is not a V21.21.14 regression.
+
+Full Vite/Electron build was not run because this candidate archive does not include node_modules/package-lock.

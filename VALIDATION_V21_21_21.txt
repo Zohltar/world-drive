@@ -1,0 +1,47 @@
+World Drive V21.21.21 — Validation
+
+Syntax
+PASS node --check src/main.js
+PASS node --check src/vehicle-system.js
+PASS node --check src/vehicle-dynamics.js
+
+New V21.21.21 QA
+PASS qa/V21_21_21_REAL_MASS_AERO_QA.mjs
+- ID.4 2226 kg
+- WRX 1510 kg
+- Civic 1345 kg
+- Sonata 1584 kg
+- F1 representative running mass 740 kg (FIA minimum metadata 620 kg)
+- Countach 1490 kg
+- i3 1343 kg
+- F1 downforce @ 200 km/h: 8620 N (~879 kgf)
+- F1 aero grip scale @ 200 km/h: 1.998x
+- F1 downforce @ 300 km/h: 19396 N (~1978 kgf)
+- F1 aero grip scale @ 300 km/h: 3.000x capped
+- F1 lateral limit: 23.11 m/s^2 @ 100 km/h; 36.96 m/s^2 @ 200 km/h
+- F1 service-brake traction ceiling rises from 19.61 m/s^2 at 0 km/h to 42.91 m/s^2 at 200 km/h in the dedicated 2.0-mu test
+- Road-car traction is invariant with speed when aeroDownforceClA is absent
+- Vehicle-switch layout cache revision test PASS
+
+Regression QA
+PASS qa/V21_21_PHYSICS_QA.mjs (updated only to recognize deliberate F1 aero lat-limit growth)
+PASS qa/V21_21_FUZZ_QA.mjs — 50,000 randomized states, up to 5 axles / 20 wheels
+PASS qa/V21_21_16_STEERING_FORCE_SIGN_QA.mjs
+PASS qa/V21_21_17_BRAKING_MOMENTUM_QA.mjs
+PASS qa/V21_21_18_LANE_ASSIST_QA.mjs
+PASS qa/V21_21_19_RIGHT_LANE_ASSIST_QA.mjs
+PASS qa/V21_21_20_GRAPHICS_QA.mjs
+PASS qa/V21_21_9_TERRAIN_QA.mjs
+PASS qa/V21_21_3_PERF_QA.mjs — candidate and V21.21.20 baseline showed essentially identical allocation-light dynamics timing in back-to-back run (~3.35 us/frame in that container run)
+
+Legacy QA note
+V21_21_5_CPU_QA.mjs and V21_21_7_RENDER_QA.mjs contain hard-coded render-ratio assertions from older graphics candidates. They already conflict with the intentional V21.21.20 graphics ladder and are not applicable to V21.21.21. Current graphics QA V21_21_20_GRAPHICS_QA.mjs passes.
+
+Build
+Full npm/Vite build not run in sandbox because node_modules is not included in this candidate archive.
+
+User visual test recommended
+1. Compare ID.4 versus WRX transitions/weight feel.
+2. F1: test 80, 120, 160, 200, 250+ km/h. It should feel increasingly planted as speed rises rather than equally nervous everywhere.
+3. F1 low speed should remain comparatively mechanical; the aero advantage must fade naturally toward zero.
+4. Confirm road-car drift/braking/lane assist/graphics remain unchanged in feel.

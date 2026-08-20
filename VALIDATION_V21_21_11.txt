@@ -1,0 +1,59 @@
+WORLD DRIVE V21.21.11 — VALIDATION / QA
+
+STATUS
+Candidate. Automated/static QA passed; real driving feel remains to be validated by the user.
+
+ROOT CAUSE
+V21.21.10 produced rearLateral ~= 1.0 under handbrake cornering, so the friction circle itself was detecting rear saturation correctly. However, the lost rear lateral force never entered the chassis yaw dynamics. Only a small historical rear-slip yaw heuristic remained, which was far too weak to create an obvious handbrake rotation.
+
+FIX
+Inside the existing 20 Hz per-wheel grip solver:
+1. Compute remaining lateral capacity from longitudinal friction-circle demand.
+2. Compute the lateral force scale available at each wheel.
+3. Compare that force to the balanced bicycle-model force already assumed by the steering model.
+4. Sum the resulting force-loss moment around the CG.
+5. Convert moment to angular acceleration with the vehicle yaw inertia.
+6. Integrate that angular acceleration into dynamicYawRate every rendered frame.
+
+No direct handbrake-to-yaw constant is used. With zero signed lateral demand, the computed yaw moment is exactly zero.
+
+DEDICATED HAND BRAKE QA
+PASS
+- WRX, straight handbrake: friction yaw acceleration = 0.
+- WRX, coasting corner without longitudinal saturation: extra friction yaw = 0.
+- Left/right sign symmetry: PASS.
+- All 7 current vehicles create correctly signed yaw acceleration during a moderate handbrake corner.
+- WRX at 4.0 m/s^2 lateral demand: 3.020 rad/s^2 friction-derived yaw acceleration.
+- Deterministic 60 FPS maneuver, 72 km/h, 0.5 s handbrake:
+  - +18.06 degrees chassis heading versus the same turn without handbrake.
+  - 6.05 degrees maximum chassis/velocity sideslip.
+  - 46.48 deg/s maximum yaw rate.
+- Same maneuver in a straight line: no chassis rotation / no sideslip.
+
+REGRESSION QA
+- node --check critical JS/CJS: PASS.
+- V21.21 physics QA: PASS.
+- Preset-style physics stress: 389 / 169 / 132 / Yungas: PASS.
+- Frame-rate invariance: 30..240 Hz: PASS.
+- Randomized dynamics fuzz: 50,000 states, up to 5 axles / 20 wheels: PASS.
+- V21.21.7 render-policy QA: PASS.
+- V21.21.9 terrain orientation + frame pacing QA: PASS 12/12.
+
+PERFORMANCE
+The extra force/moment arithmetic lives inside the already-throttled 20 Hz per-wheel grip solver. Three 300k-call Node microbenchmark passes versus V21.21.10 measured approximately -8.1%, +0.6%, +3.9% variation, i.e. no material solver cost outside normal benchmark noise. This is not a browser FPS guarantee, but no new per-frame wheel loop was introduced.
+
+UNCHANGED CRITICAL FILES
+- src/terrain.js
+- src/vehicle-system.js
+- src/vehicle-presentation.js
+- electron/preload.cjs
+- electron/multiplayer-runtime.cjs
+- forge.config.cjs
+- vite.config.js
+
+KEY SHA256
+src/terrain.js
+700e933712c17b8110f93ca8d1998d051748b5bc897538e9c0f91594b4227ada
+
+electron/multiplayer-runtime.cjs
+9c431ce52a8b68508fb31f83038ef344cacd5ebe86ba7e7e45e785a1df4d95c7

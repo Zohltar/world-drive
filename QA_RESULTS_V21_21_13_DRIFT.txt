@@ -1,0 +1,5 @@
+V21.21.12 FORCE-COUPLED DRIFT QA: PASS
+WRX 0.5 s handbrake extra heading: 42.92 deg
+WRX 0.5 s handbrake max sideslip: 21.59 deg
+WRX max yaw rate: 97.83 deg/s
+WRX max rear force-loss coupling: 100.0 %

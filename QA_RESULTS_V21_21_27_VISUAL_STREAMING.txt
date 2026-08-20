@@ -1,0 +1,11 @@
+World Drive V21.21.27 — Visual / Streaming QA
+
+Syntax: PASS
+
+V21.21.27 VISUAL / STREAMING QA: PASS
+near terrain: 2400m / 192 -> 3200m / 256 (12.5m nominal spacing retained)
+worst-case high-detail margin at 520m recenter: 680m -> 1080m (+400m)
+far horizon half-extent: 5860m (~8.3km to corners)
+road: 512px albedo+bump+roughness, gravel shoulders, <=3m ribbon samples, up to 16x anisotropy
+streaming: route-aware DEM/imagery warm cache at 650/1250/2100/3200m + speed lead, 850ms cadence
+V21.21.20 stencil/MSAA/render-ratio policies preserved

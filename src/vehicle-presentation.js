@@ -1,5 +1,7 @@
-// World Drive V21.5 — vehicle presentation + frame-rate-independent vertical dynamics.
-// Four-wheel suspension, airborne motion, body pose and projected contact shadow.
+import { aerodynamicLoad, fitWheelSupportPlane } from './vehicle-dynamics.js';
+
+// World Drive V21.21.26 — vehicle presentation + aero-aware vertical dynamics.
+// Multi-wheel suspension support, airborne motion, body pose and projected contact shadow.
 export function createVehiclePresentation({
   THREE,
   scene,
@@ -213,8 +215,8 @@ export function createVehiclePresentation({
     new THREE.PlaneGeometry(
       3.35,
       6.25,
-      4,
-      6
+      3,
+      4
     );
 
   const vehicleShadowPositions=
@@ -285,9 +287,24 @@ export function createVehiclePresentation({
   let filteredSupportVelocity=0;
   let landingCompression=0;
 
+  // V21.21.23 — reusable aerodynamic scratch. Downforce is an external force,
+  // not tire grip magic: while an F1 is still aligned with the airflow it can
+  // help the chassis follow a crest and it continues to pull downward briefly
+  // after takeoff. Road cars have ClA=0 and therefore remain byte-for-byte in
+  // behavior through this path.
+  const verticalAeroScratch={};
+
   // Independent wheel suspension state. Wheel pivots are still guaranteed not
   // to penetrate their support surface, while rebound/droop can lag naturally.
   const wheelSpringState=new Map();
+
+  // V21.21.3 hot-path scratch storage. Reuse arrays/objects instead of creating
+  // several dozen short-lived objects every render frame. This is especially
+  // important once scenery + streaming are active because GC pauses become
+  // visible as frame-time spikes.
+  const suspensionSampleScratch=[];
+  const contactSampleScratch=[];
+  const wheelCompressionScratch=[];
 
   function clamp(value,min,max){
     return Math.max(min,Math.min(max,value));
@@ -338,7 +355,10 @@ export function createVehiclePresentation({
 
     const suspensionWheels=activeVehicleWheels();
 
-    if(suspensionWheels.length!==4){
+    // V21.21: the suspension solver no longer assumes exactly four wheels.
+    // Current cars still provide four, but future multi-axle chassis can expose
+    // additional wheel pivots without being rejected by the presentation layer.
+    if(suspensionWheels.length<4){
       console.warn(
         'Vehicle wheel configuration invalid',
         vehicleSystem.activeId,
@@ -351,138 +371,72 @@ export function createVehiclePresentation({
       clamp(
         VEHICLE.suspensionTravel??.14,
         .055,
-        .24
+        .40
       );
 
     const suspensionResponse=
       clamp(
         VEHICLE.suspensionResponse??15,
-        8,
+        4,
         26
       );
 
     // ---------------------------------------------------------------
     // PASS 1 — independent support sample under every wheel.
     // ---------------------------------------------------------------
-    const samples=[];
+    const samples=suspensionSampleScratch;
+    samples.length=suspensionWheels.length;
 
-    for(const w of suspensionWheels){
+    for(let wheelIndex=0;wheelIndex<suspensionWheels.length;wheelIndex++){
+      const w=suspensionWheels[wheelIndex];
       const lx=w.pivot.position.x;
       const lz=w.pivot.position.z;
+      const wx=absX+lx*c+lz*sn;
+      const wz=absZ-lx*sn+lz*c;
 
-      const wx=
-        absX+
-        lx*c+
-        lz*sn;
-
-      const wz=
-        absZ-
-        lx*sn+
-        lz*c;
-
-      let ground;
-
-      if(onRoad){
-        const roadSample=
-          roadSurfaceAt(
-            wx,
-            wz
-          );
-
-        if(
-          roadSample&&
-          Math.abs(
-            roadSample.lateral
-          )<
-          ROAD_WHEEL_CONTACT_HALF_WIDTH
-        ){
-          ground=roadSample.y;
-        }
-      }
-
-      if(!Number.isFinite(ground)){
-        ground=
-          groundHeightForWheel(
-            wx,
-            wz
-          );
-      }
-
-      const tireWidth=
-        (
-          Number(
-            w.tire?.geometry?.parameters?.height
-          )||
-          .27
-        )*
-        (
-          Number(car.scale?.x)||
-          1
-        );
-
-      samples.push({
-        w,
-        ground,
-        absX:wx,
-        absZ:wz,
-        front:!!w.front,
-        side:
-          lx<0
-            ?'left'
-            :'right',
-        width:tireWidth
-      });
+      // One support lookup per wheel. groundHeightForWheel already performs the
+      // road-corridor test before falling back to terrain, so doing a separate
+      // roadSurfaceAt() first only duplicated work on edge cases.
+      // V21.21.5: current cars use the cached local road plane for ordinary
+      // wheel support. Precise spatial lookups remain reserved for crest/jump
+      // probes, preserving launch detection while removing four repeated road
+      // index queries from the common on-road frame.
+      const ground=groundHeightForWheel(wx,wz,true);
+      const tireWidth=(Number(w.tire?.geometry?.parameters?.height)||.27)*(Number(car.scale?.x)||1);
+      const sample=samples[wheelIndex]||(samples[wheelIndex]={});
+      sample.w=w;sample.ground=ground;sample.absX=wx;sample.absZ=wz;
+      sample.localX=lx;sample.localZ=lz;
+      sample.axleIndex=Number.isInteger(w.axleIndex)?w.axleIndex:(w.front?0:Math.max(1,(VEHICLE.axles?.length||2)-1));
+      sample.front=!!w.front;sample.side=lx<0?'left':'right';sample.width=tireWidth;
     }
 
-    if(samples.length!==4){
+    if(samples.length<4){
       wheelContactSamples=[];
       return;
     }
 
-    const contacts=
-      samples.map(
-        sample=>sample.ground
-      );
-
-    // Current construction order:
-    // rear-left, front-left, rear-right, front-right.
-    const rearL=contacts[0];
-    const frontL=contacts[1];
-    const rearR=contacts[2];
-    const frontR=contacts[3];
-
-    const frontAvg=
-      (frontL+frontR)*.5;
-
-    const rearAvg=
-      (rearL+rearR)*.5;
-
-    const leftAvg=
-      (frontL+rearL)*.5;
-
-    const rightAvg=
-      (frontR+rearR)*.5;
-
-    const avgGround=
-      (frontAvg+rearAvg)*.5;
-
-    const wheelbase=
-      VEHICLE.wheelbase||
-      2.77;
-
-    const wheelTrack=2.00;
-
-    const targetWheelPlanePitch=
-      Math.atan2(
-        rearAvg-frontAvg,
-        wheelbase
-      );
-
-    const targetWheelPlaneRoll=
-      Math.atan2(
-        leftAvg-rightAvg,
-        wheelTrack
-      );
+    // V21.21.1 performance path: preserve the original four-wheel math for the
+    // current fleet. The generalized least-squares fit is only used when a
+    // future chassis actually exposes more than four wheels.
+    let avgGround,targetWheelPlanePitch,targetWheelPlaneRoll;
+    if(samples.length===4){
+      const rearL=samples[0].ground;
+      const frontL=samples[1].ground;
+      const rearR=samples[2].ground;
+      const frontR=samples[3].ground;
+      const frontAvg=(frontL+frontR)*.5;
+      const rearAvg=(rearL+rearR)*.5;
+      const leftAvg=(frontL+rearL)*.5;
+      const rightAvg=(frontR+rearR)*.5;
+      avgGround=(frontAvg+rearAvg)*.5;
+      targetWheelPlanePitch=Math.atan2(rearAvg-frontAvg,Math.max(1.2,Number(VEHICLE.wheelbase)||2.77));
+      targetWheelPlaneRoll=Math.atan2(leftAvg-rightAvg,Math.max(1.0,Number(VEHICLE.trackWidth)||1.56));
+    }else{
+      const supportPlane=fitWheelSupportPlane(samples);
+      avgGround=supportPlane.meanY;
+      targetWheelPlanePitch=supportPlane.pitch;
+      targetWheelPlaneRoll=supportPlane.roll;
+    }
 
     // Ground support plane is geometric. While airborne, preserve the takeoff
     // attitude and let it relax only very slowly instead of snapping to terrain.
@@ -586,8 +540,43 @@ export function createVehiclePresentation({
       );
 
     const gravity=9.81;
+    const aeroVertical=aerodynamicLoad({
+      vehicle:VEHICLE,
+      speedAbs:Math.abs(speed),
+      airborne:false
+    },verticalAeroScratch);
+    const aeroDownforceAccel=
+      Math.max(
+        0,
+        Number(aeroVertical?.downforceAccel)||0
+      );
+    const launchAeroScale=
+      clamp(
+        Number(VEHICLE?.aeroLaunchRetentionScale)||1,
+        0,
+        1
+      );
+    const airborneAeroScale=
+      clamp(
+        Number(VEHICLE?.aeroAirborneDownforceScale)||0,
+        0,
+        1
+      );
+    const supportedDownwardAccel=
+      gravity+
+      aeroDownforceAccel*launchAeroScale;
+    const airborneDownwardAccel=
+      gravity+
+      aeroDownforceAccel*airborneAeroScale;
 
     if(!airborne){
+      // Below the launch threshold the expensive spatial crest probes cannot
+      // change the result (canLaunch was already hard-gated at 7.5 m/s).
+      // Skip 12 extra road/terrain samples entirely at low speed.
+      if(Math.abs(speed)<=7.5){
+        car.position.y=supportY;
+        verticalVelocity=filteredSupportVelocity;
+      }else{
       // V21.5 — frame-rate-independent crest / speed-bump launch detection.
       //
       // The old test predicted only one render frame ahead. Because ballistic
@@ -597,64 +586,15 @@ export function createVehiclePresentation({
       // Instead, sample the support surface in SPACE and predict over a fixed
       // physical horizon. This makes the lift-off criterion depend on road
       // curvature + vehicle speed, not render-frame duration.
+      // Launch detection only needs the support CURVATURE under the chassis
+      // center. Sampling all wheels three extra times cost 12 additional road/DEM
+      // queries per frame above 27 km/h. The center support preserves the same
+      // spatial/frame-rate-independent launch criterion with only 3 lookups.
       const supportYAtCenter=(centerX,centerZ)=>{
-        let totalGround=0;
-
-        for(const w of suspensionWheels){
-          const lx=w.pivot.position.x;
-          const lz=w.pivot.position.z;
-
-          const wx=
-            centerX+
-            lx*c+
-            lz*sn;
-
-          const wz=
-            centerZ-
-            lx*sn+
-            lz*c;
-
-          let ground;
-
-          if(onRoad){
-            const roadSample=
-              roadSurfaceAt(
-                wx,
-                wz
-              );
-
-            if(
-              roadSample&&
-              Math.abs(
-                roadSample.lateral
-              )<
-              ROAD_WHEEL_CONTACT_HALF_WIDTH
-            ){
-              ground=roadSample.y;
-            }
-          }
-
-          if(!Number.isFinite(ground)){
-            ground=
-              groundHeightForWheel(
-                wx,
-                wz
-              );
-          }
-
-          if(!Number.isFinite(ground)){
-            return NaN;
-          }
-
-          totalGround+=ground;
-        }
-
-        return (
-          totalGround/
-          suspensionWheels.length+
-          effectiveWheelRadius+
-          TIRE_VISUAL_CLEARANCE
-        );
+        const ground=groundHeightForWheel(centerX,centerZ);
+        return Number.isFinite(ground)
+          ?ground+effectiveWheelRadius+TIRE_VISUAL_CLEARANCE
+          :NaN;
       };
 
       const supportAtTravel=travel=>
@@ -715,7 +655,7 @@ export function createVehiclePresentation({
         spatialSupportVelocity*
         launchPredictionTime-
         .5*
-        gravity*
+        supportedDownwardAccel*
         launchPredictionTime*
         launchPredictionTime;
 
@@ -752,7 +692,7 @@ export function createVehiclePresentation({
         predictedGap>.003&&
         requiredSupportAccel<
           -(
-            gravity+
+            supportedDownwardAccel+
             launchAccelMargin
           );
 
@@ -771,13 +711,14 @@ export function createVehiclePresentation({
         verticalVelocity=
           filteredSupportVelocity;
       }
+      }
     }
 
     if(airborne){
       airborneTime+=safeDt;
 
       verticalVelocity-=
-        gravity*
+        airborneDownwardAccel*
         safeDt;
 
       car.position.y+=
@@ -832,9 +773,11 @@ export function createVehiclePresentation({
     // ---------------------------------------------------------------
     // PASS 2 — independent wheel spring / droop.
     // ---------------------------------------------------------------
-    const localContactSamples=[];
+    const localContactSamples=contactSampleScratch;
+    localContactSamples.length=samples.length;
 
-    for(const s of samples){
+    for(let sampleIndex=0;sampleIndex<samples.length;sampleIndex++){
+      const s=samples[sampleIndex];
       const state=
         springStateFor(
           s.w
@@ -960,20 +903,13 @@ export function createVehiclePresentation({
            )
           :0;
 
-      localContactSamples.push({
-        absX:s.absX,
-        absZ:s.absZ,
-        ground:s.ground,
-        front:s.front,
-        side:s.side,
-        width:s.width,
-        contact,
-        contactFactor,
-        suspensionCompression:
-          state.compression,
-        suspensionVelocity:
-          state.compressionVelocity
-      });
+      const contactSample=localContactSamples[sampleIndex]||(localContactSamples[sampleIndex]={});
+      contactSample.absX=s.absX;contactSample.absZ=s.absZ;contactSample.ground=s.ground;
+      contactSample.localX=s.localX;contactSample.localZ=s.localZ;contactSample.axleIndex=s.axleIndex;
+      contactSample.front=s.front;contactSample.side=s.side;contactSample.width=s.width;
+      contactSample.contact=contact;contactSample.contactFactor=contactFactor;
+      contactSample.suspensionCompression=state.compression;
+      contactSample.suspensionVelocity=state.compressionVelocity;
     }
 
     wheelContactSamples=
@@ -999,51 +935,51 @@ export function createVehiclePresentation({
         8
       );
 
+    const cgHeight=Math.max(.20,Number(VEHICLE.cgHeight)||.50);
+    const physicsTrack=Math.max(1.0,Number(VEHICLE.trackWidth)||1.56);
+    const physicsWheelbase=Math.max(1.2,Number(VEHICLE.wheelbase)||2.65);
+    const rollGain=.0075*(cgHeight/.50)*(1.56/physicsTrack);
+    const pitchGain=.0045*(cgHeight/.50)*(2.65/physicsWheelbase);
+
     const dynamicRoll=
       clamp(
-        lateralAccel*.0075,
-        -.065,
-        .065
+        lateralAccel*rollGain,
+        -.085,
+        .085
       );
 
     const dynamicPitch=
       clamp(
-        -longitudinalAccel*.0045,
-        -.040,
-        .040
+        -longitudinalAccel*pitchGain,
+        -.055,
+        .055
       );
 
-    const wheelCompression=
-      localContactSamples.map(
-        c=>
-          Number(
-            c.suspensionCompression
-          )||0
-      );
+    const wheelCompression=wheelCompressionScratch;
+    wheelCompression.length=localContactSamples.length;
+    for(let i=0;i<localContactSamples.length;i++){
+      wheelCompression[i]=Number(localContactSamples[i].suspensionCompression)||0;
+    }
 
-    const rearCompression=
-      (
-        wheelCompression[0]+
-        wheelCompression[2]
-      )*.5;
-
-    const frontCompression=
-      (
-        wheelCompression[1]+
-        wheelCompression[3]
-      )*.5;
-
-    const leftCompression=
-      (
-        wheelCompression[0]+
-        wheelCompression[1]
-      )*.5;
-
-    const rightCompression=
-      (
-        wheelCompression[2]+
-        wheelCompression[3]
-      )*.5;
+    let frontCompression,rearCompression,leftCompression,rightCompression;
+    if(localContactSamples.length===4){
+      // Current construction order: rear-left, front-left, rear-right, front-right.
+      rearCompression=((wheelCompression[0]||0)+(wheelCompression[2]||0))*.5;
+      frontCompression=((wheelCompression[1]||0)+(wheelCompression[3]||0))*.5;
+      leftCompression=((wheelCompression[0]||0)+(wheelCompression[1]||0))*.5;
+      rightCompression=((wheelCompression[2]||0)+(wheelCompression[3]||0))*.5;
+    }else{
+      let frontSum=0,frontN=0,rearSum=0,rearN=0,leftSum=0,leftN=0,rightSum=0,rightN=0;
+      for(let i=0;i<localContactSamples.length;i++){
+        const c=localContactSamples[i],v=wheelCompression[i]||0;
+        if(c.front||c.axleIndex===0){frontSum+=v;frontN++;}else{rearSum+=v;rearN++;}
+        if(c.side==='left'){leftSum+=v;leftN++;}else{rightSum+=v;rightN++;}
+      }
+      frontCompression=frontN?frontSum/frontN:0;
+      rearCompression=rearN?rearSum/rearN:0;
+      leftCompression=leftN?leftSum/leftN:0;
+      rightCompression=rightN?rightSum/rightN:0;
+    }
 
     // Independent compression contributes a small transient body reaction in
     // addition to the static road support plane.
@@ -1161,8 +1097,7 @@ export function createVehiclePresentation({
       wheelCompression.reduce(
         (sum,value)=>sum+value,
         0
-      )/
-      4;
+)/Math.max(1,wheelCompression.length);
 
     const targetHeave=
       -avgCompression*.18-
@@ -1194,8 +1129,12 @@ export function createVehiclePresentation({
     bodyGroup.rotation.z=
       suspensionRoll;
 
-    const bodyBaseY=
-      vehicleSystem.activeId==='wrx'
+    const configuredBodyBaseY=
+      Number(vehicleSystem.active?.visual?.bodyBaseY);
+
+    const bodyBaseY=Number.isFinite(configuredBodyBaseY)
+      ?configuredBodyBaseY
+      :vehicleSystem.activeId==='wrx'
         ?-.31
         :vehicleSystem.activeId==='countach_80'
           ?-.33
@@ -1239,7 +1178,7 @@ export function createVehiclePresentation({
       :0;
   }
 
-  function updateContactShadow(){
+  function updateContactShadow(projectGeometry=true){
     const {
       absX,
       absZ,
@@ -1304,47 +1243,49 @@ export function createVehiclePresentation({
     const sinH=Math.sin(heading);
     const decalLift=.026;
 
-    for(
-      let i=0;
-      i<vehicleShadowPositions.count;
-      i++
-    ){
-      const localX=
-        vehicleShadowLocalX[i]*
-        spread;
+    if(projectGeometry){
+      for(
+        let i=0;
+        i<vehicleShadowPositions.count;
+        i++
+      ){
+        const localX=
+          vehicleShadowLocalX[i]*
+          spread;
 
-      const localZ=
-        vehicleShadowLocalZ[i]*
-        spread;
+        const localZ=
+          vehicleShadowLocalZ[i]*
+          spread;
 
-      const sampleX=
-        absX+
-        localX*cosH+
-        localZ*sinH;
+        const sampleX=
+          absX+
+          localX*cosH+
+          localZ*sinH;
 
-      const sampleZ=
-        absZ-
-        localX*sinH+
-        localZ*cosH;
+        const sampleZ=
+          absZ-
+          localX*sinH+
+          localZ*cosH;
 
-      const sampleGround=
-        shadowGroundAt(
-          sampleX,
-          sampleZ
+        const sampleGround=
+          shadowGroundAt(
+            sampleX,
+            sampleZ
+          );
+
+        // Geometry Z becomes vertical after vehicleShadow.rotation.x=-PI/2.
+        // A small lift plus polygon offset keeps the decal visibly above the road
+        // without creating a perceivable gap beneath the tires.
+        vehicleShadowPositions.setZ(
+          i,
+          sampleGround-
+          groundY+
+          decalLift
         );
+      }
 
-      // Geometry Z becomes vertical after vehicleShadow.rotation.x=-PI/2.
-      // A small lift plus polygon offset keeps the decal visibly above the road
-      // without creating a perceivable gap beneath the tires.
-      vehicleShadowPositions.setZ(
-        i,
-        sampleGround-
-        groundY+
-        decalLift
-      );
+      vehicleShadowPositions.needsUpdate=true;
     }
-
-    vehicleShadowPositions.needsUpdate=true;
 
     // Use the current time-of-day sun only as a DIRECTION INPUT.
     // The shadow shader never moves or modifies the actual sun.
@@ -1441,8 +1382,13 @@ export function createVehiclePresentation({
     wheelSpringState.clear();
 
     bodyGroup.rotation.set(0,0,0);
-    bodyGroup.position.y=
-      vehicleSystem.activeId==='wrx'
+
+    const configuredBodyBaseY=
+      Number(vehicleSystem.active?.visual?.bodyBaseY);
+
+    bodyGroup.position.y=Number.isFinite(configuredBodyBaseY)
+      ?configuredBodyBaseY
+      :vehicleSystem.activeId==='wrx'
         ?-.31
         :vehicleSystem.activeId==='countach_80'
           ?-.33

@@ -122,7 +122,7 @@ async function proxyOverpassRequest(req,res,requestUrl){
 
     const headers={
       'Accept':'application/json',
-      'User-Agent':'WorldDrive/21.20.1 (Windows; Electron Overpass proxy)'
+      'User-Agent':'WorldDrive/21.21.12 (Windows; Electron Overpass proxy)'
     };
 
     if(req.headers['content-type']){
@@ -292,7 +292,7 @@ function createWindow(){
     show:false,
     autoHideMenuBar:true,
     backgroundColor:'#08111c',
-    title:'World Drive V21.20.1',
+    title:'World Drive V21.21.12',
     webPreferences:{
       preload:path.join(__dirname,'preload.cjs'),
       nodeIntegration:false,

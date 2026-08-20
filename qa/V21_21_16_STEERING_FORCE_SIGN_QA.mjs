@@ -1,0 +1,31 @@
+import {createVehicleSystem} from '../src/vehicle-system.js';
+import {steeringCommand,lateralDynamicsEnvelope,estimateWheelGripUsage,yawResponseRate,clampDynamics,longitudinalTractionLimit} from '../src/vehicle-dynamics.js';
+const DEG=180/Math.PI;
+const V=createVehicleSystem({initialId:'wrx'}).physics;
+const contacts=[{front:false,side:'left',axleIndex:1,contact:true,contactFactor:1},{front:true,side:'left',axleIndex:0,contact:true,contactFactor:1},{front:false,side:'right',axleIndex:1,contact:true,contactFactor:1},{front:true,side:'right',axleIndex:0,contact:true,contactFactor:1}];
+const fail=m=>{throw new Error(m)};
+const angleDelta=(t,c)=>Math.atan2(Math.sin(t-c),Math.cos(t-c));
+function simulate({speed0Kmh=100,turn=1,driveAccel=0,seconds=1,handStart=Infinity,handDuration=0}){
+  const dt=1/120,gripInterval=1/20; let speed=speed0Kmh/3.6,steer=0,heading=0,velocityHeading=0,dynamicYawRate=0,frontSlip=0,rearSlip=0,gripAcc=0,x=0,z=0; let grip={smoothed:[0,0,0,0],frontLateral:0,rearLateral:0,frictionYawAccel:0,netLateralAccel:0,rearLateralForceScale:1}; let maxSide=0;
+  for(let step=0;step<seconds/dt;step++){
+    const t=step*dt,hand=t>=handStart&&t<handStart+handDuration,speedAbs=Math.abs(speed);
+    if(hand)speed=Math.max(0,speed-4.2*dt);
+    const sm=steeringCommand({vehicle:V,speedAbs,input:turn},{}); const sr=sm.target===0?sm.returnRate:sm.inputRate; steer+=(sm.target-steer)*(1-Math.exp(-dt*sr)); const steerAngle=steer*sm.maxRoadWheelAngle;
+    const lat=lateralDynamicsEnvelope({vehicle:V,speed,steerAngle,steerInput:steer,driveThrottle:driveAccel>0?1:0,onPavement:true,surfaceGrip:1,awdOffroadGripBonus:1,rearSlipAmount:rearSlip,airborne:false},{}); let yawRate=lat.yawRate;
+    gripAcc+=dt; if(gripAcc>=gripInterval){const gd=gripAcc;gripAcc%=gripInterval; const reqLat=Math.min(Math.max(0,lat.requestedLatAccel),Math.max(0,lat.latLimit)); const sgnLat=Math.sign(lat.signedLatAccel||steerAngle||1)*reqLat; grip=estimateWheelGripUsage({requestedLatAccel:reqLat,signedLatAccel:sgnLat,latLimit:lat.latLimit,longitudinalAccel:driveAccel+(hand?-4.2:0),propulsionAccel:driveAccel,serviceBrakeAccel:0,surfaceMu:V.longitudinalAccelLimit/9.80665,throttle:driveAccel>0?1:0,handbrake:hand,airborne:false,vehicle:V,speedAbs,contacts,previousUsage:grip.smoothed,dt:gd},grip);}
+    const boost=1+(1-clampDynamics(speedAbs/8,0,1))*1.6,sd=Math.min(.05,dt); const ft=grip.frontLateral||0,rt=grip.rearLateral||0; frontSlip+=(ft-frontSlip)*(1-Math.exp(-sd*(ft>frontSlip?7.8:5.8*boost))); rearSlip+=(rt-rearSlip)*(1-Math.exp(-sd*(rt>rearSlip?7.8:5.8*boost)));
+    if(lat.requestedLatAccel>lat.latLimit&&lat.requestedLatAccel>0)yawRate*=lat.latLimit/lat.requestedLatAccel; const fd=Math.max(0,frontSlip-rearSlip*.55),rd=Math.max(0,rearSlip-frontSlip*.55),four=Math.min(frontSlip,rearSlip); yawRate*=Math.max(.46,1-fd*.54-four*.24); if(rd>.015&&speedAbs>4){const hs=clampDynamics((speedAbs-25)/30,0,1);yawRate+=Math.sign(yawRate||steerAngle||1)*rd*Math.min(.135,.040+speedAbs*.0022)*(1-hs*.55)*Math.sign(speed||1);}
+    let fric=Number.isFinite(grip.frictionYawAccel)?grip.frictionYawAccel:0; if(Math.abs(steerAngle)>.006&&Math.abs(yawRate)>1e-5&&fric*yawRate<0)fric=0;
+    const netLat=Number.isFinite(grip.netLateralAccel)?grip.netLateralAccel:lat.signedLatAccel,rearScale=Number.isFinite(grip.rearLateralForceScale)?clampDynamics(grip.rearLateralForceScale,0,1):1,rearLoss=Math.abs(lat.signedLatAccel)>.15?1-rearScale:0,fricLoss=clampDynamics(Math.abs(fric)/4.5,0,1),forceSlide=clampDynamics(Math.max(fricLoss,rearLoss),0,1);
+    const yr=yawResponseRate({vehicle:V,speedAbs,airborne:false}); const release=Math.abs(yawRate)<Math.abs(dynamicYawRate)?1.35:1,ygr=Math.max(.34,1-forceSlide*.66); dynamicYawRate+=fric*dt; dynamicYawRate+=(yawRate-dynamicYawRate)*(1-Math.exp(-dt*yr*release*ygr)); heading+=dynamicYawRate*dt;
+    const trajRear=Math.max(0,rearSlip-frontSlip*.45),lowNoSlip=speedAbs<8.5&&forceSlide<.18&&frontSlip<.16&&rearSlip<.16; if(lowNoSlip)velocityHeading=heading; else if(speedAbs>4&&forceSlide>.10){velocityHeading+=(netLat/Math.max(.5,speed))*dt;const align=.65+(1-forceSlide)*3.2;velocityHeading+=angleDelta(heading,velocityHeading)*(1-Math.exp(-dt*align));} else {const follow=(2.8-1.45*fricLoss)+27.2*Math.pow(1-clampDynamics(trajRear,0,1),2);velocityHeading+=angleDelta(heading,velocityHeading)*(1-Math.exp(-dt*follow));}
+    x+=Math.sin(velocityHeading)*speed*dt;z+=Math.cos(velocityHeading)*speed*dt;maxSide=Math.max(maxSide,Math.abs(angleDelta(heading,velocityHeading)));
+  }
+  const frontPos=(1-V.frontWeightBias)*V.wheelbase,rearPos=-V.frontWeightBias*V.wheelbase; return {heading,velocityHeading,x,z,maxSide,frontX:x+Math.sin(heading)*frontPos,rearX:x+Math.sin(heading)*rearPos,frontSlip,rearSlip};
+}
+const rows=[];
+for(const k of [80,100,120,150])for(const t of [-1,1]){const r=simulate({speed0Kmh:k,turn:t,driveAccel:V.accel,seconds:1}); const sign=Math.sign(t); if(Math.sign(r.heading)!==sign)fail(`${k} km/h steer ${t}: chassis yaw reversed (${(r.heading*DEG).toFixed(2)} deg)`); if(Math.sign(r.velocityHeading)!==sign)fail(`${k} km/h steer ${t}: trajectory reversed (${(r.velocityHeading*DEG).toFixed(2)} deg)`); const rearRelative=r.rearX-r.x;if(Math.sign(rearRelative)===sign)fail(`${k} km/h steer ${t}: rear swung into steering direction`); rows.push({k,t,heading:r.heading*DEG,velocity:r.velocityHeading*DEG,rearRelative,side:r.maxSide*DEG});}
+const normal=simulate({speed0Kmh:72,turn:.5,driveAccel:0,seconds:3}); const hand=simulate({speed0Kmh:72,turn:.5,driveAccel:0,seconds:3,handStart:1,handDuration:.5}); if(hand.maxSide*DEG<12)fail(`handbrake drift lost: ${hand.maxSide*DEG} deg`); if(Math.abs(hand.heading-normal.heading)*DEG<8)fail(`handbrake yaw delta too weak: ${Math.abs(hand.heading-normal.heading)*DEG} deg`);
+console.log('V21.21.16 STEERING FORCE SIGN QA: PASS');
+for(const r of rows)console.log(`${r.k} km/h ${r.t>0?'RIGHT':'LEFT'}: chassis=${r.heading.toFixed(2)}°, trajectory=${r.velocity.toFixed(2)}°, rearRelX=${r.rearRelative.toFixed(3)} m, maxSideslip=${r.side.toFixed(2)}°`);
+console.log(`WRX handbrake 72 km/h: max sideslip ${(hand.maxSide*DEG).toFixed(2)}°, extra heading ${(Math.abs(hand.heading-normal.heading)*DEG).toFixed(2)}°`);

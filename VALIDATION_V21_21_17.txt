@@ -1,0 +1,82 @@
+World Drive V21.21.17 — Validation
+
+Base
+----
+V21.21.16 steering-force-sign candidate.
+
+Changed runtime files
+---------------------
+- package.json (version only)
+- src/main.js
+- src/vehicle-dynamics.js
+- src/vehicle-system.js (ABS flags for F1 2010 / Countach)
+
+New QA
+------
+- qa/V21_21_17_BRAKING_MOMENTUM_QA.mjs
+
+Static validation
+-----------------
+PASS node --check:
+- src/main.js
+- src/vehicle-dynamics.js
+- src/vehicle-system.js
+- src/vehicle-presentation.js
+- src/terrain.js
+- electron/main.cjs
+- electron/preload.cjs
+- electron/multiplayer-runtime.cjs
+- forge.config.cjs
+- vite.config.js
+
+Physics / regression QA
+-----------------------
+PASS V21_21_PHYSICS_QA.mjs
+PASS V21_21_FUZZ_QA.mjs — 50,000 randomized states, up to 5 axles / 20 wheels
+PASS V21_21_16_STEERING_FORCE_SIGN_QA.mjs
+PASS V21_21_16_LAUNCH_CORNER_QA.mjs
+PASS V21_21_14_TIRE_ADHESION_QA.mjs
+PASS V21_21_12_FORCE_COUPLED_DRIFT_QA.mjs
+PASS V21_21_13_HIGH_SPEED_STABILITY_QA.mjs
+PASS V21_21_9_TERRAIN_QA.mjs — 12/12
+PASS V21_21_7_RENDER_QA.mjs
+PASS V21_21_17_BRAKING_MOMENTUM_QA.mjs
+
+The old V21_21_5_CPU_QA contains a stale assertion for the V21.21.4 dynamic
+pixel-ratio floor and is not applicable to the later V21.21.7+ render policy.
+Current road-index/performance QAs were run separately and passed.
+
+Measured WRX combined-grip behaviour
+------------------------------------
+At 120 km/h:
+- coasting lateral trajectory capacity: 9.36 m/s²
+- 50% service brake: 8.23 m/s²
+- 100% service brake: 3.00 m/s²
+- full-brake tire longitudinal utilization with ABS/EBD:
+  94.6% / 94.6% / 94.6% / 94.6%
+
+Maximum linear-momentum direction change allowed by tire force:
+- 80 km/h:  coast 24.13 deg/s, full brake 7.73 deg/s
+- 100 km/h: coast 19.31 deg/s, full brake 6.18 deg/s
+- 120 km/h: coast 16.09 deg/s, full brake 5.15 deg/s
+- 150 km/h: coast 12.87 deg/s, full brake 4.12 deg/s
+
+Sideways landing stress test
+----------------------------
+Initial state: WRX 120 km/h, chassis 35 degrees across its momentum vector.
+After 0.75 s on the ground:
+- coasting: 22.88 degrees of sideslip still remains
+- full brake: 30.57 degrees of sideslip still remains, speed 91.4 km/h
+
+This is intentional: braking consumes the same friction budget needed to bend
+linear momentum. Braking may decelerate and rotate the chassis, but it cannot
+create supernatural lateral grip.
+
+Performance
+-----------
+PASS road nested-map equivalence: 0 mismatches
+PASS road indexed scan equivalence: 0 mismatches
+The new momentum limiter is a few scalar operations per frame; no new terrain,
+road, DOM, WebGL or wheel-contact queries were added.
+
+User visual/handling validation is still required before promotion to stable.

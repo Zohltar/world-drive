@@ -1,0 +1,5 @@
+V21.21.11 HANDBRAKE YAW QA: PASS
+WRX 4 m/s² handbrake yaw acceleration: 2.846 rad/s²
+0.5 s handbrake extra heading: 18.04 deg
+0.5 s handbrake max sideslip: 6.05 deg
+0.5 s handbrake max yaw rate: 46.48 deg/s

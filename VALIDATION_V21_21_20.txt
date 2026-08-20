@@ -1,0 +1,30 @@
+World Drive V21.21.20 — Validation
+
+Targeted graphics regression checks:
+1. Road-over-hydro priority
+   - WebGL stencil buffer enabled.
+   - Road/shoulder materials write stencil ref 1.
+   - Water/river/coast materials reject stencil ref 1.
+2. Terrain loading horizon
+   - Near terrain/imagery patch: 2000 m -> 2400 m.
+   - Worst-case near-terrain forward margin at the 520 m floating-origin threshold:
+     480 m -> 680 m (+200 m / +41.7%).
+   - Streaming scales increased to .90 / 1.16 / 1.55.
+3. Road visual quality
+   - Road ribbon profile sample spacing: <=5 m -> <=4 m.
+   - Asphalt texture: 128 -> 256, anisotropy up to 8x.
+4. Antialiasing / internal render quality
+   - Native MSAA retained.
+   - FXAA remains absent.
+   - Adaptive pixel-ratio caps: 1.08 / .96 / .84 / .76.
+
+Automated QA performed:
+- node --check on modified/core JS/CJS files.
+- V21.21.20 graphics policy QA.
+- V21.21.19 right-lane assist QA.
+- V21.21 physics QA.
+- V21.21 fuzz QA (50,000 states).
+- V21.21.17 braking/momentum QA.
+- V21.21.9 terrain-orientation QA.
+
+A representative GPU/streaming visual test must still be performed on the user's PC.

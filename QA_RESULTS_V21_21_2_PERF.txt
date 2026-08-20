@@ -1,0 +1,4 @@
+road-index equivalence mismatches=0 maxD2=0
+legacy full scan: 1152.6 ms
+indexed scan:     122.4 ms
+speedup:          9.42x

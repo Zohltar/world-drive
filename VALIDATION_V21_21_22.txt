@@ -1,0 +1,29 @@
+World Drive V21.21.22 — Load Hotfix Validation
+
+User-reported V21.21.21 runtime error:
+  ReferenceError: Cannot access 'speedAbs' before initialization
+  at updateDrive (main.js:5454)
+
+Root cause:
+V21.21.21 added speed-dependent aerodynamic load to longitudinal traction calls.
+Those calls referenced `speedAbs`, but the existing `const speedAbs=Math.abs(speed)`
+was intentionally declared later in updateDrive(), after longitudinal speed integration,
+for steering/lateral physics. JavaScript therefore hit the temporal dead zone on frame 1.
+
+Fix:
+- Capture `const longitudinalSpeedAbs=Math.abs(speed)` before longitudinal traction calls.
+- Pass that value to drive, service-brake and handbrake traction calculations.
+- Keep the later post-integration `speedAbs` unchanged for steering/lateral physics.
+
+Validation:
+PASS node --check src/main.js
+PASS V21_21_22_LOAD_QA.mjs (explicit TDZ regression check)
+PASS V21_21_21_REAL_MASS_AERO_QA.mjs
+PASS V21_21_17_BRAKING_MOMENTUM_QA.mjs
+PASS V21_21_19_RIGHT_LANE_ASSIST_QA.mjs
+PASS V21_21_20_GRAPHICS_QA.mjs
+PASS V21_21_FUZZ_QA.mjs — 50,000 randomized states, up to 5 axles / 20 wheels
+
+Scope:
+This is a minimal hotfix. Real vehicle masses, F1 downforce calibration,
+graphics, lane assist, terrain and tire behavior are unchanged from V21.21.21.

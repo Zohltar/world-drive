@@ -1,0 +1,34 @@
+WORLD DRIVE V21.21.15 — VALIDATION / QA
+
+Syntax
+PASS: node --check src/main.js
+PASS: node --check src/vehicle-dynamics.js
+PASS: node --check src/vehicle-system.js
+
+Regression / physics
+PASS: qa/V21_21_PHYSICS_QA.mjs
+PASS: qa/V21_21_FUZZ_QA.mjs — 50,000 randomized states, up to 5 axles / 20 wheels
+PASS: qa/V21_21_10_FRICTION_CIRCLE_QA.mjs
+PASS: qa/V21_21_11_HANDBRAKE_YAW_QA.mjs
+PASS: qa/V21_21_12_FORCE_COUPLED_DRIFT_QA.mjs
+PASS: qa/V21_21_13_HIGH_SPEED_STABILITY_QA.mjs
+PASS: qa/V21_21_14_TIRE_ADHESION_QA.mjs
+PASS: qa/V21_21_15_LOW_SPEED_TRACTION_QA.mjs
+
+World/render regressions
+PASS: qa/V21_21_9_TERRAIN_QA.mjs — 12/12
+PASS: qa/V21_21_7_RENDER_QA.mjs
+
+Focused V21.21.15 results
+- WRX parking wheel angle: 34.7 deg
+- WRX estimated full-lock radius: 3.83 m
+- WRX road full-lock 25% throttle launch: 109.7 deg heading change after 3 s, 19.3 km/h
+- WRX off-road full-lock 25% throttle launch: 82.7 deg heading change after 3 s, 15.4 km/h
+- All six passenger vehicles tested at 25% throttle on road and off-road: no false lateral breakaway
+- Grade acceleration does not alter grip-solver axle loads when tire force is unchanged
+- WRX handbrake 72 km/h drift remains ~21.9 deg max sideslip in existing V21.21.14 QA
+
+Build
+NOT RUN: npm run build (candidate archive has no node_modules in this environment).
+
+Visual/gameplay validation on the user's machine is required before promotion.
