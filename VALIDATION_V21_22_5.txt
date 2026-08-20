@@ -1,0 +1,52 @@
+WORLD DRIVE V21.22.5 — VALIDATION
+
+Syntax
+PASS src/main.js
+PASS src/terrain.js
+PASS src/imagery.js
+PASS src/vehicle-system.js
+PASS src/vehicle-dynamics.js
+PASS src/vehicle-presentation.js
+
+Focused satellite terrain QA
+PASS qa/V21_22_5_SATELLITE_TERRAIN_QA.mjs
+- 5.6 km / 448 DEM scope retained.
+- groundMaterial.map is explicitly null in the new satellite renderer.
+- Exact-bounds 3x3-tile z16 satellite chunks.
+- Complete source imagery required before chunk publication.
+- 72x72 chunk terrain grid for near-quality geometric conformity.
+- Serialized one-chunk composition and idle-turn commit.
+- Soft-origin shift + full-refresh realignment supported.
+- Natural vertex-colour underlay; near/road-bed contour stripes removed.
+- V21.22.4 2D preload buffer retained.
+- V21.22.3 hitch-free dirty/cache-only DEM policy retained.
+
+Regression QA
+PASS V21_21_PHYSICS_QA.mjs
+PASS V21_21_FUZZ_QA.mjs — 50,000 randomized states, up to 5 axles / 20 wheels
+PASS V21_21_17_BRAKING_MOMENTUM_QA.mjs
+PASS V21_21_19_RIGHT_LANE_ASSIST_QA.mjs
+PASS V21_21_25_STEERING_RACK_QA.mjs
+PASS V21_21_26_BEHAVIOR_CALIBRATION_QA.mjs — 175,000 extreme-state cases
+PASS V21_21_26_TRACTION_CONSISTENCY_QA.mjs — 34,160 monotonic/fixed-point cases
+
+Legacy QA note
+- V21_21_9_TERRAIN_QA.mjs reports its old textual `floating_origin_520` check as
+  FAIL because V21.22.3 moved the same 520 m threshold into
+  HITCH_FREE_STREAMING.softRecenterDistance. This is a stale assertion, not a
+  runtime regression; the focused V21.22.5 QA verifies the current soft-recenter
+  path directly.
+- Historical V21.22.3/4 QAs contain the deliberate old rule that visible imagery
+  composition must be suppressed at driving speed. V21.22.5 supersedes that rule:
+  small chunk composition is serialized/idle-budgeted instead of using a giant
+  mosaic upload.
+
+Physics SHA256 (V21.21.27 stable baseline unchanged)
+src/vehicle-system.js       c74d7d0ad8b10cef33312e282ae6b5a6fbcc0c301079b7eb8b2ab94a2aa5b89b
+src/vehicle-dynamics.js     b8898f7f99061e35563862362e3f1afa02171a788d6a94a2fe7ffb1ab835ddb4
+src/vehicle-presentation.js 60cedf69ce50716155ea11da313a8d1949a2019ae2bc9a7394e8b7c2d4133f08
+
+Full Vite/WebGL visual validation
+- Must be performed on the user's actual project/GPU because the candidate is a
+  patch package and this sandbox does not contain node_modules or live ArcGIS/DEM
+  browser rendering.

@@ -1,5 +1,10 @@
-// World Drive V21.21.27 - terrain service (V21.18 road-bed logic preserved)
-// V21.21.27 receives a larger near-terrain extent and denser/farther seamless LOD rings.
+// World Drive V21.22.6 - terrain service (V21.21.27 baseline preserved)
+// V21.22 starts the distant-terrain visual pass: smoother far relief, natural
+// distance-aware colouring and removal of cartographic contour banding.
+// V21.22.1 concentrated additional geometry in the medium-distance horizon.
+// V21.22.2 moves that critical medium band into the same high-detail DEM +
+// imagery footprint as the near field; V21.22.5 lets imagery render as exact
+// georeferenced chunks over this DEM mesh instead of a stretched monolithic map.
 // Owns procedural fallback relief, near-ground mesh and far-horizon LOD rings.
 // Elevation tile loading remains in elevation.js; global world reconstruction stays in main.js.
 
@@ -824,8 +829,6 @@ export function createTerrainService({
     const midColor=new THREE.Color(0x6f8150);
     const highColor=new THREE.Color(0x8b8d69);
     const tempColor=new THREE.Color();
-    const CONTOUR_INTERVAL=14;
-    const CONTOUR_WIDTH=.16;
     const eps=7;
 
     for(let i=0;i<positions.count;i++){
@@ -861,11 +864,10 @@ export function createTerrainService({
       let shade=.72+directional*.46-slope*.10;
       shade=Math.max(.34,Math.min(1.36,shade));
 
-      const contourPhase=Math.abs((((y/CONTOUR_INTERVAL)%1)+1)%1-.5)*2;
-      const contour=contourPhase>(1-CONTOUR_WIDTH)?.72:1;
-      const minorPhase=Math.abs((((y/(CONTOUR_INTERVAL/2))%1)+1)%1-.5)*2;
-      const minorContour=minorPhase>.94?.88:1;
-      const finalShade=shade*contour*minorContour;
+      // V21.22.5: no cartographic contour bands in the visible terrain
+      // underlay. Missing satellite chunks must look like natural shaded DEM,
+      // never like stretched/striped topographic paper.
+      const finalShade=shade;
 
       colors[i*3]=Math.min(1,tempColor.r*finalShade);
       colors[i*3+1]=Math.min(1,tempColor.g*finalShade);
@@ -912,8 +914,6 @@ export function createTerrainService({
     const highColor=new THREE.Color(0x8b8d69);
     const tempColor=new THREE.Color();
 
-    const CONTOUR_INTERVAL=14;
-    const CONTOUR_WIDTH=.16;
 
     for(let i=0;i<positions.count;i++){
       const nx=normals.getX(i);
@@ -973,34 +973,10 @@ export function createTerrainService({
           )
         );
 
-      // Subtle but clearly visible contour lines every ~14 vertical metres.
-      // Width is expressed as fraction of contour interval.
-      const contourPhase=
-        Math.abs(
-          ((y/CONTOUR_INTERVAL)%1+1)%1-.5
-        )*2;
-
-      const contour=
-        contourPhase>
-        (1-CONTOUR_WIDTH)
-          ?.72
-          :1;
-
-      // Intermediate soft contour gives terrain shape even at shallow camera angles.
-      const minorPhase=
-        Math.abs(
-          ((y/(CONTOUR_INTERVAL/2))%1+1)%1-.5
-        )*2;
-
-      const minorContour=
-        minorPhase>.94
-          ?.88
-          :1;
-
-      const finalShade=
-        shade*
-        contour*
-        minorContour;
+      // V21.22.5: keep only natural hillshade. The satellite chunk system
+      // intentionally exposes this underlay while a geographic chunk is still
+      // loading, so contour-line styling would reintroduce visible banding.
+      const finalShade=shade;
 
       colors[i*3]=
         Math.min(
@@ -1028,6 +1004,129 @@ export function createTerrainService({
         3
       )
     );
+  }
+
+  function applyDistantTerrainColors(geometry,{offset,nearHalf,farHalf}){
+    const positions=geometry.attributes.position;
+    const normals=geometry.attributes.normal;
+
+    if(!positions||!normals)return;
+
+    let minY=Infinity;
+    let maxY=-Infinity;
+
+    for(let i=0;i<positions.count;i++){
+      const y=positions.getY(i);
+      if(y<minY)minY=y;
+      if(y>maxY)maxY=y;
+    }
+
+    const heightSpan=Math.max(1,maxY-minY);
+    const colors=new Float32Array(positions.count*3);
+
+    // V21.22: the distant terrain is landscape, not a topographic map.
+    // Keep a muted vegetation/rock palette and let Three.js lighting provide
+    // the actual hillshade. The former 14 m contour lines were the main source
+    // of the long striped bands visible across distant mountains.
+    const valleyColor=new THREE.Color(0x536b49);
+    const lowColor=new THREE.Color(0x657657);
+    const midColor=new THREE.Color(0x74755d);
+    const highColor=new THREE.Color(0x85847a);
+    const rockColor=new THREE.Color(0x77766f);
+    const neutralColor=new THREE.Color(0x777c78);
+    const tempColor=new THREE.Color();
+    const rockMixColor=new THREE.Color();
+
+    const hazeStart=nearHalf+900;
+    const hazeSpan=Math.max(1200,farHalf-hazeStart);
+
+    for(let i=0;i<positions.count;i++){
+      const rx=positions.getX(i);
+      const rz=positions.getZ(i);
+      const wx=offset.x+rx;
+      const wz=offset.z+rz;
+      const y=positions.getY(i);
+      const ny=Math.max(-1,Math.min(1,normals.getY(i)));
+      const distance=Math.max(Math.abs(rx),Math.abs(rz));
+
+      const altitude=Math.max(0,Math.min(1,(y-minY)/heightSpan));
+
+      if(altitude<.34){
+        tempColor.copy(valleyColor).lerp(lowColor,altitude/.34);
+      }else if(altitude<.72){
+        tempColor.copy(lowColor).lerp(midColor,(altitude-.34)/.38);
+      }else{
+        tempColor.copy(midColor).lerp(highColor,(altitude-.72)/.28);
+      }
+
+      // Strong slopes become rockier instead of simply turning into dark
+      // hillshade stripes. This remains deliberately broad/low-frequency.
+      const slope=Math.max(0,Math.min(1,(1-Math.abs(ny))/.42));
+      const rockBlend=Math.max(0,Math.min(1,(slope-.16)/.62))*(.34+.66*altitude);
+      rockMixColor.copy(tempColor).lerp(rockColor,rockBlend*.62);
+      tempColor.copy(rockMixColor);
+
+      // Large-scale colour breakup avoids one uniform olive sheet without
+      // introducing texture-frequency noise or obvious repeated bands.
+      const macro=(
+        Math.sin(wx*.00137+Math.cos(wz*.00073)*1.9)+
+        Math.cos(wz*.00111-Math.sin(wx*.00091)*1.6)+
+        Math.sin((wx+wz)*.00047)
+      )/3;
+      const macroShade=.965+macro*.055;
+      tempColor.multiplyScalar(macroShade);
+
+      // Very distant colour loses a little saturation before scene fog takes
+      // over. This creates atmospheric depth while still respecting night/day
+      // lighting because the material remains lit (not MeshBasicMaterial).
+      const haze=Math.max(0,Math.min(1,(distance-hazeStart)/hazeSpan));
+      tempColor.lerp(neutralColor,haze*.18);
+
+      colors[i*3]=Math.max(0,Math.min(1,tempColor.r));
+      colors[i*3+1]=Math.max(0,Math.min(1,tempColor.g));
+      colors[i*3+2]=Math.max(0,Math.min(1,tempColor.b));
+    }
+
+    geometry.setAttribute(
+      'color',
+      new THREE.BufferAttribute(colors,3)
+    );
+  }
+
+  function distantTerrainHeight(wx,wz,distance,nearHalf){
+    const base=renderedTerrainHeight(wx,wz);
+
+    // Preserve the exact near/far seam and all road-clearance geometry close
+    // to a road. Smoothing is only for large distant landforms.
+    if(distance<=nearHalf+120)return base;
+
+    if(activeRoadProfile.length){
+      const sample=nearestRoadSample(wx,wz,base);
+      const protect=
+        roadBedOptions.terrainCutHalfWidth+
+        roadBedOptions.blendWidth+
+        18;
+      if(sample&&sample.distance2<protect*protect)return base;
+    }
+
+    // Begin gently just outside the exact seam. Medium-distance mountains are
+    // the most visually exposed band, so remove DEM sampling noise before the
+    // much stronger far-distance smoothing takes over.
+    const t=Math.max(0,Math.min(1,(distance-(nearHalf+120))/3300));
+    const radius=8+t*34;
+
+    // Sample the untouched elevation source for the smoothing neighbours.
+    // This keeps the cost close to five DEM/fallback lookups per far vertex
+    // instead of repeating road-index grading for every neighbour sample.
+    const natural=heightAt(wx,wz)-.15;
+    const hL=heightAt(wx-radius,wz)-.15;
+    const hR=heightAt(wx+radius,wz)-.15;
+    const hD=heightAt(wx,wz-radius)-.15;
+    const hU=heightAt(wx,wz+radius)-.15;
+    const average=(natural*4+hL+hR+hD+hU)/8;
+    const blend=.055+t*.235;
+
+    return base+(average-natural)*blend;
   }
 
   function effectiveGroundSegments(){
@@ -1149,22 +1248,43 @@ export function createTerrainService({
     const sideSegments=
       effectiveGroundSegments();
 
-    // Half-extents of concentric square rings. The final corners reach a
-    // little over 7 km, comparable to the V21.14 far horizon. Dense rings near
-    // the hand-off preserve mountain ridges; spacing grows with distance.
+    // V21.22.2: these rings are now truly DISTANT terrain. The high-detail
+    // ground/imagery mesh reaches +/-2.8 km, so the first horizon row starts
+    // beyond the former medium-distance problem zone. Keep the dense V21.22.1
+    // ring ladder because it is inexpensive and gives a smooth hand-off into
+    // the atmospheric far field.
     const halfExtents=[
       nearHalf,
-      nearHalf+100,
-      nearHalf+230,
-      nearHalf+390,
-      nearHalf+590,
-      nearHalf+830,
-      nearHalf+1120,
-      nearHalf+1470,
-      nearHalf+1890,
-      nearHalf+2380,
-      nearHalf+2940,
-      nearHalf+3570,
+      nearHalf+60,
+      nearHalf+125,
+      nearHalf+195,
+      nearHalf+270,
+      nearHalf+350,
+      nearHalf+435,
+      nearHalf+525,
+      nearHalf+620,
+      nearHalf+720,
+      nearHalf+825,
+      nearHalf+935,
+      nearHalf+1050,
+      nearHalf+1170,
+      nearHalf+1295,
+      nearHalf+1425,
+      nearHalf+1560,
+      nearHalf+1700,
+      nearHalf+1845,
+      nearHalf+1995,
+      nearHalf+2150,
+      nearHalf+2310,
+      nearHalf+2475,
+      nearHalf+2645,
+      nearHalf+2820,
+      nearHalf+3000,
+      nearHalf+3190,
+      nearHalf+3390,
+      nearHalf+3600,
+      nearHalf+3820,
+      nearHalf+4050,
       nearHalf+4260
     ];
 
@@ -1221,9 +1341,11 @@ export function createTerrainService({
           // The innermost row is mathematically identical to the border of
           // the textured ground. Outer rows continue from the same DEM/fallback
           // height source without any vertical bias or overlapping skirt.
+          const distance=Math.max(Math.abs(p.x),Math.abs(p.z));
+
           positions.push(
             p.x,
-            renderedTerrainHeight(wx,wz),
+            distantTerrainHeight(wx,wz,distance,nearHalf),
             p.z
           );
         }
@@ -1260,7 +1382,13 @@ export function createTerrainService({
 
     geometry.setIndex(indices);
     geometry.computeVertexNormals();
-    applyHillshadeColors(geometry);
+
+    const farHalf=halfExtents[halfExtents.length-1];
+    applyDistantTerrainColors(geometry,{
+      offset,
+      nearHalf,
+      farHalf
+    });
 
     const material=new THREE.MeshStandardMaterial({
       color:0xffffff,
@@ -1269,7 +1397,18 @@ export function createTerrainService({
       metalness:0,
       side:THREE.DoubleSide,
       transparent:false,
-      depthWrite:true
+      depthWrite:true,
+      dithering:true,
+      fog:true,
+      // Satellite chunks own stencil ref 2. Procedural horizon pixels under a
+      // loaded satellite chunk are rejected so the two terrain surfaces can
+      // never interpenetrate visually.
+      stencilWrite:true,
+      stencilRef:2,
+      stencilFunc:THREE.NotEqualStencilFunc,
+      stencilFail:THREE.KeepStencilOp,
+      stencilZFail:THREE.KeepStencilOp,
+      stencilZPass:THREE.KeepStencilOp
     });
 
     const mesh=new THREE.Mesh(
@@ -1289,12 +1428,35 @@ export function createTerrainService({
     clearObjectGroup(horizonGroup);
   }
 
+  // V21.22.3: soft floating-origin recenter. The road-bed transition mesh is
+  // attached directly to ground.parent rather than horizonGroup/world, so it
+  // needs the same inverse render-space translation as the other streamed
+  // roots while the expensive terrain rebuild is deferred.
+  function shiftRoadBedOrigin(shiftX,shiftZ){
+    if(!roadBedGroup)return;
+    roadBedGroup.position.x-=shiftX;
+    roadBedGroup.position.z-=shiftZ;
+    roadBedGroup.updateMatrix();
+  }
+
+  function resetRoadBedOrigin(){
+    if(!roadBedGroup)return;
+    roadBedGroup.position.set(0,0,0);
+    roadBedGroup.updateMatrix();
+  }
+
   return {
     heightAt,
     fallbackHeight,
+    // Exact visible terrain surface used by georeferenced satellite chunks.
+    // This includes the start pad and road excavation, so imagery conforms to
+    // the same geometry instead of floating above or cutting through it.
+    renderHeightAt:renderedTerrainHeight,
     rebuildGround,
     rebuildHorizon,
     clearHorizon,
+    shiftRoadBedOrigin,
+    resetRoadBedOrigin,
     setRoadBed,
     clearRoadBed:()=>{
       activeRoadProfile=[];

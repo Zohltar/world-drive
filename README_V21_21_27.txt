@@ -1,4 +1,4 @@
-WORLD DRIVE V21.21.27 — VISUAL / STREAMING CANDIDATE
+WORLD DRIVE V21.21.27 — STABLE BASELINE
 =====================================================
 
 Base
@@ -57,4 +57,4 @@ adaptive render-ratio ladder are unchanged by design.
 
 Status
 ------
-CANDIDATE — visual test on the user's GPU is required before baseline promotion.
+STABLE BASELINE — promoted after user validation on 2026-08-20.
