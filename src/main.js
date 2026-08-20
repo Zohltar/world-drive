@@ -1624,6 +1624,40 @@ const perfGovernor={
   nextPerfLogAt:0
 };
 
+// V21.22.3 HITCH-FREE STREAMING POLICY
+// Periodic work must never force a heavy scene rebuild while the player is
+// actively driving. Data can stream/cache in the background; geometry is
+// refreshed only when the local world actually needs to move or while the car
+// is nearly stopped. This targets frame-time spikes, not average FPS.
+const HITCH_FREE_STREAMING={
+  perfConsoleLogging:false,
+  softRecenterDistance:520,
+  hardWorldRefreshDistance:1450,
+  urgentWorldRefreshDistance:2200,
+  calmSpeed:4.5
+};
+
+const streamRefreshState={
+  pendingWorld:false,
+  reasons:new Set(),
+  lastBuiltCenter:{x:0,z:0},
+  lastWorldBuildAt:0,
+  lastHitchAt:0,
+  maxFrameMs:0,
+  hitchCount:0
+};
+
+function markStreamWorldRefresh(reason='stream'){
+  streamRefreshState.pendingWorld=true;
+  streamRefreshState.reasons.add(reason);
+}
+
+function markStaticShadowsDirty(){
+  if(renderer.shadowMap.enabled){
+    renderer.shadowMap.needsUpdate=true;
+  }
+}
+
 function performanceIntervals(){
   if(perfGovernor.level>=3)return {shadowProjection:260,shadowMap:1400,moon:800};
   if(perfGovernor.level===2)return {shadowProjection:220,shadowMap:1100,moon:650};
@@ -1852,15 +1886,59 @@ function freezeStaticMatrices(root){
 }
 freezeStaticMatrices(world);
 
-// V21.21.27: larger high-detail terrain/imagery footprint. The old 2.4 km
-// patch left only ~680 m of guaranteed forward terrain at the floating-origin
-// threshold. 3.2 km keeps substantially more real relief visible ahead while
-// preserving roughly the same ~12.5 m main-grid spacing.
-const NEAR_TERRAIN_SIZE=3200;
-const NEAR_TERRAIN_SEGMENTS=256;
-const groundMat=new THREE.MeshStandardMaterial({color:0xffffff,roughness:1,metalness:0});
+const streamedWorldGroups=[
+  terrainDetailGroup,
+  waterGroup,
+  infrastructureGroup,
+  signGroup,
+  sceneryInfrastructureGroup,
+  buildingGroup,
+  roadGroup,
+  forestGroup,
+  sceneryForestGroup,
+  horizonGroup
+];
+
+function resetStaticGroupOrigin(group){
+  group.position.set(0,0,0);
+  group.updateMatrix();
+}
+
+function resetStreamedWorldOrigins(){
+  for(const group of streamedWorldGroups)resetStaticGroupOrigin(group);
+  ground?.position?.set?.(0,0,0);
+  ground?.updateMatrix?.();
+}
+
+// V21.22.2: promote the visually important medium-distance band into the SAME
+// high-detail terrain/imagery pipeline as the near field. The footprint grows
+// from 3.2 km to 5.6 km while preserving the exact 12.5 m terrain grid spacing
+// (448 segments). The procedural horizon now begins only beyond +/-2.8 km.
+// This deliberately spends part of the newly verified GPU headroom on image
+// quality rather than trying to imitate near terrain with a separate far mesh.
+const NEAR_TERRAIN_SIZE=5600;
+const NEAR_TERRAIN_SEGMENTS=448;
+// V21.22.6: satellite chunks render first and mark stencil ref 2.
+// The procedural DEM underlay then rejects those pixels entirely. This avoids
+// z-fighting between two independently triangulated surfaces that represent the
+// same terrain while preserving the procedural mesh for physics/fallback.
+const groundMat=new THREE.MeshStandardMaterial({
+  color:0xffffff,
+  vertexColors:true,
+  roughness:1,
+  metalness:0,
+  stencilWrite:true,
+  stencilRef:2,
+  stencilFunc:THREE.NotEqualStencilFunc,
+  stencilFail:THREE.KeepStencilOp,
+  stencilZFail:THREE.KeepStencilOp,
+  stencilZPass:THREE.KeepStencilOp
+});
 const ground=new THREE.Mesh(new THREE.PlaneGeometry(NEAR_TERRAIN_SIZE,NEAR_TERRAIN_SIZE,88,88),groundMat);
-ground.rotation.x=-Math.PI/2;ground.receiveShadow=true;scene.add(ground); // keep matrixAutoUpdate ON: terrain rebuilds reset rotation after rotating geometry into XZ
+ground.rotation.x=-Math.PI/2;
+ground.receiveShadow=true;
+ground.renderOrder=-5;
+scene.add(ground); // keep matrixAutoUpdate ON: terrain rebuilds reset rotation after rotating geometry into XZ
 
 // Local rendering origin follows the car to avoid large-coordinate precision loss.
 let worldOffset={x:0,z:0};
@@ -1911,19 +1989,17 @@ const terrainService=createTerrainService({
 
 const terrainAbs=(x,z)=>terrainService.heightAt(x,z);
 const rebuildGroundTerrain=()=>terrainService.rebuildGround();
-const rebuildHorizon=()=>{terrainService.rebuildHorizon();freezeStaticMatrices(horizonGroup);};
+const rebuildHorizon=()=>{resetStaticGroupOrigin(horizonGroup);terrainService.rebuildHorizon();freezeStaticMatrices(horizonGroup);markStaticShadowsDirty();};
 
 async function loadElevationAround(absx,absz){
   const result=await elevationService.loadAround(absx,absz);
 
   if(result.count>0){
-    // Several DEM requests can complete almost together. A synchronous full
-    // rebuild here caused visible hitches while driving. Coalesce them.
-    scheduleVisualJob(
-      'world-rebuild',
-      rebuildLocalWorld,
-      720
-    );
+    // V21.22.3: DEM arrival only marks the visible world dirty. Route-ahead
+    // prefetch already warms these tiles before they are needed; rebuilding a
+    // 448x448 terrain + road + water scene on each async completion was the
+    // largest recurring main-thread hitch source.
+    markStreamWorldRefresh('dem');
 
     toast(
       result.count>=5
@@ -2288,8 +2364,23 @@ const imageryService=createImageryService({
   toLatLon:(x,z)=>xzToLL(x,z),
   toWorld:(lat,lon)=>llToXZ(lat,lon),
   getWorldOffset:()=>worldOffset,
+  // V21.22.5: imagery is no longer stretched across the monolithic ground.
+  // Each satellite chunk owns exact geographic bounds and follows the same
+  // rendered terrain surface. The actual ground centre can lag the car during
+  // hitch-free soft recentering, so expose it explicitly.
+  getGroundCenter:()=>({
+    x:worldOffset.x+(ground.position?.x||0),
+    z:worldOffset.z+(ground.position?.z||0)
+  }),
+  sampleTerrainHeight:(x,z)=>terrainService.renderHeightAt(x,z),
+  scene,
   zoom:16,
-  groundSize:NEAR_TERRAIN_SIZE
+  groundSize:NEAR_TERRAIN_SIZE,
+  chunkTiles:3,
+  // Match the ~12.5 m near-terrain grid more closely. Stencil ownership is
+  // the primary overlap fix; the denser chunk geometry also improves silhouette
+  // agreement with the DEM on steep slopes.
+  chunkSegments:96
 });
 
 const buildImageryMosaic=(x,z)=>imageryService.buildMosaic(x,z);
@@ -2341,7 +2432,7 @@ const sceneryRenderer=createSceneryRenderer({
   getWorldOffset:()=>worldOffset
 });
 
-const rebuildLocalScenery=()=>{sceneryRenderer.rebuild();freezeStaticMatrices(terrainDetailGroup);freezeStaticMatrices(sceneryInfrastructureGroup);freezeStaticMatrices(buildingGroup);freezeStaticMatrices(sceneryForestGroup);};
+const rebuildLocalScenery=()=>{for(const g of [terrainDetailGroup,sceneryInfrastructureGroup,buildingGroup,sceneryForestGroup])resetStaticGroupOrigin(g);sceneryRenderer.rebuild();freezeStaticMatrices(terrainDetailGroup);freezeStaticMatrices(sceneryInfrastructureGroup);freezeStaticMatrices(buildingGroup);freezeStaticMatrices(sceneryForestGroup);markStaticShadowsDirty();};
 
 // Heavy streamed visuals should not all rebuild inside the same animation frame.
 // Coalesce duplicate requests and let the browser place them between frames.
@@ -2704,13 +2795,10 @@ async function loadSceneryAround(absx,absz){
 
   if(!result.ok)return false;
 
-  // Applying hundreds of OSM objects is CPU-heavy. Coalesce and defer the
-  // renderer rebuild so network completion cannot interrupt a driving frame.
-  scheduleVisualJob(
-    'scenery',
-    rebuildLocalScenery,
-    220
-  );
+  // V21.22.3: applying hundreds of OSM objects is CPU-heavy. Network
+  // completion only marks the world dirty; the data is rendered in the next
+  // calm/coalesced world refresh instead of interrupting a driving frame.
+  markStreamWorldRefresh('scenery');
 
   sceneryStatus.textContent=
     `${result.cached?'Cache':'OSM'} · ${sceneryFeatures.length} objets`;
@@ -3496,7 +3584,7 @@ const waterRenderer=createWaterRenderer({
   buildRibbon
 });
 
-const rebuildLocalWater=()=>{waterRenderer.rebuild();freezeStaticMatrices(waterGroup);};
+const rebuildLocalWater=()=>{resetStaticGroupOrigin(waterGroup);waterRenderer.rebuild();freezeStaticMatrices(waterGroup);markStaticShadowsDirty();};
 
 
 
@@ -3524,11 +3612,10 @@ async function loadWaterAround(absx,absz){
   sceneryRenderer.removeTreesOverWater();
 
   bridgeManager.updateStatus();
-  scheduleVisualJob(
-    'world-rebuild',
-    rebuildLocalWorld,
-    720
-  );
+  // V21.22.3: hydro data can complete at arbitrary times. Keep the response
+  // off the critical driving frame and fold the expensive road/terrain refresh
+  // into the next calm/recenter world refresh instead of rebuilding immediately.
+  markStreamWorldRefresh('hydro');
 
   return true;
 }
@@ -3758,6 +3845,7 @@ function addCurrentRoadSigns(){
 }
 
 function refreshRoadSignsOnly(){
+  resetStaticGroupOrigin(signGroup);
   clearGroup(signGroup);
   addCurrentRoadSigns();
   addGeographicRoadSigns();
@@ -3766,6 +3854,8 @@ function refreshRoadSignsOnly(){
 
 // Build only a corridor around the current location, preserving every source polyline curve.
 function rebuildLocalWorld(){
+ resetStreamedWorldOrigins();
+ terrainService.resetRoadBedOrigin?.();
  clearGroup(roadGroup);clearGroup(forestGroup);
  clearGroup(infrastructureGroup);clearGroup(signGroup);
  sceneryRenderer.clear();
@@ -3994,46 +4084,127 @@ function rebuildLocalWorld(){
    rebuildHorizon,
    260
  );
+ markStaticShadowsDirty();
 }
+function shiftRenderedWorldForOrigin(shiftX,shiftZ){
+  // Existing local coordinates describe fixed absolute geography. Shift each
+  // streamed subsystem root instead of the common `world` parent. That lets a
+  // subsystem be rebuilt later relative to the new worldOffset without
+  // inheriting a stale parent translation.
+  for(const group of streamedWorldGroups){
+    group.position.x-=shiftX;
+    group.position.z-=shiftZ;
+    group.updateMatrix();
+  }
+
+  ground.position.x-=shiftX;
+  ground.position.z-=shiftZ;
+  ground.updateMatrix();
+  terrainService.shiftRoadBedOrigin?.(shiftX,shiftZ);
+  imageryService.shiftOrigin?.(shiftX,shiftZ);
+}
+
+
+function commitLocalWorldRefresh(){
+  // New geometry is generated directly relative to the CURRENT worldOffset.
+  // Reset temporary parent shifts immediately before replacing the old scene.
+  resetStreamedWorldOrigins();
+  terrainService.resetRoadBedOrigin?.();
+
+  rebuildLocalWorld();
+  imageryService.realignToOrigin?.();
+  imageryService.invalidateGeometry?.();
+  applyImageryToGround();
+  // Chunk creation is serialized/idle-budgeted. It is safe to request the new
+  // visible coverage immediately after a world refresh without resurrecting
+  // the giant-canvas upload hitches removed in V21.22.3.
+  if(imageryService.enabled){
+    buildImageryMosaic(absX,absZ).catch(()=>{});
+  }
+  streamRefreshState.pendingWorld=false;
+  streamRefreshState.reasons.clear();
+  streamRefreshState.lastBuiltCenter={...worldOffset};
+  streamRefreshState.lastWorldBuildAt=performance.now();
+  markStaticShadowsDirty();
+}
+
+function scheduleLocalWorldRefresh({urgent=false}={}){
+  if(deferredVisualJobs.has('world-rebuild'))return;
+
+  // A complete V21.22.2 world refresh now includes a 448x448 high-detail
+  // terrain. Never launch it from a random network completion. Prefer a calm
+  // vehicle state; only force it when the old local patch is approaching its
+  // safe coverage limit.
+  const attempt=()=>{
+    const dx=absX-streamRefreshState.lastBuiltCenter.x;
+    const dz=absZ-streamRefreshState.lastBuiltCenter.z;
+    const buildDistance=Math.hypot(dx,dz);
+    const calm=!gameStarted||v21MenuOpen||Math.abs(speed)<=HITCH_FREE_STREAMING.calmSpeed;
+    const mustRun=urgent||buildDistance>=HITCH_FREE_STREAMING.urgentWorldRefreshDistance;
+
+    if(!calm&&!mustRun){
+      // Keep the already-shifted old world perfectly aligned while driving.
+      // The animation loop will retry once the car is calm; a later soft
+      // recenter escalates to the hard safety threshold if needed.
+      return;
+    }
+
+    commitLocalWorldRefresh();
+  };
+
+  scheduleVisualJob('world-rebuild',attempt,1200);
+}
+
 function recenterIfNeeded(absx,absz,force=false){
  const dx=absx-worldOffset.x,dz=absz-worldOffset.z;
- if(force||dx*dx+dz*dz>520*520){
-   // Preserve camera/car relative geometry across the floating-origin shift.
-   // Before: render coordinate = absolute - oldOffset
-   // After : render coordinate = absolute - newOffset
-   // Therefore every existing render-space object/camera must be shifted by -(new-old).
+ if(force||dx*dx+dz*dz>HITCH_FREE_STREAMING.softRecenterDistance**2){
    const shiftX=absx-worldOffset.x;
    const shiftZ=absz-worldOffset.z;
    worldOffset={x:absx,z:absz};
 
-   camera.position.x -= shiftX;
-   camera.position.z -= shiftZ;
-   camTarget.x -= shiftX;
-   camTarget.z -= shiftZ;
+   camera.position.x-=shiftX;
+   camera.position.z-=shiftZ;
+   camTarget.x-=shiftX;
+   camTarget.z-=shiftZ;
+   car.position.x-=shiftX;
+   car.position.z-=shiftZ;
 
-   // car position is updated immediately after this function, but shifting it here
-   // prevents a one-frame mismatch if rendering occurs during a forced recenter.
-   car.position.x -= shiftX;
-   car.position.z -= shiftZ;
+   if(force){
+     cancelVisualJob('world-rebuild');
+     commitLocalWorldRefresh();
+     return true;
+   }
 
-   // A recenter already rebuilds the complete local corridor. Cancel any
-   // deferred elevation/hydro rebuild that would otherwise repeat the same
-   // expensive work a moment later.
-   cancelVisualJob('world-rebuild');
-   rebuildLocalWorld();
-   applyImageryToGround();
+   // Cheap floating-origin shift: O(1), no terrain/road allocation.
+   shiftRenderedWorldForOrigin(shiftX,shiftZ);
+
+   const bx=absx-streamRefreshState.lastBuiltCenter.x;
+   const bz=absz-streamRefreshState.lastBuiltCenter.z;
+   const buildDistance=Math.hypot(bx,bz);
+   if(buildDistance>=HITCH_FREE_STREAMING.hardWorldRefreshDistance){
+     markStreamWorldRefresh('recenter');
+     scheduleLocalWorldRefresh({
+       urgent:buildDistance>=HITCH_FREE_STREAMING.urgentWorldRefreshDistance
+     });
+   }
    return true;
  }
- return false
+ return false;
 }
+
 
 
 function resetWorldCaches(){
   worldStreaming.reset();
   aheadStreamingBuckets?.clear?.();
+  terrainPreloadQueuedKeys?.clear?.();
+  terrainPreloadQueue.length=0;
   nextAheadStreamingAt=0;
-  lastAheadTerrainRefreshAt=0;
   lastImageryRefreshAt=0;
+  streamRefreshState.pendingWorld=false;
+  streamRefreshState.reasons.clear();
+  streamRefreshState.lastBuiltCenter={...worldOffset};
+  streamRefreshState.lastWorldBuildAt=performance.now();
   waterData.reset();
   skidMarks.clear();
 
@@ -4156,17 +4327,44 @@ async function createRequestedRoute(start,end,waypoints=[]){
         :'Hydrographie indisponible'
     );
 
-    completed=true;
-    loading.classList.add('hidden');
+    // V21.22.4: do not expose the player to the procedural/fallback ground while
+    // the first real DEM/image tiles are still arriving. Build the initial
+    // high-quality patch only after the current elevation and a 2D route-ahead
+    // buffer have had a chance to warm the persistent caches. This work happens
+    // while the vehicle is stationary and the loading overlay is still visible.
+    loadingText.textContent='Préchargement du terrain en avance…';
 
-    loadElevationAround(absX,absZ).catch(()=>{elevStatus.textContent='Démo'});
+    // Keep the existing unified streamer as an additional first-pass warmer.
     worldStreaming.preloadRoute(absX,absZ);
+
+    const initialElevationReady=await loadElevationAround(absX,absZ)
+      .catch(()=>{elevStatus.textContent='Démo';return false;});
+
+    await primeInitialTerrainPreloadBuffer().catch(()=>{});
+
+    if(imageryService.enabled){
+      await promiseWithTimeout(
+        buildImageryMosaic(absX,absZ).catch(()=>{imageryStatus.textContent='Fallback'}),
+        4500
+      );
+    }
+
+    // One intentional rebuild BEFORE play replaces the fallback terrain with
+    // whatever real data is already cached. During driving V21.22.3's
+    // hitch-free cache-only policy remains unchanged.
+    if(initialElevationReady||streamRefreshState.pendingWorld){
+      cancelVisualJob('world-rebuild');
+      commitLocalWorldRefresh();
+    }
+
     prefetchRouteAhead();
     loadSceneryAround(absX,absZ).catch(()=>{sceneryStatus.textContent='Indisponible'});
-    buildImageryMosaic(absX,absZ).catch(()=>{imageryStatus.textContent='Fallback'});
     loadRoadMetadataAround(absX,absZ).catch(()=>{});
     loadGeographicSignsAround(absX,absZ).catch(()=>{});
-    toast('Trajet prêt');
+
+    completed=true;
+    loading.classList.add('hidden');
+    toast('Trajet prêt · terrain préchargé');
     return true;
   }catch(e){
     completed=true;
@@ -4183,7 +4381,7 @@ async function createRequestedRoute(start,end,waypoints=[]){
 
 // ---------- V5 subsystem facade ----------
 const WorldDrive={
-  version:'21.21.26-alpha',
+  version:'21.22.6-candidate',
   route:{generation:0},
   streaming:{generation:0},
   vehicle:{generation:0},
@@ -8101,14 +8299,35 @@ const worldStreaming=createWorldStreaming({
     fetchOverpassCached(namespace,ll,query,timeoutMs,ttlMs)
 });
 
-// V21.21.27 — route-ahead terrain/imagery warm cache.
-// The normal streaming manager remains authoritative for what is currently
-// displayed. This lightweight pass only warms DEM and image tiles several
-// kilometres along the actual travel direction so real terrain is ready BEFORE
-// it enters the visible high-detail patch instead of popping in beside the car.
+// V21.22.4 — TWO-DIMENSIONAL TERRAIN PRELOAD BUFFER.
+//
+// V21.22.2 expanded the high-quality DEM/imagery ground to a 5.6 km square.
+// Warming only a few points on the road centreline was therefore insufficient:
+// lateral portions of the visible square could still enter view before their
+// real DEM/image tiles were cached, exposing the stretched procedural fallback.
+//
+// This policy keeps V21.22.3 hitch-free semantics: every request below is
+// CACHE-ONLY. Network/cache completion never mutates scene geometry. The queue
+// is drained in small batches so preloading cannot become a new main-thread
+// frame-time spike.
+const TERRAIN_PRELOAD_BUFFER={
+  aheadDistance:10500,
+  behindDistance:1800,
+  longitudinalStep:900,
+  lateralOffsets:[0,-1500,1500,-3000,3000],
+  speedLeadPerMps:38,
+  maxSpeedLead:3200,
+  batchSize:5,
+  bootstrapAheadDistance:7200,
+  bootstrapStep:1200,
+  bootstrapLateralOffsets:[0,-2800,2800],
+  bootstrapTimeoutMs:6500
+};
+
 const aheadStreamingBuckets=new Set();
+const terrainPreloadQueuedKeys=new Set();
+const terrainPreloadQueue=[];
 let nextAheadStreamingAt=0;
-let lastAheadTerrainRefreshAt=0;
 let lastImageryRefreshAt=0;
 
 function routeTravelSign(nr){
@@ -8116,63 +8335,164 @@ function routeTravelSign(nr){
   return Math.cos(heading-nr.angle)>=0?1:-1;
 }
 
-function prefetchRouteAhead(){
-  if(!routeLength||!route.length)return;
+function routeBufferProbe(cum,lateralOffset=0){
+  const p=routePointAtCum(cum);
+  if(!p)return null;
+  // Same road-normal convention used by the road/shoulder geometry.
+  const nx=Math.cos(p.angle),nz=-Math.sin(p.angle);
+  return {
+    x:p.x+nx*lateralOffset,
+    z:p.z+nz*lateralOffset,
+    cum,
+    lateralOffset
+  };
+}
+
+function terrainPreloadKey(dir,cum,lateralOffset){
+  const longBucket=Math.round(cum/450);
+  const lateralBucket=Math.round(lateralOffset/500);
+  return `${dir}:${longBucket}:${lateralBucket}`;
+}
+
+function enqueueTerrainPreloadProbe(dir,cum,lateralOffset){
+  const key=terrainPreloadKey(dir,cum,lateralOffset);
+  if(aheadStreamingBuckets.has(key)||terrainPreloadQueuedKeys.has(key))return false;
+  const probe=routeBufferProbe(cum,lateralOffset);
+  if(!probe)return false;
+  terrainPreloadQueuedKeys.add(key);
+  terrainPreloadQueue.push({...probe,key});
+  return true;
+}
+
+function refillTerrainPreloadBuffer(){
+  if(!routeLength||!route.length)return 0;
   const nr=nearestRoute(absX,absZ);
-  if(!nr)return;
+  if(!nr)return 0;
 
   const dir=routeTravelSign(nr);
-  const speedAbs=Math.abs(speed);
-  const leadBonus=Math.min(1400,speedAbs*24);
-  const lookaheads=[650,1250,2100,3200].map((d,i)=>d+(i?leadBonus:leadBonus*.45));
-  let requestedFreshTerrain=false;
+  const speedLead=Math.min(
+    TERRAIN_PRELOAD_BUFFER.maxSpeedLead,
+    Math.abs(speed)*TERRAIN_PRELOAD_BUFFER.speedLeadPerMps
+  );
+  const ahead=TERRAIN_PRELOAD_BUFFER.aheadDistance+speedLead;
+  let queued=0;
 
-  for(const distance of lookaheads){
+  for(
+    let distance=-TERRAIN_PRELOAD_BUFFER.behindDistance;
+    distance<=ahead;
+    distance+=TERRAIN_PRELOAD_BUFFER.longitudinalStep
+  ){
     const cum=Math.max(0,Math.min(routeLength,nr.cum+dir*distance));
-    const bucket=Math.round(cum/420);
-    const key=`${dir}:${bucket}`;
-    if(aheadStreamingBuckets.has(key))continue;
-    aheadStreamingBuckets.add(key);
-
-    const p=routePointAtCum(cum);
-    if(!p)continue;
-
-    try{
-      const elevPromise=elevationService.prefetchAt?.(p.x,p.z);
-      if(elevPromise!==undefined){
-        requestedFreshTerrain=true;
-        Promise.resolve(elevPromise).then(()=>{
-          const now=performance.now();
-          if(now-lastAheadTerrainRefreshAt>2400){
-            lastAheadTerrainRefreshAt=now;
-            // Re-evaluate visible near + horizon geometry against newly cached
-            // DEM. Coalescing keeps multiple completed tile requests to one job.
-            scheduleVisualJob('ahead-dem-refresh',rebuildLocalWorld,520);
-          }
-        }).catch(()=>{});
-      }
-    }catch{}
-
-    if(imageryService.enabled){
-      try{imageryService.prefetchAt?.(p.x,p.z);}catch{}
+    for(const lateralOffset of TERRAIN_PRELOAD_BUFFER.lateralOffsets){
+      if(enqueueTerrainPreloadProbe(dir,cum,lateralOffset))queued++;
     }
   }
+  return queued;
+}
 
-  // Bound memory used only for duplicate-suppression on very long routes.
-  if(aheadStreamingBuckets.size>320){
-    const keep=[...aheadStreamingBuckets].slice(-220);
+function startTerrainPreloadProbe(probe){
+  terrainPreloadQueuedKeys.delete(probe.key);
+  aheadStreamingBuckets.add(probe.key);
+
+  try{
+    const promise=elevationService.prefetchAt?.(probe.x,probe.z);
+    if(promise!==undefined)Promise.resolve(promise).catch(()=>{});
+  }catch{}
+
+  if(imageryService.enabled){
+    try{
+      const promise=imageryService.prefetchAt?.(probe.x,probe.z);
+      if(promise!==undefined)Promise.resolve(promise).catch(()=>{});
+    }catch{}
+  }
+}
+
+function drainTerrainPreloadBuffer(maxJobs=TERRAIN_PRELOAD_BUFFER.batchSize){
+  let started=0;
+  while(started<maxJobs&&terrainPreloadQueue.length){
+    const probe=terrainPreloadQueue.shift();
+    if(!probe)break;
+    startTerrainPreloadProbe(probe);
+    started++;
+  }
+
+  // Bound duplicate-suppression memory on very long drives.
+  if(aheadStreamingBuckets.size>900){
+    const keep=[...aheadStreamingBuckets].slice(-620);
     aheadStreamingBuckets.clear();
     keep.forEach(key=>aheadStreamingBuckets.add(key));
   }
-  return requestedFreshTerrain;
+  return started;
+}
+
+function prefetchRouteAhead(){
+  const queued=refillTerrainPreloadBuffer();
+  const started=drainTerrainPreloadBuffer();
+  return queued>0||started>0;
+}
+
+function promiseWithTimeout(promise,timeoutMs){
+  return Promise.race([
+    Promise.resolve(promise),
+    new Promise(resolve=>setTimeout(()=>resolve(null),timeoutMs))
+  ]);
+}
+
+async function primeInitialTerrainPreloadBuffer(){
+  if(!routeLength||!route.length)return;
+  const nr=nearestRoute(absX,absZ);
+  if(!nr)return;
+  const dir=routeTravelSign(nr);
+  const tasks=[];
+
+  for(
+    let distance=0;
+    distance<=TERRAIN_PRELOAD_BUFFER.bootstrapAheadDistance;
+    distance+=TERRAIN_PRELOAD_BUFFER.bootstrapStep
+  ){
+    const cum=Math.max(0,Math.min(routeLength,nr.cum+dir*distance));
+    for(const lateralOffset of TERRAIN_PRELOAD_BUFFER.bootstrapLateralOffsets){
+      const key=terrainPreloadKey(dir,cum,lateralOffset);
+      if(aheadStreamingBuckets.has(key))continue;
+      const probe=routeBufferProbe(cum,lateralOffset);
+      if(!probe)continue;
+      aheadStreamingBuckets.add(key);
+
+      try{
+        const promise=elevationService.prefetchAt?.(probe.x,probe.z);
+        if(promise!==undefined)tasks.push(Promise.resolve(promise).catch(()=>null));
+      }catch{}
+      if(imageryService.enabled){
+        try{
+          const promise=imageryService.prefetchAt?.(probe.x,probe.z);
+          if(promise!==undefined)tasks.push(Promise.resolve(promise).catch(()=>null));
+        }catch{}
+      }
+    }
+  }
+
+  // Route creation may wait briefly for the critical first buffer, but never
+  // indefinitely on a slow tile server. Remaining probes continue cache-only.
+  if(tasks.length){
+    await promiseWithTimeout(
+      Promise.allSettled(tasks),
+      TERRAIN_PRELOAD_BUFFER.bootstrapTimeoutMs
+    );
+  }
+
+  refillTerrainPreloadBuffer();
+  drainTerrainPreloadBuffer(TERRAIN_PRELOAD_BUFFER.batchSize*2);
 }
 
 function refreshCurrentImagerySooner(now){
-  if(!imageryService.enabled||imageryService.loading)return;
+  if(!imageryService.enabled)return;
+  // V21.22.5 chunk composition is serialized and committed during idle time,
+  // so visible satellite coverage may advance while driving without a giant
+  // monolithic canvas upload. Tile prefetch remains cache-only ahead of this.
   const center=imageryService.center;
   if(!center||!Number.isFinite(center.x)||!Number.isFinite(center.z))return;
   const moved=Math.hypot(absX-center.x,absZ-center.z);
-  if(moved<340||now-lastImageryRefreshAt<1100)return;
+  if(moved<520||now-lastImageryRefreshAt<1200)return;
   lastImageryRefreshAt=now;
   buildImageryMosaic(absX,absZ).catch(()=>{});
 }
@@ -10286,13 +10606,33 @@ $('clearHydroCacheBtn').addEventListener('click',async()=>{
 
 setTimeOfDay(12);
 
+// V21.22.3 diagnostics are kept in memory so observing them cannot itself
+// cause a periodic console/devtools hitch. Inspect manually if needed:
+// window.WorldDriveFramePacing()
+window.WorldDriveFramePacing=()=>({
+  fps:perfGovernor.fps,
+  hitchCount:streamRefreshState.hitchCount,
+  maxFrameMs:streamRefreshState.maxFrameMs,
+  lastHitchAt:streamRefreshState.lastHitchAt,
+  pendingWorldRefresh:streamRefreshState.pendingWorld,
+  pendingReasons:[...streamRefreshState.reasons],
+  worldBuildCenter:{...streamRefreshState.lastBuiltCenter},
+  worldOffset:{...worldOffset}
+});
+
 // ---------- main ----------
 let nextDirectionalPrefetchAt=0;
 
 function animate(now){
  requestAnimationFrame(animate);
  updateFpsAndGovernor(now);
- const dt=Math.min(.033,(now-last)/1000||.016);last=now;
+ const rawFrameMs=(now-last)||16;
+ const dt=Math.min(.033,rawFrameMs/1000||.016);last=now;
+ if(rawFrameMs>20){
+   streamRefreshState.lastHitchAt=now;
+   streamRefreshState.hitchCount++;
+   streamRefreshState.maxFrameMs=Math.max(streamRefreshState.maxFrameMs,rawFrameMs);
+ }
  try{
    const simStart=performance.now();
    if(
@@ -10319,12 +10659,9 @@ function animate(now){
    }
    vehiclePresentation.updateContactShadow(projectShadow);
 
-   // Static world shadows do not need a full GPU shadow pass every frame.
-   // Refresh them sparsely; the cheap contact shadow still follows the car.
-   if(renderer.shadowMap.enabled && now>=perfGovernor.nextShadowMapAt){
-     renderer.shadowMap.needsUpdate=true;
-     perfGovernor.nextShadowMapAt=now+perfIntervals.shadowMap;
-   }
+   // V21.22.3: static shadow maps are refreshed only when streamed world
+   // geometry actually changes. A timer-driven shadow pass can create a small
+   // GPU frame-time spike even though neither the sun nor the static world moved.
 
    if(gameStarted){
      try{
@@ -10356,9 +10693,17 @@ function animate(now){
      !v21MenuOpen&&
      now>=nextAheadStreamingAt
    ){
-     nextAheadStreamingAt=now+850;
+     nextAheadStreamingAt=now+420;
      prefetchRouteAhead();
      refreshCurrentImagerySooner(now);
+   }
+
+   if(
+     streamRefreshState.pendingWorld&&
+     !deferredVisualJobs.has('world-rebuild')&&
+     (!gameStarted||v21MenuOpen||Math.abs(speed)<=HITCH_FREE_STREAMING.calmSpeed)
+   ){
+     scheduleLocalWorldRefresh({urgent:false});
    }
 
    waterTex.offset.x=(waterTex.offset.x+dt*.003)%1;
@@ -10373,7 +10718,7 @@ function animate(now){
    const renderSubmitCost=performance.now()-renderStart;
    perfGovernor.renderSubmitMs=perfGovernor.renderSubmitMs*.90+renderSubmitCost*.10;
 
-   if(now>=perfGovernor.nextPerfLogAt){
+   if(HITCH_FREE_STREAMING.perfConsoleLogging&&now>=perfGovernor.nextPerfLogAt){
      perfGovernor.nextPerfLogAt=now+5000;
      console.info(
        '[WorldDrive perf]',

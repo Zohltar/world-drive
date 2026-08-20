@@ -1,0 +1,38 @@
+WORLD DRIVE V21.22.3 QA RESULTS
+
+[syntax]
+PASS src/main.js
+PASS src/terrain.js
+PASS src/vehicle-system.js
+PASS src/vehicle-dynamics.js
+PASS src/vehicle-presentation.js
+PASS electron/main.cjs
+PASS electron/preload.cjs
+PASS electron/multiplayer-runtime.cjs
+PASS forge.config.cjs
+PASS vite.config.js
+
+[focused]
+PASS V21.22.3 hitch-free streaming policy
+
+[regression]
+└─────────┴───────────────┴─────────┴────────┴────────┴──────────┘
+Extreme-state stress cases: 175,000
+└─────────┴───────────────┴─────────────┴─────────────┘
+Monotonic/fixed-point cases: 34,160
+V21.21.25 STEERING RACK QA: PASS
+V21.21.19 RIGHT-LANE ASSIST QA: PASS
+V21.21.17 BRAKING + MOMENTUM QA: PASS
+PASS V21.21 vehicle profile schema: id4, wrx, civic, sonata, f1_2010, countach_80, i3_2017
+PASS steering + lateral refactor regression against V21.20.1
+PASS load transfer, traction limits, road/terrain grade gravity, airborne force isolation
+PASS multi-wheel support plane + 3-axle future-truck math (6 wheel states)
+PASS frame-rate invariance: steering + full Yungas stress (30..240 Hz)
+PASS preset-style stress runs: 16
+PASS randomized dynamics fuzz: 50000 states, up to 5 axles / 20 wheels
+PASS deterministic seed: 0x21212026
+
+[physics file hashes]
+c74d7d0ad8b10cef33312e282ae6b5a6fbcc0c301079b7eb8b2ab94a2aa5b89b  src/vehicle-system.js
+b8898f7f99061e35563862362e3f1afa02171a788d6a94a2fe7ffb1ab835ddb4  src/vehicle-dynamics.js
+60cedf69ce50716155ea11da313a8d1949a2019ae2bc9a7394e8b7c2d4133f08  src/vehicle-presentation.js

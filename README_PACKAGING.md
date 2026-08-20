@@ -65,3 +65,13 @@ Les fichiers générés sont dans `out\make\`.
 - échange `hello`, `welcome`, `state`, roster et déconnexion : OK
 
 Le test local utilise plusieurs clients WebSocket et un proxy séparé afin de reproduire le chemin utilisé par deux applications Windows sur un LAN.
+
+## V21.22.5 satellite terrain rewrite
+This candidate also replaces `src/imagery.js`. Copy that file along with
+`src/main.js` and `src/terrain.js`; otherwise the old monolithic imagery mapper
+will remain active and the terrain streaking fix will not be present.
+
+
+## V21.22.6 satellite/procedural ownership fix
+
+Cette candidate corrige le terrain procédural qui pouvait repasser visuellement au-dessus des chunks satellite en pente. Les chunks satellite sont rendus en premier et marquent stencil ref 2; les couches de terrain procédural rejettent ensuite ces pixels. La physique, le streaming hitch-free et le preload buffer sont inchangés.

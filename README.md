@@ -1,12 +1,12 @@
-> Current development candidate: **V21.21.27 Visual / Streaming** (based on V21.21.26). Stable baseline remains unchanged until visual validation.
+> Current development candidate: **V21.22.4 Terrain Preload Buffer**. Stable baseline: **V21.21.27**.
 
-# World Drive V21.20.1
+# World Drive V21.22.4
 
 **World Drive** est un simulateur de conduite 3D construit avec **Three.js** et **Vite**, jouable dans le navigateur et disponible comme application **Windows/Electron**.
 
 Le projet combine des routes réelles, du relief, de l’imagerie, des données OpenStreetMap, plusieurs véhicules procéduraux, une physique de conduite semi-réaliste, de l’audio moteur dynamique et un mode multijoueur LAN sans collisions.
 
-La **V21.20.1** consolide la physique et l’instrumentation de la V20, améliore fortement la génération des routes et du terrain en montagne extrême, stabilise les points de départ et ajoute une version Windows avec **multijoueur LAN intégré** et accès OSM adapté à Electron.
+La **V21.22.4** conserve intégralement le frame pacing sans saccades de V21.22.3 et ajoute un vrai buffer 2D de préchargement DEM/imagerie : corridor large autour de la route, jusqu’à plus de 10 km devant selon la vitesse, et préchargement initial avant « Trajet prêt ». Le baseline stable reste **V21.21.27**; la physique, le steering rack, la F1, l’assistance de voie droite et la route sont conservés.
 
 ---
 
@@ -24,7 +24,7 @@ La **V21.20.1** consolide la physique et l’instrumentation de la V20, amélior
 
 ## Statut
 
-**V21.20.1 · stable**
+**V21.22.4 · development candidate — baseline stable V21.21.27**
 
 Workflow Git :
 
@@ -33,9 +33,67 @@ dev   → développement et tests
 main  → version stable
 ```
 
-La version Windows distribuée est produite avec **Electron Forge**. Le numéro de version applicatif actuel est `21.20.1`.
+La version Windows distribuée est produite avec **Electron Forge**. Le numéro de version applicatif de cette candidate est `21.22.4`.
 
 ---
+
+
+
+
+# V21.22.4 — Terrain Preload Buffer
+
+- Préchargement DEM + imagerie en **corridor 2D**, pas seulement sur l’axe routier.
+- Buffer nominal jusqu’à **10,5 km devant**, plus un bonus dépendant de la vitesse.
+- Couverture latérale jusqu’à **±3,0 km** autour des futurs points de route.
+- Préchargement initial critique jusqu’à **7,2 km** avant de masquer l’écran de chargement.
+- Le terrain réel courant est attendu puis reconstruit **une seule fois avant le départ**.
+- Pendant la conduite, les complétions réseau restent **cache-only** : aucun rebuild asynchrone n’est réintroduit.
+- File de préchargement drainée en petits lots pour protéger le frame time.
+- Qualité terrain V21.22.2 et politique anti-saccades V21.22.3 conservées.
+
+# V21.22.3 — Hitch-Free Streaming
+
+- Terrain haute qualité DEM + imagerie agrandi de **3200 m à 5600 m**.
+- La zone haute qualité couvre maintenant **±2800 m** autour de l’origine locale au lieu de ±1600 m.
+- Densité géométrique conservée à **12,5 m** : 448 segments pour 5600 m.
+- Le maillage procédural distant ne commence donc plus dans la bande medium visible au départ.
+- Préchargement route-ahead étendu jusqu’à **5 km** pour préparer DEM et imagerie avant leur entrée dans la zone haute qualité.
+- Le traitement distant V21.22.0 et la densification des anneaux V21.22.1 restent actifs au-delà de la nouvelle couture.
+- Aucun changement à la physique ou aux véhicules.
+
+
+# V21.22.1 — Medium Terrain Refinement
+
+- Densification ciblée du maillage horizon entre ~1,6 et ~5,6 km.
+- 32 anneaux radiaux au lieu de 15, même portée extérieure de 5860 m.
+- Espacement radial ~60–165 m dans la bande moyenne critique au lieu de sauts pouvant atteindre 350 m.
+- Lissage DEM très léger dès ~120 m après la couture, puis progressif avec la distance.
+- Couture exacte avec le terrain proche et protection des corridors routiers conservées.
+- Aucun changement de physique, de streaming ou de distance d’affichage.
+
+# V21.22.0 — Distant Terrain Candidate
+
+- Suppression des courbes de niveau artificielles sur le terrain lointain.
+- Palette lointaine plus naturelle basée sur altitude et pente.
+- Variation chromatique basse fréquence sans stries cartographiques.
+- Désaturation progressive avec la distance avant la brume de scène.
+- Lissage léger du relief uniquement au loin; bord du terrain proche préservé exactement.
+- Plus de rangées LOD radiales pour réduire les grands quads étirés sur les montagnes.
+- Matériau lointain toujours éclairé (jour/nuit conservé), avec fog et dithering.
+- Aucun changement à la physique ou aux véhicules.
+
+# Baseline V21.21.27
+
+- Physique véhicule généralisée et calibrée sur 7 véhicules.
+- Steering rack progressif configurable par véhicule.
+- F1 : grip, downforce et stabilité haute vitesse consolidés.
+- Assistance route physique visant la voie de droite.
+- Route : matériau asphalt/gravier amélioré et échantillonnage longitudinal <= 3 m.
+- Terrain proche haute définition porté à 3200 m.
+- Horizon LOD lointain jusqu’à ~8,3 km aux coins.
+- Préchargement DEM + imagerie anticipé le long de la route.
+- Optimisations CPU/rendu antérieures conservées.
+- V21.21.27 devient le point de départ officiel pour les prochaines branches de développement.
 
 # Nouveautés V21.20.1
 
@@ -615,11 +673,11 @@ Les sorties attendues comprennent notamment l’installateur Squirrel Windows et
 Exemple pour taguer la version stable :
 
 ```powershell
-git tag -a v21.20.1 -m "World Drive V21.20.1"
-git push origin v21.20.1
+git tag -a v21.21.27 -m "World Drive V21.21.27 baseline"
+git push origin v21.21.27
 ```
 
-Ensuite, créer une **GitHub Release** à partir du tag `v21.20.1` et joindre l’installateur ainsi que le ZIP portable générés par `npm run make`.
+Ensuite, créer une **GitHub Release** à partir du tag `v21.21.27` et joindre l’installateur ainsi que le ZIP portable générés par `npm run make`.
 
 ---
 
@@ -841,4 +899,14 @@ La V21.20.1 stabilise et regroupe notamment :
 - instrumentation Canvas et audio moteur dynamique
 - streaming du relief, de l’imagerie, de l’hydrographie et du décor OSM
 
-**V21.20.1 est la version stable actuelle de World Drive.**
+**V21.20.1 est une ancienne version stable; le baseline actuel est V21.21.27.**
+
+
+# V21.22.6 — Satellite / procedural ownership fix
+
+- Satellite chunks write stencil ref 2 before terrain rendering.
+- Near DEM, road-bed terrain transitions, and distant procedural terrain reject pixels already owned by satellite imagery.
+- Removes polygon-shaped procedural terrain bleed-through caused by mismatched triangulation / z-fighting.
+- Satellite chunk geometry increased from 72 to 96 segments to better match the ~12.5 m near-terrain grid.
+- V21.22.3 hitch-free streaming and V21.22.4 preload buffer are preserved.
+- Vehicle physics remain unchanged from the V21.21.27 baseline.
