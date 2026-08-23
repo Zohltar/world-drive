@@ -83,6 +83,8 @@ requireCount(main,'// ---------- directional world prefetch ----------',1,'minim
 requireCount(main,'function updatePassedSignReadout(nr){',1,'updatePassedSignReadout');
 requireCount(main,'function prepMap(){',1,'prepMap');
 requireCount(main,'function drawMap(cum=0){',1,'drawMap');
+const legacyReset="passedSignKeys.clear();signReadout.key=null;signReadout.text='';signReadout.startedAt=0;";
+requireCount(main,legacyReset,1,'legacy minimap sign reset');
 
 const startMarker='// ---------- transient sign readout on minimap ----------';
 const endMarker='// ---------- directional world prefetch ----------';
@@ -139,9 +141,25 @@ const moduleHeader=[
   ''
 ].join(eol);
 
+const resetFunction=[
+  '',
+  'function resetSignReadout(){',
+  '  passedSignKeys.clear();',
+  '  signReadout.key=null;',
+  "  signReadout.text='';",
+  '  signReadout.startedAt=0;',
+  '}',
+  ''
+].join(eol);
+
+// Insert reset ownership immediately before the minimap section. Function bodies
+// may safely reference the sign state declared earlier in the extracted block.
+extracted=extracted.replace('// ---------- minimap ----------',resetFunction+eol+'// ---------- minimap ----------');
+
 const moduleFooter=[
   '',
   '  return Object.freeze({',
+  '    resetSignReadout,',
   '    prepMap,',
   '    drawMap,',
   '    updatePassedSignReadout',
@@ -168,6 +186,7 @@ const replacement=[
   '  })',
   '});',
   'const {',
+  '  resetSignReadout:resetMinimapSignReadout,',
   '  prepMap,',
   '  drawMap,',
   '  updatePassedSignReadout',
@@ -185,6 +204,10 @@ main=main.replace(
   importAnchor+eol+"import { createMinimapSystem } from './minimap.js';"
 );
 
+// resetWorldCaches used to own transient minimap sign state. Delegate it to the
+// new minimap module so route changes and startup still reset readouts exactly.
+main=main.replace(legacyReset,'resetMinimapSignReadout();');
+
 for(const stale of [
   '// ---------- transient sign readout on minimap ----------',
   '// ---------- minimap ----------',
@@ -194,7 +217,8 @@ for(const stale of [
   'function signReadoutText(',
   'function updatePassedSignReadout(nr){',
   'function prepMap(){',
-  'function drawMap(cum=0){'
+  'function drawMap(cum=0){',
+  'passedSignKeys.clear();signReadout.key=null'
 ]){
   if(main.includes(stale)){
     die(`post-transform stale minimap code remains: ${stale}. No files were changed.`);
@@ -206,6 +230,8 @@ for(const required of [
   'const minimapSystem=createMinimapSystem({',
   'routeStart:ROUTE_START,',
   'routeEnd:ROUTE_END',
+  'resetSignReadout:resetMinimapSignReadout,',
+  'resetMinimapSignReadout();',
   'prepMap,',
   'drawMap,',
   'updatePassedSignReadout'
@@ -218,9 +244,11 @@ for(const required of [
 for(const required of [
   'export function createMinimapSystem({',
   'function syncMinimapState(){',
+  'function resetSignReadout(){',
   'function updatePassedSignReadout(nr){',
   'function prepMap(){',
   'function drawMap(cum=0){',
+  'resetSignReadout,',
   'return Object.freeze({'
 ]){
   if(!moduleContent.includes(required)){
