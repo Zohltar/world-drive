@@ -15,6 +15,8 @@ import {
 import { createRouteChallenge } from './route-challenge.js';
 import { createInstrumentCluster } from './instrument-cluster.js';
 import { createMinimapSystem } from './minimap.js';
+import { createRoadFurnitureSystem } from './road-furniture.js';
+import { createRoadGeometrySystem } from './road-geometry.js';
 import { createStartupUi } from './startup-ui.js';
 import { createV21MenuSystem } from './v21-menu.js';
 import {
@@ -24,6 +26,7 @@ import {
 } from './version.js';
 import { createVehicleAudio, computeTransmissionState, computeGearRedlineSpeeds } from './audio.js';
 import { createGamepadController } from './gamepad.js';
+import { createKeyboardControls } from './keyboard-controls.js';
 import { createCameraController } from './camera.js';
 import { createRoutingGeometry, angleDelta, nearestPointOnPolyline } from './routing.js';
 import { createRoutingService } from './routing-service.js';
@@ -47,6 +50,7 @@ import { createSceneryRenderer } from './scenery-renderer.js';
 import { createWaterDataService } from './water-data.js';
 import { createWaterRenderer } from './water-renderer.js';
 import { createWorldStreaming } from './world-streaming.js';
+import { createStreamingCoordinator } from './streaming-coordinator.js';
 import { createVehicleSystem } from './vehicle-system.js';
 import { createMultiplayerClient } from './multiplayer.js';
 import { createVehicleVisualSystem } from './vehicle-visuals.js';
@@ -312,33 +316,14 @@ const perfGovernor={
   nextPerfLogAt:0
 };
 
-// V21.22.3 HITCH-FREE STREAMING POLICY
-// Periodic work must never force a heavy scene rebuild while the player is
-// actively driving. Data can stream/cache in the background; geometry is
-// refreshed only when the local world actually needs to move or while the car
-// is nearly stopped. This targets frame-time spikes, not average FPS.
-const HITCH_FREE_STREAMING={
-  perfConsoleLogging:false,
-  softRecenterDistance:520,
-  hardWorldRefreshDistance:1450,
-  urgentWorldRefreshDistance:2200,
-  calmSpeed:4.5
-};
-
-const streamRefreshState={
-  pendingWorld:false,
-  reasons:new Set(),
-  lastBuiltCenter:{x:0,z:0},
-  lastWorldBuildAt:0,
-  lastHitchAt:0,
-  maxFrameMs:0,
-  hitchCount:0
-};
-
-function markStreamWorldRefresh(reason='stream'){
-  streamRefreshState.pendingWorld=true;
-  streamRefreshState.reasons.add(reason);
-}
+// ---------- streamed-world coordinator facade ----------
+let streamingCoordinator=null;
+function markStreamWorldRefresh(reason='stream'){return streamingCoordinator?.markWorldRefresh(reason);}
+function scheduleVisualJob(key,job,timeout=180){return streamingCoordinator?.scheduleVisualJob(key,job,timeout);}
+function cancelVisualJob(key){return streamingCoordinator?.cancelVisualJob(key);}
+function commitLocalWorldRefresh(){return streamingCoordinator?.commitWorldRefresh();}
+function scheduleLocalWorldRefresh(options={}){return streamingCoordinator?.scheduleWorldRefresh(options);}
+function recenterIfNeeded(absx,absz,force=false){return streamingCoordinator?.recenterIfNeeded(absx,absz,force)??false;}
 
 function markStaticShadowsDirty(){
   if(renderer.shadowMap.enabled){
@@ -1123,50 +1108,6 @@ const sceneryRenderer=createSceneryRenderer({
 
 const rebuildLocalScenery=()=>{for(const g of [terrainDetailGroup,sceneryInfrastructureGroup,buildingGroup,sceneryForestGroup])resetStaticGroupOrigin(g);sceneryRenderer.rebuild();freezeStaticMatrices(terrainDetailGroup);freezeStaticMatrices(sceneryInfrastructureGroup);freezeStaticMatrices(buildingGroup);freezeStaticMatrices(sceneryForestGroup);markStaticShadowsDirty();};
 
-// Heavy streamed visuals should not all rebuild inside the same animation frame.
-// Coalesce duplicate requests and let the browser place them between frames.
-const deferredVisualJobs=new Map();
-let deferredVisualJobSerial=0;
-
-function scheduleVisualJob(key,job,timeout=180){
-  // One pending job per subsystem. This coalesces several network/cache
-  // completions into one geometry rebuild instead of producing back-to-back
-  // 25-35 FPS spikes.
-  if(deferredVisualJobs.has(key))return;
-
-  const token=++deferredVisualJobSerial;
-  deferredVisualJobs.set(key,token);
-
-  const run=()=>{
-    if(deferredVisualJobs.get(key)!==token)return;
-    deferredVisualJobs.delete(key);
-
-    try{
-      job();
-    }catch(error){
-      console.warn(
-        `Deferred visual job failed: ${key}`,
-        error
-      );
-    }
-  };
-
-  if('requestIdleCallback' in window){
-    requestIdleCallback(
-      run,
-      {timeout}
-    );
-  }else{
-    setTimeout(run,Math.min(120,timeout));
-  }
-}
-
-function cancelVisualJob(key){
-  deferredVisualJobs.delete(key);
-}
-
-
-
 // ---------- Vehicle systems ----------
 const vehicleSystem=createVehicleSystem({
   initialId:'wrx'
@@ -1590,696 +1531,31 @@ async function loadSceneryAround(absx,absz){
 const rebuildBridgeSpans=()=>bridgeManager.rebuild();
 const bridgeHeightAtCum=cum=>bridgeManager.heightAtCum(cum);
 
-// ---------- continuous road ribbon ----------
-// V21.19 — robust lateral frames for extreme mountain roads.
-//
-// A simple "next - previous" normal works on gentle curves, but on very sharp
-// hairpins it can rotate or grow unpredictably. Every road layer then builds a
-// slightly different twisted quad and the wider shoulder can poke through the
-// asphalt as diagonal beige wedges. Use one bounded miter frame for every road
-// layer so asphalt, shoulders, edge lines and the solid road body agree exactly.
-function roadLateralFrame(points,i){
-  const p=points[i];
-
-  function unitSegment(a,b){
-    let x=b.x-a.x;
-    let z=b.z-a.z;
-    const len=Math.hypot(x,z);
-    if(len<1e-5)return null;
-    return {x:x/len,z:z/len};
-  }
-
-  let incoming=i>0?unitSegment(points[i-1],p):null;
-  let outgoing=i<points.length-1?unitSegment(p,points[i+1]):null;
-
-  if(!incoming){
-    for(let k=i-1;k>=0&&!incoming;k--)incoming=unitSegment(points[k],p);
-  }
-  if(!outgoing){
-    for(let k=i+1;k<points.length&&!outgoing;k++)outgoing=unitSegment(p,points[k]);
-  }
-
-  const base=outgoing||incoming||{x:0,z:1};
-  const baseNormal={x:-base.z,z:base.x};
-
-  if(!incoming||!outgoing){
-    return {x:baseNormal.x,z:baseNormal.z,scale:1};
-  }
-
-  const n0={x:-incoming.z,z:incoming.x};
-  const n1={x:-outgoing.z,z:outgoing.x};
-
-  let mx=n0.x+n1.x;
-  let mz=n0.z+n1.z;
-  const ml=Math.hypot(mx,mz);
-
-  // Near a 180° reversal the mathematical miter is undefined. A bounded
-  // outgoing normal is visually far safer than an enormous spike.
-  if(ml<0.18){
-    return {x:n1.x,z:n1.z,scale:1};
-  }
-
-  mx/=ml;
-  mz/=ml;
-
-  if(mx*n1.x+mz*n1.z<0){
-    mx=-mx;
-    mz=-mz;
-  }
-
-  const denom=Math.abs(mx*n1.x+mz*n1.z);
-  let scale=denom>0.15?1/denom:1;
-
-  // 90° corners naturally want ~1.414x. Allow that, but never permit the huge
-  // miters produced by switchbacks approaching 180°.
-  scale=Math.max(0.92,Math.min(1.48,scale));
-
-  return {x:mx*scale,z:mz*scale,scale};
-}
-
-function buildLateralBand(points,leftOffset,rightOffset,material,yOffset=0){
-  if(points.length<2)return null;
-
-  const pos=[],uv=[],idx=[];
-  let cumulative=0;
-
-  for(let i=0;i<points.length;i++){
-    const p=points[i];
-    const lat=roadLateralFrame(points,i);
-
-    if(i>0)cumulative+=Math.hypot(
-      p.x-points[i-1].x,
-      p.z-points[i-1].z
-    );
-
-    const roll=Number.isFinite(p.roll)?p.roll:0;
-    const rollSlope=Math.tan(roll);
-
-    const pushOffset=(off)=>{
-      const effectiveOff=off*lat.scale;
-      pos.push(
-        p.x-worldOffset.x+lat.x*off,
-        p.y+yOffset+rollSlope*effectiveOff,
-        p.z-worldOffset.z+lat.z*off
-      );
-    };
-
-    // Vertices stay ordered left-to-right so triangle winding stays upward.
-    pushOffset(leftOffset);
-    pushOffset(rightOffset);
-    uv.push(0,cumulative/8,1,cumulative/8);
-
-    if(i<points.length-1){
-      const a=i*2;
-      idx.push(a,a+2,a+1,a+2,a+3,a+1);
-    }
-  }
-
-  const g=new THREE.BufferGeometry();
-  g.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));
-  g.setAttribute('uv',new THREE.Float32BufferAttribute(uv,2));
-  g.setIndex(idx);
-  g.computeVertexNormals();
-
-  const m=new THREE.Mesh(g,material);
-  m.receiveShadow=true;
-  return m;
-}
-
-function buildRibbon(points,width,material,yOffset=0){
-  const half=width/2;
-  return buildLateralBand(points,half,-half,material,yOffset);
-}
-
-function buildOffsetRibbon(points,offset,width,material,yOffset=0){
-  const half=width/2;
-  return buildLateralBand(
-    points,
-    offset+half,
-    offset-half,
-    material,
-    yOffset
-  );
-}
-
-function buildRoadVolume(profile){
-  if(profile.length<2)return null;
-
-  const group=new THREE.Group();
-
-  // Cross-section dimensions, in metres.
-  const asphaltHalf=3.75;
-  const shoulderHalf=5.20;
-  const toeHalf=5.95;
-
-  const asphaltTop=.10;
-  const shoulderTop=.035;
-  const slabBottom=-.20;
-  const toeBottom=-.36;
-
-  const edgePos=[];
-  const edgeIdx=[];
-  const underPos=[];
-  const underIdx=[];
-
-  function basisAt(i){
-    const p=profile[i];
-    const lat=roadLateralFrame(profile,i);
-    return {
-      p,
-      nx:lat.x,
-      nz:lat.z,
-      lateralScale:lat.scale
-    };
-  }
-
-  // Each row contains:
-  // 0 left toe bottom
-  // 1 left shoulder top
-  // 2 left asphalt edge bottom
-  // 3 left asphalt edge top
-  // 4 right asphalt edge top
-  // 5 right asphalt edge bottom
-  // 6 right shoulder top
-  // 7 right toe bottom
-  for(let i=0;i<profile.length;i++){
-    const {p,nx,nz,lateralScale}=basisAt(i);
-
-    const roll=Number.isFinite(p.roll)
-      ?p.roll
-      :0;
-
-    const rollSlope=Math.tan(roll);
-
-    const push=(off,y)=>{
-      edgePos.push(
-        p.x-worldOffset.x+nx*off,
-        p.y+y+rollSlope*(off*lateralScale),
-        p.z-worldOffset.z+nz*off
-      );
-    };
-
-    push( toeHalf,toeBottom);
-    push( shoulderHalf,shoulderTop);
-    push( asphaltHalf,slabBottom);
-    push( asphaltHalf,asphaltTop);
-    push(-asphaltHalf,asphaltTop);
-    push(-asphaltHalf,slabBottom);
-    push(-shoulderHalf,shoulderTop);
-    push(-toeHalf,toeBottom);
-
-    // Bottom slab vertices, kept separate for a darker underside material.
-    underPos.push(
-      p.x-worldOffset.x+nx*asphaltHalf,
-      p.y+slabBottom+rollSlope*(asphaltHalf*lateralScale),
-      p.z-worldOffset.z+nz*asphaltHalf,
-
-      p.x-worldOffset.x-nx*asphaltHalf,
-      p.y+slabBottom-rollSlope*(asphaltHalf*lateralScale),
-      p.z-worldOffset.z-nz*asphaltHalf
-    );
-  }
-
-  const row=8;
-
-  for(let i=0;i<profile.length-1;i++){
-    const a=i*row;
-    const b=(i+1)*row;
-
-    // Left outer embankment slope.
-    edgeIdx.push(
-      a+0,b+0,a+1,
-      a+1,b+0,b+1
-    );
-
-    // Left shoulder underside/slope into asphalt slab.
-    edgeIdx.push(
-      a+1,b+1,a+2,
-      a+2,b+1,b+2
-    );
-
-    // Visible left asphalt thickness.
-    edgeIdx.push(
-      a+2,b+2,a+3,
-      a+3,b+2,b+3
-    );
-
-    // Visible right asphalt thickness.
-    edgeIdx.push(
-      a+4,b+4,a+5,
-      a+5,b+4,b+5
-    );
-
-    // Right shoulder underside/slope.
-    edgeIdx.push(
-      a+5,b+5,a+6,
-      a+6,b+5,b+6
-    );
-
-    // Right outer embankment slope.
-    edgeIdx.push(
-      a+6,b+6,a+7,
-      a+7,b+6,b+7
-    );
-
-    // Dark underside of the central asphalt slab.
-    const u=i*2;
-    const v=(i+1)*2;
-
-    underIdx.push(
-      u,v,u+1,
-      u+1,v,v+1
-    );
-  }
-
-  const edgeGeom=new THREE.BufferGeometry();
-  edgeGeom.setAttribute(
-    'position',
-    new THREE.Float32BufferAttribute(
-      edgePos,
-      3
-    )
-  );
-  edgeGeom.setIndex(edgeIdx);
-  edgeGeom.computeVertexNormals();
-
-  const edges=new THREE.Mesh(
-    edgeGeom,
-    roadEdgeMat
-  );
-  edges.castShadow=true;
-  edges.receiveShadow=true;
-  edges.renderOrder=1;
-  group.add(edges);
-
-  const underGeom=new THREE.BufferGeometry();
-  underGeom.setAttribute(
-    'position',
-    new THREE.Float32BufferAttribute(
-      underPos,
-      3
-    )
-  );
-  underGeom.setIndex(underIdx);
-  underGeom.computeVertexNormals();
-
-  const underside=new THREE.Mesh(
-    underGeom,
-    roadUnderMat
-  );
-  underside.castShadow=true;
-  underside.receiveShadow=true;
-  underside.renderOrder=0;
-  group.add(underside);
-
-  return group;
-}
-
-function buildRoadProfile(){
-  // V21.15.2 — build ONE CONTIGUOUS route window around the vehicle.
-  //
-  // The old spatial-radius filter could select two nearby hairpins while
-  // skipping the route between them when that intermediate section left the
-  // 1.05 km circle. buildRibbon() then joined those disconnected samples with
-  // one giant triangle strip. Extreme switchback roads such as Yungas expose
-  // this immediately. A cumulative-distance window stays contiguous by design.
-  const nr=nearestRoute(absX,absZ);
-  const centerCum=nr?.cum||0;
-  const minCum=Math.max(0,centerCum-1800);
-  const maxCum=Math.min(routeLength,centerCum+3600);
-  const raw=[];
-  let lastIncluded=null;
-
-  for(const seg of segments){
-    const segStart=seg.cum;
-    const segEnd=seg.cum+seg.len;
-    if(segEnd<minCum||segStart>maxCum)continue;
-
-    const t0=seg.len>0?Math.max(0,(minCum-segStart)/seg.len):0;
-    const t1=seg.len>0?Math.min(1,(maxCum-segStart)/seg.len):1;
-    if(t1<t0)continue;
-
-    const sampledLen=Math.max(0,seg.len*(t1-t0));
-    const steps=Math.max(1,Math.ceil(sampledLen/3)); // V21.21.27: <=3 m road samples for smoother pavement/marking ribbons
-
-    for(let k=0;k<steps;k++){
-      const u=k/steps;
-      const t=t0+(t1-t0)*u;
-      const x=seg.ax+(seg.bx-seg.ax)*t;
-      const z=seg.az+(seg.bz-seg.az)*t;
-      const cum=segStart+seg.len*t;
-      if(!raw.length||Math.hypot(x-raw[raw.length-1].x,z-raw[raw.length-1].z)>.4){
-        raw.push({x,z,y:terrainAbs(x,z),cum});
-      }
-    }
-
-    lastIncluded={seg,t:t1};
-  }
-  if(!raw.length)return raw;
-
-  // Add the exact clipped endpoint of the contiguous window.
-  if(lastIncluded){
-    const {seg,t}=lastIncluded;
-    const x=seg.ax+(seg.bx-seg.ax)*t;
-    const z=seg.az+(seg.bz-seg.az)*t;
-    const cum=seg.cum+seg.len*t;
-    if(Math.hypot(x-raw[raw.length-1].x,z-raw[raw.length-1].z)>.05){
-      raw.push({x,z,y:terrainAbs(x,z),cum});
-    }
-  }
-
-  // Two-pass weighted smoothing on HEIGHT ONLY.
-  // Horizontal geometry remains the exact routing polyline, preserving every curve.
-  let heights=raw.map(p=>p.y);
-  for(let pass=0;pass<2;pass++){
-    const h2=heights.slice();
-    for(let i=2;i<heights.length-2;i++){
-      h2[i]=(heights[i-2]+2*heights[i-1]+4*heights[i]+2*heights[i+1]+heights[i+2])/10;
-    }
-    heights=h2;
-  }
-  // Bridges override the terrain-following height AFTER normal road smoothing.
-  // This is what prevents a road deck from dipping into the river/valley below.
-  for(let i=0;i<raw.length;i++){
-    const by=bridgeHeightAtCum(raw[i].cum);
-    if(by!==null)heights[i]=by;
-  }
-
-  // Light pass at bridge approach boundaries only, retaining the deck itself.
-  const finalH=heights.slice();
-  for(let i=1;i<heights.length-1;i++){
-    const here=bridgeHeightAtCum(raw[i].cum);
-    if(here===null){
-      const nearBridge=bridgeManager.isNearApproach(raw[i].cum,18);
-      if(nearBridge)finalH[i]=(heights[i-1]+2*heights[i]+heights[i+1])/4;
-    }
-  }
-  // V21.18 — guaranteed flat departure platform.
-  //
-  // Some routes begin on an extreme mountainside or immediately beside a stacked
-  // switchback. Starting with the raw DEM profile can therefore put the car on a
-  // severe pitch/roll before the player has even moved. Keep the first 28 m of
-  // road perfectly level, then ease back to the untouched profile over the next
-  // 72 m. Horizontal route geometry is never changed.
-  const hasRouteStart=(raw[0]?.cum||0)<=1;
-  const startPlatformY=finalH[0];
-  const START_FLAT_LENGTH=28;
-  const START_BLEND_LENGTH=72;
-  const START_BLEND_END=START_FLAT_LENGTH+START_BLEND_LENGTH;
-
-  function startProfileWeight(cum){
-    // Once streaming has moved the contiguous profile window away from route
-    // kilometre 0, this feature must become a complete no-op. Otherwise every
-    // streaming window would accidentally acquire its own artificial flat start.
-    if(!hasRouteStart)return 1;
-    const d=Math.max(0,cum);
-    if(d<=START_FLAT_LENGTH)return 0;
-    if(d>=START_BLEND_END)return 1;
-    const t=(d-START_FLAT_LENGTH)/START_BLEND_LENGTH;
-    return t*t*(3-2*t);
-  }
-
-  const startSafeH=finalH.map((height,i)=>{
-    const weight=startProfileWeight(raw[i].cum);
-    return startPlatformY+(height-startPlatformY)*weight;
-  });
-
-  // Terrain-aligned road roll/camber.
-  // Sample terrain across the road instead of keeping every cross-section horizontal.
-  // A wider probe reduces sensitivity to tiny DEM noise.
-  const rollProbe=5.6;
-  const rawRoll=new Array(raw.length).fill(0);
-
-  for(let i=0;i<raw.length;i++){
-    const p=raw[i];
-    const prev=raw[Math.max(0,i-1)];
-    const next=raw[Math.min(raw.length-1,i+1)];
-
-    let tx=next.x-prev.x;
-    let tz=next.z-prev.z;
-    const tl=Math.hypot(tx,tz)||1;
-
-    tx/=tl;
-    tz/=tl;
-
-    const nx=-tz;
-    const nz=tx;
-
-    const leftY=terrainAbs(
-      p.x+nx*rollProbe,
-      p.z+nz*rollProbe
-    );
-
-    const rightY=terrainAbs(
-      p.x-nx*rollProbe,
-      p.z-nz*rollProbe
-    );
-
-    // Positive roll means the left edge is higher than the right edge.
-    rawRoll[i]=Math.atan2(
-      leftY-rightY,
-      rollProbe*2
-    );
-  }
-
-  // Three smoothing passes prevent visible twisting from DEM noise.
-  let smoothedRoll=rawRoll;
-
-  for(let pass=0;pass<3;pass++){
-    const nextRoll=smoothedRoll.slice();
-
-    for(let i=2;i<smoothedRoll.length-2;i++){
-      nextRoll[i]=(
-        smoothedRoll[i-2]+
-        2*smoothedRoll[i-1]+
-        4*smoothedRoll[i]+
-        2*smoothedRoll[i+1]+
-        smoothedRoll[i+2]
-      )/10;
-    }
-
-    smoothedRoll=nextRoll;
-  }
-
-  // Roads normally follow the terrain cross-slope but should not inherit
-  // extreme cliff angles. Cap at ~12 degrees.
-  const maxRoadRoll=
-    12*Math.PI/180;
-
-  return raw.map((p,i)=>{
-    const startWeight=startProfileWeight(p.cum);
-    return {
-      x:p.x,
-      z:p.z,
-      y:startSafeH[i],
-      cum:p.cum,
-      // The departure pad is truly flat crosswise too. Camber is restored with
-      // the same smooth transition used for longitudinal height.
-      roll:startWeight*Math.max(
-        -maxRoadRoll,
-        Math.min(
-          maxRoadRoll,
-          smoothedRoll[i]
-        )
-      )
-    };
-  });
-}
-let activeRoadProfile=[];
-
-// V21.21.3 PERFORMANCE: spatial index for the local road profile.
-// roadSurfaceAt() is called many times by wheel support, skid marks and the
-// projected contact shadow. Previously each call scanned the whole ~2 km
-// profile. The 48 m grid keeps the exact same nearest-segment result while
-// limiting normal queries to nearby profile segments. Stacked switchbacks are
-// still all evaluated because every segment sharing the neighboring cells is
-// retained in the candidate set.
-const ROAD_PROFILE_INDEX_CELL=48;
-// Nested numeric maps avoid creating "cx:cz" strings in every wheel query.
-let roadProfileSpatialIndex=new Map(); // Map<cx, Map<cz, number[]>>
-let roadProfileVisitMarks=new Uint32Array(0);
-let roadProfileVisitStamp=1;
-const roadFrameSearchState={
-  found:false,
-  bd:Infinity,
-  y:0,angle:0,pitch:0,roll:0,px:0,pz:0,index:0,t:0,distance:0
-};
-
-function roadProfileCellList(cx,cz,create=false){
-  let column=roadProfileSpatialIndex.get(cx);
-  if(!column){
-    if(!create)return null;
-    column=new Map();
-    roadProfileSpatialIndex.set(cx,column);
-  }
-  let list=column.get(cz);
-  if(!list&&create){
-    list=[];
-    column.set(cz,list);
-  }
-  return list||null;
-}
-
-function rebuildRoadProfileSpatialIndex(){
-  roadProfileSpatialIndex=new Map();
-  roadProfileVisitMarks=new Uint32Array(Math.max(0,activeRoadProfile.length-1));
-  roadProfileVisitStamp=1;
-
-  for(let i=0;i<activeRoadProfile.length-1;i++){
-    const a=activeRoadProfile[i],b=activeRoadProfile[i+1];
-    const minCx=Math.floor(Math.min(a.x,b.x)/ROAD_PROFILE_INDEX_CELL);
-    const maxCx=Math.floor(Math.max(a.x,b.x)/ROAD_PROFILE_INDEX_CELL);
-    const minCz=Math.floor(Math.min(a.z,b.z)/ROAD_PROFILE_INDEX_CELL);
-    const maxCz=Math.floor(Math.max(a.z,b.z)/ROAD_PROFILE_INDEX_CELL);
-
-    for(let cx=minCx;cx<=maxCx;cx++){
-      for(let cz=minCz;cz<=maxCz;cz++){
-        roadProfileCellList(cx,cz,true).push(i);
-      }
-    }
-  }
-}
-
-function evaluateRoadProfileSegmentInto(i,x,z,state){
-  const a=activeRoadProfile[i],b=activeRoadProfile[i+1];
-  if(!a||!b)return;
-  const vx=b.x-a.x,vz=b.z-a.z,wx=x-a.x,wz=z-a.z;
-  const vv=vx*vx+vz*vz||1,t=Math.max(0,Math.min(1,(wx*vx+wz*vz)/vv));
-  const px=a.x+t*vx,pz=a.z+t*vz,dx=x-px,dz=z-pz,d2=dx*dx+dz*dz;
-  // Match the legacy full scan exactly on X/Z ties: earlier route segment wins.
-  // This matters on stacked switchbacks that can overlap almost perfectly in plan.
-  if(d2>state.bd+1e-12)return;
-  if(Math.abs(d2-state.bd)<=1e-12&&state.found&&i>=state.index)return;
-  const horizontal=Math.sqrt(vx*vx+vz*vz)||1;
-  state.found=true;
-  state.bd=d2;
-  state.y=a.y+(b.y-a.y)*t;
-  state.angle=Math.atan2(vx,vz);
-  state.pitch=Math.atan2(b.y-a.y,horizontal);
-  state.roll=(a.roll||0)+((b.roll||0)-(a.roll||0))*t;
-  state.px=px;state.pz=pz;state.index=i;state.t=t;state.distance=Math.sqrt(d2);
-}
-
-function roadFrameAt(x,z,out=null){
-  const segmentCount=activeRoadProfile.length-1;
-  if(segmentCount<=0)return null;
-
-  const state=roadFrameSearchState;
-  state.found=false;
-  state.bd=Infinity;
-
-  const cx=Math.floor(x/ROAD_PROFILE_INDEX_CELL);
-  const cz=Math.floor(z/ROAD_PROFILE_INDEX_CELL);
-
-  roadProfileVisitStamp=(roadProfileVisitStamp+1)>>>0;
-  if(roadProfileVisitStamp===0){
-    roadProfileVisitMarks.fill(0);
-    roadProfileVisitStamp=1;
-  }
-  const stamp=roadProfileVisitStamp;
-
-  for(let dx=-1;dx<=1;dx++){
-    const column=roadProfileSpatialIndex.get(cx+dx);
-    if(!column)continue;
-    for(let dz=-1;dz<=1;dz++){
-      const list=column.get(cz+dz);
-      if(!list)continue;
-      for(let k=0;k<list.length;k++){
-        const i=list[k];
-        if(roadProfileVisitMarks[i]===stamp)continue;
-        roadProfileVisitMarks[i]=stamp;
-        evaluateRoadProfileSegmentInto(i,x,z,state);
-      }
-    }
-  }
-
-  if(!(state.found&&state.bd<=ROAD_PROFILE_INDEX_CELL*ROAD_PROFILE_INDEX_CELL)){
-    for(let i=0;i<segmentCount;i++){
-      if(roadProfileVisitMarks[i]===stamp)continue;
-      evaluateRoadProfileSegmentInto(i,x,z,state);
-    }
-  }
-
-  if(!state.found)return null;
-  const result=out||{};
-  result.y=state.y;
-  result.angle=state.angle;
-  result.pitch=state.pitch;
-  result.roll=state.roll;
-  result.px=state.px;
-  result.pz=state.pz;
-  result.index=state.index;
-  result.t=state.t;
-  result.distance=state.distance;
-  return result;
-}
-function roadProfileFrameAtCum(cum,out=null){
-  if(activeRoadProfile.length<2)return null;
-
-  const target=Math.max(
-    activeRoadProfile[0].cum||0,
-    Math.min(
-      activeRoadProfile[activeRoadProfile.length-1].cum||0,
-      Number.isFinite(cum)?cum:0
-    )
-  );
-
-  // Profiles are ordered by cumulative route distance. Binary search avoids the
-  // ambiguity of an X/Z nearest-point lookup when two Yungas switchbacks overlap.
-  let lo=0;
-  let hi=activeRoadProfile.length-2;
-  while(lo<=hi){
-    const mid=(lo+hi)>>1;
-    const a=activeRoadProfile[mid];
-    const b=activeRoadProfile[mid+1];
-    if(target<a.cum){
-      hi=mid-1;
-      continue;
-    }
-    if(target>b.cum){
-      lo=mid+1;
-      continue;
-    }
-
-    const span=Math.max(.001,b.cum-a.cum);
-    const t=Math.max(0,Math.min(1,(target-a.cum)/span));
-    const vx=b.x-a.x;
-    const vz=b.z-a.z;
-    const horizontal=Math.hypot(vx,vz)||1;
-    const result=out||{};
-    result.x=a.x+(b.x-a.x)*t;result.z=a.z+(b.z-a.z)*t;result.y=a.y+(b.y-a.y)*t;
-    result.angle=Math.atan2(vx,vz);result.pitch=Math.atan2(b.y-a.y,horizontal);
-    result.roll=(a.roll||0)+((b.roll||0)-(a.roll||0))*t;result.cum=target;result.index=mid;result.t=t;
-    return result;
-  }
-
-  const p=target<=(activeRoadProfile[0].cum||0)
-    ?activeRoadProfile[0]
-    :activeRoadProfile[activeRoadProfile.length-1];
-  const result=out||{};
-  result.x=p.x;result.z=p.z;result.y=p.y;result.angle=0;result.pitch=0;result.roll=p.roll||0;
-  result.cum=target;result.index=0;result.t=0;
-  return result;
-}
-
-function roadHeightAt(x,z){
-  const f=roadFrameAt(x,z);
-  return f?f.y:terrainAbs(x,z);
-}
-
-function roadSurfaceAt(x,z,out=null){
-  const frame=roadFrameAt(x,z,out);
-  if(!frame)return null;
-  const normalX=-Math.cos(frame.angle);
-  const normalZ= Math.sin(frame.angle);
-  const dx=x-frame.px;
-  const dz=z-frame.pz;
-  const lateral=dx*normalX+dz*normalZ;
-  const roll=Number.isFinite(frame.roll)?frame.roll:0;
-  frame.lateral=lateral;
-  frame.y=frame.y+Math.tan(roll)*lateral+ROAD_SURFACE_OFFSET;
-  return frame;
-}
+// ---------- road geometry facade ----------
+const roadGeometry=createRoadGeometrySystem({
+  THREE,
+  roadEdgeMat,
+  roadUnderMat,
+  ROAD_SURFACE_OFFSET,
+  terrainAbs,
+  nearestRoute,
+  bridgeHeightAtCum,
+  bridgeManager,
+  getState:()=>({absX,absZ,routeLength,segments,worldOffset})
+});
+const activeRoadProfile=roadGeometry.profile;
+function buildRoadProfile(){return roadGeometry.buildProfile();}
+function setActiveRoadProfile(profile){return roadGeometry.setProfile(profile);}
+function clearActiveRoadProfile(){return roadGeometry.clearProfile();}
+function rebuildRoadProfileSpatialIndex(){return roadGeometry.rebuildIndex();}
+function buildLateralBand(...args){return roadGeometry.buildLateralBand(...args);}
+function buildRibbon(...args){return roadGeometry.buildRibbon(...args);}
+function buildOffsetRibbon(...args){return roadGeometry.buildOffsetRibbon(...args);}
+function buildRoadVolume(...args){return roadGeometry.buildRoadVolume(...args);}
+function roadFrameAt(...args){return roadGeometry.roadFrameAt(...args);}
+function roadProfileFrameAtCum(...args){return roadGeometry.roadProfileFrameAtCum(...args);}
+function roadHeightAt(...args){return roadGeometry.roadHeightAt(...args);}
+function roadSurfaceAt(...args){return roadGeometry.roadSurfaceAt(...args);}
 
 function terrainFrameAt(x,z,heading){
   // Compute the terrain gradient in WORLD X/Z, independent of vehicle heading.
@@ -2400,246 +1676,35 @@ async function loadWaterAround(absx,absz){
   return true;
 }
 
-
-function addBridgeStructures(){
-  // Deprecated visual deck layer remains disabled: road ribbon is the ONLY roadway.
-  return;
-}
-
-
-// ---------- V5.1.2 signs + enhanced bridge furniture ----------
-const signPoleMat=new THREE.MeshStandardMaterial({color:0x74787b,roughness:.72,metalness:.45});
-const signBackMat=new THREE.MeshStandardMaterial({color:0x9a9d9f,roughness:.65,metalness:.25});
-const bridgeRailMat=new THREE.MeshStandardMaterial({color:0xb8bcc0,roughness:.55,metalness:.55});
-const bridgeConcreteMat=new THREE.MeshStandardMaterial({color:0xa6a49b,roughness:.95});
-const bridgeGirderMat=new THREE.MeshStandardMaterial({color:0x666b70,roughness:.62,metalness:.38});
-const bridgeUndersideMat=new THREE.MeshStandardMaterial({color:0x808287,roughness:.82,metalness:.12});
-const bridgeFasciaMat=new THREE.MeshStandardMaterial({color:0x70757a,roughness:.74,metalness:.22});
-const bridgeBearingMat=new THREE.MeshStandardMaterial({color:0x4d5053,roughness:.58,metalness:.48});
-
-function makeSignTexture(text,kind='speed'){
- const c=document.createElement('canvas');c.width=384;c.height=256;
- const x=c.getContext('2d');x.textAlign='center';x.textBaseline='middle';
- if(kind==='speed'){
-  x.fillStyle='rgba(0,0,0,0)';x.fillRect(0,0,c.width,c.height);
-  x.fillStyle='#fff';x.beginPath();x.arc(192,128,104,0,Math.PI*2);x.fill();
-  x.lineWidth=18;x.strokeStyle='#d62828';x.stroke();
-  x.fillStyle='#111';x.font='bold 92px Arial';x.fillText(String(text),192,132);
- }else{
-  let bg='#176d45',fg='#fff',border='#fff';
-  if(kind==='river')bg='#296b9b';
-  if(kind==='city'){bg='#fff';fg='#111';border='#111'}
-  x.fillStyle=bg;x.fillRect(12,40,360,176);
-  x.lineWidth=7;x.strokeStyle=border;x.strokeRect(20,48,344,160);
-  x.fillStyle=fg;
-  const words=String(text||'').replace(/\|/g,' ').split(/\s+/);
-  let lines=[''];
-  for(const w of words){
-    const k=lines.length-1;
-    if((lines[k]+' '+w).trim().length>18&&lines.length<3)lines.push(w);
-    else lines[k]=(lines[k]+' '+w).trim();
-  }
-  x.font=kind==='city'?'bold 43px Arial':'bold 38px Arial';
-  const lineH=48,y0=128-(lines.length-1)*lineH/2;
-  lines.slice(0,3).forEach((t,i)=>x.fillText(t,192,y0+i*lineH));
- }
- const tex=new THREE.CanvasTexture(c);tex.colorSpace=THREE.SRGBColorSpace;return tex;
-}
-function addRoadSignAt(p,text,kind='speed',side=1){
- if(!p)return;
- const ang=p.angle??0,lateral=side*4.45,nx=Math.cos(ang),nz=-Math.sin(ang),g=new THREE.Group();
- const pole=new THREE.Mesh(new THREE.CylinderGeometry(.045,.055,2.15,8),signPoleMat);pole.position.y=1.18;g.add(pole);
- const geom=kind==='speed'
-   ?new THREE.CircleGeometry(.46,28)
-   :new THREE.PlaneGeometry(kind==='city'?2.15:1.95,1.02);
- const face=new THREE.Mesh(geom,new THREE.MeshStandardMaterial({map:makeSignTexture(text,kind),side:THREE.DoubleSide,roughness:.72}));
- face.position.y=2.28;face.rotation.y=side>0?Math.PI:0;g.add(face);
- const back=new THREE.Mesh(geom,signBackMat);back.position.copy(face.position);back.rotation.y=face.rotation.y+Math.PI;g.add(back);
- g.position.set(p.x+nx*lateral-worldOffset.x,p.y+.02,p.z+nz*lateral-worldOffset.z);g.rotation.y=ang;signGroup.add(g);
-}
-function addBridgeRailFromProfile(a,b,side){
- const dx=b.x-a.x,dz=b.z-a.z,len=Math.hypot(dx,dz);if(len<.4)return;
- const ang=Math.atan2(dx,dz);
- const nx=Math.cos(ang),nz=-Math.sin(ang);
- // Align to the actual road edge. Main asphalt is 7.5m wide in this build.
- const off=side*4.15;
-
- // Rail beam follows exact road-profile heights.
- const rail=new THREE.Mesh(new THREE.BoxGeometry(.10,.18,len),bridgeRailMat);
- rail.position.set(
-   (a.x+b.x)/2+nx*off-worldOffset.x,
-   (a.y+b.y)/2+.48,
-   (a.z+b.z)/2+nz*off-worldOffset.z
- );
- rail.rotation.y=ang;
- infrastructureGroup.add(rail);
-
- // Posts also interpolate directly between exact profile heights.
- const posts=Math.max(1,Math.floor(len/3.2));
- for(let i=0;i<=posts;i++){
-   const t=i/posts;
-   const px=a.x+(b.x-a.x)*t+nx*off;
-   const pz=a.z+(b.z-a.z)*t+nz*off;
-   const py=a.y+(b.y-a.y)*t;
-   const post=new THREE.Mesh(new THREE.BoxGeometry(.09,.62,.09),bridgeRailMat);
-   post.position.set(px-worldOffset.x,py+.20,pz-worldOffset.z);
-   infrastructureGroup.add(post);
- }
-}
-function addEnhancedBridgeFurniture(){
- if(!activeRoadProfile?.length||!bridgeSpans?.length)return;
-
- for(const b of bridgeSpans){
-   const pts=activeRoadProfile.filter(p=>p.cum>=b.start&&p.cum<=b.end);
-   if(pts.length<2)continue;
-
-   // 1) Guardrails follow the exact roadway profile.
-   for(let i=0;i<pts.length-1;i++){
-     addBridgeRailFromProfile(pts[i],pts[i+1],-1);
-     addBridgeRailFromProfile(pts[i],pts[i+1],1);
-   }
-
-   // 2) Build true 3D under-structure segment-by-segment so side views
-   // follow vertical curvature and don't look like one flat slab.
-   for(let i=0;i<pts.length-1;i++){
-     const a=pts[i],c=pts[i+1];
-     const dx=c.x-a.x,dz=c.z-a.z,len=Math.hypot(dx,dz);
-     if(len<.35)continue;
-
-     const ang=Math.atan2(dx,dz);
-     const nx=Math.cos(ang),nz=-Math.sin(ang);
-     const my=(a.y+c.y)/2;
-
-     // Main underside slab.
-     const slab=new THREE.Mesh(new THREE.BoxGeometry(8.0,.62,len),bridgeUndersideMat);
-     slab.position.set((a.x+c.x)/2-worldOffset.x,my-.64,(a.z+c.z)/2-worldOffset.z);
-     slab.rotation.y=ang;
-     slab.castShadow=true;slab.receiveShadow=true;
-     infrastructureGroup.add(slab);
-
-     // Strong side fascias: these are what make the bridge readable in profile.
-     for(const side of [-1,1]){
-       const off=side*3.72;
-       const fascia=new THREE.Mesh(new THREE.BoxGeometry(.34,1.18,len),bridgeFasciaMat);
-       fascia.position.set(
-         (a.x+c.x)/2+nx*off-worldOffset.x,
-         my-.93,
-         (a.z+c.z)/2+nz*off-worldOffset.z
-       );
-       fascia.rotation.y=ang;
-       fascia.castShadow=true;
-       infrastructureGroup.add(fascia);
-
-       // Inner longitudinal girders set in from the fascia.
-       const girder=new THREE.Mesh(new THREE.BoxGeometry(.38,.82,len),bridgeGirderMat);
-       girder.position.set(
-         (a.x+c.x)/2+nx*(side*2.35)-worldOffset.x,
-         my-1.18,
-         (a.z+c.z)/2+nz*(side*2.35)-worldOffset.z
-       );
-       girder.rotation.y=ang;
-       girder.castShadow=true;
-       infrastructureGroup.add(girder);
-     }
-   }
-
-   // 3) Cross-beams under the deck at fixed longitudinal spacing.
-   const startCum=pts[0].cum,endCum=pts[pts.length-1].cum;
-   const total=Math.max(0,endCum-startCum);
-   const crossCount=Math.max(2,Math.floor(total/10));
-   for(let i=1;i<crossCount;i++){
-     const cum=startCum+total*i/crossCount;
-     const p=routePointAtCum(cum);
-     const y=bridgeHeightAtCum(cum)??roadHeightAt(p.x,p.z);
-     const beam=new THREE.Mesh(new THREE.BoxGeometry(7.25,.32,.42),bridgeGirderMat);
-     beam.position.set(p.x-worldOffset.x,y-1.18,p.z-worldOffset.z);
-     beam.rotation.y=p.angle+Math.PI/2;
-     infrastructureGroup.add(beam);
-   }
-
-   // 4) Abutments + visible bearings at bridge ends.
-   for(const p of [pts[0],pts[pts.length-1]]){
-     const idx=activeRoadProfile.indexOf(p);
-     const p0=activeRoadProfile[Math.max(0,idx-1)];
-     const p1=activeRoadProfile[Math.min(activeRoadProfile.length-1,idx+1)];
-     const ang=Math.atan2(p1.x-p0.x,p1.z-p0.z);
-
-     const ab=new THREE.Mesh(new THREE.BoxGeometry(8.9,1.15,.92),bridgeConcreteMat);
-     ab.position.set(p.x-worldOffset.x,p.y-.78,p.z-worldOffset.z);
-     ab.rotation.y=ang;
-     ab.castShadow=true;ab.receiveShadow=true;
-     infrastructureGroup.add(ab);
-
-     for(const side of [-1,1]){
-       const nx=Math.cos(ang),nz=-Math.sin(ang);
-       const bearing=new THREE.Mesh(new THREE.BoxGeometry(.68,.18,.54),bridgeBearingMat);
-       bearing.position.set(
-         p.x+nx*(side*2.35)-worldOffset.x,
-         p.y-1.03,
-         p.z+nz*(side*2.35)-worldOffset.z
-       );
-       bearing.rotation.y=ang;
-       infrastructureGroup.add(bearing);
-     }
-   }
-
-   // 5) Piers for longer spans, with wider caps and footings.
-   if(total>30){
-     const pierCount=Math.max(1,Math.min(4,Math.floor(total/38)));
-     for(let i=1;i<=pierCount;i++){
-       const cum=startCum+total*i/(pierCount+1);
-       const p=routePointAtCum(cum);
-       const deckY=bridgeHeightAtCum(cum)??roadHeightAt(p.x,p.z);
-       const groundY=terrainAbs(p.x,p.z);
-       const h=Math.max(1.8,deckY-groundY-1.1);
-
-       const pier=new THREE.Mesh(new THREE.BoxGeometry(1.35,h,.88),bridgeConcreteMat);
-       pier.position.set(p.x-worldOffset.x,groundY+h/2,p.z-worldOffset.z);
-       pier.rotation.y=p.angle;
-       pier.castShadow=true;pier.receiveShadow=true;
-       infrastructureGroup.add(pier);
-
-       const cap=new THREE.Mesh(new THREE.BoxGeometry(6.8,.62,1.25),bridgeConcreteMat);
-       cap.position.set(p.x-worldOffset.x,deckY-1.52,p.z-worldOffset.z);
-       cap.rotation.y=p.angle+Math.PI/2;
-       cap.castShadow=true;
-       infrastructureGroup.add(cap);
-
-       const footing=new THREE.Mesh(new THREE.BoxGeometry(2.2,.55,1.7),bridgeConcreteMat);
-       footing.position.set(p.x-worldOffset.x,groundY+.18,p.z-worldOffset.z);
-       footing.rotation.y=p.angle;
-       footing.receiveShadow=true;
-       infrastructureGroup.add(footing);
-     }
-   }
- }
-}
-function addCurrentRoadSigns(){
- currentRoadGuideSign=null;
- if(activeRoadMeta.confidence<=.25)return;
- const n=nearestRoute(absX,absZ);if(!n)return;
- const label=activeRoadMeta.ref||activeRoadMeta.name;
- if(label){
-  const guideCum=Math.min(routeLength,n.cum+170);
-  const p=routePointAtCum(guideCum);p.y=roadHeightAt(p.x,p.z);
-  const guideLabel=String(label).slice(0,28);
-  addRoadSignAt(p,guideLabel,'guide',1);
-  currentRoadGuideSign={
-   key:`road-guide:${guideLabel}:${Math.round(guideCum)}`,
-   kind:'guide',
-   label:guideLabel,
-   routeCum:guideCum
-  };
- }
-}
-
-function refreshRoadSignsOnly(){
-  resetStaticGroupOrigin(signGroup);
-  clearGroup(signGroup);
-  addCurrentRoadSigns();
-  addGeographicRoadSigns();
-  freezeStaticMatrices(signGroup);
-}
+
+// ---------- road furniture facade ----------
+const roadFurniture=createRoadFurnitureSystem({
+  THREE,
+  signGroup,
+  infrastructureGroup,
+  routePointAtCum,
+  bridgeHeightAtCum,
+  roadHeightAt,
+  terrainAbs,
+  nearestRoute,
+  resetStaticGroupOrigin,
+  clearGroup,
+  freezeStaticMatrices,
+  addGeographicRoadSigns:()=>addGeographicRoadSigns(),
+  getState:()=>({
+    activeRoadProfile,
+    bridgeSpans,
+    worldOffset,
+    activeRoadMeta,
+    absX,
+    absZ,
+    routeLength
+  }),
+  setRoadGuideSign:value=>{currentRoadGuideSign=value;}
+});
+const addRoadSignAt=(...args)=>roadFurniture.addRoadSignAt(...args);
+const addEnhancedBridgeFurniture=()=>roadFurniture.addEnhancedBridgeFurniture();
+const refreshRoadSignsOnly=()=>roadFurniture.refreshRoadSignsOnly();
 
 // Build only a corridor around the current location, preserving every source polyline curve.
 function rebuildLocalWorld(){
@@ -2655,8 +1720,7 @@ function rebuildLocalWorld(){
  if(bridgeFeatures.length) rebuildBridgeSpans();
 
  const profile=buildRoadProfile();
- activeRoadProfile=profile;
- rebuildRoadProfileSpatialIndex();
+ setActiveRoadProfile(profile);
 
  // Cut terrain fragments directly below the road corridor so coarse DEM
  // triangles can never protrude through asphalt or shoulders.
@@ -2875,126 +1939,9 @@ function rebuildLocalWorld(){
  );
  markStaticShadowsDirty();
 }
-function shiftRenderedWorldForOrigin(shiftX,shiftZ){
-  // Existing local coordinates describe fixed absolute geography. Shift each
-  // streamed subsystem root instead of the common `world` parent. That lets a
-  // subsystem be rebuilt later relative to the new worldOffset without
-  // inheriting a stale parent translation.
-  for(const group of streamedWorldGroups){
-    group.position.x-=shiftX;
-    group.position.z-=shiftZ;
-    group.updateMatrix();
-  }
-
-  ground.position.x-=shiftX;
-  ground.position.z-=shiftZ;
-  ground.updateMatrix();
-  terrainService.shiftRoadBedOrigin?.(shiftX,shiftZ);
-  imageryService.shiftOrigin?.(shiftX,shiftZ);
-}
-
-
-function commitLocalWorldRefresh(){
-  // New geometry is generated directly relative to the CURRENT worldOffset.
-  // Reset temporary parent shifts immediately before replacing the old scene.
-  resetStreamedWorldOrigins();
-  terrainService.resetRoadBedOrigin?.();
-
-  rebuildLocalWorld();
-  imageryService.realignToOrigin?.();
-  imageryService.invalidateGeometry?.();
-  applyImageryToGround();
-  // Chunk creation is serialized/idle-budgeted. It is safe to request the new
-  // visible coverage immediately after a world refresh without resurrecting
-  // the giant-canvas upload hitches removed in V21.22.3.
-  if(imageryService.enabled){
-    buildImageryMosaic(absX,absZ).catch(()=>{});
-  }
-  streamRefreshState.pendingWorld=false;
-  streamRefreshState.reasons.clear();
-  streamRefreshState.lastBuiltCenter={...worldOffset};
-  streamRefreshState.lastWorldBuildAt=performance.now();
-  markStaticShadowsDirty();
-}
-
-function scheduleLocalWorldRefresh({urgent=false}={}){
-  if(deferredVisualJobs.has('world-rebuild'))return;
-
-  // A complete V21.22.2 world refresh now includes a 448x448 high-detail
-  // terrain. Never launch it from a random network completion. Prefer a calm
-  // vehicle state; only force it when the old local patch is approaching its
-  // safe coverage limit.
-  const attempt=()=>{
-    const dx=absX-streamRefreshState.lastBuiltCenter.x;
-    const dz=absZ-streamRefreshState.lastBuiltCenter.z;
-    const buildDistance=Math.hypot(dx,dz);
-    const calm=!gameStarted||v21MenuOpen||Math.abs(speed)<=HITCH_FREE_STREAMING.calmSpeed;
-    const mustRun=urgent||buildDistance>=HITCH_FREE_STREAMING.urgentWorldRefreshDistance;
-
-    if(!calm&&!mustRun){
-      // Keep the already-shifted old world perfectly aligned while driving.
-      // The animation loop will retry once the car is calm; a later soft
-      // recenter escalates to the hard safety threshold if needed.
-      return;
-    }
-
-    commitLocalWorldRefresh();
-  };
-
-  scheduleVisualJob('world-rebuild',attempt,1200);
-}
-
-function recenterIfNeeded(absx,absz,force=false){
- const dx=absx-worldOffset.x,dz=absz-worldOffset.z;
- if(force||dx*dx+dz*dz>HITCH_FREE_STREAMING.softRecenterDistance**2){
-   const shiftX=absx-worldOffset.x;
-   const shiftZ=absz-worldOffset.z;
-   worldOffset={x:absx,z:absz};
-
-   camera.position.x-=shiftX;
-   camera.position.z-=shiftZ;
-   camTarget.x-=shiftX;
-   camTarget.z-=shiftZ;
-   car.position.x-=shiftX;
-   car.position.z-=shiftZ;
-
-   if(force){
-     cancelVisualJob('world-rebuild');
-     commitLocalWorldRefresh();
-     return true;
-   }
-
-   // Cheap floating-origin shift: O(1), no terrain/road allocation.
-   shiftRenderedWorldForOrigin(shiftX,shiftZ);
-
-   const bx=absx-streamRefreshState.lastBuiltCenter.x;
-   const bz=absz-streamRefreshState.lastBuiltCenter.z;
-   const buildDistance=Math.hypot(bx,bz);
-   if(buildDistance>=HITCH_FREE_STREAMING.hardWorldRefreshDistance){
-     markStreamWorldRefresh('recenter');
-     scheduleLocalWorldRefresh({
-       urgent:buildDistance>=HITCH_FREE_STREAMING.urgentWorldRefreshDistance
-     });
-   }
-   return true;
- }
- return false;
-}
-
-
-
 function resetWorldCaches(){
   currentRoadGuideSign=null;
-  worldStreaming.reset();
-  aheadStreamingBuckets?.clear?.();
-  terrainPreloadQueuedKeys?.clear?.();
-  terrainPreloadQueue.length=0;
-  nextAheadStreamingAt=0;
-  lastImageryRefreshAt=0;
-  streamRefreshState.pendingWorld=false;
-  streamRefreshState.reasons.clear();
-  streamRefreshState.lastBuiltCenter={...worldOffset};
-  streamRefreshState.lastWorldBuildAt=performance.now();
+  streamingCoordinator?.reset();
   waterData.reset();
   skidMarks.clear();
 
@@ -3017,12 +1964,10 @@ function resetWorldCaches(){
   lastRoadMetaCenter={x:Infinity,z:Infinity};
   roadMetaLoading=false;
   updateRoadMetaHUD();
-  activeRoadProfile=[];
-  rebuildRoadProfileSpatialIndex();
+  clearActiveRoadProfile();
   terrainService.clearRoadBed();
   clearGroup(roadGroup);clearGroup(forestGroup);
   clearGroup(infrastructureGroup);clearGroup(signGroup);
-  deferredVisualJobs.clear();
   sceneryRenderer.clear();
   terrainService.clearHorizon();
 }
@@ -3142,7 +2087,7 @@ async function createRequestedRoute(start,end,waypoints=[]){
     // One intentional rebuild BEFORE play replaces the fallback terrain with
     // whatever real data is already cached. During driving V21.22.3's
     // hitch-free cache-only policy remains unchanged.
-    if(initialElevationReady||streamRefreshState.pendingWorld){
+    if(initialElevationReady||streamingCoordinator?.state.pendingWorld){
       cancelVisualJob('world-rebuild');
       commitLocalWorldRefresh();
     }
@@ -3992,231 +2937,30 @@ const gamepad=createGamepadController({
 });
 const gamepadState=gamepad.state;
 
-const keys={};
-
-function keyboardCodes(action){
-  const configured=
-    appSettings?.controls?.keyboard?.[
-      action
-    ];
-
-  const fallback=
-    DEFAULT_WORLD_SETTINGS
-      .controls
-      .keyboard[
-        action
-      ]||
-    [];
-
-  return Array.isArray(configured)&&
-    configured.length
-      ?configured
-      :fallback;
-}
-
-function keyboardActionDown(action){
-  return keyboardCodes(action)
-    .some(code=>!!keys[code]);
-}
-
-function keyboardActionMatches(action,code){
-  return keyboardCodes(action)
-    .includes(code);
-}
-
-function clearKeyboardState(){
-  for(const key of Object.keys(keys)){
-    delete keys[key];
-  }
-}
-
-function assignKeyboardBinding(action,code){
-  const controls=
-    appSettings.controls.keyboard;
-
-  // One primary key can only control one action after rebinding.
-  for(const otherAction of Object.keys(controls)){
-    if(otherAction===action)continue;
-
-    controls[otherAction]=
-      (controls[otherAction]||[])
-        .filter(
-          existing=>
-            existing!==code
-        );
-  }
-
-  controls[action]=[code];
-  queueSettingsSave();
-}
-
-addEventListener('keydown',e=>{
-  if(keyboardRebindAction){
-    e.preventDefault();
-    e.stopPropagation();
-
-    if(e.code==='Escape'){
-      keyboardRebindAction=null;
-      window.dispatchEvent(
-        new CustomEvent(
-          'worlddrive-keyboard-rebind-cancel'
-        )
-      );
-      return;
-    }
-
-    const action=
-      keyboardRebindAction;
-
-    keyboardRebindAction=null;
-    assignKeyboardBinding(
-      action,
-      e.code
-    );
-
-    window.dispatchEvent(
-      new CustomEvent(
-        'worlddrive-keyboard-rebound',
-        {
-          detail:{
-            action,
-            code:e.code
-          }
-        }
-      )
-    );
-
-    return;
-  }
-
-  const inputTag=
-    String(
-      e.target?.tagName||
-      ''
-    ).toUpperCase();
-
-  if(
-    !gameStarted||
-    v21MenuOpen||
-    inputTag==='INPUT'||
-    inputTag==='TEXTAREA'||
-    inputTag==='SELECT'||
-    e.target?.isContentEditable
-  ){
-    return;
-  }
-
-  keys[e.code]=true;
-
-  if(
-    [
-      'ArrowUp',
-      'ArrowDown',
-      'ArrowLeft',
-      'ArrowRight',
-      'Space',
-      'BracketLeft',
-      'BracketRight'
-    ].includes(e.code)
-  ){
-    e.preventDefault();
-  }
-
-  if(
-    !e.repeat&&
-    keyboardActionMatches(
-      'shiftUp',
-      e.code
-    )
-  ){
-    requestManualShift(1);
-  }
-
-  if(
-    !e.repeat&&
-    keyboardActionMatches(
-      'shiftDown',
-      e.code
-    )
-  ){
-    requestManualShift(-1);
-  }
-
-  if(
-    !e.repeat&&
-    keyboardActionMatches(
-      'camera',
-      e.code
-    )
-  ){
-    cameraController.cycle();
-  }
-
-  if(
-    !e.repeat&&
-    keyboardActionMatches(
-      'assist',
-      e.code
-    )
-  ){
-    toggleAssist();
-  }
-
-  if(
-    !e.repeat&&
-    keyboardActionMatches(
-      'autopilot',
-      e.code
-    )
-  ){
-    toggleAutopilot();
-  }
-
-  if(
-    !e.repeat&&
-    keyboardActionMatches(
-      'reset',
-      e.code
-    )
-  ){
-    resetToRoad();
-  }
-
-  // Immediate manual takeover: steering, braking or handbrake cancels autopilot.
-  if(
-    autopilot&&
-    (
-      keyboardActionMatches(
-        'steerLeft',
-        e.code
-      )||
-      keyboardActionMatches(
-        'steerRight',
-        e.code
-      )||
-      keyboardActionMatches(
-        'brake',
-        e.code
-      )||
-      keyboardActionMatches(
-        'handbrake',
-        e.code
-      )
-    )
-  ){
-    setAutopilot(
-      false,
-      'Reprise manuelle'
-    );
-  }
+// ---------- keyboard controller facade ----------
+const keyboardControls=createKeyboardControls({
+  appSettings,
+  defaults:DEFAULT_WORLD_SETTINGS,
+  queueSettingsSave,
+  getKeyboardRebindAction:()=>keyboardRebindAction,
+  setKeyboardRebindAction:value=>{keyboardRebindAction=value;},
+  getRuntimeState:()=>({
+    gameStarted,
+    menuOpen:v21MenuOpen,
+    autopilot
+  }),
+  onShiftUp:()=>requestManualShift(1),
+  onShiftDown:()=>requestManualShift(-1),
+  onCycleCamera:()=>cameraController.cycle(),
+  onToggleAssist:()=>toggleAssist(),
+  onToggleAutopilot:()=>toggleAutopilot(),
+  onResetToRoad:()=>resetToRoad(),
+  onManualTakeover:()=>setAutopilot(false,'Reprise manuelle')
 });
-
-addEventListener(
-  'keyup',
-  e=>{
-    keys[e.code]=false;
-  }
-);
+const keyboardCodes=action=>keyboardControls.codes(action);
+const keyboardActionDown=action=>keyboardControls.actionDown(action);
+const keyboardActionMatches=(action,code)=>keyboardControls.actionMatches(action,code);
+const clearKeyboardState=()=>keyboardControls.clearState();
 
 let maxSpeedKmh=200;
 let MAX=maxSpeedKmh/3.6;
@@ -6154,259 +4898,51 @@ const {
   updatePassedSignReadout
 }=minimapSystem;
 
-// ---------- directional world prefetch ----------
-// ---------- unified world streaming ----------
-const worldStreaming=createWorldStreaming({
+// ---------- unified streamed-world coordinator ----------
+streamingCoordinator=createStreamingCoordinator({
+  createWorldStreaming,
   toLatLon:(x,z)=>xzToLL(x,z),
   nearestRoute:(x,z)=>nearestRoute(x,z),
   routePointAtCum:cum=>routePointAtCum(cum),
   routePointAtFraction:f=>routePointAt(f),
   getRouteLength:()=>routeLength,
-
-  elevation:{
-    get center(){return elevationService.center},
-    get loading(){return elevationService.loading},
-    load:(x,z)=>loadElevationAround(x,z),
-    prefetch:(x,z)=>elevationService.prefetchAt(x,z)
-  },
-
-  water:{
-    get center(){return waterData.center},
-    get loading(){return waterData.loading},
-    get generation(){return waterData.generation},
-    load:(x,z)=>loadWaterAround(x,z),
-    prefetch:(x,z,timeoutMs)=>waterData.prefetchAt(x,z,timeoutMs)
-  },
-
-  scenery:{
-    get center(){return sceneryData.center},
-    get loading(){return sceneryData.loading},
-    load:(x,z)=>loadSceneryAround(x,z),
-    query:ll=>sceneryData.query(ll)
-  },
-
-  imagery:{
-    get center(){return imageryService.center},
-    get loading(){return imageryService.loading},
-    load:(x,z)=>buildImageryMosaic(x,z),
-    prefetch:(x,z)=>imageryService.prefetchAt(x,z)
-  },
-
-  roadMetadata:{
-    get center(){return lastRoadMetaCenter},
-    get loading(){return roadMetaLoading},
-    load:(x,z)=>loadRoadMetadataAround(x,z)
-  },
-
-  signs:{
-    get center(){return signData.center},
-    get loading(){return signData.loading},
-    load:(x,z)=>loadGeographicSignsAround(x,z),
-    query:ll=>signData.query(ll)
-  },
-
+  getRoutePointCount:()=>route.length,
+  elevationService,
+  waterData,
+  sceneryData,
+  imageryService,
+  getRoadMetadataState:()=>({center:lastRoadMetaCenter,loading:roadMetaLoading}),
+  signData,
+  loadElevationAround,
+  loadWaterAround,
+  loadSceneryAround,
+  buildImageryMosaic,
+  loadRoadMetadataAround,
+  loadGeographicSignsAround,
   fetchCached:(namespace,ll,query,timeoutMs,ttlMs)=>
-    fetchOverpassCached(namespace,ll,query,timeoutMs,ttlMs)
+    fetchOverpassCached(namespace,ll,query,timeoutMs,ttlMs),
+  streamedWorldGroups,
+  ground,
+  terrainService,
+  camera,
+  camTarget,
+  car,
+  resetStreamedWorldOrigins,
+  rebuildLocalWorld,
+  applyImageryToGround,
+  markStaticShadowsDirty,
+  getRuntimeState:()=>({
+    absX,absZ,heading,speed,
+    gameStarted,
+    menuOpen:v21MenuOpen,
+    worldOffset
+  }),
+  setWorldOffset:value=>{worldOffset=value;}
 });
-
-// V21.22.4 — TWO-DIMENSIONAL TERRAIN PRELOAD BUFFER.
-//
-// V21.22.2 expanded the high-quality DEM/imagery ground to a 5.6 km square.
-// Warming only a few points on the road centreline was therefore insufficient:
-// lateral portions of the visible square could still enter view before their
-// real DEM/image tiles were cached, exposing the stretched procedural fallback.
-//
-// This policy keeps V21.22.3 hitch-free semantics: every request below is
-// CACHE-ONLY. Network/cache completion never mutates scene geometry. The queue
-// is drained in small batches so preloading cannot become a new main-thread
-// frame-time spike.
-const TERRAIN_PRELOAD_BUFFER={
-  aheadDistance:10500,
-  behindDistance:1800,
-  longitudinalStep:900,
-  lateralOffsets:[0,-1500,1500,-3000,3000],
-  speedLeadPerMps:38,
-  maxSpeedLead:3200,
-  batchSize:5,
-  bootstrapAheadDistance:7200,
-  bootstrapStep:1200,
-  bootstrapLateralOffsets:[0,-2800,2800],
-  bootstrapTimeoutMs:6500
-};
-
-const aheadStreamingBuckets=new Set();
-const terrainPreloadQueuedKeys=new Set();
-const terrainPreloadQueue=[];
-let nextAheadStreamingAt=0;
-let lastImageryRefreshAt=0;
-
-function routeTravelSign(nr){
-  if(!nr)return 1;
-  return Math.cos(heading-nr.angle)>=0?1:-1;
-}
-
-function routeBufferProbe(cum,lateralOffset=0){
-  const p=routePointAtCum(cum);
-  if(!p)return null;
-  // Same road-normal convention used by the road/shoulder geometry.
-  const nx=Math.cos(p.angle),nz=-Math.sin(p.angle);
-  return {
-    x:p.x+nx*lateralOffset,
-    z:p.z+nz*lateralOffset,
-    cum,
-    lateralOffset
-  };
-}
-
-function terrainPreloadKey(dir,cum,lateralOffset){
-  const longBucket=Math.round(cum/450);
-  const lateralBucket=Math.round(lateralOffset/500);
-  return `${dir}:${longBucket}:${lateralBucket}`;
-}
-
-function enqueueTerrainPreloadProbe(dir,cum,lateralOffset){
-  const key=terrainPreloadKey(dir,cum,lateralOffset);
-  if(aheadStreamingBuckets.has(key)||terrainPreloadQueuedKeys.has(key))return false;
-  const probe=routeBufferProbe(cum,lateralOffset);
-  if(!probe)return false;
-  terrainPreloadQueuedKeys.add(key);
-  terrainPreloadQueue.push({...probe,key});
-  return true;
-}
-
-function refillTerrainPreloadBuffer(){
-  if(!routeLength||!route.length)return 0;
-  const nr=nearestRoute(absX,absZ);
-  if(!nr)return 0;
-
-  const dir=routeTravelSign(nr);
-  const speedLead=Math.min(
-    TERRAIN_PRELOAD_BUFFER.maxSpeedLead,
-    Math.abs(speed)*TERRAIN_PRELOAD_BUFFER.speedLeadPerMps
-  );
-  const ahead=TERRAIN_PRELOAD_BUFFER.aheadDistance+speedLead;
-  let queued=0;
-
-  for(
-    let distance=-TERRAIN_PRELOAD_BUFFER.behindDistance;
-    distance<=ahead;
-    distance+=TERRAIN_PRELOAD_BUFFER.longitudinalStep
-  ){
-    const cum=Math.max(0,Math.min(routeLength,nr.cum+dir*distance));
-    for(const lateralOffset of TERRAIN_PRELOAD_BUFFER.lateralOffsets){
-      if(enqueueTerrainPreloadProbe(dir,cum,lateralOffset))queued++;
-    }
-  }
-  return queued;
-}
-
-function startTerrainPreloadProbe(probe){
-  terrainPreloadQueuedKeys.delete(probe.key);
-  aheadStreamingBuckets.add(probe.key);
-
-  try{
-    const promise=elevationService.prefetchAt?.(probe.x,probe.z);
-    if(promise!==undefined)Promise.resolve(promise).catch(()=>{});
-  }catch{}
-
-  if(imageryService.enabled){
-    try{
-      const promise=imageryService.prefetchAt?.(probe.x,probe.z);
-      if(promise!==undefined)Promise.resolve(promise).catch(()=>{});
-    }catch{}
-  }
-}
-
-function drainTerrainPreloadBuffer(maxJobs=TERRAIN_PRELOAD_BUFFER.batchSize){
-  let started=0;
-  while(started<maxJobs&&terrainPreloadQueue.length){
-    const probe=terrainPreloadQueue.shift();
-    if(!probe)break;
-    startTerrainPreloadProbe(probe);
-    started++;
-  }
-
-  // Bound duplicate-suppression memory on very long drives.
-  if(aheadStreamingBuckets.size>900){
-    const keep=[...aheadStreamingBuckets].slice(-620);
-    aheadStreamingBuckets.clear();
-    keep.forEach(key=>aheadStreamingBuckets.add(key));
-  }
-  return started;
-}
-
-function prefetchRouteAhead(){
-  const queued=refillTerrainPreloadBuffer();
-  const started=drainTerrainPreloadBuffer();
-  return queued>0||started>0;
-}
-
-function promiseWithTimeout(promise,timeoutMs){
-  return Promise.race([
-    Promise.resolve(promise),
-    new Promise(resolve=>setTimeout(()=>resolve(null),timeoutMs))
-  ]);
-}
-
-async function primeInitialTerrainPreloadBuffer(){
-  if(!routeLength||!route.length)return;
-  const nr=nearestRoute(absX,absZ);
-  if(!nr)return;
-  const dir=routeTravelSign(nr);
-  const tasks=[];
-
-  for(
-    let distance=0;
-    distance<=TERRAIN_PRELOAD_BUFFER.bootstrapAheadDistance;
-    distance+=TERRAIN_PRELOAD_BUFFER.bootstrapStep
-  ){
-    const cum=Math.max(0,Math.min(routeLength,nr.cum+dir*distance));
-    for(const lateralOffset of TERRAIN_PRELOAD_BUFFER.bootstrapLateralOffsets){
-      const key=terrainPreloadKey(dir,cum,lateralOffset);
-      if(aheadStreamingBuckets.has(key))continue;
-      const probe=routeBufferProbe(cum,lateralOffset);
-      if(!probe)continue;
-      aheadStreamingBuckets.add(key);
-
-      try{
-        const promise=elevationService.prefetchAt?.(probe.x,probe.z);
-        if(promise!==undefined)tasks.push(Promise.resolve(promise).catch(()=>null));
-      }catch{}
-      if(imageryService.enabled){
-        try{
-          const promise=imageryService.prefetchAt?.(probe.x,probe.z);
-          if(promise!==undefined)tasks.push(Promise.resolve(promise).catch(()=>null));
-        }catch{}
-      }
-    }
-  }
-
-  // Route creation may wait briefly for the critical first buffer, but never
-  // indefinitely on a slow tile server. Remaining probes continue cache-only.
-  if(tasks.length){
-    await promiseWithTimeout(
-      Promise.allSettled(tasks),
-      TERRAIN_PRELOAD_BUFFER.bootstrapTimeoutMs
-    );
-  }
-
-  refillTerrainPreloadBuffer();
-  drainTerrainPreloadBuffer(TERRAIN_PRELOAD_BUFFER.batchSize*2);
-}
-
-function refreshCurrentImagerySooner(now){
-  if(!imageryService.enabled)return;
-  // V21.22.5 chunk composition is serialized and committed during idle time,
-  // so visible satellite coverage may advance while driving without a giant
-  // monolithic canvas upload. Tile prefetch remains cache-only ahead of this.
-  const center=imageryService.center;
-  if(!center||!Number.isFinite(center.x)||!Number.isFinite(center.z))return;
-  const moved=Math.hypot(absX-center.x,absZ-center.z);
-  if(moved<520||now-lastImageryRefreshAt<1200)return;
-  lastImageryRefreshAt=now;
-  buildImageryMosaic(absX,absZ).catch(()=>{});
-}
-
+const worldStreaming=streamingCoordinator.worldStreaming;
+const prefetchRouteAhead=()=>streamingCoordinator.prefetchRouteAhead();
+const primeInitialTerrainPreloadBuffer=()=>streamingCoordinator.primeInitialTerrainPreloadBuffer();
+const promiseWithTimeout=(promise,timeoutMs)=>streamingCoordinator.promiseWithTimeout(promise,timeoutMs);
 
 const DISPLAY_DISTANCE_PROFILES={
   low:{
@@ -6688,28 +5224,16 @@ setTimeOfDay(12);
 // window.WorldDriveFramePacing()
 window.WorldDriveFramePacing=()=>({
   fps:perfGovernor.fps,
-  hitchCount:streamRefreshState.hitchCount,
-  maxFrameMs:streamRefreshState.maxFrameMs,
-  lastHitchAt:streamRefreshState.lastHitchAt,
-  pendingWorldRefresh:streamRefreshState.pendingWorld,
-  pendingReasons:[...streamRefreshState.reasons],
-  worldBuildCenter:{...streamRefreshState.lastBuiltCenter},
-  worldOffset:{...worldOffset}
+  ...(streamingCoordinator?.diagnostics?.()||{})
 });
 
 // ---------- main ----------
-let nextDirectionalPrefetchAt=0;
-
 function animate(now){
  requestAnimationFrame(animate);
  updateFpsAndGovernor(now);
  const rawFrameMs=(now-last)||16;
  const dt=Math.min(.033,rawFrameMs/1000||.016);last=now;
- if(rawFrameMs>20){
-   streamRefreshState.lastHitchAt=now;
-   streamRefreshState.hitchCount++;
-   streamRefreshState.maxFrameMs=Math.max(streamRefreshState.maxFrameMs,rawFrameMs);
- }
+ streamingCoordinator?.recordFrame(rawFrameMs,now);
  try{
    const simStart=performance.now();
    if(
@@ -6863,32 +5387,7 @@ function animate(now){
      perfGovernor.nextMoonAt=now+perfIntervals.moon;
    }
 
-   if(
-     gameStarted&&
-     !v21MenuOpen&&
-     now>=nextDirectionalPrefetchAt
-   ){
-     nextDirectionalPrefetchAt=now+250;
-     worldStreaming.prefetchDirectional(absX,absZ);
-   }
-
-   if(
-     gameStarted&&
-     !v21MenuOpen&&
-     now>=nextAheadStreamingAt
-   ){
-     nextAheadStreamingAt=now+420;
-     prefetchRouteAhead();
-     refreshCurrentImagerySooner(now);
-   }
-
-   if(
-     streamRefreshState.pendingWorld&&
-     !deferredVisualJobs.has('world-rebuild')&&
-     (!gameStarted||v21MenuOpen||Math.abs(speed)<=HITCH_FREE_STREAMING.calmSpeed)
-   ){
-     scheduleLocalWorldRefresh({urgent:false});
-   }
+   streamingCoordinator?.updateFrame(now);
 
    waterTex.offset.x=(waterTex.offset.x+dt*.003)%1;
    waterTex.offset.y=(waterTex.offset.y+dt*.0015)%1;
@@ -6902,7 +5401,7 @@ function animate(now){
    const renderSubmitCost=performance.now()-renderStart;
    perfGovernor.renderSubmitMs=perfGovernor.renderSubmitMs*.90+renderSubmitCost*.10;
 
-   if(HITCH_FREE_STREAMING.perfConsoleLogging&&now>=perfGovernor.nextPerfLogAt){
+   if(streamingCoordinator?.policy.perfConsoleLogging&&now>=perfGovernor.nextPerfLogAt){
      perfGovernor.nextPerfLogAt=now+5000;
      console.info(
        '[WorldDrive perf]',
