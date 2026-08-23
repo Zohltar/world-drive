@@ -4,15 +4,18 @@ import {spawnSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
 
 const here=path.dirname(fileURLToPath(import.meta.url));
+const root=path.resolve(here,'..');
 const sourcePath=path.join(here,'refactor-main-streaming-v21-25.mjs');
 const tempPath=path.join(here,'__refactor-main-streaming-v21-25-runtime__.mjs');
 
 function fail(message){
   console.error(`V21.25 streaming refactor runner: ${message}`);
-  process.exit(1);
+  process.exitCode=1;
+  throw new Error(message);
 }
 
 if(!fs.existsSync(sourcePath))fail('source refactor tool missing');
+try{fs.unlinkSync(tempPath);}catch{}
 let source=fs.readFileSync(sourcePath,'utf8');
 
 const fixes=[
@@ -32,25 +35,38 @@ for(const [before,after] of fixes){
   source=source.replace(before,after);
 }
 
+const cadenceBefore="const cadenceStart=main.indexOf('   if(\\n     gameStarted&&\\n     !v21MenuOpen&&\\n     now>=nextDirectionalPrefetchAt');";
+const cadenceAfter=[
+  "const cadenceMatch=/   if\\(\\r?\\n     gameStarted&&\\r?\\n     !v21MenuOpen&&\\r?\\n     now>=nextDirectionalPrefetchAt/.exec(main);",
+  'const cadenceStart=cadenceMatch?.index??-1;'
+].join('\n');
+const cadenceCount=source.split(cadenceBefore).length-1;
+if(cadenceCount!==1)fail(`expected one animation cadence search, found ${cadenceCount}`);
+source=source.replace(cadenceBefore,cadenceAfter);
+
+let runStatus=0;
 fs.writeFileSync(tempPath,source,'utf8');
 try{
   const check=spawnSync(process.execPath,['--check',tempPath],{
-    cwd:path.resolve(here,'..'),
+    cwd:root,
     encoding:'utf8'
   });
   if(check.status!==0){
-    fail(`repaired refactor tool still has a syntax error:\n${check.stderr||check.stdout}`);
-  }
-
-  const run=spawnSync(process.execPath,[tempPath],{
-    cwd:path.resolve(here,'..'),
-    stdio:'inherit'
-  });
-  if(run.status!==0){
-    process.exit(run.status||1);
+    console.error(`V21.25 streaming refactor runner: repaired refactor tool still has a syntax error:\n${check.stderr||check.stdout}`);
+    runStatus=check.status||1;
+  }else{
+    const run=spawnSync(process.execPath,[tempPath],{
+      cwd:root,
+      stdio:'inherit'
+    });
+    runStatus=run.status??1;
   }
 }finally{
   try{fs.unlinkSync(tempPath);}catch{}
 }
 
-console.log('V21.25 STREAMING REFACTOR RUNNER: COMPLETE');
+if(runStatus!==0){
+  process.exitCode=runStatus;
+}else{
+  console.log('V21.25 STREAMING REFACTOR RUNNER: COMPLETE');
+}
