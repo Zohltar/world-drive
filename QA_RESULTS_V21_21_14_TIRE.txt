@@ -1,6 +1,0 @@
-V21.21.14 TIRE ADHESION QA: PASS
-WRX  5 km/h: sideslip 0.000 deg, front 0.0%, rear 0.0%, static boost 118%
-WRX 11 km/h: sideslip 0.131 deg, front 0.0%, rear 0.0%, static boost 117%
-WRX 18 km/h: sideslip 0.319 deg, front 0.0%, rear 0.0%, static boost 111%
-WRX 25 km/h: sideslip 0.690 deg, front 0.0%, rear 0.0%, static boost 105%
-WRX handbrake 72 km/h: max sideslip 22.17 deg

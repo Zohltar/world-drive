@@ -1,7 +1,0 @@
-PASS two-axle traction fast path: 100000 states, 0 mismatch
-PASS vehicle nearest-route hint: 12000 samples, 0 mismatch, 28.47x synthetic speedup
-PASS cached yaw response: exact formula equivalence
-PASS local road support plane: max synthetic error 3.90 mm
-PASS V21.21.4 renderer quality settings unchanged
-PASS full-rate instruments retained with static-layer caches
-PASS precise crest/jump probes retained

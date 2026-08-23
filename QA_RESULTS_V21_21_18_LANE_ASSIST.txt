@@ -1,5 +1,0 @@
-V21.21.18 LANE ASSIST QA: PASS
-northbound target x=1.65 m, assist=0.095
-southbound target x=-1.65 m, assist=0.095
-settled lane assist=0.0000, too-far-right assist=-0.106
-driver/slip/handbrake/airborne authority checks: PASS

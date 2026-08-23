@@ -1,2 +1,0 @@
-PASS randomized dynamics fuzz: 50000 states, up to 5 axles / 20 wheels
-PASS deterministic seed: 0x21212026
