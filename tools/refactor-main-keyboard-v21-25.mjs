@@ -215,8 +215,7 @@ main=main.replace(importAnchor,importAnchor+eol+"import { createKeyboardControls
 
 for(const stale of [
   'const keys={};',
-  'function assignKeyboardBinding(action,code){',
-  "addEventListener('keydown',e=>{"
+  'function assignKeyboardBinding(action,code){'
 ]){
   if(main.includes(stale))die(`stale keyboard implementation remains in main.js: ${stale}. No files changed.`);
 }
