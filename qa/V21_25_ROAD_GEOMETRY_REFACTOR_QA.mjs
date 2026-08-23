@@ -19,7 +19,6 @@ const road=fs.readFileSync(modulePath,'utf8');
 for(const pattern of [
   /\/\/ ---------- continuous road ribbon ----------/,
   /function roadLateralFrame\s*\(/,
-  /function buildRoadProfile\s*\(/,
   /const ROAD_PROFILE_INDEX_CELL=48;/,
   /function evaluateRoadProfileSegmentInto\s*\(/,
   /\bactiveRoadProfile=profile;/,
@@ -32,9 +31,11 @@ for(const pattern of [
   /from '\.\/road-geometry\.js'/,
   /const roadGeometry=createRoadGeometrySystem\s*\(/,
   /const activeRoadProfile=roadGeometry\.profile;/,
-  /const buildRoadProfile=\(\)=>roadGeometry\.buildProfile\(\);/,
-  /const buildRibbon=\(\.\.\.args\)=>roadGeometry\.buildRibbon\(\.\.\.args\);/,
-  /const roadFrameAt=\(\.\.\.args\)=>roadGeometry\.roadFrameAt\(\.\.\.args\);/,
+  /function buildRoadProfile\(\)\{return roadGeometry\.buildProfile\(\);\}/,
+  /function buildRibbon\(\.\.\.args\)\{return roadGeometry\.buildRibbon\(\.\.\.args\);\}/,
+  /function roadFrameAt\(\.\.\.args\)\{return roadGeometry\.roadFrameAt\(\.\.\.args\);\}/,
+  /function roadHeightAt\(\.\.\.args\)\{return roadGeometry\.roadHeightAt\(\.\.\.args\);\}/,
+  /function roadSurfaceAt\(\.\.\.args\)\{return roadGeometry\.roadSurfaceAt\(\.\.\.args\);\}/,
   /setActiveRoadProfile\(profile\);/,
   /clearActiveRoadProfile\(\);/,
   /function terrainFrameAt\s*\(/
