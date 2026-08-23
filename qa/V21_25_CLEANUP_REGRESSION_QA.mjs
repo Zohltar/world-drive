@@ -3,6 +3,11 @@ import fs from 'node:fs';
 import {fileURLToPath} from 'node:url';
 import {dirname,resolve} from 'node:path';
 import {createVehicleSystem,validateVehicleProfiles} from '../src/vehicle-system.js';
+import {
+  WORLD_DRIVE_VERSION,
+  WORLD_DRIVE_CHANNEL,
+  WORLD_DRIVE_VERSION_LABEL
+} from '../src/version.js';
 
 const here=dirname(fileURLToPath(import.meta.url));
 const root=resolve(here,'..');
@@ -41,5 +46,13 @@ for(const asset of [
   assert.equal(fs.existsSync(resolve(src,'assets',asset)),true,`current GLB missing: ${asset}`);
 }
 
+const indexHtml=fs.readFileSync(resolve(root,'index.html'),'utf8');
+assert.equal(WORLD_DRIVE_VERSION,'21.25','cleanup runtime version must stay centralized at 21.25');
+assert.equal(WORLD_DRIVE_CHANNEL,'cleanup');
+assert.equal(WORLD_DRIVE_VERSION_LABEL,'V21.25 cleanup');
+assert.match(indexHtml,/src\/version\.js/,'version branding must load before runtime UI');
+assert.doesNotMatch(indexHtml,/V21\.7/,'legacy V21.7 labels must stay removed from index.html');
+assert.match(indexHtml,/World Drive V21\.25 cleanup/,'startup branding must show the cleanup candidate');
+
 console.log('V21.25 CLEANUP REGRESSION QA: PASS');
-console.log(`fleet: ${vehicles.length}; procedural passenger bodies: removed; current GLB assets: present`);
+console.log(`fleet: ${vehicles.length}; procedural passenger bodies: removed; current GLB assets: present; version: ${WORLD_DRIVE_VERSION_LABEL}`);
