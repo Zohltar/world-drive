@@ -20,12 +20,15 @@ for(const pattern of [
   /transient sign readout on minimap/,
   /^\/\/ ---------- minimap ----------$/m,
   /const signReadout=\{/,
+  /const passedSignKeys=/,
   /const mc=\$\('minimap'\)/,
   /function signDisplayCum\s*\(/,
   /function signReadoutText\s*\(/,
   /function updatePassedSignReadout\s*\(/,
   /function prepMap\s*\(/,
-  /function drawMap\s*\(/
+  /function drawMap\s*\(/,
+  /passedSignKeys\.clear\s*\(/,
+  /signReadout\.key/
 ]){
   assert.doesNotMatch(main,pattern,`main.js still owns minimap/sign implementation: ${pattern}`);
 }
@@ -35,6 +38,8 @@ for(const pattern of [
   /const minimapSystem=createMinimapSystem\s*\(/,
   /routeStart:ROUTE_START/,
   /routeEnd:ROUTE_END/,
+  /resetSignReadout:resetMinimapSignReadout/,
+  /resetMinimapSignReadout\(\)/,
   /prepMap,/,
   /drawMap,/,
   /updatePassedSignReadout/
@@ -45,14 +50,17 @@ for(const pattern of [
 for(const pattern of [
   /export function createMinimapSystem\s*\(/,
   /function syncMinimapState\s*\(/,
+  /function resetSignReadout\s*\(/,
   /function updatePassedSignReadout\s*\(/,
   /function prepMap\s*\(/,
   /function drawMap\s*\(/,
   /multiplayer\.getPeers\s*\(/,
   /signReadout\.duration/,
   /signReadout\.fadeMs/,
+  /passedSignKeys\.clear\s*\(/,
   /ROUTE_START\.name/,
   /ROUTE_END\.name/,
+  /resetSignReadout,/,
   /return Object\.freeze\s*\(\{/
 ]){
   assert.match(minimap,pattern,`minimap.js missing expected behavior: ${pattern}`);
