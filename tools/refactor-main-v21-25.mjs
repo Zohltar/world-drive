@@ -54,6 +54,7 @@ function extractTemplate(block,assignment,label){
 if(!fs.existsSync(mainPath))die('src/main.js not found.');
 
 let main=fs.readFileSync(mainPath,'utf8');
+const eol=main.includes('\r\n')?'\r\n':'\n';
 const beforeBytes=Buffer.byteLength(main,'utf8');
 const beforeLines=main.split(/\r?\n/).length;
 
@@ -109,10 +110,34 @@ const instrumentCss=extractTemplate(
 const extractedCss=`/* World Drive V21.25 UI\n * Extracted mechanically from main.js. Keep presentation here; keep engine logic in JS.\n */\n${baseCss.trim()}\n\n/* Instrument cluster layout */\n${instrumentCss.trim()}\n`;
 
 // New module dependencies. desktop-overpass-transport installs itself only in
-// the Electron renderer, so no platform statement remains in main.js.
-const importAnchor="import * as THREE from 'three';\n";
-const extractedImports=`import './v21-ui.css';\nimport './desktop-overpass-transport.js';\nimport {\n  MANIC2,\n  MANIC5,\n  R169_START,\n  R169_END,\n  R132_START,\n  R132_END,\n  YUNGAS_START,\n  YUNGAS_END,\n  YUNGAS_WAYPOINTS\n} from './route-presets.js';\nimport { createRouteChallenge } from './route-challenge.js';\nimport {\n  WORLD_DRIVE_VERSION,\n  WORLD_DRIVE_VERSION_LABEL,\n  WORLD_DRIVE_TITLE\n} from './version.js';\n`;
-main=main.replace(importAnchor,importAnchor+extractedImports);
+// the Electron renderer, so no platform statement remains in main.js. Preserve
+// the source file's own EOL convention so Windows CRLF checkouts stay clean.
+const importAnchor="import * as THREE from 'three';";
+const extractedImports=[
+  "import './v21-ui.css';",
+  "import './desktop-overpass-transport.js';",
+  'import {',
+  '  MANIC2,',
+  '  MANIC5,',
+  '  R169_START,',
+  '  R169_END,',
+  '  R132_START,',
+  '  R132_END,',
+  '  YUNGAS_START,',
+  '  YUNGAS_END,',
+  '  YUNGAS_WAYPOINTS',
+  "} from './route-presets.js';",
+  "import { createRouteChallenge } from './route-challenge.js';",
+  'import {',
+  '  WORLD_DRIVE_VERSION,',
+  '  WORLD_DRIVE_VERSION_LABEL,',
+  '  WORLD_DRIVE_TITLE',
+  "} from './version.js';"
+].join(eol);
+main=main.replace(
+  importAnchor,
+  importAnchor+eol+extractedImports
+);
 
 // 1) Platform-specific Overpass transport.
 {
@@ -158,7 +183,18 @@ main=main.replace(importAnchor,importAnchor+extractedImports);
     {label:'route challenge block'}
   );
 
-  const replacement=`// ---------- competitive route challenge ----------\nconst routeChallenge=createRouteChallenge({\n  getSpeed:()=>speed,\n  getRouteLength:()=>routeLength,\n  toast\n});\nconst resetRunChallenge=()=>routeChallenge.reset();\nconst updateRunChallenge=(onRoad,nr)=>routeChallenge.update(onRoad,nr);\n\n`;
+  const replacement=[
+    '// ---------- competitive route challenge ----------',
+    'const routeChallenge=createRouteChallenge({',
+    '  getSpeed:()=>speed,',
+    '  getRouteLength:()=>routeLength,',
+    '  toast',
+    '});',
+    'const resetRunChallenge=()=>routeChallenge.reset();',
+    'const updateRunChallenge=(onRoad,nr)=>routeChallenge.update(onRoad,nr);',
+    '',
+    ''
+  ].join(eol);
 
   main=main.slice(0,block.start)+replacement+main.slice(block.end);
 }
