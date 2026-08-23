@@ -103,12 +103,23 @@ initLines.push('const {');
 initLines.push('  applyDisplayDistanceProfile,');
 initLines.push('  setTimeOfDay,');
 initLines.push('  timeSlider,');
-initLines.push('  timeLabel');
+initLines.push('  timeLabel,');
+initLines.push('  getTimeOfDay');
 initLines.push('}=environmentController;');
 initLines.push('');
 
 // Replace first; source indices above refer to the untouched main.js.
 main=main.slice(0,start)+initLines.join('\n')+main.slice(end);
+
+// vehicle-presentation still consumes the current clock value through its
+// getDrivingState callback. Keep the object property name stable while reading
+// the state from the newly extracted controller.
+main=replaceOnce(
+  main,
+  '    timeOfDay\n  }),\n  ROAD_WHEEL_CONTACT_HALF_WIDTH',
+  '    timeOfDay:getTimeOfDay()\n  }),\n  ROAD_WHEEL_CONTACT_HALF_WIDTH',
+  'vehicle-presentation time-of-day bridge'
+);
 
 const importAnchor="import { createDrivingRuntime } from './driving-runtime.js';";
 main=replaceOnce(
@@ -140,6 +151,10 @@ for(const required of [
   if(!moduleSource.includes(required)){
     throw new Error(`V21.26 environment refactor: generated module lost behavior: ${required}`);
   }
+}
+
+if(!main.includes('timeOfDay:getTimeOfDay()')){
+  throw new Error('V21.26 environment refactor: vehicle-presentation time-of-day bridge missing.');
 }
 
 const tempMain=path.join(root,'tools','__v21_26_environment_main_check__.mjs');
