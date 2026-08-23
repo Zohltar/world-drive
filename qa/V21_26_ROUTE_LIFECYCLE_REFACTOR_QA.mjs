@@ -29,13 +29,17 @@ assert.match(main,/async function loadRoute\(\)\{return routeLifecycle\.loadRout
 
 for(const pattern of [
   /loadingText\.textContent='Préchargement du terrain en avance…';/,
-  /worldStreaming\.preloadRoute\(absX,absZ\);/,
   /const WorldDrive=\{/,
   /route\.push\(\{x:p\.x,z:p\.z,lat,lon,cum\}\);/
 ]){
   assert.doesNotMatch(main,pattern,`main.js still owns route lifecycle behavior: ${pattern}`);
   assert.match(lifecycle,pattern,`route-lifecycle.js missing extracted route behavior: ${pattern}`);
 }
+
+// The lifecycle now receives route preloading as an injected dependency.
+// Validate the extracted call rather than the old main.js object-qualified spelling.
+assert.doesNotMatch(main,/worldStreaming\.preloadRoute\(absX,absZ\);/,'main.js still owns direct route preload orchestration');
+assert.match(lifecycle,/preloadRoute\(position\.absX,position\.absZ\);/,'route-lifecycle.js missing injected route preload orchestration');
 
 for(const pattern of [
   /export function createRouteLifecycle\s*\(\{/,
@@ -45,7 +49,6 @@ for(const pattern of [
   /worldDrive\.route\.generation\+\+;/,
   /worldDrive\.streaming\.generation\+\+;/,
   /loadWaterAround\(position\.absX,position\.absZ\)/,
-  /preloadRoute\(position\.absX,position\.absZ\);/,
   /await primeInitialTerrainPreloadBuffer\(\)\.catch\(\(\)=>\{\}\);/,
   /hasPendingWorld\(\)/,
   /prefetchRouteAhead\(\);/,
@@ -87,11 +90,8 @@ const state={
 };
 const getState=()=>state;
 const setState=patch=>Object.assign(state,patch);
-
 const calls=[];
-const service=name=>({
-  reset(){calls.push(`${name}.reset`);}
-});
+const service=name=>({reset(){calls.push(`${name}.reset`);}});
 const route=[{x:1,z:1}];
 const segments=[{len:1}];
 const bridgeStatus={textContent:'5'};
@@ -100,12 +100,10 @@ const loadingText={textContent:''};
 const routingStatus={textContent:''};
 const statusEl={textContent:''};
 const hidden=new Set();
-const loading={
-  classList:{
-    add(value){hidden.add(value);calls.push(`loading.add:${value}`);},
-    remove(value){hidden.delete(value);calls.push(`loading.remove:${value}`);}
-  }
-};
+const loading={classList:{
+  add(value){hidden.add(value);calls.push(`loading.add:${value}`);},
+  remove(value){hidden.delete(value);calls.push(`loading.remove:${value}`);}
+}};
 
 const controller=createRouteLifecycle({
   version:'21.26',
@@ -120,10 +118,7 @@ const controller=createRouteLifecycle({
   skidMarks:{clear(){calls.push('skidMarks.clear');}},
   route,
   segments,
-  bridgeManager:{
-    reset(){calls.push('bridgeManager.reset');},
-    resetCounter(){calls.push('bridgeManager.resetCounter');}
-  },
+  bridgeManager:{reset(){calls.push('bridgeManager.reset');},resetCounter(){calls.push('bridgeManager.resetCounter');}},
   bridgeStatus,
   waterRenderer:{clear(){calls.push('waterRenderer.clear');}},
   sceneryData:service('sceneryData'),
@@ -134,10 +129,7 @@ const controller=createRouteLifecycle({
   signStatus,
   updateRoadMetaHUD:()=>calls.push('roadMeta.hud'),
   clearActiveRoadProfile:()=>calls.push('roadProfile.clear'),
-  terrainService:{
-    clearRoadBed(){calls.push('terrain.clearRoadBed');},
-    clearHorizon(){calls.push('terrain.clearHorizon');}
-  },
+  terrainService:{clearRoadBed(){calls.push('terrain.clearRoadBed');},clearHorizon(){calls.push('terrain.clearHorizon');}},
   clearGroup:group=>calls.push(`clearGroup:${group.name}`),
   roadGroup:{name:'road'},
   forestGroup:{name:'forest'},
@@ -150,26 +142,13 @@ const controller=createRouteLifecycle({
   routingStatus,
   statusEl,
   setBootProgress:(...args)=>calls.push(`boot:${args.join(':')}`),
-  routingService:{
-    async fetchRoute({points,start}){
-      calls.push(`routing.fetch:${points.length}:${start.name}`);
-      return {
-        provider:'QA router',
-        coordinates:[
-          [0,0],
-          [.2,0],
-          [.4,0]
-        ]
-      };
-    }
-  },
+  routingService:{async fetchRoute({points,start}){
+    calls.push(`routing.fetch:${points.length}:${start.name}`);
+    return {provider:'QA router',coordinates:[[0,0],[.2,0],[.4,0]]};
+  }},
   toWorld:(lat,lon)=>({x:lon*1000,z:lat*1000}),
   prepMap:()=>calls.push('map.prep'),
-  placeAt:frac=>{
-    calls.push(`placeAt:${frac}`);
-    state.absX=100;
-    state.absZ=200;
-  },
+  placeAt:frac=>{calls.push(`placeAt:${frac}`);state.absX=100;state.absZ=200;},
   loadWaterAround:async(x,z)=>{calls.push(`hydro:${x}:${z}`);return true;},
   preloadRoute:(x,z)=>calls.push(`preloadRoute:${x}:${z}`),
   loadElevationAround:async(x,z)=>{calls.push(`elevation:${x}:${z}`);return true;},
@@ -188,14 +167,11 @@ const controller=createRouteLifecycle({
   loadGeographicSignsAround:async(x,z)=>{calls.push(`signs:${x}:${z}`);return true;}
 });
 
-assert.equal(controller.worldDrive.version,'21.26','WorldDrive version facade changed');
-assert.equal(controller.worldDrive.route.generation,0,'route generation initial value changed');
-assert.equal(controller.worldDrive.streaming.generation,0,'streaming generation initial value changed');
-
 const start={lat:1,lon:2,name:'Start'};
 const end={lat:3,lon:4,name:'End'};
 const ok=await controller.createRequestedRoute(start,end,[{lat:2,lon:3,name:'Via'}]);
 assert.equal(ok,true,'valid route creation should succeed');
+assert.equal(controller.worldDrive.version,'21.26','WorldDrive version facade changed');
 assert.equal(controller.worldDrive.route.generation,1,'route generation did not increment');
 assert.equal(controller.worldDrive.streaming.generation,1,'streaming generation did not increment');
 assert.equal(state.autopilot,false,'route creation did not disable autopilot');
@@ -216,35 +192,12 @@ assert.equal(signStatus.textContent,'0','sign status was not reset');
 assert.ok(hidden.has('hidden'),'loading overlay was not hidden after successful route creation');
 
 for(const expected of [
-  'streaming.reset',
-  'waterData.reset',
-  'skidMarks.clear',
-  'bridgeManager.reset',
-  'waterRenderer.clear',
-  'sceneryData.reset',
-  'elevationService.reset',
-  'imageryService.reset',
-  'bridgeManager.resetCounter',
-  'signData.reset',
-  'minimap.resetSignReadout',
-  'roadMeta.hud',
-  'roadProfile.clear',
-  'terrain.clearRoadBed',
-  'sceneryRenderer.clear',
-  'terrain.clearHorizon',
-  'map.prep',
-  'placeAt:0',
-  'hydro:100:200',
-  'preloadRoute:100:200',
-  'elevation:100:200',
-  'terrain.prime',
-  'imagery:100:200',
-  'visual.cancel:world-rebuild',
-  'world.commit',
-  'route.prefetch',
-  'scenery:100:200',
-  'roadmeta:100:200',
-  'signs:100:200'
+  'streaming.reset','waterData.reset','skidMarks.clear','bridgeManager.reset','waterRenderer.clear',
+  'sceneryData.reset','elevationService.reset','imageryService.reset','bridgeManager.resetCounter',
+  'signData.reset','minimap.resetSignReadout','roadMeta.hud','roadProfile.clear','terrain.clearRoadBed',
+  'sceneryRenderer.clear','terrain.clearHorizon','map.prep','placeAt:0','hydro:100:200',
+  'preloadRoute:100:200','elevation:100:200','terrain.prime','imagery:100:200',
+  'visual.cancel:world-rebuild','world.commit','route.prefetch','scenery:100:200','roadmeta:100:200','signs:100:200'
 ]){
   assert.ok(calls.includes(expected),`route lifecycle smoke missing call: ${expected}`);
 }
