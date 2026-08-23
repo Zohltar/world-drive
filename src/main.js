@@ -31,6 +31,7 @@ import { createGamepadController } from './gamepad.js';
 import { createKeyboardControls } from './keyboard-controls.js';
 import { createDrivingRuntime } from './driving-runtime.js';
 import { createEnvironmentController } from './environment-controller.js';
+import { createTransmissionController } from './transmission-controller.js';
 import { createCameraController } from './camera.js';
 import { createRoutingGeometry, angleDelta, nearestPointOnPolyline } from './routing.js';
 import { createRoutingService } from './routing-service.js';
@@ -2052,530 +2053,49 @@ let revLimiterPhase=0;
 let transmissionMode='automatic';
 let manualShiftRequest=null;
 
-function activeTransmissionProfile(){
-  return vehicleSystem.active.audio||{type:'ev',profile:'ev'};
-}
-
-// For combustion vehicles, the last shift point is the road speed at which
-// highest gear reaches engine redline. That is the mechanical maximum speed.
-function effectiveEngineRedlineRpm(
-  profile=activeTransmissionProfile(),
-  onPavement=true
-){
-  const nominal=
-    Math.max(
-      1000,
-      Number(profile.redlineRpm)||6500
-    );
-
-  // V20.6: loose terrain represents much higher drivetrain/load resistance.
-  // Combustion engines effectively lose the upper 30% of their usable RPM.
-  return onPavement
-    ?nominal
-    :nominal*.70;
-}
-
-function transmissionRedlineSpeedKmh(
-  profile=activeTransmissionProfile(),
-  effectiveRedlineRpm=null
-){
-  if(profile.type!=='combustion'){
-    return Math.max(
-      20,
-      Number(VEHICLE.topSpeedKmh)||200
-    );
-  }
-
-  const speeds=
-    computeGearRedlineSpeeds(
-      profile,
-      effectiveRedlineRpm||
-      Number(profile.redlineRpm)||
-      6500
-    );
-
-  return Math.max(
-    20,
-    Number(
-      speeds[
-        speeds.length-1
-      ]
-    )||20
-  );
-}
-
-function resetTransmissionState(){
-  const profile=activeTransmissionProfile();
-
-  transmissionGear=1;
-  transmissionPendingGear=1;
-  transmissionShiftTimer=0;
-  transmissionShiftDuration=0;
-  transmissionShiftStartRpm=0;
-  transmissionShiftEndRpm=0;
-  transmissionShifting=false;
-  revLimiterActive=false;
-  revLimiterPhase=0;
-  manualShiftRequest=null;
-
-  transmissionProfileKey=
-    `${vehicleSystem.activeId}:${profile.profile||profile.type||''}`;
-
-  engineRpm=
-    profile.type==='combustion'
-      ?Number(profile.idleRpm)||850
-      :0;
-}
-
-function requestManualShift(direction){
-  if(transmissionMode!=='manual'){
-    return;
-  }
-
-  const profile=
-    activeTransmissionProfile();
-
-  if(
-    profile.type!=='combustion'||
-    speed<-.25||
-    transmissionShifting||
-    transmissionShiftTimer>0
-  ){
-    return;
-  }
-
-  const gearCount=
-    Array.isArray(profile.gearRatios)&&
-    profile.gearRatios.length
-      ?profile.gearRatios.length
-      :Math.max(
-         1,
-         Number(profile.gearCount)||1
-       );
-
-  const current=
-    Math.max(
-      1,
-      Number(transmissionGear)||1
-    );
-
-  const target=
-    Math.max(
-      1,
-      Math.min(
-        gearCount,
-        current+
-        (
-          direction>0
-            ?1
-            :-1
-        )
-      )
-    );
-
-  if(target===current){
-    return;
-  }
-
-  manualShiftRequest=target;
-}
-
-function desiredTransmissionGear(
-  kmh,
-  profile,
-  currentGear,
-  effectiveRedlineRpm
-){
-  const points=
-    computeGearRedlineSpeeds(
-      profile,
-      effectiveRedlineRpm
-    );
-
-  if(!points.length){
-    return 1;
-  }
-
-  const gear=
-    Math.max(
-      1,
-      Math.min(
-        points.length,
-        Number(currentGear)||1
-      )
-    );
-
-  if(
-    gear<points.length&&
-    kmh>=points[gear-1]
-  ){
-    return gear+1;
-  }
-
-  if(
-    gear>1&&
-    kmh<
-      points[gear-2]*
-      .82
-  ){
-    return gear-1;
-  }
-
-  return gear;
-}
-
-function updateTransmission(dt,requestedThrottle,onPavement=true){
-  const profile=activeTransmissionProfile();
-  const profileKey=
-    `${vehicleSystem.activeId}:${profile.profile||profile.type||''}`;
-
-  if(profileKey!==transmissionProfileKey){
-    resetTransmissionState();
-  }
-
-  if(profile.type!=='combustion'){
-    transmissionGear=speed<-.25?-1:0;
-    transmissionPendingGear=transmissionGear;
-    transmissionShiftTimer=0;
-    transmissionShiftDuration=0;
-    transmissionShifting=false;
-    revLimiterActive=false;
-    revLimiterPhase=0;
-    engineRpm=0;
-    return requestedThrottle;
-  }
-
-  const idle=Number(profile.idleRpm)||850;
-  const redline=Number(profile.redlineRpm)||6500;
-
-  const effectiveRedline=
-    effectiveEngineRedlineRpm(
-      profile,
-      onPavement
-    );
-
-  const kmh=Math.abs(speed)*3.6;
-
-  if(speed<-.25){
-    transmissionGear=-1;
-    transmissionPendingGear=-1;
-    transmissionShiftTimer=0;
-    transmissionShiftDuration=0;
-    transmissionShifting=false;
-    revLimiterActive=false;
-    revLimiterPhase=0;
-
-    const reverseRatio=
-      physicsClamp(
-        Math.abs(speed)/Math.max(1,Math.abs(vehicleReverseLimitMps())),
-        0,
-        1
-      );
-
-    engineRpm=
-      idle+(redline*.62-idle)*reverseRatio;
-
-    return requestedThrottle;
-  }
-
-  if(transmissionGear<1){
-    transmissionGear=1;
-    transmissionPendingGear=1;
-  }
-
-  if(transmissionShiftTimer>0){
-    revLimiterActive=false;
-    revLimiterPhase=0;
-
-    transmissionShiftTimer=
-      Math.max(0,transmissionShiftTimer-dt);
-
-    const progress=
-      transmissionShiftDuration>0
-        ?1-transmissionShiftTimer/transmissionShiftDuration
-        :1;
-
-    engineRpm=
-      transmissionShiftStartRpm+
-      (transmissionShiftEndRpm-transmissionShiftStartRpm)*
-      physicsSmoothstep01(progress);
-
-    transmissionShifting=
-      transmissionShiftTimer>0;
-
-    if(!transmissionShifting){
-      transmissionGear=transmissionPendingGear;
-      engineRpm=
-        computeTransmissionState(
-          kmh,
-          0,
-          profile,
-          transmissionGear
-        ).rpm;
-    }
-
-    return requestedThrottle>0&&transmissionShifting
-      ?0
-      :requestedThrottle;
-  }
-
-  let desiredGear=
-    transmissionGear;
-
-  if(transmissionMode==='automatic'){
-    desiredGear=
-      desiredTransmissionGear(
-        kmh,
-        profile,
-        transmissionGear,
-        effectiveRedline
-      );
-  }else if(manualShiftRequest!==null){
-    const requestedGear=
-      Math.max(
-        1,
-        Math.min(
-          Array.isArray(profile.gearRatios)&&
-          profile.gearRatios.length
-            ?profile.gearRatios.length
-            :Math.max(
-               1,
-               Number(profile.gearCount)||1
-             ),
-          Number(manualShiftRequest)||1
-        )
-      );
-
-    manualShiftRequest=null;
-
-    // Protect the engine from a mechanically impossible downshift.
-    // A real manual box can be abused into an over-rev, but for World Drive
-    // we reject the shift rather than creating an engine-damage subsystem.
-    if(requestedGear<transmissionGear){
-      const requestedState=
-        computeTransmissionState(
-          kmh,
-          0,
-          profile,
-          requestedGear
-        );
-
-      if(
-        requestedState.mechanicalRpm>
-        effectiveRedline*
-        1.035
-      ){
-        toast(
-          'Rétrogradage refusé · régime trop élevé'
-        );
-
-        desiredGear=
-          transmissionGear;
-      }else{
-        desiredGear=
-          requestedGear;
-      }
-    }else{
-      desiredGear=
-        requestedGear;
-    }
-  }
-
-  if(desiredGear!==transmissionGear){
-    transmissionPendingGear=desiredGear;
-    manualShiftRequest=null;
-
-    const upshift=desiredGear>transmissionGear;
-
-    transmissionShiftDuration=
-      Math.max(
-        .045,
-        Number(
-          upshift
-            ?profile.shiftDuration
-            :profile.downshiftDuration
-        )||
-        (upshift?.18:.15)
-      );
-
-    transmissionShiftTimer=transmissionShiftDuration;
-
-    transmissionShiftStartRpm=
-      computeTransmissionState(
-        kmh,
-        0,
-        profile,
-        transmissionGear
-      ).rpm;
-
-    transmissionShiftEndRpm=
-      computeTransmissionState(
-        kmh,
-        0,
-        profile,
-        desiredGear
-      ).rpm;
-
-    transmissionShifting=true;
-    revLimiterActive=false;
-    revLimiterPhase=0;
-    engineRpm=transmissionShiftStartRpm;
-
-    return requestedThrottle>0
-      ?0
-      :requestedThrottle;
-  }
-
-  transmissionShifting=false;
-
-  const load=
-    physicsClamp(
-      Math.abs(longitudinalAccel)/7.5,
-      0,
-      1
-    );
-
-  const steadyTransmission=
-    computeTransmissionState(
-      kmh,
-      load,
-      profile,
-      transmissionGear
-    );
-
-  engineRpm=
-    steadyTransmission.rpm;
-
-  const gearCount=
-    Array.isArray(profile.gearRatios)&&
-    profile.gearRatios.length
-      ?profile.gearRatios.length
-      :Math.max(
-         1,
-         Number(profile.gearCount)||1
-       );
-
-  const topGear=
-    transmissionGear>=gearCount;
-
-  const redlineSpeedKmh=
-    transmissionRedlineSpeedKmh(
-      profile,
-      effectiveRedline
-    );
-
-  const mechanicalState=
-    computeTransmissionState(
-      kmh,
-      load,
-      profile,
-      transmissionGear
-    );
-
-  const limiterAllowed=
-    transmissionMode==='manual'
-      ?transmissionGear>=1
-      :topGear;
-
-  const touchingLimiter=
-    limiterAllowed&&
-    requestedThrottle>.05&&
-    (
-      (
-        topGear&&
-        kmh>=redlineSpeedKmh*.994
-      )||
-      mechanicalState.mechanicalRpm>=
-        effectiveRedline*.994
-    );
-
-  if(touchingLimiter){
-    revLimiterActive=true;
-
-    const limiterHz=
-      Math.max(
-        6,
-        Number(profile.revLimiterHz)||12
-      );
-
-    const limiterDropRpm=
-      Math.max(
-        100,
-        Number(profile.revLimiterDropRpm)||
-        Math.min(
-          300,
-          redline*.035
-        )
-      );
-
-    revLimiterPhase+=
-      dt*
-      Math.PI*
-      2*
-      limiterHz;
-
-    if(revLimiterPhase>Math.PI*2*100){
-      revLimiterPhase%=Math.PI*2;
-    }
-
-    // Needle + audio bounce under the actual redline.
-    const bounce=
-      .5+
-      .5*
-      Math.sin(revLimiterPhase);
-
-    const effectiveDrop=
-      limiterDropRpm*
-      (
-        effectiveRedline/
-        redline
-      );
-
-    engineRpm=
-      effectiveRedline-
-      effectiveDrop*
-      (
-        .18+
-        bounce*.82
-      );
-
-    engineRpm=
-      Math.max(
-        idle,
-        Math.min(
-          effectiveRedline,
-          engineRpm
-        )
-      );
-
-    // Fuel/ignition-cut style torque pulse.
-    const powerPulse=
-      Math.sin(revLimiterPhase)<-.12;
-
-    return powerPulse
-      ?requestedThrottle
-      :0;
-  }
-
-  revLimiterActive=false;
-  revLimiterPhase=0;
-
-  if(!onPavement){
-    engineRpm=
-      Math.min(
-        engineRpm,
-        effectiveRedline
-      );
-  }
-
-  return requestedThrottle;
-}
-
+// ---------- transmission controller facade ----------
+let transmissionController=null;
+function activeTransmissionProfile(...args){return transmissionController.activeTransmissionProfile(...args);}
+function effectiveEngineRedlineRpm(...args){return transmissionController.effectiveEngineRedlineRpm(...args);}
+function transmissionRedlineSpeedKmh(...args){return transmissionController.transmissionRedlineSpeedKmh(...args);}
+function resetTransmissionState(...args){return transmissionController.resetTransmissionState(...args);}
+function requestManualShift(...args){return transmissionController.requestManualShift(...args);}
+function desiredTransmissionGear(...args){return transmissionController.desiredTransmissionGear(...args);}
+function updateTransmission(...args){return transmissionController.updateTransmission(...args);}
 // V21.21: generalized vehicle dynamics math lives in vehicle-dynamics.js.
 
 // Mutable object identity is intentional: audio/physics keep the same reference
 // when future vehicles are selected.
 const VEHICLE=vehicleSystem.physics;
+const transmissionStateBridge={};
+Object.defineProperties(transmissionStateBridge,{
+  transmissionGear:{get:()=>transmissionGear,set:value=>{transmissionGear=value;}},
+  transmissionPendingGear:{get:()=>transmissionPendingGear,set:value=>{transmissionPendingGear=value;}},
+  transmissionShiftTimer:{get:()=>transmissionShiftTimer,set:value=>{transmissionShiftTimer=value;}},
+  transmissionShiftDuration:{get:()=>transmissionShiftDuration,set:value=>{transmissionShiftDuration=value;}},
+  transmissionShiftStartRpm:{get:()=>transmissionShiftStartRpm,set:value=>{transmissionShiftStartRpm=value;}},
+  transmissionShiftEndRpm:{get:()=>transmissionShiftEndRpm,set:value=>{transmissionShiftEndRpm=value;}},
+  engineRpm:{get:()=>engineRpm,set:value=>{engineRpm=value;}},
+  transmissionShifting:{get:()=>transmissionShifting,set:value=>{transmissionShifting=value;}},
+  transmissionProfileKey:{get:()=>transmissionProfileKey,set:value=>{transmissionProfileKey=value;}},
+  revLimiterActive:{get:()=>revLimiterActive,set:value=>{revLimiterActive=value;}},
+  revLimiterPhase:{get:()=>revLimiterPhase,set:value=>{revLimiterPhase=value;}},
+  transmissionMode:{get:()=>transmissionMode,set:value=>{transmissionMode=value;}},
+  manualShiftRequest:{get:()=>manualShiftRequest,set:value=>{manualShiftRequest=value;}},
+});
+transmissionController=createTransmissionController({
+  vehicleSystem,
+  VEHICLE,
+  computeGearRedlineSpeeds,
+  computeTransmissionState,
+  physicsClamp,
+  physicsSmoothstep01,
+  toast,
+  getSpeed:()=>speed,
+  getLongitudinalAccel:()=>longitudinalAccel,
+  vehicleReverseLimitMps,
+  state:transmissionStateBridge
+});
 // Reusable V21.21.3 dynamics results: avoid per-frame result/array churn while
 // keeping the exact generalized equations used for future multi-axle vehicles.
 const dynamicsScratch={
