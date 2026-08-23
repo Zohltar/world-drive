@@ -1,12 +1,11 @@
 // World Drive application/build branding.
 //
-// Keep the visible runtime version in one place. During the V21.25 cleanup,
-// main.js still contains a few historical labels created dynamically; the
-// compatibility normalizer below prevents those stale labels from leaking into
-// the UI until that large module is split/cleaned in a later pass.
+// Keep the visible runtime version in one place. Development branches use an
+// explicit "dev" channel so local testing cannot be confused with the current
+// stable baseline. main remains on the stable release version until promotion.
 
-export const WORLD_DRIVE_VERSION='21.25';
-export const WORLD_DRIVE_CHANNEL='cleanup';
+export const WORLD_DRIVE_VERSION='21.26';
+export const WORLD_DRIVE_CHANNEL='dev';
 export const WORLD_DRIVE_VERSION_LABEL=`V${WORLD_DRIVE_VERSION} ${WORLD_DRIVE_CHANNEL}`;
 export const WORLD_DRIVE_TITLE=`World Drive ${WORLD_DRIVE_VERSION_LABEL}`;
 
