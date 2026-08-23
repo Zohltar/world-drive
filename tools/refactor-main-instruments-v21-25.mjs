@@ -87,9 +87,6 @@ const moduleHeader=[
 const moduleFooter=['','  return Object.freeze({','    setGameControlsHidden,','    drawSpeedometer,','    drawCompass','  });','}','',''].join(eol);
 const moduleContent=moduleHeader+extracted+moduleFooter;
 
-const importAnchor="import { createRouteChallenge } from './route-challenge.js';";
-main=main.replace(importAnchor,importAnchor+eol+"import { createInstrumentCluster } from './instrument-cluster.js';");
-
 const replacement=[
 '// ---------- instrument cluster + compass ----------',
 'const instrumentCluster=createInstrumentCluster({',
@@ -117,7 +114,13 @@ const replacement=[
 '',
 endMarker
 ].join(eol);
+
+// First replace the block using offsets from the untouched source. Only after
+// that do we add the new import; otherwise the inserted import would shift the
+// block offsets and corrupt the cut on CRLF/LF files alike.
 main=main.slice(0,block.start)+replacement+main.slice(block.end+endMarker.length);
+const importAnchor="import { createRouteChallenge } from './route-challenge.js';";
+main=main.replace(importAnchor,importAnchor+eol+"import { createInstrumentCluster } from './instrument-cluster.js';");
 
 for(const stale of ['// ---------- V20.7 unified instrument cluster ----------','function drawGaugeBezel(','function drawTachometer(','function drawSpeedGauge(','function rebuildCompassTape(','function headingDeg()']){if(main.includes(stale))die(`post-transform stale instrument code remains: ${stale}. No files were changed.`)}
 for(const required of ["from './instrument-cluster.js'",'const instrumentCluster=createInstrumentCluster({','currentOnPavementForInstruments,','drawSpeedometer,','drawCompass']){if(!main.includes(required))die(`post-transform integration missing: ${required}. No files were changed.`)}
