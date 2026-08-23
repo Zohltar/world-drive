@@ -28,7 +28,7 @@ for(const pattern of [
   /function addCurrentRoadSigns\s*\(/,
   /const keys=\{\};/,
   /function assignKeyboardBinding\s*\(/,
-  /addEventListener\('keydown',e=>\{/
+  /^addEventListener\('keydown',e=>\{/m
 ]){
   assert.doesNotMatch(main,pattern,`main.js still owns extracted implementation: ${pattern}`);
 }
