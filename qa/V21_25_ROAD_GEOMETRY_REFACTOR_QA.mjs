@@ -9,12 +9,16 @@ const root=path.resolve(here,'..');
 const src=path.join(root,'src');
 const mainPath=path.join(src,'main.js');
 const modulePath=path.join(src,'road-geometry.js');
+const localWorldPath=path.join(src,'local-world-builder.js');
 
 assert.equal(fs.existsSync(mainPath),true,'src/main.js missing');
 assert.equal(fs.existsSync(modulePath),true,'src/road-geometry.js missing — run tools/refactor-main-road-geometry-v21-25.mjs first');
 
 const main=fs.readFileSync(mainPath,'utf8');
 const road=fs.readFileSync(modulePath,'utf8');
+const localWorld=fs.existsSync(localWorldPath)
+  ?fs.readFileSync(localWorldPath,'utf8')
+  :'';
 
 for(const pattern of [
   /\/\/ ---------- continuous road ribbon ----------/,
@@ -32,15 +36,38 @@ for(const pattern of [
   /const roadGeometry=createRoadGeometrySystem\s*\(/,
   /const activeRoadProfile=roadGeometry\.profile;/,
   /function buildRoadProfile\(\)\{return roadGeometry\.buildProfile\(\);\}/,
+  /function setActiveRoadProfile\(profile\)\{return roadGeometry\.setProfile\(profile\);\}/,
   /function buildRibbon\(\.\.\.args\)\{return roadGeometry\.buildRibbon\(\.\.\.args\);\}/,
   /function roadFrameAt\(\.\.\.args\)\{return roadGeometry\.roadFrameAt\(\.\.\.args\);\}/,
   /function roadHeightAt\(\.\.\.args\)\{return roadGeometry\.roadHeightAt\(\.\.\.args\);\}/,
   /function roadSurfaceAt\(\.\.\.args\)\{return roadGeometry\.roadSurfaceAt\(\.\.\.args\);\}/,
-  /setActiveRoadProfile\(profile\);/,
   /clearActiveRoadProfile\(\);/,
   /function terrainFrameAt\s*\(/
 ]){
   assert.match(main,pattern,`main.js missing road geometry facade: ${pattern}`);
+}
+
+// V21.26 local-world extraction moved the live profile-install call out of
+// main.js while intentionally keeping the road-geometry facade in main.
+// Accept the historical V21.25 ownership when no local-world module exists,
+// and require the new owner when it does.
+if(localWorld){
+  assert.match(
+    localWorld,
+    /setActiveRoadProfile\(profile\);/,
+    'local-world-builder.js missing active road profile installation'
+  );
+  assert.doesNotMatch(
+    main,
+    /setActiveRoadProfile\(profile\);/,
+    'main.js still owns active road profile installation after local-world extraction'
+  );
+}else{
+  assert.match(
+    main,
+    /setActiveRoadProfile\(profile\);/,
+    'main.js missing historical active road profile installation'
+  );
 }
 
 for(const pattern of [
@@ -63,7 +90,9 @@ for(const pattern of [
   assert.match(road,pattern,`road-geometry.js missing expected behavior: ${pattern}`);
 }
 
-for(const filePath of [mainPath,modulePath]){
+const syntaxFiles=[mainPath,modulePath];
+if(localWorld)syntaxFiles.push(localWorldPath);
+for(const filePath of syntaxFiles){
   const result=spawnSync(process.execPath,['--check',filePath],{cwd:root,encoding:'utf8'});
   assert.equal(result.status,0,result.stderr||result.stdout||`${path.basename(filePath)} syntax check failed`);
 }
@@ -123,4 +152,4 @@ assert.ok(mainLines<6100,`main.js is still unexpectedly large after road geometr
 
 console.log('V21.25 ROAD GEOMETRY REFACTOR QA: PASS');
 console.log(`main.js: ${mainLines} lines; road-geometry.js: ${roadLines} lines`);
-console.log('road profile identity/index/interpolation/surface offset: verified');
+console.log(`road profile identity/index/interpolation/surface offset: verified${localWorld?' · local-world ownership accepted':''}`);
