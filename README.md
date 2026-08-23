@@ -1,5 +1,7 @@
 # World Drive V21.24.64 — Hyundai Sonata 2006 GLB candidate
 
+![World Drive gameplay](docs/images/world-drive-gameplay.webp)
+
 Conversion visuelle de la Sonata vers le modèle haute fidélité fourni `2006_hyundai_sonata.glb`.
 
 ## Changements
