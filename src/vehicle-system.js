@@ -1,4 +1,4 @@
-// World Drive V21.21.26 — instrumented road-car behavior calibration + steering rack.
+// World Drive V21.23.3 — generalized cars + multi-axle tractor profiles.
 // Existing vehicles keep their proven gameplay calibration while exposing mass,
 // CG, track, axle, inertia and coupling metadata for future vehicle classes.
 
@@ -60,7 +60,11 @@ const PROFILES={
       type:'crossover',
       profile:'id4',
       rideHeight:0.38,
-      bodyStyle:'compact-electric-crossover'
+      bodyStyle:'compact-electric-crossover',
+      asset:'id4_2021.glb',
+      glbPreferred:true,
+      glbRole:'full-vehicle-reference',
+      referenceStyle:'volkswagen-id4-2021'
     }
   },
   wrx:{
@@ -130,7 +134,11 @@ const PROFILES={
       bodyStyle:'rally-sport-sedan',
       color:'rally-blue',
       hoodScoop:true,
-      rearWing:true
+      rearWing:true,
+      asset:'subaru_wrx_vb.glb',
+      glbPreferred:true,
+      glbRole:'full-vehicle-reference',
+      referenceStyle:'subaru-wrx-vb'
     }
   },
   civic:{
@@ -197,7 +205,11 @@ const PROFILES={
       type:'sedan',
       profile:'civic',
       rideHeight:0.29,
-      color:'black'
+      color:'black',
+      asset:'2006_honda_civic_si.glb',
+      glbPreferred:true,
+      glbRole:'full-vehicle-reference',
+      referenceStyle:'honda-civic-si-2006'
     }
   },
 
@@ -264,7 +276,11 @@ const PROFILES={
       type:'sport-sedan',
       profile:'sonata',
       rideHeight:0.30,
-      color:'white'
+      color:'white',
+      asset:'2006_hyundai_sonata.glb',
+      glbPreferred:true,
+      glbRole:'full-vehicle-reference',
+      referenceStyle:'hyundai-sonata-2006'
     }
   },
 
@@ -394,7 +410,10 @@ const PROFILES={
       type:'open-wheel',
       profile:'f1_2010',
       rideHeight:0.12,
-      color:'red-white'
+      color:'red-white',
+      asset:'f1_2010_ferrari.glb',
+      glbPreferred:true,
+      glbRole:'full-vehicle-reference'
     }
   },
 
@@ -436,6 +455,10 @@ const PROFILES={
       // progressively calmer at very high speed.
       maxSteerLow:0.43,
       maxSteerHigh:0.142,
+      // V21.24.10 — progressive gamepad steering curve. Small stick inputs
+      // produce fine road-wheel corrections, while the last part of travel
+      // ramps up more aggressively and still reaches the full steering lock.
+      steeringInputExponent:1.65,
       steeringResponseHigh:5.8,
       steeringCenterToFullTimeSec:0.44,
       steeringReturnToCenterTimeSec:0.32,
@@ -483,8 +506,177 @@ const PROFILES={
       type:'wedge-supercar',
       profile:'countach_80',
       rideHeight:0.18,
+      bodyBaseY:-.38,
       color:'red',
-      rearWing:true
+      rearWing:true,
+      asset:'countach_80.glb',
+      sourceAsset:'countach_80_real.glb',
+      glbPreferred:true,
+      glbRole:'full-vehicle-reference',
+      referenceStyle:'1989-countach'
+    }
+  },
+
+
+  semi_6x4:{
+    id:'semi_6x4',
+    name:'Camion routier + remorque',
+    description:'Tracteur 6x4 articulé · modèle 3D Saia LTL Freight',
+
+    physics:{
+      drivetrain:'RWD',
+      vehicleClass:'tractor',
+
+      // Representative North-American sleeper tractor. This is intentionally
+      // generic rather than tied to one manufacturer/model.
+      massKg:8600,
+      cgHeight:1.18,
+      trackWidth:2.04,
+      frontWeightBias:0.35,
+      brakeBiasFront:0.28,
+      driveBiasFront:0.00,
+      yawInertiaScale:1.34,
+      longitudinalAccelLimit:5.6,
+      bodyLength:8.55,
+      bodyWidth:2.55,
+      topSpeedKmh:105,
+      reverseTopSpeedKmh:18,
+
+      // Loaded-combination calibration. Trailer mass is applied separately by
+      // truck-trailer.js so bobtail/trailer variants can later share this cab.
+      accel:2.05,
+      // Approximate usable wheel power after drivetrain losses. Runtime truck
+      // acceleration follows P/(m*v), while low gears are traction/torque capped.
+      tractivePowerKw:340,
+      brake:5.20,
+      reverseAccel:1.05,
+      // Heavy-truck coast losses are kept physically plausible. Propulsion is
+      // already power-limited in truck-trailer.js, so giant arcade aero drag is
+      // neither necessary nor desirable for hill-climb behaviour.
+      rolling:0.080,
+      aero:0.00012,
+
+      // Effective steering-axle -> tandem-centre wheelbase. Individual axle
+      // locations below are preserved by normalizePhysics().
+      wheelbase:5.45,
+      // Modern highway tractors commonly offer ~45–50° wheel cut. Keep the
+      // normal low-speed rack close to V21.23.1, then add the extra travel only
+      // in the parking/hairpin envelope so highway steering stays familiar.
+      maxSteerLow:0.64,
+      maxSteerHigh:0.095,
+      parkingSteerBoost:0.38,
+      steeringInputExponent:1.16,
+      steeringResponseLow:2.15,
+      steeringResponseMid:2.45,
+      steeringResponseHigh:2.70,
+      steeringReturnRateLow:3.0,
+      steeringReturnRateHigh:3.8,
+      steeringCenterToFullTimeSec:1.05,
+      steeringReturnToCenterTimeSec:0.78,
+      roadGripMultiplier:0.94,
+      lateralAccelLimit:4.15,
+      // V21.23.3: loaded highway-tractor suspension. The first truck candidate
+      // reused a very soft/long-travel visual setup (0.22 m @ 9.5 response),
+      // which made the 27.1 t combination wallow. Keep enough travel for
+      // uneven roads, but use a much faster, more heavily controlled spring.
+      suspensionTravel:0.14,
+      suspensionResponse:18.5,
+      offroadGrip:0.48,
+      offroadDrag:1.75,
+
+      // Three physical tractor axles: one steer axle and a driven tandem.
+      // Dual rear tires are represented as four wheel contacts per axle.
+      axles:[
+        {
+          id:'steer',
+          positionM:2.12,
+          staticLoadFraction:0.35,
+          steerFactor:1,
+          driveShare:0,
+          brakeShare:0.28,
+          trackWidth:2.04,
+          wheelCount:2
+        },
+        {
+          id:'drive-1',
+          positionM:-2.72,
+          staticLoadFraction:0.33,
+          steerFactor:0,
+          driveShare:0.50,
+          brakeShare:0.36,
+          trackWidth:1.86,
+          wheelCount:4
+        },
+        {
+          id:'drive-2',
+          positionM:-4.02,
+          staticLoadFraction:0.32,
+          steerFactor:0,
+          driveShare:0.50,
+          brakeShare:0.36,
+          trackWidth:1.86,
+          wheelCount:4
+        }
+      ],
+
+      coupling:{
+        type:'fifth-wheel',
+        rearHitchOffsetM:-3.45,
+        supportsArticulation:true,
+        maxArticulationRad:1.43
+      }
+    },
+
+    trailer:{
+      id:'dryvan_53',
+      type:'dry-van',
+      name:'Remorque fourgon 53 pi',
+      lengthM:16.15,
+      widthM:2.60,
+      heightM:4.05,
+      massKg:18500,
+      kingpinToCenterM:7.05,
+      kingpinToAxlesM:11.75,
+      axleSpreadM:1.22,
+      axleCount:2,
+      wheelCount:8,
+      brakeDecel:4.80,
+      rollingResistanceAccel:0.035,
+      aeroDragCoeff:0.000025,
+      yawInertiaScale:1.0,
+      tireCorneringResponse:3.6,
+      maxArticulationRad:1.43
+    },
+
+    audio:{
+      type:'combustion',
+      // Reuse a proven combustion voice for now; the very low RPM calibration
+      // makes it substantially deeper. A dedicated diesel sample bank can be
+      // added without touching the truck physics.
+      profile:'sonata-sport',
+      idleRpm:600,
+      redlineRpm:2200,
+      gearCount:12,
+      referenceRedlineRpm:2200,
+      referenceTopGearRedlineKmh:105,
+      referenceTopGearRatio:1,
+      gearRatios:[14.40,11.20,8.70,6.80,5.30,4.10,3.20,2.48,1.93,1.50,1.20,1.00],
+      shiftDuration:0.42,
+      downshiftDuration:0.34,
+      revLimiterHz:7.0,
+      revLimiterDropRpm:90,
+      cylinders:6
+    },
+
+    visual:{
+      type:'semi-tractor-glb',
+      profile:'semi_6x4',
+      rideHeight:0.48,
+      bodyBaseY:-.08,
+      asset:'saia_ltl_freight_truck_half_trailer.glb',
+      glbPreferred:true,
+      glbRole:'articulated-tractor-trailer-reference',
+      color:'saia-red'
     }
   },
 
@@ -539,9 +731,11 @@ const PROFILES={
     },
 
     visual:{
-      type:'compact-ev',
+      type:'compact-ev-glb',
       profile:'i3_2017',
       rideHeight:0.33,
+      asset:'2017_bmw_i3.glb',
+      glbPreferred:true,
       color:'white-black'
     }
   }
@@ -590,34 +784,56 @@ function normalizePhysics(raw){
   physics.bodyLength=Math.max(wheelbase+.6,Number(physics.bodyLength)||wheelbase+1.6);
   physics.bodyWidth=Math.max(trackWidth+.15,Number(physics.bodyWidth)||trackWidth+.3);
 
-  physics.axles=[
-    {
-      id:'front',
-      positionM:frontAxleX,
-      staticLoadFraction:frontWeightBias,
-      steerFactor:1,
-      driveShare:driveBiasFront,
-      brakeShare:brakeBiasFront,
-      trackWidth,
-      wheelCount:2
-    },
-    {
-      id:'rear',
-      positionM:rearAxleX,
-      staticLoadFraction:1-frontWeightBias,
-      steerFactor:0,
-      driveShare:1-driveBiasFront,
-      brakeShare:1-brakeBiasFront,
-      trackWidth,
-      wheelCount:2
-    }
-  ];
+  const configuredAxles=Array.isArray(physics.axles)?physics.axles:[];
+  if(configuredAxles.length>=2){
+    physics.axles=configuredAxles.map((axle,index)=>({
+      id:axle.id||`axle-${index}`,
+      positionM:Number.isFinite(Number(axle.positionM))?Number(axle.positionM):frontAxleX+(rearAxleX-frontAxleX)*(index/Math.max(1,configuredAxles.length-1)),
+      staticLoadFraction:Math.max(.01,Number(axle.staticLoadFraction)||1/configuredAxles.length),
+      steerFactor:Number.isFinite(Number(axle.steerFactor))?Number(axle.steerFactor):(index===0?1:0),
+      driveShare:Math.max(0,Number(axle.driveShare)||0),
+      brakeShare:Math.max(0,Number(axle.brakeShare)||0),
+      trackWidth:Math.max(.8,Number(axle.trackWidth)||trackWidth),
+      wheelCount:Math.max(1,Math.round(Number(axle.wheelCount)||2))
+    }));
 
-  // Reserved coupling metadata. V21.21 does not simulate a trailer yet, but
-  // future rigid bodies can attach here without changing the vehicle schema.
+    for(const key of ['staticLoadFraction','driveShare','brakeShare']){
+      const total=physics.axles.reduce((sum,axle)=>sum+Math.max(0,Number(axle[key])||0),0);
+      if(total>1e-8){
+        for(const axle of physics.axles)axle[key]=Math.max(0,Number(axle[key])||0)/total;
+      }
+    }
+  }else{
+    physics.axles=[
+      {
+        id:'front',
+        positionM:frontAxleX,
+        staticLoadFraction:frontWeightBias,
+        steerFactor:1,
+        driveShare:driveBiasFront,
+        brakeShare:brakeBiasFront,
+        trackWidth,
+        wheelCount:2
+      },
+      {
+        id:'rear',
+        positionM:rearAxleX,
+        staticLoadFraction:1-frontWeightBias,
+        steerFactor:0,
+        driveShare:1-driveBiasFront,
+        brakeShare:1-brakeBiasFront,
+        trackWidth,
+        wheelCount:2
+      }
+    ];
+  }
+
+  // Coupling metadata is profile-defined for articulated vehicles. Passenger
+  // cars retain the historical generic rear attachment point.
   physics.coupling={
     rearHitchOffsetM:-physics.bodyLength*.48,
-    supportsArticulation:true
+    supportsArticulation:true,
+    ...(physics.coupling||{})
   };
 
   // Approximate planar yaw inertia for response scaling. It is intentionally

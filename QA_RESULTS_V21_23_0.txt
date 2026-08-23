@@ -1,0 +1,35 @@
+World Drive V21.23.0 QA results
+=============================
+
+V21.23.0 TRUCK + TRAILER QA: PASS
+┌────────────────────────────────┬─────────┐
+│ (index)                        │ Values  │
+├────────────────────────────────┼─────────┤
+│ tractorMassKg                  │ 8600    │
+│ trailerMassKg                  │ 18500   │
+│ combinationMassKg              │ 27100   │
+│ tractorAxles                   │ 3       │
+│ tractorTireContacts            │ 10      │
+│ trailerAxles                   │ 2       │
+│ trailerWheels                  │ 8       │
+│ parkingTurnRadiusM             │ '7.15'  │
+│ yawInertiaRatioVsWRX           │ '28.5'  │
+│ loadedLaunchAccelMs2           │ '0.80'  │
+│ loadedBrakeAccelMs2            │ '4.93'  │
+│ forwardResidualArticulationDeg │ '0.003' │
+│ reverseArticulationDeg         │ '28.2'  │
+└────────────────────────────────┴─────────┘
+
+V21.23.0 BASELINE REGRESSION QA: PASS
+terrain/imagery/dynamics/presentation unchanged from V21.22.6
+
+PASS randomized dynamics fuzz: 50000 states, up to 5 axles / 20 wheels
+PASS deterministic seed: 0x21212026
+
+V21.21.25 STEERING RACK QA: PASS
+
+V21.21.26 BEHAVIOR CALIBRATION QA: PASS
+Extreme-state stress cases: 175,000
+
+V21.21.26 TRACTION CONSISTENCY QA: PASS
+Monotonic/fixed-point cases: 34,160

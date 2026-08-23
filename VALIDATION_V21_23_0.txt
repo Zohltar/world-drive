@@ -1,0 +1,41 @@
+World Drive V21.23.0 — Truck + Trailer Validation
+
+Syntax
+PASS src/main.js
+PASS src/vehicle-system.js
+PASS src/truck-trailer.js
+PASS src/vehicle-dynamics.js
+PASS src/vehicle-presentation.js
+
+New truck/trailer QA
+PASS qa/V21_23_0_TRUCK_TRAILER_QA.mjs
+- fleet: 8 selectable profiles (7 existing + semi_6x4)
+- tractor: 8,600 kg, 3 axles, 10 tire contacts
+- trailer: 18,500 kg, 2 axles, 8 visible tires
+- loaded combination: 27,100 kg
+- parking tractor turn radius: ~7.15 m
+- normalized yaw inertia: ~28.5x WRX
+- loaded initial acceleration: ~0.80 m/s^2
+- loaded service braking: ~4.93 m/s^2
+- forward 12 deg articulation -> ~0.003 deg residual after 8 s
+- reverse 3 deg articulation -> ~28.2 deg after 10 s
+- articulation stop respected
+
+Existing seven-vehicle regression suites
+PASS V21_21_FUZZ_QA.mjs — 50,000 randomized states
+PASS V21_21_25_STEERING_RACK_QA.mjs
+PASS V21_21_26_BEHAVIOR_CALIBRATION_QA.mjs — 175,000 stress cases
+PASS V21_21_26_TRACTION_CONSISTENCY_QA.mjs — 34,160 cases
+
+Historical note
+V21_21_PHYSICS_QA.mjs contains a deliberate hard-coded assertion that the fleet
+size is exactly seven and that every profile has exactly two axles. It therefore
+fails its obsolete fleet-shape assertion once V21.23.0 correctly adds an eighth,
+three-axle tractor. Its seven-car behavioral coverage is superseded here by the
+passing fixed-ID V21.21.26 calibration/traction suites plus the new V21.23.0 QA.
+
+Build
+A complete Vite/Electron build cannot be run from this candidate package alone
+because baseline patch archives do not carry every unchanged source module or
+node_modules. Syntax/static/pure-physics validation was run locally. User visual
+and gameplay validation in the full repository remains required.

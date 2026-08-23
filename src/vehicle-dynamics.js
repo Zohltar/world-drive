@@ -408,7 +408,11 @@ export function steeringCommand({vehicle,speedAbs=0,input=0}={},out=null){
   let target=raw;
   if(Math.abs(target)<.08)target=0;
   else{
-    const vehicleExponent=Math.max(.75,safeNumber(vehicle?.steeringInputExponent,1));
+    // V21.24.11 — make the progressive joystick steering curve the global
+    // default for every vehicle. Profiles can still override the exponent,
+    // but cars that do not specify one now get the same fine-on-centre,
+    // stronger-near-lock response requested for the Countach.
+    const vehicleExponent=Math.max(.75,safeNumber(vehicle?.steeringInputExponent,1.65));
     const highSpeedT=clampDynamics((v-8.3)/26.4,0,1);
     const highSpeedSmooth=highSpeedT*highSpeedT*(3-2*highSpeedT);
     target=Math.sign(target)*Math.pow(Math.abs(target),vehicleExponent+1.15*highSpeedSmooth);

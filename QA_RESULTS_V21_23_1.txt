@@ -1,0 +1,30 @@
+World Drive V21.23.1 — Truck Camera + Torque Candidate
+
+PASS V21.23.1 truck camera + torque QA
+- combination mass: 27,100 kg
+- usable wheel power: 340 kW
+- low-speed delivered acceleration: 2.05 m/s²
+- delivered acceleration @ 30 km/h: 1.51 m/s²
+- delivered acceleration @ 40 km/h: 1.13 m/s²
+- delivered acceleration @ 60 km/h: 0.75 m/s²
+- 10% grade @ 40 km/h: slightly positive net acceleration
+- 6% grade @ 60 km/h: near equilibrium / slightly positive
+- old 10.5 m <-> 25.5 m chase-camera rescale path removed
+- truck chase camera owns persistent smoothed position/target state
+
+PASS V21.21.26 behavior calibration
+- 7 passenger vehicles unchanged
+- 175,000 extreme-state stress cases
+
+PASS V21.21.26 traction consistency
+- 34,160 monotonic/fixed-point cases
+
+PASS generalized dynamics fuzz
+- 50,000 randomized states
+- up to 5 axles / 20 wheels
+
+PASS V21.23.1 baseline regression
+- terrain.js unchanged from V21.22.6
+- imagery.js unchanged from V21.22.6
+- vehicle-dynamics.js unchanged from V21.22.6
+- vehicle-presentation.js unchanged from V21.22.6

@@ -1,0 +1,20 @@
+World Drive V21.24.0 — Cab-over GLB candidate QA
+
+PASS: vehicle profile validation
+PASS: fleet contains 7 passenger cars + procedural semi + GLB cab-over semi (9 total)
+PASS: existing semi_6x4 remains selectable
+PASS: semi_cabover_glb selectable
+PASS: GLB profile uses 3 tractor axles and 53 ft articulated trailer
+PASS: loaded-combination calibration remains 27,100 kg
+PASS: cabover_micro.glb binary header / non-placeholder size validation
+PASS: truck-trailer source uses Three GLTFLoader and local bundled asset URL
+PASS: src/main.js syntax
+PASS: src/truck-trailer.js syntax
+PASS: src/vehicle-system.js syntax
+PASS: passenger behavior calibration (175,000 extreme-state cases)
+PASS: traction consistency (34,160 cases)
+PASS: dynamics fuzz (50,000 randomized states)
+
+Note: older V21.23.0 fleet-count QA expects exactly 8 vehicles and is obsolete once the
+second truck is intentionally added. Older candidate-version regex tests are likewise
+version-pinned and not applicable to V21.24.0.

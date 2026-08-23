@@ -1,0 +1,27 @@
+World Drive V21.24.58 — F1 Ferrari GLB candidate QA
+
+Source model inspection:
+- 149 geometry entries.
+- Authored orientation: +Z is nose/forward, +Y is up, +X is lateral.
+- Runtime normalization targets 5.00 m overall length, matching the existing F1 physical envelope.
+- Authored wheel hierarchy exposes WHEEL_LF, WHEEL_RF, WHEEL_LR, WHEEL_RR.
+- Separate disc/caliper groups exist for all four corners.
+
+Runtime integration:
+- Added src/f1-glb.js.
+- Added src/assets/f1_2010_ferrari.glb.
+- F1 GLB owns only visual body/wheel rendering when f1_2010 is selected.
+- Procedural F1 is retained as load/error fallback.
+- Front authored wheels steer with currentSteerAngle.
+- Four authored wheel assemblies roll from vehicle speed.
+- Brake discs roll with wheels; calipers do not spin.
+
+Regression guardrails:
+- src/vehicle-dynamics.js is byte-identical to V21.24.57.
+- src/truck-trailer.js is byte-identical to V21.24.57.
+- F1 physics, aero, mass, braking, steering rack and grip values unchanged.
+
+Syntax validation:
+- node --check src/f1-glb.js PASS
+- node --check src/main.js PASS
+- node --check src/vehicle-system.js PASS

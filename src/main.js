@@ -27,6 +27,14 @@ import { createWorldStreaming } from './world-streaming.js';
 import { createVehicleSystem } from './vehicle-system.js';
 import { createMultiplayerClient } from './multiplayer.js';
 import { createVehicleVisualSystem } from './vehicle-visuals.js';
+import { createTruckTrailerSystem } from './truck-trailer.js';
+import { createCountachGlbSystem } from './countach-glb.js';
+import { createId4GlbSystem } from './id4-glb.js';
+import { createWrxGlbSystem } from './wrx-glb.js';
+import { createCivicGlbSystem } from './civic-glb.js';
+import { createSonataGlbSystem } from './sonata-glb.js';
+import { createF1GlbSystem } from './f1-glb.js';
+import { createI3GlbSystem } from './i3-glb.js';
 import { createMultiplayerVisualSystem } from './multiplayer-visuals.js';
 import { createVehiclePresentation } from './vehicle-presentation.js';
 import { createSkidMarkSystem } from './skidmarks.js';
@@ -2494,18 +2502,109 @@ const {
   bodyGroup
 }=vehicleVisuals;
 
+const countachGlbSystem=createCountachGlbSystem({
+  THREE,
+  bodyGroup,
+  existingWheels:vehicleVisuals.wheels,
+  vehicleSystem
+});
+
+
+const id4GlbSystem=createId4GlbSystem({
+  THREE,
+  bodyGroup,
+  existingWheels:vehicleVisuals.wheels,
+  vehicleSystem
+});
+
+const wrxGlbSystem=createWrxGlbSystem({
+  THREE,
+  bodyGroup,
+  existingWheels:vehicleVisuals.wheels,
+  vehicleSystem
+});
+
+const civicGlbSystem=createCivicGlbSystem({
+  THREE,
+  bodyGroup,
+  existingWheels:vehicleVisuals.wheels,
+  vehicleSystem
+});
+
+const sonataGlbSystem=createSonataGlbSystem({
+  THREE,
+  bodyGroup,
+  existingWheels:vehicleVisuals.wheels,
+  vehicleSystem
+});
+
+const f1GlbSystem=createF1GlbSystem({
+  THREE,
+  bodyGroup,
+  existingWheels:vehicleVisuals.wheels,
+  vehicleSystem
+});
+
+
+const i3GlbSystem=createI3GlbSystem({
+  THREE,
+  bodyGroup,
+  existingWheels:vehicleVisuals.wheels,
+  vehicleSystem
+});
+
+// V21.24.4 — mouse head-look for the Countach cockpit. Drag directly on
+// the rendered world; UI panels keep intercepting their own pointer events.
+let countachLookPointerId=null;
+renderer.domElement.addEventListener('pointerdown',event=>{
+  if(event.button!==0)return;
+  const modeLabel=$('camMode')?.textContent||'';
+  if(vehicleSystem.activeId!=='countach_80'||!countachGlbSystem.isDriverCameraMode(modeLabel))return;
+  countachLookPointerId=event.pointerId;
+  renderer.domElement.setPointerCapture?.(event.pointerId);
+  event.preventDefault();
+});
+renderer.domElement.addEventListener('pointermove',event=>{
+  if(countachLookPointerId!==event.pointerId)return;
+  countachGlbSystem.addHeadLookDelta(event.movementX||0,event.movementY||0);
+});
+const releaseCountachLookPointer=event=>{
+  if(countachLookPointerId!==event.pointerId)return;
+  renderer.domElement.releasePointerCapture?.(event.pointerId);
+  countachLookPointerId=null;
+};
+renderer.domElement.addEventListener('pointerup',releaseCountachLookPointer);
+renderer.domElement.addEventListener('pointercancel',releaseCountachLookPointer);
+
+const truckTrailerSystem=createTruckTrailerSystem({
+  THREE,
+  scene,
+  car,
+  bodyGroup,
+  existingWheels:vehicleVisuals.wheels,
+  vehicleSystem,
+  groundHeightForWheel,
+  getWorldOffset:()=>worldOffset
+});
+
 const vehiclePresentation=createVehiclePresentation({
   THREE,
   scene,
   car,
   bodyGroup,
-  wheels:vehicleVisuals.wheels,
+  wheels:[
+    ...vehicleVisuals.wheels,
+    ...truckTrailerSystem.tractorWheels
+  ],
   vehicleSystem,
   sun,
   roadSurfaceAt,
   terrainAbs,
   groundHeightForWheel,
-  activeVehicleWheels:vehicleVisuals.activeVehicleWheels,
+  activeVehicleWheels:()=>
+    truckTrailerSystem.active
+      ?truckTrailerSystem.tractorWheels
+      :vehicleVisuals.activeVehicleWheels(),
   getDrivingState:()=>({
     heading,
     absX,
@@ -4381,7 +4480,7 @@ async function createRequestedRoute(start,end,waypoints=[]){
 
 // ---------- V5 subsystem facade ----------
 const WorldDrive={
-  version:'21.22.6-candidate',
+  version:'21.24.0-candidate',
   route:{generation:0},
   streaming:{generation:0},
   vehicle:{generation:0},
@@ -4450,6 +4549,8 @@ let longitudinalAccel=0;
 let visualSteer=0;
 let bodyHeave=0;
 let currentSteerAngle=0; // shared with audio / visual systems
+let countachBrakeLightRequested=false;
+let countachReverseLightRequested=false;
 
 // V18K — tire stress comes from the actual vehicle-physics grip clamp.
 // This value is intentionally smoothed a little to represent tire-force/slip
@@ -4716,7 +4817,7 @@ function updateTransmission(dt,requestedThrottle,onPavement=true){
 
     const reverseRatio=
       physicsClamp(
-        Math.abs(speed)/Math.max(1,Math.abs(REV)),
+        Math.abs(speed)/Math.max(1,Math.abs(vehicleReverseLimitMps())),
         0,
         1
       );
@@ -5429,6 +5530,12 @@ addEventListener(
 let maxSpeedKmh=200;
 let MAX=maxSpeedKmh/3.6;
 const REV=-10;
+function vehicleReverseLimitMps(){
+  const configured=Number(VEHICLE?.reverseTopSpeedKmh);
+  return Number.isFinite(configured)&&configured>0
+    ?-configured/3.6
+    :REV;
+}
 
 let obeyRoadSpeedLimits=true;
 let roadContact=false;
@@ -5684,7 +5791,13 @@ function updateDrive(dt){
    );
 
  const brakeRequested=hand||(throttle<-.04&&speed>.15);
+ countachBrakeLightRequested=brakeRequested;
+ // Reverse lamps illuminate as soon as reverse drive is requested at/through
+ // zero speed, and remain on while the car is actually travelling backwards.
+ countachReverseLightRequested=(speed<-.08)||(driveThrottle<-.04&&speed<=.15);
  vehicleVisuals.updateBrakeLights(dt,brakeRequested);
+ truckTrailerSystem.setBrakeLights(brakeRequested);
+ const combination=truckTrailerSystem.longitudinalScales();
  // ----- V4.1 longitudinal dynamics -----
  const previousSpeed=speed;
  const surfaceGrip=onPavement?roadSurfaceGrip():1;
@@ -5716,7 +5829,9 @@ function updateDrive(dt){
    if(speed>=0){
      const performanceTop=vehicleTopSpeedKmh()/3.6;
      const speedRatio=Math.min(1,Math.max(0,speed/performanceTop));
-     const powerTaper=1-.38*speedRatio;
+     const powerTaper=truckTrailerSystem.active
+       ?1
+       :1-.38*speedRatio;
      requestedDriveAccel=
        VEHICLE.accel*
        offroadPowerFactor*
@@ -5735,6 +5850,14 @@ function updateDrive(dt){
        driveThrottle;
    }
  }
+
+ // V21.23.1 — when the tractor carries a trailer, engine force and service
+ // braking are resolved against the mass/brake capability of the combination.
+ // Passenger cars receive neutral scales of exactly 1.
+ requestedDriveAccel*=truckTrailerSystem.active
+   ?truckTrailerSystem.driveAccelScaleForSpeed(Math.abs(speed))
+   :combination.driveAccelScale;
+ requestedBrakeAccel*=combination.serviceBrakeScale;
 
  // V21.21.22 hotfix — longitudinal traction/downforce needs the current
  // pre-integration speed. The steering/lateral speedAbs is intentionally declared
@@ -5805,7 +5928,11 @@ function updateDrive(dt){
    const rollingAndSurface=airborneNow
      ?0
      :VEHICLE.rolling+surfaceDrag;
-   const resist=rollingAndSurface+VEHICLE.aero*speed*speed;
+   const resist=
+     rollingAndSurface+
+     VEHICLE.aero*speed*speed+
+     combination.rollingResistanceAccel+
+     combination.aeroDragCoeff*speed*speed;
    accel-=Math.sign(speed)*resist;
  }else if(!throttle&&Math.abs(gradeForce.acceleration)<.04){
    speed=0;
@@ -5894,9 +6021,10 @@ function updateDrive(dt){
      ?MAX
      :Infinity;
 
+ const hardReverseCap=vehicleReverseLimitMps();
  speed=
    Math.max(
-     REV,
+     hardReverseCap,
      Math.min(
        hardForwardCap,
        speed
@@ -6021,7 +6149,9 @@ function updateDrive(dt){
    vehicle:VEHICLE,speed,steerAngle,steerInput:steer,driveThrottle,onPavement,surfaceGrip,awdOffroadGripBonus,rearSlipAmount,airborne:airborneNow
  },dynamicsScratch.lateral);
 
- let yawRate=lateralEnvelope.yawRate;
+ let yawRate=
+   lateralEnvelope.yawRate*
+   truckTrailerSystem.tractorYawScale(speedAbs);
  const drivetrain=lateralEnvelope.drivetrain;
  const powerCorneringLoad=lateralEnvelope.powerCorneringLoad;
  const requestedLatAccel=lateralEnvelope.requestedLatAccel;
@@ -6752,8 +6882,17 @@ function placeAt(frac){
  speed=0;steer=0;visualSteer=0;currentSteerAngle=0;
  driveHudAccumulator=DRIVE_HUD_INTERVAL;minimapAccumulator=MINIMAP_INTERVAL;
  longitudinalAccel=0;lateralGripUsage=0;
- wheelGripUsage=[0,0,0,0];wheelSlipLevels=[0,0,0,0];
- wheelLateralUsage=[0,0,0,0];wheelLongitudinalUsage=[0,0,0,0];
+ const physicsWheelCount=Math.max(
+   4,
+   (VEHICLE.axles||[]).reduce(
+     (sum,axle)=>sum+(Number(axle.wheelCount)||0),
+     0
+   )
+ );
+ wheelGripUsage=Array(physicsWheelCount).fill(0);
+ wheelSlipLevels=Array(physicsWheelCount).fill(0);
+ wheelLateralUsage=Array(physicsWheelCount).fill(0);
+ wheelLongitudinalUsage=Array(physicsWheelCount).fill(0);
  frontSlipAmount=0;rearSlipAmount=0;dynamicYawRate=0;velocityHeading=heading;
  resetTransmissionState();vehiclePresentation.reset();skidMarks.resetSource('local');
  roadContact=true;recenterIfNeeded(absX,absZ,true);ensureRoadProfileNear(absX,absZ);
@@ -6774,9 +6913,38 @@ function placeAt(frac){
    placedY+.38+TIRE_VISUAL_CLEARANCE,
    absZ-worldOffset.z
  );
+ if(truckTrailerSystem.active){
+   truckTrailerSystem.resetPose(absX,absZ,heading);
+ }
  drawMap(p.cum);
 }
-function resetToRoad(){const n=nearestRoute(absX,absZ);if(n){absX=n.px;absZ=n.pz;heading=n.angle;speed=0;driveHudAccumulator=DRIVE_HUD_INTERVAL;minimapAccumulator=MINIMAP_INTERVAL;gripSolverAccumulator=GRIP_SOLVER_INTERVAL;steer=0;visualSteer=0;currentSteerAngle=0;longitudinalAccel=0;lateralGripUsage=0;wheelGripUsage=[0,0,0,0];wheelSlipLevels=[0,0,0,0];wheelLateralUsage=[0,0,0,0];wheelLongitudinalUsage=[0,0,0,0];frontSlipAmount=0;rearSlipAmount=0;dynamicYawRate=0;velocityHeading=heading;resetTransmissionState();vehiclePresentation.reset();skidMarks.resetSource('local');roadContact=true;recenterIfNeeded(absX,absZ,true);ensureRoadProfileNear(absX,absZ)}}
+function resetToRoad(){
+ const n=nearestRoute(absX,absZ);
+ if(!n)return;
+ absX=n.px;absZ=n.pz;heading=n.angle;speed=0;
+ driveHudAccumulator=DRIVE_HUD_INTERVAL;
+ minimapAccumulator=MINIMAP_INTERVAL;
+ gripSolverAccumulator=GRIP_SOLVER_INTERVAL;
+ steer=0;visualSteer=0;currentSteerAngle=0;
+ longitudinalAccel=0;lateralGripUsage=0;
+ const physicsWheelCount=Math.max(
+   4,
+   (VEHICLE.axles||[]).reduce(
+     (sum,axle)=>sum+(Number(axle.wheelCount)||0),
+     0
+   )
+ );
+ wheelGripUsage=Array(physicsWheelCount).fill(0);
+ wheelSlipLevels=Array(physicsWheelCount).fill(0);
+ wheelLateralUsage=Array(physicsWheelCount).fill(0);
+ wheelLongitudinalUsage=Array(physicsWheelCount).fill(0);
+ frontSlipAmount=0;rearSlipAmount=0;dynamicYawRate=0;velocityHeading=heading;
+ resetTransmissionState();vehiclePresentation.reset();skidMarks.resetSource('local');
+ roadContact=true;recenterIfNeeded(absX,absZ,true);ensureRoadProfileNear(absX,absZ);
+ if(truckTrailerSystem.active){
+   truckTrailerSystem.resetPose(absX,absZ,heading);
+ }
+}
 
 const maxSpeedSlider=$('maxSpeedSlider');
 const maxSpeedLabel=$('maxSpeedLabel');
@@ -7036,7 +7204,37 @@ function applyVehicleSelection(
   resetTransmissionState();
   vehiclePresentation.reset();
 
-  vehicleVisuals.applyVehicleVisualProfile();
+  // Release passenger GLB ownership before generic/truck visibility changes.
+  countachBrakeLightRequested=false;
+  countachReverseLightRequested=false;
+  countachGlbSystem.setActive(false);
+  id4GlbSystem.setActive(false);
+  wrxGlbSystem.setActive(false);
+  civicGlbSystem.setActive(false);
+  sonataGlbSystem.setActive(false);
+  f1GlbSystem.setActive(false);
+  i3GlbSystem.setActive(false);
+
+  if(truckTrailerSystem.isTruckProfile(id)){
+    truckTrailerSystem.setActive(
+      true,
+      {absX,absZ,heading}
+    );
+  }else{
+    // Restore passenger meshes before vehicle-visuals applies the newly
+    // selected profile, otherwise stale pre-truck visibility could win.
+    truckTrailerSystem.setActive(false);
+    vehicleVisuals.applyVehicleVisualProfile();
+    // External authored GLBs replace their procedural body + visible wheels.
+    // Hidden wheel pivots remain the unchanged suspension/physics probes.
+    countachGlbSystem.setActive(id==='countach_80');
+    id4GlbSystem.setActive(id==='id4');
+    wrxGlbSystem.setActive(id==='wrx');
+    civicGlbSystem.setActive(id==='civic');
+    sonataGlbSystem.setActive(id==='sonata');
+    f1GlbSystem.setActive(id==='f1_2010');
+    i3GlbSystem.setActive(id==='i3_2017');
+  }
   vehicleAudio.setProfile(
     vehicleSystem.active.audio
   );
@@ -10641,6 +10839,88 @@ function animate(now){
    ){
      gamepad.update();
      updateDrive(dt);
+     truckTrailerSystem.update(
+       dt,
+       {
+         absX,
+         absZ,
+         heading,
+         speed,
+         steerAngle:currentSteerAngle,
+         steerInput:steer,
+         braking:countachBrakeLightRequested,
+         reversing:countachReverseLightRequested,
+         nightLevel:vehicleVisuals.headlightLevel
+       }
+     );
+     countachGlbSystem.update(
+       dt,
+       {
+         speed,
+         steerAngle:currentSteerAngle,
+         braking:countachBrakeLightRequested,
+         reversing:countachReverseLightRequested
+       }
+     );
+     id4GlbSystem.update(
+       dt,
+       {
+         speed,
+         steerAngle:currentSteerAngle,
+         braking:countachBrakeLightRequested,
+         reversing:countachReverseLightRequested,
+         nightLevel:vehicleVisuals.headlightLevel
+       }
+     );
+     wrxGlbSystem.update(
+       dt,
+       {
+         speed,
+         steerAngle:currentSteerAngle,
+         braking:countachBrakeLightRequested,
+         reversing:countachReverseLightRequested,
+         nightLevel:vehicleVisuals.headlightLevel
+       }
+     );
+     civicGlbSystem.update(
+       dt,
+       {
+         speed,
+         steerAngle:currentSteerAngle,
+         braking:countachBrakeLightRequested,
+         reversing:countachReverseLightRequested,
+         nightLevel:vehicleVisuals.headlightLevel
+       }
+     );
+     sonataGlbSystem.update(
+       dt,
+       {
+         speed,
+         steerAngle:currentSteerAngle,
+         braking:countachBrakeLightRequested,
+         reversing:countachReverseLightRequested,
+         nightLevel:vehicleVisuals.headlightLevel
+       }
+     );
+     f1GlbSystem.update(
+       dt,
+       {
+         speed,
+         steerAngle:currentSteerAngle,
+         braking:countachBrakeLightRequested,
+         reversing:countachReverseLightRequested
+       }
+     );
+     i3GlbSystem.update(
+       dt,
+       {
+         speed,
+         steerAngle:currentSteerAngle,
+         braking:countachBrakeLightRequested,
+         reversing:countachReverseLightRequested,
+         nightLevel:vehicleVisuals.headlightLevel
+       }
+     );
    }
    const simCost=performance.now()-simStart;
    perfGovernor.simMs=perfGovernor.simMs*.90+simCost*.10;
@@ -10673,6 +10953,31 @@ function animate(now){
    }
 
    cameraController.update(dt);
+   truckTrailerSystem.adjustCamera(
+     camera,
+     camTarget,
+     heading,
+     dt,
+     {
+       modeLabel:$('camMode')?.textContent||'',
+       lookX:gamepadState.lookX||0,
+       lookY:gamepadState.lookY||0
+     }
+   );
+
+   // V21.24.4: for the real Countach, the generic Capot/1st-person view is
+   // replaced by an actual seated driver's-eye camera inside the authored GLB.
+   // This final override intentionally runs after the generic/truck controllers.
+   countachGlbSystem.adjustCamera(
+     camera,
+     camTarget,
+     dt,
+     {
+       modeLabel:$('camMode')?.textContent||'',
+       lookX:gamepadState.lookX||0,
+       lookY:gamepadState.lookY||0
+     }
+   );
 
    if(now>=perfGovernor.nextMoonAt){
      updateMoonSkyPosition();
