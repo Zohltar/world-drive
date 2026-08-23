@@ -22,7 +22,7 @@ const staleEnd=source.indexOf('for(const required of [',staleStart);
 if(staleStart<0||staleEnd<0)fail('stale-check block markers not found');
 
 let staleBlock=source.slice(staleStart,staleEnd);
-const falsePositiveLine=`  "addEventListener('keydown',e=>{"\n`;
+const falsePositiveLine=`  "addEventListener('keydown',e=>{",\n`;
 const occurrences=staleBlock.split(falsePositiveLine).length-1;
 if(occurrences!==1){
   fail(`expected one keydown stale-check entry, found ${occurrences}`);
