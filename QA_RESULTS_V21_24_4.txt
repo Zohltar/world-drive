@@ -1,3 +1,0 @@
-PASS node --check src/countach-glb.js
-PASS node --check src/main.js
-PASS node --check src/vehicle-system.js

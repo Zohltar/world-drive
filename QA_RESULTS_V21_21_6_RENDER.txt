@@ -1,7 +1,0 @@
-PASS V21.21.6 render policy
-PASS visual distance/material path preserved; MSAA replaced by FXAA
-PASS full-rate compass + gauges preserved
-PASS core physics modules byte-identical to V21.21.5
-PASS terrain / Electron / multiplayer byte-identical to V21.21.5
-PASS secondary per-wheel grip solver reduced 24 -> 20 Hz
-PASS streaming visibility checks throttled to ~8 Hz

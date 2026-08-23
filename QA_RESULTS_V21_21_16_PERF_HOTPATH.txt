@@ -1,5 +1,0 @@
-road nested-map equivalence mismatches=0
-string-key indexed: 239.3 ms
-nested-map indexed: 113.1 ms
-nested speedup: 2.12x
-allocation-light dynamics: 1362.5 ms / 1000000 frames = 1.363 us/frame

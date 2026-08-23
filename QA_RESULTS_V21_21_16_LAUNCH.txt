@@ -1,9 +1,0 @@
-LEFT launch: final heading -113.2°, trajectory -113.5°, x -77.1 m
-  0.2 km/h: axle slip F 0% R 0%, wheel slip 
-  12.9 km/h: axle slip F 0% R 0%, wheel slip 0/0/0/0
-  25.4 km/h: axle slip F 46% R 15%, wheel slip 57/100/0/29
-RIGHT launch: final heading 113.2°, trajectory 113.5°, x 77.1 m
-  0.2 km/h: axle slip F 0% R 0%, wheel slip 
-  12.9 km/h: axle slip F 0% R 0%, wheel slip 0/0/0/0
-  25.4 km/h: axle slip F 46% R 15%, wheel slip 0/29/57/100
-V21.21.16 LAUNCH CORNER QA: PASS

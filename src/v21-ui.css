@@ -1,0 +1,727 @@
+/* World Drive V21.25 UI
+ * Extracted mechanically from main.js. Keep presentation here; keep engine logic in JS.
+ */
+#hud,
+  #help{
+    display:none!important;
+  }
+
+  #speedControl{
+    display:none!important;
+  }
+
+  #showControlsBtn{
+    display:none!important;
+  }
+
+  #speedometerDock{
+    pointer-events:none;
+  }
+
+  #v21MenuButton{
+    position:fixed;
+    left:14px;
+    top:14px;
+    z-index:42;
+    display:none;
+    min-width:92px;
+    height:40px;
+    padding:0 14px;
+    border:1px solid rgba(255,255,255,.15);
+    border-radius:12px;
+    background:rgba(5,12,20,.88);
+    color:#f6f8fb;
+    font:800 12px/1 system-ui,sans-serif;
+    letter-spacing:.08em;
+    box-shadow:0 10px 30px rgba(0,0,0,.34);
+    backdrop-filter:blur(12px);
+    cursor:pointer;
+  }
+
+  #v21MenuButton:hover{
+    background:rgba(12,25,39,.94);
+  }
+
+  #v21MenuButton.hidden{
+    opacity:0!important;
+    pointer-events:none!important;
+    transform:translateX(-10px)!important;
+  }
+
+  #v21MapChallenge{
+    position:absolute;
+    top:40px;
+    right:12px;
+    z-index:6;
+    min-width:78px;
+    pointer-events:none;
+    color:#f3f7fb;
+    text-align:left;
+    font-family:ui-monospace,SFMono-Regular,Consolas,monospace;
+    text-shadow:0 1px 3px rgba(0,0,0,.95);
+  }
+
+  #v21MapChallenge .v21ChallengeLabel{
+    margin-top:7px;
+    color:#d9e3ec;
+    font-size:9px;
+    font-weight:800;
+    letter-spacing:.03em;
+  }
+
+  #v21MapChallenge .v21ChallengeValue{
+    margin-top:1px;
+    color:#fff;
+    font-size:10px;
+    font-weight:900;
+    line-height:1.15;
+    white-space:nowrap;
+  }
+
+  #mapbox.collapsed #v21MapChallenge{
+    display:none;
+  }
+
+  #v21Menu{
+    position:fixed;
+    inset:0;
+    z-index:41;
+    display:none;
+    pointer-events:none;
+    background:rgba(0,0,0,.18);
+  }
+
+  #v21Menu.open{
+    display:block;
+    pointer-events:auto;
+  }
+
+  #v21MenuPanel{
+    position:absolute;
+    left:0;
+    top:0;
+    bottom:0;
+    width:min(760px,94vw);
+    display:grid;
+    grid-template-columns:180px minmax(0,1fr);
+    background:linear-gradient(180deg,#07111b 0%,#050b12 100%);
+    border-right:1px solid rgba(255,255,255,.12);
+    box-shadow:22px 0 60px rgba(0,0,0,.5);
+    color:#edf3f8;
+    overflow:hidden;
+  }
+
+  .v21MenuNav{
+    padding:20px 12px 16px;
+    border-right:1px solid rgba(255,255,255,.08);
+    background:rgba(255,255,255,.018);
+  }
+
+  .v21Brand{
+    margin:0 6px 18px;
+  }
+
+  .v21Brand strong{
+    display:block;
+    font-size:18px;
+    letter-spacing:.05em;
+  }
+
+  .v21Brand span{
+    display:block;
+    margin-top:4px;
+    color:#7792a9;
+    font-size:10px;
+    letter-spacing:.08em;
+  }
+
+  .v21Tab{
+    width:100%;
+    display:flex;
+    align-items:center;
+    gap:9px;
+    margin:3px 0;
+    padding:10px 11px;
+    border:0;
+    border-radius:9px;
+    background:transparent;
+    color:#aebdca;
+    text-align:left;
+    font:700 12px/1.2 system-ui,sans-serif;
+    cursor:pointer;
+  }
+
+  .v21Tab:hover{
+    background:rgba(255,255,255,.055);
+    color:#fff;
+  }
+
+  .v21Tab.active{
+    background:#17314a;
+    color:#fff;
+  }
+
+  .v21MenuMain{
+    min-width:0;
+    display:flex;
+    flex-direction:column;
+  }
+
+  .v21MenuTop{
+    position:relative;
+    height:62px;
+    flex:0 0 auto;
+    display:flex;
+    align-items:center;
+    padding:0 52px 0 20px;
+    border-bottom:1px solid rgba(255,255,255,.08);
+  }
+
+  .v21MenuTop h2{
+    margin:0;
+    font:800 17px/1 system-ui,sans-serif;
+  }
+
+  #v21MenuClose{
+    position:absolute!important;
+    top:19px!important;
+    right:14px!important;
+
+    width:24px!important;
+    min-width:24px!important;
+    max-width:24px!important;
+
+    height:24px!important;
+    min-height:24px!important;
+    max-height:24px!important;
+
+    margin:0!important;
+    padding:0!important;
+    box-sizing:border-box!important;
+    flex:0 0 24px!important;
+
+    display:grid!important;
+    place-items:center!important;
+
+    border:1px solid rgba(255,255,255,.13)!important;
+    border-radius:5px!important;
+    background:rgba(255,255,255,.055)!important;
+    color:#dce5ed!important;
+
+    font:700 16px/1 system-ui,sans-serif!important;
+    text-align:center!important;
+    letter-spacing:0!important;
+
+    cursor:pointer;
+  }
+
+  #v21MenuClose:hover{
+    background:rgba(255,255,255,.11)!important;
+    color:#fff!important;
+  }
+
+  .v21Panel{
+    display:none;
+    flex:1 1 auto;
+    min-height:0;
+    overflow:auto;
+    padding:20px;
+  }
+
+  .v21Panel.active{
+    display:block;
+  }
+
+  .v21Section{
+    margin-bottom:18px;
+    padding:14px;
+    border:1px solid rgba(255,255,255,.09);
+    border-radius:12px;
+    background:rgba(255,255,255,.025);
+  }
+
+  .v21SectionTitle{
+    margin:0 0 11px;
+    color:#8da4b8;
+    font:800 10px/1 system-ui,sans-serif;
+    text-transform:uppercase;
+    letter-spacing:.13em;
+  }
+
+  .v21Row{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:14px;
+    min-height:38px;
+    border-top:1px solid rgba(255,255,255,.05);
+  }
+
+  .v21Row:first-of-type{
+    border-top:0;
+  }
+
+  .v21Row label,
+  .v21Row .v21Label{
+    color:#dce6ee;
+    font-size:12px;
+    font-weight:650;
+  }
+
+  .v21Row small{
+    display:block;
+    margin-top:2px;
+    color:#7890a5;
+    font-size:9px;
+    font-weight:500;
+  }
+
+  .v21MenuSelect,
+  .v21MenuInput,
+  #v21Menu select,
+  #v21Menu input[type="text"],
+  #v21Menu input[type="number"],
+  #v21Menu textarea{
+    max-width:100%;
+    border:1px solid rgba(255,255,255,.13);
+    border-radius:7px;
+    background:#111d28;
+    color:#fff;
+  }
+
+  .v21MenuSelect,
+  #v21Menu select{
+    min-width:148px;
+    padding:7px 9px;
+  }
+
+  .v21MenuBtn{
+    padding:7px 10px;
+    border:1px solid rgba(255,255,255,.12);
+    border-radius:7px;
+    background:#172838;
+    color:#fff;
+    font:750 11px/1 system-ui,sans-serif;
+    cursor:pointer;
+  }
+
+  .v21MenuBtn:hover{
+    background:#20384f;
+  }
+
+  .v21MenuBtn.danger{
+    border-color:rgba(255,92,98,.25);
+    background:#3a1519;
+  }
+
+  .v21Toggle{
+    min-width:58px;
+    padding:6px 9px;
+    border:1px solid rgba(255,255,255,.12);
+    border-radius:999px;
+    background:#22303c;
+    color:#aab9c7;
+    font:800 10px/1 system-ui,sans-serif;
+    cursor:pointer;
+  }
+
+  .v21Toggle.on{
+    background:#174a36;
+    color:#a8ffd5;
+  }
+
+  .v21InfoGrid{
+    display:grid;
+    grid-template-columns:repeat(2,minmax(0,1fr));
+    gap:8px;
+  }
+
+  .v21InfoCard{
+    padding:10px;
+    border-radius:9px;
+    background:rgba(255,255,255,.04);
+  }
+
+  .v21InfoCard span{
+    display:block;
+    color:#7f97aa;
+    font-size:9px;
+    text-transform:uppercase;
+    letter-spacing:.08em;
+  }
+
+  .v21InfoCard b{
+    display:block;
+    margin-top:4px;
+    font-size:13px;
+  }
+
+  .v21ControlsGrid{
+    display:grid;
+    grid-template-columns:1fr auto;
+    gap:0 10px;
+  }
+
+  .v21ControlName,
+  .v21ControlValue{
+    min-height:38px;
+    display:flex;
+    align-items:center;
+    border-top:1px solid rgba(255,255,255,.05);
+  }
+
+  .v21ControlName{
+    font-size:11px;
+    color:#d9e3ea;
+  }
+
+  .v21ControlValue button{
+    min-width:110px;
+  }
+
+  .v21JoystickSensitivity{
+    display:flex;
+    align-items:center;
+    gap:9px;
+  }
+
+  .v21JoystickSensitivity input[type="range"]{
+    width:138px;
+    accent-color:#70b7ff;
+    cursor:pointer;
+  }
+
+  .v21JoystickSensitivity span{
+    min-width:42px;
+    color:#dce6ee;
+    font-size:10px;
+    font-weight:800;
+    text-align:right;
+  }
+
+  .v21StatusLine{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:12px;
+    padding:6px 0;
+    color:#9fb2c1;
+    font-size:10px;
+    border-top:1px solid rgba(255,255,255,.05);
+  }
+
+  .v21StatusLine:first-child{
+    border-top:0;
+  }
+
+  .v21StatusLine b{
+    color:#eef5fa;
+    font-size:11px;
+    text-align:right;
+  }
+
+  #v21Startup{
+    position:fixed;
+    inset:0;
+    z-index:90;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    padding:24px;
+    background:
+      radial-gradient(circle at 50% 42%,rgba(21,47,67,.42),transparent 42%),
+      rgba(2,7,11,.94);
+    color:#f2f7fb;
+    backdrop-filter:blur(10px);
+  }
+
+  #v21Startup.hidden{
+    display:none;
+  }
+
+  .v21StartupCard{
+    width:min(760px,94vw);
+    max-height:90vh;
+    overflow:auto;
+    padding:26px;
+    border:1px solid rgba(255,255,255,.12);
+    border-radius:18px;
+    background:linear-gradient(180deg,rgba(12,24,34,.96),rgba(5,12,19,.98));
+    box-shadow:0 30px 90px rgba(0,0,0,.58);
+  }
+
+  .v21StartupBrand{
+    margin-bottom:20px;
+  }
+
+  .v21StartupBrand h1{
+    margin:0;
+    font:900 28px/1 system-ui,sans-serif;
+    letter-spacing:.04em;
+  }
+
+  .v21StartupBrand p{
+    margin:7px 0 0;
+    color:#7892a8;
+    font-size:11px;
+  }
+
+  .v21BootRows{
+    display:grid;
+    gap:7px;
+    margin:18px 0;
+  }
+
+  .v21BootRow{
+    display:grid;
+    grid-template-columns:20px 1fr auto;
+    gap:9px;
+    align-items:center;
+    padding:9px 10px;
+    border-radius:9px;
+    background:rgba(255,255,255,.035);
+    color:#aebdca;
+    font-size:11px;
+  }
+
+  .v21BootRow[data-state="done"]{
+    color:#b8f4d2;
+  }
+
+  .v21BootRow[data-state="warn"]{
+    color:#ffd28c;
+  }
+
+  .v21BootDot{
+    width:9px;
+    height:9px;
+    border-radius:50%;
+    background:#526474;
+    box-shadow:0 0 0 3px rgba(255,255,255,.025);
+  }
+
+  .v21BootRow[data-state="loading"] .v21BootDot{
+    background:#64b5ff;
+    animation:v21Pulse 1s infinite ease-in-out;
+  }
+
+  .v21BootRow[data-state="done"] .v21BootDot{
+    background:#55d98b;
+  }
+
+  .v21BootRow[data-state="warn"] .v21BootDot{
+    background:#ffb857;
+  }
+
+  @keyframes v21Pulse{
+    0%,100%{opacity:.45}
+    50%{opacity:1}
+  }
+
+  .v21VehicleGrid{
+    display:grid;
+    grid-template-columns:repeat(2,minmax(0,1fr));
+    gap:10px;
+    margin-top:14px;
+  }
+
+  .v21VehicleChoice{
+    padding:13px;
+    border:1px solid rgba(255,255,255,.09);
+    border-radius:11px;
+    background:rgba(255,255,255,.025);
+    color:#eef5fa;
+    text-align:left;
+    cursor:pointer;
+  }
+
+  .v21VehicleChoice:hover{
+    background:rgba(255,255,255,.055);
+  }
+
+  .v21VehicleChoice.selected{
+    border-color:#4da4e8;
+    background:#12324a;
+  }
+
+  .v21VehicleChoice b{
+    display:block;
+    font-size:13px;
+  }
+
+  .v21VehicleChoice span{
+    display:block;
+    margin-top:4px;
+    color:#8199ad;
+    font-size:10px;
+  }
+
+  #v21StartButton{
+    width:100%;
+    margin-top:16px;
+    padding:12px;
+    border:0;
+    border-radius:10px;
+    background:#1f7bc0;
+    color:#fff;
+    font:850 12px/1 system-ui,sans-serif;
+    cursor:pointer;
+  }
+
+  #v21StartButton:disabled{
+    opacity:.38;
+    cursor:not-allowed;
+  }
+
+  .v21RouteSummary{
+    display:flex;
+    justify-content:space-between;
+    gap:12px;
+    padding:11px 12px;
+    border-radius:9px;
+    background:rgba(255,255,255,.035);
+    color:#9db1c1;
+    font-size:11px;
+  }
+
+  .v21RouteSummary b{
+    color:#fff;
+  }
+
+  #v21Menu #plannerBox,
+  #v21Menu #jumpBox,
+  #v21Menu .multiplayerBox{
+    margin:0!important;
+    width:auto!important;
+  }
+
+  #v21Menu .presetGrid{
+    grid-template-columns:1fr!important;
+  }
+
+  #v21Menu .placeRow{
+    display:grid!important;
+    grid-template-columns:minmax(0,1fr) auto!important;
+  }
+
+  .v21DesktopMp{
+    display:grid;
+    gap:10px;
+  }
+
+  .v21DesktopMpActions{
+    display:grid;
+    grid-template-columns:minmax(0,1fr) auto;
+    gap:8px;
+  }
+
+  .v21DesktopMpJoin{
+    display:grid;
+    grid-template-columns:minmax(0,1fr) auto;
+    gap:8px;
+  }
+
+  .v21DesktopMpInput{
+    min-width:0;
+    width:100%;
+    box-sizing:border-box;
+    padding:8px 10px;
+    border:1px solid rgba(255,255,255,.12);
+    border-radius:7px;
+    background:#111d28;
+    color:#fff;
+    font:650 11px/1.2 system-ui,sans-serif;
+    outline:none;
+  }
+
+  .v21DesktopMpInput:focus{
+    border-color:rgba(64,158,225,.70);
+  }
+
+  .v21DesktopMpStatus{
+    padding:9px 10px;
+    border:1px solid rgba(255,255,255,.08);
+    border-radius:8px;
+    background:rgba(255,255,255,.035);
+    color:#93a8ba;
+    font-size:10px;
+    line-height:1.45;
+  }
+
+  .v21DesktopMpStatus[data-state=on]{
+    border-color:rgba(66,207,143,.28);
+    background:rgba(24,89,62,.22);
+    color:#a8ffd5;
+  }
+
+  .v21DesktopMpStatus[data-state=error]{
+    border-color:rgba(255,92,98,.30);
+    background:rgba(100,28,34,.24);
+    color:#ffc0c3;
+  }
+
+  .v21DesktopMpHint{
+    color:#7f97aa;
+    font-size:10px;
+    line-height:1.45;
+  }
+
+  @media(max-width:760px){
+    #v21MenuPanel{
+      grid-template-columns:1fr;
+      width:min(430px,100vw);
+    }
+
+    .v21MenuNav{
+      display:flex;
+      gap:4px;
+      overflow:auto;
+      padding:8px;
+      border-right:0;
+      border-bottom:1px solid rgba(255,255,255,.08);
+    }
+
+    .v21Brand{
+      display:none;
+    }
+
+    .v21Tab{
+      width:auto;
+      flex:0 0 auto;
+      padding:8px 9px;
+    }
+
+    .v21MenuMain{
+      min-height:0;
+    }
+
+    .v21VehicleGrid{
+      grid-template-columns:1fr;
+    }
+  }
+
+/* Instrument cluster layout */
+#speedometerDock{
+  width:486px!important;
+  gap:7px!important;
+}
+#speedometerCanvas{
+  width:480px!important;
+  height:236px!important;
+  border-radius:18px!important;
+  filter:drop-shadow(0 14px 34px rgba(0,0,0,.48))!important;
+}
+#showControlsBtn{
+  width:118px!important;
+}
+@media(max-width:980px){
+  #speedometerDock.visible{
+    transform:scale(.82);
+    transform-origin:right bottom;
+  }
+}
+@media(max-width:700px){
+  #speedometerDock{
+    display:none!important;
+  }
+}

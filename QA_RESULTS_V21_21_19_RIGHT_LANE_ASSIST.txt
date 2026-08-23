@@ -1,6 +1,0 @@
-V21.21.19 RIGHT-LANE ASSIST QA: PASS
-north right-lane x=1.65 (east/+X)
-south right-lane x=-1.65 (west/-X)
-east right-lane z=1.65 (south/+Z)
-west right-lane z=-1.65 (north/-Z)
-settled north assist=0.0000
