@@ -15,27 +15,32 @@ function fail(message){
 if(!fs.existsSync(sourcePath))fail('source refactor tool missing');
 let source=fs.readFileSync(sourcePath,'utf8');
 
-const oldStaleBlock=`for(const stale of [
-  'const keys={};',
-  'function assignKeyboardBinding(action,code){',
-  "addEventListener('keydown',e=>{"
-]){
-  if(main.includes(stale))die(\`stale keyboard implementation remains in main.js: \${stale}. No files changed.\`);
-}`;
+// Patch only the post-transform stale-check block. The same keydown text is
+// intentionally still required inside the original block before extraction.
+const staleStart=source.indexOf('for(const stale of [');
+const staleEnd=source.indexOf('for(const required of [',staleStart);
+if(staleStart<0||staleEnd<0)fail('stale-check block markers not found');
 
-const newStaleBlock=`for(const stale of [
-  'const keys={};',
-  'function assignKeyboardBinding(action,code){'
-]){
-  if(main.includes(stale))die(\`stale keyboard implementation remains in main.js: \${stale}. No files changed.\`);
+let staleBlock=source.slice(staleStart,staleEnd);
+const falsePositiveLine=`  "addEventListener('keydown',e=>{"\n`;
+const occurrences=staleBlock.split(falsePositiveLine).length-1;
+if(occurrences!==1){
+  fail(`expected one keydown stale-check entry, found ${occurrences}`);
 }
-if(/^addEventListener\\('keydown',e=>\\{/m.test(main)){
-  die("stale global keyboard keydown handler remains in main.js. No files changed.");
-}`;
+staleBlock=staleBlock.replace(falsePositiveLine,'');
 
-const matches=source.split(oldStaleBlock).length-1;
-if(matches!==1)fail(`expected one stale-check block, found ${matches}`);
-source=source.replace(oldStaleBlock,newStaleBlock);
+const anchoredCheck=[
+  "if(/^addEventListener\\('keydown',e=>\\{/m.test(main)){",
+  "  die(\"stale global keyboard keydown handler remains in main.js. No files changed.\");",
+  "}",
+  ""
+].join('\n');
+
+source=
+  source.slice(0,staleStart)+
+  staleBlock+
+  anchoredCheck+
+  source.slice(staleEnd);
 
 fs.writeFileSync(tempPath,source,'utf8');
 try{
