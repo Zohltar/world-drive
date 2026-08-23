@@ -23,7 +23,9 @@ syntaxCheck(modulePath);
 
 assert.match(main,/import \{ createEnvironmentController \} from '\.\/environment-controller\.js';/,'main.js missing environment controller import');
 assert.match(main,/const environmentController=createEnvironmentController\(\{/,'main.js missing environment controller initialization');
-assert.match(main,/applyDisplayDistanceProfile,\s*setTimeOfDay,\s*timeSlider,\s*timeLabel\s*\}=environmentController;/s,'main.js missing environment facade exports');
+assert.match(main,/applyDisplayDistanceProfile,\s*setTimeOfDay,\s*timeSlider,\s*timeLabel,\s*getTimeOfDay\s*\}=environmentController;/s,'main.js missing environment facade exports');
+assert.match(main,/timeOfDay:getTimeOfDay\(\)/,'vehicle-presentation no longer receives current time-of-day from environment controller');
+assert.doesNotMatch(main,/\btimeOfDay\s*\n\s*\}\),\s*\n\s*ROAD_WHEEL_CONTACT_HALF_WIDTH/,'vehicle-presentation still references removed bare timeOfDay state');
 
 for(const pattern of [
   /const DISPLAY_DISTANCE_PROFILES=\{/,
@@ -159,6 +161,7 @@ assert.equal(moonUpdates,1,'moon sky position was not refreshed');
 const previousUpdates=moonUpdates;
 elements.timeSlider.listeners.input({target:{value:'6.5'}});
 assert.equal(elements.timeLabel.textContent,'06:30','time slider listener no longer drives time-of-day');
+assert.equal(controller.getTimeOfDay(),6.5,'time slider listener did not update controller clock state');
 assert.equal(moonUpdates,previousUpdates+1,'time slider did not refresh moon sky position');
 
 const mainLines=main.split('\n').length;
@@ -169,4 +172,4 @@ assert.equal(regression.status,0,`prior V21.26 refactors regressed:\n${regressio
 
 console.log('V21.26 ENVIRONMENT REFACTOR QA: PASS');
 console.log(`main.js: ${mainLines} lines; environment-controller.js: ${environment.split('\n').length} lines`);
-console.log('display distance / fog / streaming scale / sun / moon / automatic headlights verified');
+console.log('display distance / fog / streaming scale / sun / moon / automatic headlights / presentation clock bridge verified');
