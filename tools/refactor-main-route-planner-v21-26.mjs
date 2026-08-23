@@ -94,14 +94,6 @@ moduleLines.push('}');
 moduleLines.push('');
 const plannerSource=moduleLines.join('\n');
 
-const importAnchor="import { createRouteChallenge } from './route-challenge.js';";
-main=replaceOnce(
-  main,
-  importAnchor,
-  `${importAnchor}\n${plannerImport}`,
-  'route challenge import anchor'
-);
-
 const initLines=[];
 initLines.push('// ---------- route planner UI facade ----------');
 initLines.push('const routePlannerUi=createRoutePlannerUi({');
@@ -122,7 +114,18 @@ initLines.push('  YUNGAS_WAYPOINTS');
 initLines.push('});');
 initLines.push('');
 
+// Replace the planner block BEFORE adding an import. The source indices above
+// are relative to the untouched main.js; inserting text earlier would shift
+// them and could cut the file at the wrong character boundary.
 main=main.slice(0,start)+initLines.join('\n')+main.slice(end);
+
+const importAnchor="import { createRouteChallenge } from './route-challenge.js';";
+main=replaceOnce(
+  main,
+  importAnchor,
+  `${importAnchor}\n${plannerImport}`,
+  'route challenge import anchor'
+);
 
 for(const legacyPattern of [
   'let selectedStart={...MANIC2};',
