@@ -111,7 +111,7 @@ const extractedCss=`/* World Drive V21.25 UI\n * Extracted mechanically from mai
 // New module dependencies. desktop-overpass-transport installs itself only in
 // the Electron renderer, so no platform statement remains in main.js.
 const importAnchor="import * as THREE from 'three';\n";
-const extractedImports=`import './v21-ui.css';\nimport './desktop-overpass-transport.js';\nimport {\n  MANIC2,\n  MANIC5,\n  R169_START,\n  R169_END,\n  R132_START,\n  R132_END,\n  YUNGAS_START,\n  YUNGAS_END,\n  YUNGAS_WAYPOINTS\n} from './route-presets.js';\nimport { createRouteChallenge } from './route-challenge.js';\nimport {\n  WORLD_DRIVE_VERSION,\n  WORLD_DRIVE_VERSION_LABEL,\n  WORLD_DRIVE_TITLE\n} from './version.js';\n";
+const extractedImports=`import './v21-ui.css';\nimport './desktop-overpass-transport.js';\nimport {\n  MANIC2,\n  MANIC5,\n  R169_START,\n  R169_END,\n  R132_START,\n  R132_END,\n  YUNGAS_START,\n  YUNGAS_END,\n  YUNGAS_WAYPOINTS\n} from './route-presets.js';\nimport { createRouteChallenge } from './route-challenge.js';\nimport {\n  WORLD_DRIVE_VERSION,\n  WORLD_DRIVE_VERSION_LABEL,\n  WORLD_DRIVE_TITLE\n} from './version.js';\n`;
 main=main.replace(importAnchor,importAnchor+extractedImports);
 
 // 1) Platform-specific Overpass transport.
