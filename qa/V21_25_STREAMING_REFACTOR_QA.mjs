@@ -9,12 +9,16 @@ const root=path.resolve(here,'..');
 const src=path.join(root,'src');
 const mainPath=path.join(src,'main.js');
 const modulePath=path.join(src,'streaming-coordinator.js');
+const routeLifecyclePath=path.join(src,'route-lifecycle.js');
 
 assert.equal(fs.existsSync(mainPath),true,'src/main.js missing');
 assert.equal(fs.existsSync(modulePath),true,'src/streaming-coordinator.js missing — run tools/refactor-main-streaming-v21-25.mjs first');
 
 const main=fs.readFileSync(mainPath,'utf8');
 const streaming=fs.readFileSync(modulePath,'utf8');
+const routeLifecycle=fs.existsSync(routeLifecyclePath)
+  ?fs.readFileSync(routeLifecyclePath,'utf8')
+  :'';
 
 for(const pattern of [
   /const HITCH_FREE_STREAMING=\{/,
@@ -42,12 +46,38 @@ for(const pattern of [
   /function recenterIfNeeded\(absx,absz,force=false\)/,
   /streamingCoordinator=createStreamingCoordinator\s*\(/,
   /const worldStreaming=streamingCoordinator\.worldStreaming;/,
-  /streamingCoordinator\?\.reset\(\);/,
   /streamingCoordinator\?\.recordFrame\(rawFrameMs,now\);/,
   /streamingCoordinator\?\.updateFrame\(now\);/,
   /streamingCoordinator\?\.policy\.perfConsoleLogging/
 ]){
   assert.match(main,pattern,`main.js missing streaming facade/integration: ${pattern}`);
+}
+
+// V21.26 route-lifecycle extraction moved route-reset ownership out of main.js.
+// Preserve the historical assertion when that module is absent; otherwise
+// require the injected reset callback in main and the reset call in the module.
+if(routeLifecycle){
+  assert.doesNotMatch(
+    main,
+    /streamingCoordinator\?\.reset\(\);/,
+    'main.js still owns route-reset streaming orchestration after route lifecycle extraction'
+  );
+  assert.match(
+    main,
+    /resetStreamingCoordinator:\(\)=>streamingCoordinator\?\.reset\(\)/,
+    'main.js missing injected streaming reset callback for route lifecycle'
+  );
+  assert.match(
+    routeLifecycle,
+    /resetStreamingCoordinator\(\);/,
+    'route-lifecycle.js missing streaming coordinator reset'
+  );
+}else{
+  assert.match(
+    main,
+    /streamingCoordinator\?\.reset\(\);/,
+    'main.js missing historical streaming reset integration'
+  );
 }
 
 for(const pattern of [
@@ -75,7 +105,9 @@ for(const pattern of [
   assert.match(streaming,pattern,`streaming-coordinator.js missing expected behavior: ${pattern}`);
 }
 
-for(const filePath of [mainPath,modulePath]){
+const syntaxFiles=[mainPath,modulePath];
+if(routeLifecycle)syntaxFiles.push(routeLifecyclePath);
+for(const filePath of syntaxFiles){
   const result=spawnSync(process.execPath,['--check',filePath],{cwd:root,encoding:'utf8'});
   assert.equal(result.status,0,result.stderr||result.stdout||`${path.basename(filePath)} syntax check failed`);
 }
@@ -230,4 +262,4 @@ assert.ok(mainLines<5700,`main.js is still unexpectedly large after streaming ex
 
 console.log('V21.25 STREAMING REFACTOR QA: PASS');
 console.log(`main.js: ${mainLines} lines; streaming-coordinator.js: ${moduleLines} lines`);
-console.log('floating origin / hitch state / reset / world-stream wiring: verified');
+console.log(`floating origin / hitch state / reset / world-stream wiring: verified${routeLifecycle?' · route-lifecycle reset ownership accepted':''}`);
