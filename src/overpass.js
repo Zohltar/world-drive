@@ -76,7 +76,13 @@ export function createOverpassClient({
         if(!shouldContinue())return null;
         if(data)return data;
       }catch(error){
-        if(shouldContinue()){
+        // AbortError is expected when an Overpass endpoint reaches its timeout
+        // or a caller deliberately cancels an obsolete request. Continue to the
+        // next endpoint silently; genuine HTTP/network failures remain visible.
+        const expectedAbort=
+          error?.name==='AbortError';
+
+        if(shouldContinue()&&!expectedAbort){
           console.warn(
             `${label} Overpass failed`,
             endpoint,
