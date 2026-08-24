@@ -10,6 +10,7 @@ const src=path.join(root,'src');
 const mainPath=path.join(src,'main.js');
 const modulePath=path.join(src,'road-geometry.js');
 const localWorldPath=path.join(src,'local-world-builder.js');
+const routeLifecyclePath=path.join(src,'route-lifecycle.js');
 
 assert.equal(fs.existsSync(mainPath),true,'src/main.js missing');
 assert.equal(fs.existsSync(modulePath),true,'src/road-geometry.js missing — run tools/refactor-main-road-geometry-v21-25.mjs first');
@@ -18,6 +19,9 @@ const main=fs.readFileSync(mainPath,'utf8');
 const road=fs.readFileSync(modulePath,'utf8');
 const localWorld=fs.existsSync(localWorldPath)
   ?fs.readFileSync(localWorldPath,'utf8')
+  :'';
+const routeLifecycle=fs.existsSync(routeLifecyclePath)
+  ?fs.readFileSync(routeLifecyclePath,'utf8')
   :'';
 
 for(const pattern of [
@@ -41,7 +45,6 @@ for(const pattern of [
   /function roadFrameAt\(\.\.\.args\)\{return roadGeometry\.roadFrameAt\(\.\.\.args\);\}/,
   /function roadHeightAt\(\.\.\.args\)\{return roadGeometry\.roadHeightAt\(\.\.\.args\);\}/,
   /function roadSurfaceAt\(\.\.\.args\)\{return roadGeometry\.roadSurfaceAt\(\.\.\.args\);\}/,
-  /clearActiveRoadProfile\(\);/,
   /function terrainFrameAt\s*\(/
 ]){
   assert.match(main,pattern,`main.js missing road geometry facade: ${pattern}`);
@@ -70,6 +73,28 @@ if(localWorld){
   );
 }
 
+// V21.26 route-lifecycle extraction moved the route-reset profile clear out of
+// main.js. Keep accepting the historical V21.25 location when that module is
+// absent, but require the new owner once route-lifecycle.js exists.
+if(routeLifecycle){
+  assert.match(
+    routeLifecycle,
+    /clearActiveRoadProfile\(\);/,
+    'route-lifecycle.js missing active road profile reset'
+  );
+  assert.doesNotMatch(
+    main,
+    /clearActiveRoadProfile\(\);/,
+    'main.js still owns active road profile reset after route lifecycle extraction'
+  );
+}else{
+  assert.match(
+    main,
+    /clearActiveRoadProfile\(\);/,
+    'main.js missing historical active road profile reset'
+  );
+}
+
 for(const pattern of [
   /export function createRoadGeometrySystem\s*\(/,
   /const activeRoadProfile=\[\];/,
@@ -92,6 +117,7 @@ for(const pattern of [
 
 const syntaxFiles=[mainPath,modulePath];
 if(localWorld)syntaxFiles.push(localWorldPath);
+if(routeLifecycle)syntaxFiles.push(routeLifecyclePath);
 for(const filePath of syntaxFiles){
   const result=spawnSync(process.execPath,['--check',filePath],{cwd:root,encoding:'utf8'});
   assert.equal(result.status,0,result.stderr||result.stdout||`${path.basename(filePath)} syntax check failed`);
@@ -152,4 +178,4 @@ assert.ok(mainLines<6100,`main.js is still unexpectedly large after road geometr
 
 console.log('V21.25 ROAD GEOMETRY REFACTOR QA: PASS');
 console.log(`main.js: ${mainLines} lines; road-geometry.js: ${roadLines} lines`);
-console.log(`road profile identity/index/interpolation/surface offset: verified${localWorld?' · local-world ownership accepted':''}`);
+console.log(`road profile identity/index/interpolation/surface offset: verified${localWorld?' · local-world ownership accepted':''}${routeLifecycle?' · route-lifecycle reset ownership accepted':''}`);
