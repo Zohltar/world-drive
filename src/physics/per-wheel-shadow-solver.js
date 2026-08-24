@@ -115,6 +115,38 @@ function axleLoadFractions(vehicle,axles,longitudinalAccel=0){
   return loads;
 }
 
+// V21.27 P2 — road-car service braking gets a lightweight EBD layer. The
+// configured brakeShare remains the low-deceleration mechanical bias, then the
+// distribution progressively follows the actual axle normal loads as braking
+// grows. This prevents a dynamically unloaded rear axle from being asked to
+// carry a fixed 38% of braking force in a hard corner. Vehicles that explicitly
+// set absEnabled:false (for example the F1 profile) retain fixed brake bias.
+function effectiveServiceBrakeShares(vehicle,axles,axleLoads,requestedBrakeAccel=0){
+  const base=axles.map(axle=>Math.max(0,finite(axle?.brakeShare,0)));
+  const baseTotal=base.reduce((sum,value)=>sum+value,0)||1;
+  for(let i=0;i<base.length;i++)base[i]/=baseTotal;
+
+  if(vehicle?.absEnabled===false)return base;
+
+  const decelG=Math.abs(finite(requestedBrakeAccel,0))/G;
+  const ebdBlend=clamp((decelG-.15)/.55,0,1);
+  if(ebdBlend<=0)return base;
+
+  const load=axles.map((_,index)=>Math.max(.001,finite(axleLoads?.[index],0)));
+  const loadTotal=load.reduce((sum,value)=>sum+value,0)||1;
+  for(let i=0;i<load.length;i++)load[i]/=loadTotal;
+
+  const result=new Array(axles.length);
+  let total=0;
+  for(let i=0;i<result.length;i++){
+    result[i]=base[i]+(load[i]-base[i])*ebdBlend;
+    total+=result[i];
+  }
+  total=total||1;
+  for(let i=0;i<result.length;i++)result[i]/=total;
+  return result;
+}
+
 function contactSteerAngle({contact,axle,geometry}={}){
   const steerFactor=finite(axle?.steerFactor,0);
   if(Math.abs(steerFactor)<1e-8)return 0;
@@ -434,6 +466,12 @@ export function createPerWheelShadowSolver({hz=120,maxSubSteps=8}={}){
 
     const driveForceN=finite(input?.requestedDriveAccel)*massKg;
     const brakeForceN=finite(input?.requestedBrakeAccel)*massKg;
+    const effectiveBrakeShares=effectiveServiceBrakeShares(
+      vehicle,
+      axles,
+      axleLoads,
+      input?.requestedBrakeAccel
+    );
     const surfaceId=input?.surfaceId||'asphalt-dry';
     const handbrake=!!input?.handbrake;
     const wheels=[];
@@ -480,7 +518,7 @@ export function createPerWheelShadowSolver({hz=120,maxSubSteps=8}={}){
         tire.rollingRadiusM;
       const serviceBrakeTorqueNm=
         brakeForceN*
-        wheelShare(axle,'brakeShare',axleContactCount)*
+        (Math.max(0,finite(effectiveBrakeShares[axleIndex],0))/axleContactCount)*
         tire.rollingRadiusM;
 
       const rear=axle.positionM<0||contact.front===false;
@@ -546,6 +584,7 @@ export function createPerWheelShadowSolver({hz=120,maxSubSteps=8}={}){
       bodySideslipRad:body.sideslipRad,
       centerSteerAngle:finite(input?.centerSteerAngle),
       ackermann:{...geometry},
+      serviceBrakeShares:[...effectiveBrakeShares],
       totalForceX,
       totalForceZ,
       totalYawMomentNm,
