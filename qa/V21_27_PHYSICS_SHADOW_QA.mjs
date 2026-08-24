@@ -159,7 +159,60 @@ assert.ok(rear.every(w=>w.saturated),'locked rear tires were not friction satura
 assert.ok(frontAfterHand.every(w=>!w.locked),'handbrake incorrectly marked a front wheel locked');
 assert.ok(frontAfterHand.every(w=>Math.abs(w.slipRatio)<.15),'handbrake incorrectly locked the front wheels');
 
-// 5) Runtime integration must be observational only.
+// 5) An unloaded/airborne wheel must not be numerically coupled to road speed.
+// With no drive/brake torque, omega is angular momentum and must remain unchanged.
+const airborneSolver=createPerWheelShadowSolver({hz:120});
+let airborneResult=airborneSolver.advance(1/60,{
+  vehicleId:'wrx',vehicle,contacts,
+  speed:30,heading:0,velocityHeading:0,yawRate:0,
+  centerSteerAngle:0,longitudinalAccel:0,lateralAccel:0,
+  requestedDriveAccel:0,requestedBrakeAccel:0,handbrake:false,
+  surfaceId:'asphalt-dry'
+});
+const beforeAir=airborneResult.wheels.map(w=>w.wheelOmega);
+const airborneContacts=contacts.map(contact=>({...contact,contact:false,contactFactor:0}));
+for(let frame=0;frame<60;frame++){
+  airborneResult=airborneSolver.advance(1/60,{
+    vehicleId:'wrx',vehicle,contacts:airborneContacts,
+    speed:30,heading:0,velocityHeading:0,yawRate:0,
+    centerSteerAngle:0,longitudinalAccel:0,lateralAccel:0,
+    requestedDriveAccel:0,requestedBrakeAccel:0,handbrake:false,
+    surfaceId:'asphalt-dry'
+  });
+}
+for(let i=0;i<airborneResult.wheels.length;i++){
+  assert.ok(
+    Math.abs(airborneResult.wheels[i].wheelOmega-beforeAir[i])<1e-9,
+    'airborne coasting wheel was numerically pulled toward road speed'
+  );
+  assert.equal(airborneResult.wheels[i].normalLoadN,0,'airborne wheel retained normal load');
+  assert.equal(airborneResult.wheels[i].fxWheel,0,'airborne wheel generated longitudinal tire force');
+  assert.equal(airborneResult.wheels[i].fyWheel,0,'airborne wheel generated lateral tire force');
+}
+
+// 6) Reset/teleport speed discontinuities are not physical impulses. A hard
+// runtime reset must re-seed wheel omega from the new contact velocity instead
+// of leaving hundreds of stale RPM in the shadow diagnostics.
+const resetSolver=createPerWheelShadowSolver({hz:120});
+resetSolver.advance(1/60,{
+  vehicleId:'wrx',vehicle,contacts,
+  speed:30,heading:0,velocityHeading:0,yawRate:0,
+  centerSteerAngle:0,longitudinalAccel:0,lateralAccel:0,
+  requestedDriveAccel:0,requestedBrakeAccel:0,handbrake:false,
+  surfaceId:'asphalt-dry'
+});
+const resetResult=resetSolver.advance(1/60,{
+  vehicleId:'wrx',vehicle,contacts,
+  speed:0,heading:1.2,velocityHeading:1.2,yawRate:0,
+  centerSteerAngle:0,longitudinalAccel:0,lateralAccel:0,
+  requestedDriveAccel:0,requestedBrakeAccel:0,handbrake:false,
+  surfaceId:'asphalt-dry'
+});
+assert.ok(resetResult.stateDiscontinuityResets>=1,'hard speed reset did not clear stale wheel state');
+assert.ok(resetResult.wheels.every(w=>Math.abs(w.wheelOmega)<1e-9),'hard reset retained stale wheel RPM');
+assert.ok(resetResult.wheels.every(w=>Math.abs(w.slipRatio)<1e-9),'hard reset invented longitudinal slip');
+
+// 7) Runtime integration must be observational only.
 const runtime=fs.readFileSync(runtimePath,'utf8');
 const main=fs.readFileSync(mainPath,'utf8');
 assert.match(runtime,/createPerWheelShadowSolver/,'driving runtime does not import/create shadow solver');
@@ -175,4 +228,4 @@ assert.doesNotMatch(runtime,/predictedAccelZ\s*[+\-*/]?=/,'shadow predictedAccel
 assert.doesNotMatch(runtime,/predictedYawAccel\s*[+\-*/]?=/,'shadow predictedYawAccel is being written into runtime state');
 
 console.log('V21.27 PHYSICS SHADOW QA: PASS');
-console.log('120 Hz per-wheel forces / stable wheel spin / Ackermann / rear lock / non-authoritative runtime integration verified');
+console.log('120 Hz per-wheel forces / stable wheel spin / Ackermann / rear lock / airborne state / hard reset / non-authoritative runtime integration verified');
