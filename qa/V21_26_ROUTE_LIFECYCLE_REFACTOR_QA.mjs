@@ -29,12 +29,16 @@ assert.match(main,/async function loadRoute\(\)\{return routeLifecycle\.loadRout
 
 for(const pattern of [
   /loadingText\.textContent='Préchargement du terrain en avance…';/,
-  /const WorldDrive=\{/,
   /route\.push\(\{x:p\.x,z:p\.z,lat,lon,cum\}\);/
 ]){
   assert.doesNotMatch(main,pattern,`main.js still owns route lifecycle behavior: ${pattern}`);
   assert.match(lifecycle,pattern,`route-lifecycle.js missing extracted route behavior: ${pattern}`);
 }
+
+// WorldDrive remains a compatibility facade in main, while lifecycle owns the
+// actual generation object under an internal lower-case name.
+assert.doesNotMatch(main,/const WorldDrive=\{/,'main.js still owns the WorldDrive generation object');
+assert.match(lifecycle,/const worldDrive=\{/,'route-lifecycle.js missing extracted WorldDrive generation object');
 
 // The lifecycle now receives route preloading as an injected dependency.
 // Validate the extracted call rather than the old main.js object-qualified spelling.
