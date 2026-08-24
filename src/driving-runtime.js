@@ -52,11 +52,6 @@ export function postSpinSteeringAuthority({rearSlipAmount=0,heading=0,velocityHe
   return 1-.72*suppression;
 }
 
-// P10 — a J-turn is a transient yaw manoeuvre, not a steady-state corner.
-// In reverse, a sharp front-steer input can rotate the chassis rapidly while
-// the vehicle momentum remains grip-limited. Do not use the steady-state
-// lateral-G cap to suppress chassis yaw in this narrow regime; the per-wheel
-// tire solver still limits the actual lateral force and momentum curvature.
 export function jTurnTransientYawActive({
   bodyLongitudinalSpeed=0,
   speedAbs=0,
@@ -85,6 +80,15 @@ export function landingSideslipGripSeed({sideslipRad=0,speedAbs=0}={}){
   const slipT=smoothstep01((slip-.035)/.19);
   const speedT=smoothstep01((speed-3.5)/7.5);
   return Math.min(.92,slipT*speedT*.92);
+}
+
+// P11 — propulsion is a force along the vehicle's longitudinal body axis, not
+// automatically along the current momentum vector. This matters after a J-turn:
+// the chassis may already point forward while residual momentum is still rearward.
+// Positive throttle must then REMOVE rearward speed before building forward speed.
+export function bodyAxisDriveProjection({heading=0,velocityHeading=0}={}){
+  const delta=(Number(velocityHeading)||0)-(Number(heading)||0);
+  return Math.cos(delta);
 }
 
 export function createDrivingRuntime({
@@ -152,9 +156,11 @@ export function createDrivingRuntime({
     const hand=autopilot?ap.hand:manualHand;
     const onPavement=!!(nr&&nr.d<8.5);
     currentOnPavementForInstruments=onPavement;
+    const preDriveBodyLongitudinalSpeed=bodyRelativeLongitudinalSpeed({speed,heading,velocityHeading});
+    const driveAxisProjection=bodyAxisDriveProjection({heading,velocityHeading});
     const driveThrottle=updateTransmission(dt,throttle,onPavement);
 
-    const brakeRequested=hand||(throttle<-.04&&speed>.15);
+    const brakeRequested=hand||(throttle<-.04&&preDriveBodyLongitudinalSpeed>.15);
     countachBrakeLightRequested=brakeRequested;
     countachReverseLightRequested=(speed<-.08)||(driveThrottle<-.04&&speed<=.15);
     vehicleVisuals.updateBrakeLights(dt,brakeRequested);
@@ -168,15 +174,25 @@ export function createDrivingRuntime({
     let requestedDriveAccel=0,requestedBrakeAccel=0;
 
     if(driveThrottle>0){
-      if(speed>=0){
-        const performanceTop=vehicleTopSpeedKmh()/3.6;
-        const speedRatio=Math.min(1,Math.max(0,speed/performanceTop));
-        const powerTaper=truckTrailerSystem.active?1:1-.38*speedRatio;
-        requestedDriveAccel=VEHICLE.accel*offroadPowerFactor*driveThrottle*powerTaper;
-      }else requestedBrakeAccel=VEHICLE.brake*driveThrottle;
+      const performanceTop=vehicleTopSpeedKmh()/3.6;
+      const speedRatio=Math.min(1,Math.max(0,Math.abs(speed)/performanceTop));
+      const powerTaper=truckTrailerSystem.active?1:1-.38*speedRatio;
+      requestedDriveAccel=
+        VEHICLE.accel*
+        offroadPowerFactor*
+        driveThrottle*
+        powerTaper*
+        driveAxisProjection;
     }else if(driveThrottle<0){
-      if(speed>0)requestedBrakeAccel=VEHICLE.brake*driveThrottle;
-      else requestedDriveAccel=VEHICLE.reverseAccel*offroadPowerFactor*driveThrottle;
+      if(preDriveBodyLongitudinalSpeed>.15){
+        requestedBrakeAccel=VEHICLE.brake*driveThrottle;
+      }else{
+        requestedDriveAccel=
+          VEHICLE.reverseAccel*
+          offroadPowerFactor*
+          driveThrottle*
+          driveAxisProjection;
+      }
     }
 
     requestedDriveAccel*=truckTrailerSystem.active?truckTrailerSystem.driveAccelScaleForSpeed(Math.abs(speed)):combination.driveAccelScale;
@@ -212,7 +228,18 @@ export function createDrivingRuntime({
       accel+=longitudinalTractionLimit({vehicle:VEHICLE,requestedAccel:handRequest,surfaceMu:longitudinalMu,mode:'handbrake',airborne:false,speedAbs:longitudinalSpeedAbs},dynamicsScratch.handbrake).acceleration;
     }
 
+    const opposingBodyTravel=
+      (driveThrottle>.04&&preDriveBodyLongitudinalSpeed<-.15)||
+      (driveThrottle<-.04&&preDriveBodyLongitudinalSpeed>.15);
     speed+=accel*dt;
+    if(
+      opposingBodyTravel&&
+      Math.abs(previousSpeed)>.02&&
+      Math.sign(speed)!==Math.sign(previousSpeed)
+    ){
+      speed=0;
+      velocityHeading=heading;
+    }
 
     if(!airborneNow&&!onPavement&&speed>0){
       const profile=activeTransmissionProfile();
@@ -338,8 +365,6 @@ export function createDrivingRuntime({
     const gripResponse=rawGripUsage>lateralGripUsage?12:18;
     lateralGripUsage+=(rawGripUsage-lateralGripUsage)*(1-Math.exp(-dt*gripResponse));
     if(lateralGripUsage<.002&&rawGripUsage===0)lateralGripUsage=0;
-    // Steady cornering yaw is grip-limited. A J-turn is intentionally excluded:
-    // tire force/momentum curvature stays capped, but chassis yaw may continue.
     if(!jTurnYawActive&&requestedLatAccel>latLimit&&requestedLatAccel>0)yawRate*=latLimit/requestedLatAccel;
 
     const frontDominance=Math.max(0,frontSlipAmount-rearSlipAmount*.55);
