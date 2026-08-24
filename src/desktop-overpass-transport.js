@@ -7,6 +7,7 @@
 
 const OVERPASS_HOSTS=new Set([
   'overpass-api.de',
+  'overpass.private.coffee',
   'overpass.kumi.systems',
   'overpass.nchc.org.tw'
 ]);
