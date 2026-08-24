@@ -11,22 +11,27 @@ export function bodyRelativeLongitudinalSpeed({speed=0,heading=0,velocityHeading
   return v*Math.cos(bodyDelta);
 }
 
-// P6.2 — keep full momentum magnitude. During an ACTIVE handbrake spin, keep
-// the steering/yaw travel sign tied to the momentum direction that initiated
-// the rotation instead of flipping it at 90 degrees of chassis sideslip. Once
-// the handbrake is released, body-relative forward/reverse direction takes over
-// immediately so post-180 recovery still behaves like true reverse travel.
-export function bodyRelativeSteeringSpeed({speed=0,heading=0,velocityHeading=0,handbrake=false}={}){
+// P6.3 — use full momentum magnitude, but do not snap instantly from the
+// handbrake-spin travel sign to clean reverse steering while the rear axle is
+// still deeply sliding. As rear slip decays, body-relative reverse authority
+// progressively returns. This models tire reattachment instead of a mode flip.
+export function bodyRelativeSteeringSpeed({speed=0,heading=0,velocityHeading=0,handbrake=false,rearSlipAmount=0}={}){
   const v=Number(speed)||0;
   const speedAbs=Math.abs(v);
   if(speedAbs<1e-8)return 0;
-  if(handbrake)return Math.sign(v||1)*speedAbs;
+  const momentumSpeed=Math.sign(v||1)*speedAbs;
+  if(handbrake)return momentumSpeed;
+
   const bodyLong=bodyRelativeLongitudinalSpeed({speed:v,heading,velocityHeading});
   const projectionDeadband=speedAbs*.06;
-  const direction=Math.abs(bodyLong)>projectionDeadband
+  const bodyDirection=Math.abs(bodyLong)>projectionDeadband
     ?Math.sign(bodyLong)
     :Math.sign(v||1);
-  return direction*speedAbs;
+  const bodySpeed=bodyDirection*speedAbs;
+
+  const slip=Math.max(0,Math.min(1,Number(rearSlipAmount)||0));
+  const rearGripRecovery=1-smoothstep01((slip-.12)/.58);
+  return momentumSpeed+(bodySpeed-momentumSpeed)*rearGripRecovery;
 }
 
 export function handbrakeLateralEffectForSpeed(speedAbs=0){
@@ -220,7 +225,7 @@ export function createDrivingRuntime({
     currentSteerAngle=steerAngle;
 
     const bodyLongitudinalSpeed=bodyRelativeLongitudinalSpeed({speed,heading,velocityHeading});
-    const steeringTravelSpeed=bodyRelativeSteeringSpeed({speed,heading,velocityHeading,handbrake:hand});
+    const steeringTravelSpeed=bodyRelativeSteeringSpeed({speed,heading,velocityHeading,handbrake:hand,rearSlipAmount});
     const lateralEnvelope=lateralDynamicsEnvelope({vehicle:VEHICLE,speed:steeringTravelSpeed,steerAngle,steerInput:steer,driveThrottle,onPavement,surfaceGrip,awdOffroadGripBonus,rearSlipAmount:0,airborne:airborneNow},dynamicsScratch.lateral);
     let yawRate=lateralEnvelope.yawRate*truckTrailerSystem.tractorYawScale(speedAbs);
     const drivetrain=lateralEnvelope.drivetrain;
@@ -299,7 +304,7 @@ export function createDrivingRuntime({
     if(drivetrain==='RWD'&&powerCorneringLoad>.05&&!airborneNow){
       const powerOversteerYaw=VEHICLE.powerOversteerYaw??.035;
       const rearSlipYaw=Math.sign(steer||1)*powerOversteerYaw*powerCorneringLoad*(.30+rearDominance*.70)*Math.min(1,speedAbs/18);
-      yawRate+=rearSlipYaw*Math.sign((hand?speed:bodyLongitudinalSpeed)||speed||1);
+      yawRate+=rearSlipYaw*Math.sign((hand?speed:steeringTravelSpeed)||speed||1);
     }
 
     if(Math.abs(steerAngle)>.006&&Math.abs(yawRate)>1e-5&&frictionYawAccel*yawRate<0)frictionYawAccel=0;
