@@ -45,17 +45,17 @@ assert(id4Loads[0]>.62&&id4Loads[0]<.67,'ID.4 front load at 0.8 g braking should
 assert(id4Loads[1]>.33&&id4Loads[1]<.38,'ID.4 rear axle must retain substantial load');
 assert(wrxLoads[0]>id4Loads[0]+.06,'WRX should remain more front-loaded than ID.4 under same decel');
 
-// 2) ABS/EBD must avoid rear saturation during braking in a corner. The ID.4
-// rear axle starts with 52% static load, so fixed 62/38 braking must not be
-// allowed to manufacture instability.
+// 2) ABS/EBD must avoid rear saturation during realistic trail braking. Use
+// 0.6 g braking + ~0.25 g lateral demand: enough to exercise combined grip
+// without demanding an impossible 0.8 g + 0.4 g from an 0.86 g crossover tire.
 const grip={};
 estimateWheelGripUsage({
-  requestedLatAccel:4.0,
-  signedLatAccel:4.0,
+  requestedLatAccel:2.5,
+  signedLatAccel:2.5,
   latLimit:ID4.lateralAccelLimit,
-  longitudinalAccel:-.8*GRAVITY,
+  longitudinalAccel:-.6*GRAVITY,
   propulsionAccel:0,
-  serviceBrakeAccel:-.8*GRAVITY,
+  serviceBrakeAccel:-.6*GRAVITY,
   surfaceMu:ID4.longitudinalAccelLimit/GRAVITY,
   throttle:0,
   handbrake:false,
@@ -67,8 +67,8 @@ estimateWheelGripUsage({
   previousUsage:[0,0,0,0]
 },grip);
 assert(grip.serviceBrakeAbsEnabled===true,'ID.4 road-car ABS/EBD must be active');
-assert(Math.max(...grip.longitudinalUsage)<1.02,'ID.4 ABS/EBD must keep wheel braking below lock threshold');
-assert(Math.max(...grip.lateralUsage)<1.15,'moderate trail braking must not create artificial axle breakaway');
+assert(Math.max(...grip.longitudinalUsage)<.75,'ID.4 EBD should distribute a 0.6 g stop without rear lock');
+assert(Math.max(...grip.lateralUsage)<.90,'moderate trail braking should retain lateral authority on all four tires');
 
 // 3) At equal speed/input the heavier crossover must request less yaw than the
 // WRX because of longer wheelbase, smaller rack angle and lower grip target.
