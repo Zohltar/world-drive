@@ -12,9 +12,39 @@ const eol=raw.includes('\r\n')?'\r\n':'\n';
 let main=raw.replace(/\r\n/g,'\n');
 
 const moduleImport="import { createWheelGroundSupport } from './wheel-ground-support.js';";
+const pavementStateDeclaration='let currentOnPavementForInstruments=true;';
+const performanceMarker='// V21.21.3 PERFORMANCE: simulation stays per-frame, but DOM/canvas telemetry does';
+
+function syntaxCheck(file){
+  const result=spawnSync(process.execPath,['--check',file],{encoding:'utf8'});
+  if(result.status!==0){
+    throw new Error(`Syntax check failed for ${path.basename(file)}:\n${result.stderr||result.stdout}`);
+  }
+}
 
 if(main.includes(moduleImport)&&fs.existsSync(modulePath)){
-  console.log('V21.26 WHEEL GROUND SUPPORT REFACTOR: already applied');
+  if(!main.includes(pavementStateDeclaration)){
+    const markerIndex=main.indexOf(performanceMarker);
+    if(markerIndex<0){
+      throw new Error('V21.26 wheel ground support refactor repair: performance marker missing. No files changed.');
+    }
+
+    main=main.slice(0,markerIndex)+pavementStateDeclaration+'\n\n'+main.slice(markerIndex);
+    const tempRepair=path.join(root,'tools','__v21_26_wheel_support_repair_check__.mjs');
+    try{
+      fs.writeFileSync(tempRepair,main,'utf8');
+      syntaxCheck(tempRepair);
+    }finally{
+      fs.rmSync(tempRepair,{force:true});
+    }
+
+    const repairedMain=eol==='\n'?main:main.replace(/\n/g,eol);
+    fs.writeFileSync(mainPath,repairedMain,'utf8');
+    console.log('V21.26 WHEEL GROUND SUPPORT REFACTOR: REPAIRED');
+    console.log('Restored: currentOnPavementForInstruments remains owned by main.js for driving/instrument state.');
+  }else{
+    console.log('V21.26 WHEEL GROUND SUPPORT REFACTOR: already applied');
+  }
   process.exit(0);
 }
 if(main.includes(moduleImport)||fs.existsSync(modulePath)){
@@ -31,9 +61,8 @@ function replaceOnce(source,needle,replacement,label){
 }
 
 const startMarker='const groundHeightRoadScratch={};';
-const endMarker='// V21.21.3 PERFORMANCE: simulation stays per-frame, but DOM/canvas telemetry does';
 const start=main.indexOf(startMarker);
-const end=main.indexOf(endMarker,start);
+const end=main.indexOf(performanceMarker,start);
 if(start<0||end<0||end<=start){
   throw new Error('V21.26 wheel ground support refactor: support block markers not found. No files changed.');
 }
@@ -43,6 +72,7 @@ for(const required of [
   'const groundHeightRoadScratch={};',
   'const fastWheelRoadSupport={',
   'halfWidth:ROAD_WHEEL_CONTACT_HALF_WIDTH',
+  'let currentOnPavementForInstruments=true;',
   'function setFastWheelRoadSupport(active,roadFrame,centerY,centerX=absX,centerZ=absZ){',
   'fastWheelRoadSupport.tanPitch=Math.tan(roadFrame.pitch||0);',
   'fastWheelRoadSupport.tanRoll=Math.tan(roadFrame.roll||0);',
@@ -132,6 +162,8 @@ function groundHeightForWheel(...args){
   return wheelGroundSupport.groundHeightForWheel(...args);
 }
 
+${pavementStateDeclaration}
+
 `;
 
 main=main.slice(0,start)+facade+main.slice(end);
@@ -148,6 +180,9 @@ for(const forbidden of [
   if(main.includes(forbidden)){
     throw new Error(`V21.26 wheel ground support refactor: legacy implementation remains in main.js: ${forbidden}`);
   }
+}
+if(!main.includes(pavementStateDeclaration)){
+  throw new Error('V21.26 wheel ground support refactor: instrument pavement state was lost from main.js.');
 }
 
 for(const required of [
@@ -166,13 +201,6 @@ for(const required of [
 
 const tempMain=path.join(root,'tools','__v21_26_wheel_support_main_check__.mjs');
 const tempModule=path.join(root,'tools','__v21_26_wheel_support_module_check__.mjs');
-function syntaxCheck(file){
-  const result=spawnSync(process.execPath,['--check',file],{encoding:'utf8'});
-  if(result.status!==0){
-    throw new Error(`Syntax check failed for ${path.basename(file)}:\n${result.stderr||result.stdout}`);
-  }
-}
-
 try{
   fs.writeFileSync(tempMain,main,'utf8');
   fs.writeFileSync(tempModule,moduleSource,'utf8');
@@ -194,4 +222,4 @@ const moduleLinesCount=outputModule.split(/\r?\n/).length;
 console.log('V21.26 WHEEL GROUND SUPPORT REFACTOR: APPLIED');
 console.log(`main.js: ${beforeLines} -> ${afterLines} lines`);
 console.log(`wheel-ground-support.js: ${moduleLinesCount} lines`);
-console.log('Extracted: fast local road-plane wheel support and road/terrain wheel-height fallback.');
+console.log('Extracted: fast local road-plane wheel support and road/terrain wheel-height fallback; pavement instrument state preserved in main.js.');
