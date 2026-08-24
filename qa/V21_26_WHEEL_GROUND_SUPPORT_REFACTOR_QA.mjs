@@ -27,10 +27,17 @@ for(const pattern of [
   /function setFastWheelRoadSupport\(active,roadFrame,centerY,centerX=absX,centerZ=absZ\)\{/,
   /wheelGroundSupport\.setFastWheelRoadSupport\(active,roadFrame,centerY,centerX,centerZ\)/,
   /function groundHeightForWheel\(\.\.\.args\)\{/,
-  /wheelGroundSupport\.groundHeightForWheel\(\.\.\.args\)/
+  /wheelGroundSupport\.groundHeightForWheel\(\.\.\.args\)/,
+  /let currentOnPavementForInstruments=true;/
 ]){
-  assert.match(main,pattern,`main.js missing wheel ground support facade: ${pattern}`);
+  assert.match(main,pattern,`main.js missing wheel ground support facade/runtime state: ${pattern}`);
 }
+
+assert.doesNotMatch(
+  supportSource,
+  /currentOnPavementForInstruments/,
+  'wheel-ground-support.js must not own driving/instrument pavement state'
+);
 
 for(const pattern of [
   /const groundHeightRoadScratch=\{\};/,
@@ -126,4 +133,4 @@ assert.equal(transmissionRegression.status,0,`autopilot transmission fix regress
 
 console.log('V21.26 WHEEL GROUND SUPPORT REFACTOR QA: PASS');
 console.log(`main.js: ${mainLines} lines; wheel-ground-support.js: ${supportSource.split('\n').length} lines`);
-console.log('fast local road plane / road-surface fallback / terrain fallback / scratch reuse verified');
+console.log('fast local road plane / road-surface fallback / terrain fallback / scratch reuse / pavement instrument state verified');
