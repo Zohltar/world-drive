@@ -15,6 +15,31 @@ export function bodyRelativeLongitudinalSpeed({speed=0,heading=0,velocityHeading
   return v*Math.cos(bodyDelta);
 }
 
+// P6.1 — use body-relative motion only for DIRECTION, not steering-speed
+// magnitude. Around 90 degrees of sideslip the longitudinal projection tends
+// to zero even though the car still carries full momentum. Feeding that tiny
+// projection into the bicycle model killed yaw halfway through a 180. Keep the
+// true speed magnitude and flip its sign only once motion is clearly rearward.
+export function bodyRelativeSteeringSpeed({speed=0,heading=0,velocityHeading=0}={}){
+  const v=Number(speed)||0;
+  const speedAbs=Math.abs(v);
+  if(speedAbs<1e-8)return 0;
+  const bodyLong=bodyRelativeLongitudinalSpeed({speed:v,heading,velocityHeading});
+  const projectionDeadband=speedAbs*.06;
+  const direction=Math.abs(bodyLong)>projectionDeadband
+    ?Math.sign(bodyLong)
+    :Math.sign(v||1);
+  return direction*speedAbs;
+}
+
+// P7 — lateral destabilization from a locked handbrake axle must fade near
+// walking speed. A locked rear wheel can still brake the car at 5-15 km/h, but
+// treating it as having ~zero lateral authority at every speed made the rear
+// pivot unrealistically far with very little kinetic energy.
+export function handbrakeLateralEffectForSpeed(speedAbs=0){
+  return smoothstep01((Math.max(0,Number(speedAbs)||0)-2.5)/6.5);
+}
+
 // V21.27 P4 — translate actual chassis-vs-momentum misalignment at touchdown
 // into an initial four-wheel slip state. This does NOT rotate momentum, add tire
 // force or increase grip; it only prevents an oblique landing from re-entering
@@ -206,9 +231,11 @@ export function createDrivingRuntime({
     currentSteerAngle=steerAngle;
 
     const bodyLongitudinalSpeed=bodyRelativeLongitudinalSpeed({speed,heading,velocityHeading});
-    // P5 remains: historical slip memory does not reduce the envelope. P6 adds
-    // the real body-relative travel sign, so a post-180 slide steers like reverse.
-    const lateralEnvelope=lateralDynamicsEnvelope({vehicle:VEHICLE,speed:bodyLongitudinalSpeed,steerAngle,steerInput:steer,driveThrottle,onPavement,surfaceGrip,awdOffroadGripBonus,rearSlipAmount:0,airborne:airborneNow},dynamicsScratch.lateral);
+    const steeringTravelSpeed=bodyRelativeSteeringSpeed({speed,heading,velocityHeading});
+    // P5 remains: historical slip memory does not reduce the envelope. P6.1
+    // keeps full momentum magnitude through a 90-degree slide while P6 keeps
+    // the correct forward/reverse steering sign once the body passes through.
+    const lateralEnvelope=lateralDynamicsEnvelope({vehicle:VEHICLE,speed:steeringTravelSpeed,steerAngle,steerInput:steer,driveThrottle,onPavement,surfaceGrip,awdOffroadGripBonus,rearSlipAmount:0,airborne:airborneNow},dynamicsScratch.lateral);
     let yawRate=lateralEnvelope.yawRate*truckTrailerSystem.tractorYawScale(speedAbs);
     const drivetrain=lateralEnvelope.drivetrain;
     const powerCorneringLoad=lateralEnvelope.powerCorneringLoad;
@@ -241,10 +268,26 @@ export function createDrivingRuntime({
     wheelSlipLevels=perWheelGrip.slip;
     wheelLateralUsage=perWheelGrip.lateralUsage;
     wheelLongitudinalUsage=perWheelGrip.longitudinalUsage;
-    const targetFrontSlip=perWheelGrip.frontLateral,targetRearSlip=perWheelGrip.rearLateral;
+
+    const handbrakeLateralEffect=hand&&!airborneNow
+      ?handbrakeLateralEffectForSpeed(speedAbs)
+      :1;
+    const targetFrontSlip=perWheelGrip.frontLateral;
+    const targetRearSlip=perWheelGrip.rearLateral*handbrakeLateralEffect;
     let frictionYawAccel=Number.isFinite(perWheelGrip.frictionYawAccel)?perWheelGrip.frictionYawAccel:0;
-    const netLateralAccel=Number.isFinite(perWheelGrip.netLateralAccel)?perWheelGrip.netLateralAccel:signedLatAccel;
-    const rearLateralForceScale=Number.isFinite(perWheelGrip.rearLateralForceScale)?physicsClamp(perWheelGrip.rearLateralForceScale,0,1):1;
+    const rawNetLateralAccel=Number.isFinite(perWheelGrip.netLateralAccel)?perWheelGrip.netLateralAccel:signedLatAccel;
+    const rawRearLateralForceScale=Number.isFinite(perWheelGrip.rearLateralForceScale)?physicsClamp(perWheelGrip.rearLateralForceScale,0,1):1;
+
+    // P7 affects only handbrake-induced lateral destabilization. Longitudinal
+    // braking remains fully physical, but at low speed the rear axle retains
+    // enough lateral authority that it cannot pivot the chassis like ice.
+    if(hand&&!airborneNow)frictionYawAccel*=handbrakeLateralEffect;
+    const netLateralAccel=hand&&!airborneNow
+      ?signedLatAccel+(rawNetLateralAccel-signedLatAccel)*handbrakeLateralEffect
+      :rawNetLateralAccel;
+    const rearLateralForceScale=hand&&!airborneNow
+      ?1-(1-rawRearLateralForceScale)*handbrakeLateralEffect
+      :rawRearLateralForceScale;
     const rearLateralForceLoss=Math.abs(signedLatAccel)>.15?1-rearLateralForceScale:0;
     const slipDt=Math.min(.05,dt);
     const lowSpeedSlipReleaseBoost=1+(1-physicsClamp(speedAbs/8,0,1))*1.6;
@@ -328,7 +371,10 @@ export function createDrivingRuntime({
         const velocityFollowRate=airborneNow?0:((2.8-1.45*frictionTrajectoryLoss)+27.2*Math.pow(1-physicsClamp(trajectoryRearSlip,0,1),2));
         attemptedTrajectoryDelta+=angleDelta(heading,velocityHeading)*(1-Math.exp(-dt*velocityFollowRate));
       }
-      const trajectoryLateralCapacityAccel=Number.isFinite(perWheelGrip.trajectoryLateralCapacityAccel)?Math.max(0,perWheelGrip.trajectoryLateralCapacityAccel):Math.max(0,latLimit);
+      const rawTrajectoryLateralCapacityAccel=Number.isFinite(perWheelGrip.trajectoryLateralCapacityAccel)?Math.max(0,perWheelGrip.trajectoryLateralCapacityAccel):Math.max(0,latLimit);
+      const trajectoryLateralCapacityAccel=hand&&!airborneNow
+        ?latLimit+(rawTrajectoryLateralCapacityAccel-latLimit)*handbrakeLateralEffect
+        :rawTrajectoryLateralCapacityAccel;
       velocityHeading+=limitMomentumHeadingDelta({attemptedDelta:attemptedTrajectoryDelta,speedAbs,lateralCapacityAccel:trajectoryLateralCapacityAccel,dt,airborne:airborneNow});
     }
 
