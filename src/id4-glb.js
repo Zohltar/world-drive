@@ -91,7 +91,9 @@ export function createId4GlbSystem({
     const initialSize=new THREE.Vector3();
     initialBox.getSize(initialSize);
 
-    const targetLength=4.58;
+    // V21.28: user-requested visual-only +15% scale. Physics dimensions and
+    // suspension/contact probes remain calibrated to the underlying profile.
+    const targetLength=4.58*1.15;
     const scale=targetLength/Math.max(.001,initialSize.z);
     model.scale.multiplyScalar(scale);
     model.updateMatrixWorld(true);
@@ -168,15 +170,9 @@ export function createId4GlbSystem({
   }
 
   function createRearLedOverlays(sceneRoot){
-    // The detailed Sketchfab GLB stores the car meshes under group1, beneath a
-    // 0.01 FBX-unit conversion matrix. The LED coordinates below are authored
-    // in that same raw mesh coordinate system, so they MUST be parented to
-    // group1 rather than directly to the scene root.
     const authoredParent=sceneRoot.getObjectByName('group1')||sceneRoot;
     const group=new THREE.Group();
     group.name='id4-authored-style-rear-leds';
-    // Thin brake LED bars, based on the user-marked green regions.
-    // Central hatch strip.
     const centerBrake=createLedStrip({x:228.9,y:117.6,z:0,dx:0.9,dy:1.8,dz:103,color:0xff2028,name:'id4-brake-center'});
     if(centerBrake.userData?.coreMesh)centerBrake.userData.coreMesh.visible=false;
     group.add(centerBrake);
@@ -184,7 +180,6 @@ export function createId4GlbSystem({
 
     function addSide(side){
       const s=side<0?-1:1;
-      // Outer C-like brake signature.
       const top=createLedStrip({x:228.9,y:121.2,z:s*53.5,dx:0.9,dy:1.8,dz:17,color:0xff2028,name:`id4-brake-top-${side<0?'l':'r'}`});
       const outer=createLedStrip({x:228.9,y:112.8,z:s*60.4,dx:0.9,dy:16.5,dz:1.8,color:0xff2028,name:`id4-brake-outer-${side<0?'l':'r'}`});
       const lower=createLedStrip({x:228.9,y:104.4,z:s*53.0,dx:0.9,dy:1.8,dz:19,color:0xff2028,name:`id4-brake-lower-${side<0?'l':'r'}`});
@@ -194,8 +189,6 @@ export function createId4GlbSystem({
         group.add(m);
         brakeLamps.push(m);
       }
-
-      // Reverse LEDs, based on the user-marked blue regions (thin inner bars).
       const revTop=createLedStrip({x:229.2,y:112.6,z:s*39.8,dx:0.9,dy:1.6,dz:8.5,color:0xffffff,name:`id4-reverse-top-${side<0?'l':'r'}`});
       const revBottom=createLedStrip({x:229.2,y:107.8,z:s*38.8,dx:0.9,dy:1.6,dz:7.0,color:0xffffff,name:`id4-reverse-bottom-${side<0?'l':'r'}`});
       for(const m of [revTop,revBottom]){ group.add(m); reverseLamps.push(m); }
@@ -246,9 +239,6 @@ export function createId4GlbSystem({
     wheelAnimators.length=0;
     const named={};
     sceneRoot.traverse(obj=>{ if(obj?.isMesh||obj?.isSkinnedMesh)named[obj.name]=obj; });
-
-    // Front axle tyres (model-local X negative) and rear axle tyres (X positive)
-    // are delivered as separate meshes, each containing the left and right tire.
     const tyreSideSpecs=[
       {front:true, match:(x,y,z)=>z<0},
       {front:true, match:(x,y,z)=>z>=0}
@@ -265,8 +255,8 @@ export function createId4GlbSystem({
     ];
 
     const animTargets=[
-      [named['20_tire_map_c_tyre_0'], tyreSideSpecs],       // front axle tyres
-      [named['20_tire_map_c_1_tyre_0'], rearTyreSideSpecs], // rear axle tyres
+      [named['20_tire_map_c_tyre_0'], tyreSideSpecs],
+      [named['20_tire_map_c_1_tyre_0'], rearTyreSideSpecs],
       [named['65_hub_black_metal_black_metal_0'], hubQuadSpecs],
       [named['65_hub_metal_chrome_0'], hubQuadSpecs],
       [named['22_brake_disc_map_c_disk_0'], tyreSideSpecs],
@@ -283,10 +273,7 @@ export function createId4GlbSystem({
   function animateWheels(dt,speed,steerAngle){
     if(!wheelAnimators.length)return;
     const safeDt=Math.max(.001,Math.min(.05,Number(dt)||.016));
-    const radius=.37;
-    // V21.24.13: flip sign versus the old ID.4 integration — the previous
-    // source appeared to roll backward. Positive travel now spins visually in
-    // the correct forward direction.
+    const radius=.37*1.15;
     wheelSpin+=Number(speed||0)*safeDt/radius;
     if(Math.abs(wheelSpin)>Math.PI*2048)wheelSpin%=Math.PI*2;
     spinQuat.setFromAxisAngle(spinAxis,wheelSpin);
@@ -388,14 +375,7 @@ export function createId4GlbSystem({
 
       const byName={};
       root.traverse(obj=>{ if(obj?.isMesh||obj?.isSkinnedMesh)byName[obj.name]=obj; });
-
-      // Rear brake / reverse lights: do not light the coarse whole-material
-      // regions anymore. Use dedicated thin LED overlay strips that match the
-      // user-provided reference image much more closely.
       createRearLedOverlays(root);
-
-      // Headlamps: keep it conservative and light only the authored front glass
-      // and bright internal white lens pieces.
       for(const name of [
         '13_headlight_glass_glass_0',
         '16_headlight_white_plastic_white_P_0'
