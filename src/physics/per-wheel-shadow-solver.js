@@ -217,17 +217,47 @@ function integrateWheelOmegaStable({
   const brakeTorqueNm=finite(serviceBrakeTorqueNm)+finite(handbrakeTorqueNm);
   const hasDrive=Math.abs(finite(driveTorqueNm))>.01;
   const brakingOnly=!hasDrive&&Math.abs(brakeTorqueNm)>.01;
+  const dt=Math.max(0,finite(step,0));
+  const externalTorque=finite(driveTorqueNm)+brakeTorqueNm;
 
-  const lockedForce=()=>tireForceAtOmega({
+  const forceAtOmega=omega=>tireForceAtOmega({
     tire,
     surfaceId,
     normalLoadN,
     patch,
-    omega:0,
+    omega,
     steerAngle,
     localX,
     localZ
   });
+
+  // No vertical load means no road/tire reaction. An airborne or fully unloaded
+  // wheel keeps its angular momentum unless engine/brake torque acts on it. The
+  // old linearized road term incorrectly spun an airborne wheel toward the road
+  // speed even though resolveTireForces() correctly returned zero force.
+  if(normalLoadN<=1){
+    let nextOmega=previousOmega+dt*externalTorque/inertia;
+
+    if(brakingOnly){
+      if(
+        Math.abs(previousOmega)<.35||
+        (
+          Math.abs(previousOmega)>.001&&
+          Math.sign(previousOmega)!==Math.sign(nextOmega)
+        )
+      ){
+        nextOmega=0;
+      }
+    }
+
+    state.omega=Number.isFinite(nextOmega)?nextOmega:0;
+    return {
+      force:forceAtOmega(state.omega),
+      locked:false
+    };
+  }
+
+  const lockedForce=()=>forceAtOmega(0);
 
   // Once a brake has physically stopped the wheel, its static caliper/handbrake
   // torque may hold omega at exactly zero while the contact patch continues to
@@ -243,16 +273,7 @@ function integrateWheelOmegaStable({
     }
   }
 
-  const forceAtPrevious=tireForceAtOmega({
-    tire,
-    surfaceId,
-    normalLoadN,
-    patch,
-    omega:previousOmega,
-    steerAngle,
-    localX,
-    localZ
-  });
+  const forceAtPrevious=forceAtOmega(previousOmega);
 
   const treadSpeed=previousOmega*radius;
   const referenceSpeed=Math.max(
@@ -276,9 +297,6 @@ function integrateWheelOmegaStable({
     effectiveStiffness*radius*radius/referenceSpeed;
   const roadDriveTorque=
     effectiveStiffness*radius*patch.longitudinal/referenceSpeed;
-  const externalTorque=
-    finite(driveTorqueNm)+brakeTorqueNm;
-  const dt=Math.max(0,finite(step,0));
   const denominator=1+dt*dampingTorquePerOmega/inertia;
   let nextOmega=
     (previousOmega+dt*(externalTorque+roadDriveTorque)/inertia)/
@@ -307,16 +325,7 @@ function integrateWheelOmegaStable({
   }
 
   return {
-    force:tireForceAtOmega({
-      tire,
-      surfaceId,
-      normalLoadN,
-      patch,
-      omega:state.omega,
-      steerAngle,
-      localX,
-      localZ
-    }),
+    force:forceAtOmega(state.omega),
     locked:false
   };
 }
@@ -354,6 +363,8 @@ export function createPerWheelShadowSolver({hz=120,maxSubSteps=8}={}){
   const wheelState=new Map();
   let vehicleKey=null;
   let lastInput=null;
+  let lastObservedSpeed=null;
+  let stateDiscontinuityResets=0;
   let lastResult={
     authoritative:false,
     shadow:true,
@@ -365,6 +376,7 @@ export function createPerWheelShadowSolver({hz=120,maxSubSteps=8}={}){
     predictedAccelX:0,
     predictedAccelZ:0,
     predictedYawAccel:0,
+    stateDiscontinuityResets:0,
     wheels:[]
   };
 
@@ -372,6 +384,8 @@ export function createPerWheelShadowSolver({hz=120,maxSubSteps=8}={}){
     wheelState.clear();
     vehicleKey=null;
     lastInput=null;
+    lastObservedSpeed=null;
+    stateDiscontinuityResets=0;
     clock.reset();
     lastResult={
       authoritative:false,
@@ -384,6 +398,7 @@ export function createPerWheelShadowSolver({hz=120,maxSubSteps=8}={}){
       predictedAccelX:0,
       predictedAccelZ:0,
       predictedYawAccel:0,
+      stateDiscontinuityResets:0,
       wheels:[]
     };
   }
@@ -537,14 +552,37 @@ export function createPerWheelShadowSolver({hz=120,maxSubSteps=8}={}){
       predictedAccelX:totalForceX/massKg,
       predictedAccelZ:totalForceZ/massKg,
       predictedYawAccel:totalYawMomentNm/yawInertia,
+      stateDiscontinuityResets,
       wheels
     };
   }
 
   function advance(frameDt,input={}){
+    const observedSpeed=finite(input?.speed,0);
+    const dt=Math.max(0,finite(frameDt,0));
+    const discontinuityThreshold=Math.max(4,80*Math.min(.10,dt));
+
+    // Reset/teleport operations are not physical impulses. If the authoritative
+    // V21.26 runtime changes speed by an impossible amount in one render frame,
+    // re-seed wheel angular speeds from the new contact velocities instead of
+    // carrying stale RPM through several diagnostic frames.
+    if(
+      lastObservedSpeed!==null&&
+      Math.abs(observedSpeed-lastObservedSpeed)>discontinuityThreshold
+    ){
+      wheelState.clear();
+      stateDiscontinuityResets++;
+    }
+
+    lastObservedSpeed=observedSpeed;
     lastInput=input;
     const timing=clock.advance(frameDt,step=>simulateStep(step,lastInput));
-    lastResult={...lastResult,steps:timing.steps,timing};
+    lastResult={
+      ...lastResult,
+      steps:timing.steps,
+      timing,
+      stateDiscontinuityResets
+    };
     return lastResult;
   }
 
