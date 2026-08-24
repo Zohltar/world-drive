@@ -27,10 +27,26 @@ for(const pattern of [
   /function placeAt\(\.\.\.args\)\{return vehiclePlacementController\.placeAt\(\.\.\.args\);\}/,
   /function resetToRoad\(\.\.\.args\)\{return vehiclePlacementController\.resetToRoad\(\.\.\.args\);\}/,
   /gripSolverAccumulator:\{get:\(\)=>gripSolverAccumulator,set:value=>\{gripSolverAccumulator=value;\}\}/,
-  /worldOffset:\{get:\(\)=>worldOffset\}/
+  /worldOffset:\{get:\(\)=>worldOffset\}/,
+  /drawMap:\(\.\.\.args\)=>drawMap\(\.\.\.args\),/
 ]){
   assert.match(main,pattern,`main.js missing vehicle placement facade/live bridge: ${pattern}`);
 }
+
+const placementInitStart=main.indexOf('const vehiclePlacementController=createVehiclePlacementController({');
+const placementInitEnd=main.indexOf('});',placementInitStart);
+assert.ok(placementInitStart>=0&&placementInitEnd>placementInitStart,'vehicle placement controller initialization block missing');
+const placementInit=main.slice(placementInitStart,placementInitEnd+3);
+assert.doesNotMatch(
+  placementInit,
+  /\n\s*drawMap,\s*\n/,
+  'vehicle placement controller reads drawMap by value during initialization; use a lazy callback to avoid TDZ'
+);
+assert.match(
+  placementInit,
+  /drawMap:\(\.\.\.args\)=>drawMap\(\.\.\.args\),/,
+  'vehicle placement controller must resolve drawMap lazily because its const facade initializes later'
+);
 
 // Only the placement/reset implementations must leave main.js. A separate
 // physicsWheelCount calculation still legitimately exists in applyVehicleSelection()
@@ -172,4 +188,4 @@ assert.equal(overpassRegression.status,0,`Overpass abort handling regressed:\n${
 
 console.log('V21.26 VEHICLE PLACEMENT REFACTOR QA: PASS');
 console.log(`main.js: ${mainLines} lines; vehicle-placement-controller.js: ${placement.split('\n').length} lines`);
-console.log('placeAt / reset-to-road / per-wheel state reset / cumulative-profile placement ordering verified');
+console.log('placeAt / reset-to-road / per-wheel state reset / lazy drawMap init / cumulative-profile placement ordering verified');
