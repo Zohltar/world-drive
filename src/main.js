@@ -14,6 +14,7 @@ import {
 } from './route-presets.js';
 import { createRouteChallenge } from './route-challenge.js';
 import { createRoutePlannerUi } from './route-planner-ui.js';
+import { createRouteLifecycle } from './route-lifecycle.js';
 import { createInstrumentCluster } from './instrument-cluster.js';
 import { createMinimapSystem } from './minimap.js';
 import { createRoadFurnitureSystem } from './road-furniture.js';
@@ -1754,241 +1755,110 @@ localWorldBuilder=createLocalWorldBuilder({
   rebuildHorizon,
   markStaticShadowsDirty,
 });
-function resetWorldCaches(){
-  currentRoadGuideSign=null;
-  streamingCoordinator?.reset();
-  waterData.reset();
-  skidMarks.clear();
-
-  route.length=0;segments.length=0;routeLength=0;
-  vehicleNearestHint=-1;vehicleNearestLastX=Infinity;vehicleNearestLastZ=Infinity;
-  bridgeManager.reset();
-  bridgeStatus.textContent='0';
-  waterRenderer.clear();
-
-  sceneryData.reset();
-  // Keep completed elevation/imagery LRU caches across route changes.
-  // Only in-flight operations and route-relative state are reset.
-  elevationService.reset();
-  imageryService.reset();
-  bridgeManager.resetCounter();
-  activeRoadMeta={highway:null,surface:'asphalt',maxspeed:null,lanes:null,width:null,name:null,ref:null,confidence:0};
-  signData.reset();
-  resetMinimapSignReadout();
-  if(signStatus)signStatus.textContent='0';
-  lastRoadMetaCenter={x:Infinity,z:Infinity};
-  roadMetaLoading=false;
-  updateRoadMetaHUD();
-  clearActiveRoadProfile();
-  terrainService.clearRoadBed();
-  clearGroup(roadGroup);clearGroup(forestGroup);
-  clearGroup(infrastructureGroup);clearGroup(signGroup);
-  sceneryRenderer.clear();
-  terrainService.clearHorizon();
-}
-
+// ---------- route lifecycle facade ----------
+let routeLifecycle=null;
+function resetWorldCaches(){return routeLifecycle.resetWorldCaches();}
 async function createRequestedRoute(start,end,waypoints=[]){
-  bumpRouteGeneration();
-  if(!validLatLon(start.lat,start.lon)||!validLatLon(end.lat,end.lon)){
-    toast('Coordonnées invalides');return false;
-  }
-  if(geoDist(start,end)<100){toast('Départ et arrivée trop proches');return false;}
-
-  if(autopilot)setAutopilot(false,'Pilote auto désactivé');
-  speed=0;steer=0;autopilotSteer=0;
-  ROUTE_START={...start,name:start.name||'Départ'};
-  ROUTE_END={...end,name:end.name||'Arrivée'};
-  ROUTE_WAYPOINTS=Array.isArray(waypoints)?waypoints.slice(0,8):[];
-  origin={lat:ROUTE_START.lat,lon:ROUTE_START.lon};
-  resetWorldCaches();
-  resetRunChallenge();
-
-  if(gameStarted){
-    loading.classList.remove('hidden');
-  }else{
-    loading.classList.add('hidden');
-  }
-
-  loadingText.textContent='Initialisation du trajet…';
-  routingStatus.textContent='Connexion…';
-  statusEl.textContent='Création du trajet…';
-
-  // Absolute failsafe: UI must never stay hidden forever.
-  let completed=false;
-  const failsafe=setTimeout(()=>{
-    if(!completed){
-      loading.classList.add('hidden');
-      routingStatus.textContent='Timeout';
-      statusEl.textContent='Routage trop lent — tu peux réessayer';
-      toast('Le routeur ne répond pas');
-    }
-  },15000);
-
-  try{
-    setV21BootProgress(
-      'route',
-      'loading',
-      `Calcul du trajet ${start.name||'Départ'} → ${end.name||'Arrivée'}`
-    );
-
-    await loadRoute();
-
-    setV21BootProgress(
-      'route',
-      'done',
-      'Trajet prêt'
-    );
-
-    prepMap();
-    placeAt(0);
-
-    // Routing failsafe no longer owns the hydrography wait.
-    clearTimeout(failsafe);
-
-    loadingText.textContent=
-      'Chargement de l’hydrographie initiale…';
-
-    setV21BootProgress(
-      'hydro',
-      'loading',
-      'Hydrographie initiale'
-    );
-
-    const hydroReady=
-      await loadWaterAround(
-        absX,
-        absZ
-      ).catch(error=>{
-        console.warn(
-          'Initial hydrography failed',
-          error
-        );
-
-        return false;
-      });
-
-    setV21BootProgress(
-      'hydro',
-      hydroReady
-        ?'done'
-        :'warn',
-      hydroReady
-        ?'Hydrographie prête'
-        :'Hydrographie indisponible'
-    );
-
-    // V21.22.4: do not expose the player to the procedural/fallback ground while
-    // the first real DEM/image tiles are still arriving. Build the initial
-    // high-quality patch only after the current elevation and a 2D route-ahead
-    // buffer have had a chance to warm the persistent caches. This work happens
-    // while the vehicle is stationary and the loading overlay is still visible.
-    loadingText.textContent='Préchargement du terrain en avance…';
-
-    // Keep the existing unified streamer as an additional first-pass warmer.
-    worldStreaming.preloadRoute(absX,absZ);
-
-    const initialElevationReady=await loadElevationAround(absX,absZ)
-      .catch(()=>{elevStatus.textContent='Démo';return false;});
-
-    await primeInitialTerrainPreloadBuffer().catch(()=>{});
-
-    if(imageryService.enabled){
-      await promiseWithTimeout(
-        buildImageryMosaic(absX,absZ).catch(()=>{imageryStatus.textContent='Fallback'}),
-        4500
-      );
-    }
-
-    // One intentional rebuild BEFORE play replaces the fallback terrain with
-    // whatever real data is already cached. During driving V21.22.3's
-    // hitch-free cache-only policy remains unchanged.
-    if(initialElevationReady||streamingCoordinator?.state.pendingWorld){
-      cancelVisualJob('world-rebuild');
-      commitLocalWorldRefresh();
-    }
-
-    prefetchRouteAhead();
-    loadSceneryAround(absX,absZ).catch(()=>{sceneryStatus.textContent='Indisponible'});
-    loadRoadMetadataAround(absX,absZ).catch(()=>{});
-    loadGeographicSignsAround(absX,absZ).catch(()=>{});
-
-    completed=true;
-    loading.classList.add('hidden');
-    toast('Trajet prêt · terrain préchargé');
-    return true;
-  }catch(e){
-    completed=true;
-    clearTimeout(failsafe);
-    console.error('Route creation failed:',e);
-    loading.classList.add('hidden');
-    routingStatus.textContent='Échec';
-    statusEl.textContent='Impossible de créer le trajet — clique Créer le trajet pour réessayer';
-    toast('Échec du routage');
-    return false;
-  }
+  return routeLifecycle.createRequestedRoute(start,end,waypoints);
 }
+function bumpRouteGeneration(){return routeLifecycle.bumpRouteGeneration();}
+async function loadRoute(){return routeLifecycle.loadRoute();}
 
-
-// ---------- V5 subsystem facade ----------
-const WorldDrive={
+routeLifecycle=createRouteLifecycle({
   version:WORLD_DRIVE_VERSION,
-  route:{generation:0},
-  streaming:{generation:0},
-  vehicle:{generation:0},
-  ui:{generation:0}
-};
-function bumpRouteGeneration(){
-  WorldDrive.route.generation++;
-  WorldDrive.streaming.generation++;
-}
-
-// ---------- route fetch ----------
-async function loadRoute(){
-  const routePoints=[ROUTE_START,...ROUTE_WAYPOINTS,ROUTE_END];
-
-  const {coordinates,provider}=await routingService.fetchRoute({
-    points:routePoints,
-    start:ROUTE_START
-  });
-
-  routingStatus.textContent=provider;
-  const coordsGeo=coordinates;
-
-  route.length=0;
-  segments.length=0;
-  routeLength=0;
-  vehicleNearestHint=-1;vehicleNearestLastX=Infinity;vehicleNearestLastZ=Infinity;
-
-  for(let i=0;i<coordsGeo.length;i++){
-    const [lon,lat]=coordsGeo[i];
-    const p=llToXZ(lat,lon);
-    let cum=routeLength;
-
-    if(i){
-      const prev=route[i-1];
-      const len=Math.hypot(p.x-prev.x,p.z-prev.z);
-      if(len>.02){
-        segments.push({
-          ax:prev.x,az:prev.z,
-          bx:p.x,bz:p.z,
-          len,
-          cum:routeLength
-        });
-        routeLength+=len;
-      }
-      cum=routeLength;
-    }
-
-    route.push({x:p.x,z:p.z,lat,lon,cum});
-  }
-
-  if(segments.length<2||routeLength<100){
-    throw new Error('Tracé routier trop court ou invalide');
-  }
-
-  statusEl.textContent=`Trajet chargé · ${(routeLength/1000).toFixed(1)} km · ${route.length.toLocaleString('fr-CA')} points`;
-  return true;
-}
+  getState:()=>({
+    autopilot,
+    gameStarted,
+    absX,
+    absZ,
+    speed,
+    steer,
+    autopilotSteer,
+    routeStart:ROUTE_START,
+    routeEnd:ROUTE_END,
+    routeWaypoints:ROUTE_WAYPOINTS,
+    origin,
+    routeLength,
+    vehicleNearestHint,
+    vehicleNearestLastX,
+    vehicleNearestLastZ,
+    currentRoadGuideSign,
+    activeRoadMeta,
+    lastRoadMetaCenter,
+    roadMetaLoading
+  }),
+  setState:state=>{
+    if('speed' in state)speed=state.speed;
+    if('steer' in state)steer=state.steer;
+    if('autopilotSteer' in state)autopilotSteer=state.autopilotSteer;
+    if('routeStart' in state)ROUTE_START=state.routeStart;
+    if('routeEnd' in state)ROUTE_END=state.routeEnd;
+    if('routeWaypoints' in state)ROUTE_WAYPOINTS=state.routeWaypoints;
+    if('origin' in state)origin=state.origin;
+    if('routeLength' in state)routeLength=state.routeLength;
+    if('vehicleNearestHint' in state)vehicleNearestHint=state.vehicleNearestHint;
+    if('vehicleNearestLastX' in state)vehicleNearestLastX=state.vehicleNearestLastX;
+    if('vehicleNearestLastZ' in state)vehicleNearestLastZ=state.vehicleNearestLastZ;
+    if('currentRoadGuideSign' in state)currentRoadGuideSign=state.currentRoadGuideSign;
+    if('activeRoadMeta' in state)activeRoadMeta=state.activeRoadMeta;
+    if('lastRoadMetaCenter' in state)lastRoadMetaCenter=state.lastRoadMetaCenter;
+    if('roadMetaLoading' in state)roadMetaLoading=state.roadMetaLoading;
+  },
+  validLatLon,
+  geoDist,
+  toast,
+  setAutopilot:(...args)=>setAutopilot(...args),
+  resetStreamingCoordinator:()=>streamingCoordinator?.reset(),
+  waterData,
+  skidMarks,
+  route,
+  segments,
+  bridgeManager,
+  bridgeStatus,
+  waterRenderer,
+  sceneryData,
+  elevationService,
+  imageryService,
+  signData,
+  resetMinimapSignReadout:()=>resetMinimapSignReadout(),
+  signStatus,
+  updateRoadMetaHUD,
+  clearActiveRoadProfile,
+  terrainService,
+  clearGroup,
+  roadGroup,
+  forestGroup,
+  infrastructureGroup,
+  signGroup,
+  sceneryRenderer,
+  resetRunChallenge,
+  loading,
+  loadingText,
+  routingStatus,
+  statusEl,
+  setBootProgress:(...args)=>setV21BootProgress(...args),
+  routingService,
+  toWorld:(lat,lon)=>llToXZ(lat,lon),
+  prepMap:()=>prepMap(),
+  placeAt:frac=>placeAt(frac),
+  loadWaterAround:(x,z)=>loadWaterAround(x,z),
+  preloadRoute:(x,z)=>worldStreaming.preloadRoute(x,z),
+  loadElevationAround:(x,z)=>loadElevationAround(x,z),
+  primeInitialTerrainPreloadBuffer:()=>primeInitialTerrainPreloadBuffer(),
+  buildImageryMosaic:(x,z)=>buildImageryMosaic(x,z),
+  onElevationFallback:()=>{elevStatus.textContent='Démo';},
+  onImageryFallback:()=>{imageryStatus.textContent='Fallback';},
+  promiseWithTimeout:(promise,timeoutMs)=>promiseWithTimeout(promise,timeoutMs),
+  hasPendingWorld:()=>!!streamingCoordinator?.state.pendingWorld,
+  cancelVisualJob:key=>cancelVisualJob(key),
+  commitLocalWorldRefresh:()=>commitLocalWorldRefresh(),
+  prefetchRouteAhead:()=>prefetchRouteAhead(),
+  loadSceneryAround:(x,z)=>loadSceneryAround(x,z),
+  onSceneryUnavailable:()=>{sceneryStatus.textContent='Indisponible';},
+  loadRoadMetadataAround:(x,z)=>loadRoadMetadataAround(x,z),
+  loadGeographicSignsAround:(x,z)=>loadGeographicSignsAround(x,z)
+});
+const WorldDrive=routeLifecycle.worldDrive;
 
 // ---------- Driving ----------
 let absX=0,absZ=0,heading=0,speed=0,steer=0,assist=true,last=performance.now();
