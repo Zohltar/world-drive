@@ -11,12 +11,6 @@ export function bodyRelativeLongitudinalSpeed({speed=0,heading=0,velocityHeading
   return v*Math.cos(bodyDelta);
 }
 
-// P8 — the velocityHeading state is paired with a SIGNED scalar speed. During
-// a handbrake 180 we can temporarily have speed>0 while motion is rearward
-// relative to the chassis. In that representation the no-slip momentum target
-// is heading+PI, not heading. Conversely a canonical true reverse (speed<0,
-// velocityHeading~=heading) should continue targeting heading. Pick whichever
-// parameter-space heading represents the body's actual forward/reverse travel.
 export function bodyRelativeMomentumTargetHeading({speed=0,heading=0,velocityHeading=0}={}){
   const v=Number(speed)||0;
   const h=Number(heading)||0;
@@ -29,11 +23,6 @@ export function bodyRelativeMomentumTargetHeading({speed=0,heading=0,velocityHea
   return h+Math.PI;
 }
 
-// P6.4 — steering DIRECTION follows body-relative travel immediately once the
-// handbrake is released. Do not blend the sign through rear-slip memory: if the
-// chassis is moving backward, steering must act like reverse. Grip recovery is
-// handled separately as an authority multiplier so we never point yaw the wrong
-// way while the tires are still reattaching.
 export function bodyRelativeSteeringSpeed({speed=0,heading=0,velocityHeading=0,handbrake=false}={}){
   const v=Number(speed)||0;
   const speedAbs=Math.abs(v);
@@ -47,29 +36,43 @@ export function bodyRelativeSteeringSpeed({speed=0,heading=0,velocityHeading=0,h
   return direction*speedAbs;
 }
 
-// P9 — measure extreme slip against the nearest longitudinal travel axis, not
-// always against the chassis nose. A clean 180 with the car moving backward has
-// heading-vs-momentum delta ~= PI, but its true lateral slip relative to the
-// reverse axis is ~= 0. Treating PI as maximum sideslip suppressed front-tire
-// steering authority to ~28% exactly when a J-turn needs it most.
 export function travelAxisSideslip({heading=0,velocityHeading=0}={}){
   let delta=(Number(velocityHeading)||0)-(Number(heading)||0);
   delta=Math.atan2(Math.sin(delta),Math.cos(delta));
   return Math.atan2(Math.abs(Math.sin(delta)),Math.abs(Math.cos(delta)));
 }
 
-// During a genuinely sideways post-spin state the bicycle steering model is
-// outside its valid range, so fade steering yaw authority until rear grip
-// begins to return. Once motion is aligned with either the forward OR reverse
-// body axis, full front-tire steering authority is restored naturally.
 export function postSpinSteeringAuthority({rearSlipAmount=0,heading=0,velocityHeading=0,handbrake=false}={}){
   if(handbrake)return 1;
   const slip=Math.max(0,Math.min(1,Number(rearSlipAmount)||0));
   const sideslip=travelAxisSideslip({heading,velocityHeading});
-  const extremeSideslip=smoothstep01((sideslip-.70)/.70); // ~40 deg -> ~80 deg
+  const extremeSideslip=smoothstep01((sideslip-.70)/.70);
   const rearSlipGate=smoothstep01((slip-.18)/.55);
   const suppression=extremeSideslip*rearSlipGate;
   return 1-.72*suppression;
+}
+
+// P10 — a J-turn is a transient yaw manoeuvre, not a steady-state corner.
+// In reverse, a sharp front-steer input can rotate the chassis rapidly while
+// the vehicle momentum remains grip-limited. Do not use the steady-state
+// lateral-G cap to suppress chassis yaw in this narrow regime; the per-wheel
+// tire solver still limits the actual lateral force and momentum curvature.
+export function jTurnTransientYawActive({
+  bodyLongitudinalSpeed=0,
+  speedAbs=0,
+  steerAngle=0,
+  handbrake=false,
+  airborne=false,
+  onPavement=true
+}={}){
+  return !!(
+    !handbrake&&
+    !airborne&&
+    onPavement&&
+    Number(bodyLongitudinalSpeed)<-4.0&&
+    Math.abs(Number(speedAbs)||0)>=8.5&&
+    Math.abs(Number(steerAngle)||0)>=.12
+  );
 }
 
 export function handbrakeLateralEffectForSpeed(speedAbs=0){
@@ -265,6 +268,7 @@ export function createDrivingRuntime({
     const bodyLongitudinalSpeed=bodyRelativeLongitudinalSpeed({speed,heading,velocityHeading});
     const steeringTravelSpeed=bodyRelativeSteeringSpeed({speed,heading,velocityHeading,handbrake:hand});
     const steeringAuthority=postSpinSteeringAuthority({rearSlipAmount,heading,velocityHeading,handbrake:hand});
+    const jTurnYawActive=jTurnTransientYawActive({bodyLongitudinalSpeed,speedAbs,steerAngle,handbrake:hand,airborne:airborneNow,onPavement});
     const lateralEnvelope=lateralDynamicsEnvelope({vehicle:VEHICLE,speed:steeringTravelSpeed,steerAngle,steerInput:steer,driveThrottle,onPavement,surfaceGrip,awdOffroadGripBonus,rearSlipAmount:0,airborne:airborneNow},dynamicsScratch.lateral);
     let yawRate=lateralEnvelope.yawRate*truckTrailerSystem.tractorYawScale(speedAbs)*steeringAuthority;
     const drivetrain=lateralEnvelope.drivetrain;
@@ -272,6 +276,7 @@ export function createDrivingRuntime({
     const requestedLatAccel=lateralEnvelope.requestedLatAccel*steeringAuthority;
     const latLimit=lateralEnvelope.latLimit;
     const signedLatAccel=lateralEnvelope.signedLatAccel*steeringAuthority;
+    const physicalSignedLatAccel=Math.sign(signedLatAccel||steerAngle||1)*Math.min(Math.abs(signedLatAccel),Math.max(0,latLimit));
 
     gripSolverAccumulator+=dt;
     let perWheelGrip=dynamicsScratch.grip;
@@ -290,7 +295,7 @@ export function createDrivingRuntime({
 
     physicsShadow.advance(dt,{
       vehicleId:getVehicleId?.()||'unknown',vehicle:VEHICLE,contacts:vehiclePresentation?.wheelContacts||[],speed,heading,velocityHeading,
-      yawRate:dynamicYawRate,centerSteerAngle:steerAngle,longitudinalAccel,lateralAccel:signedLatAccel,
+      yawRate:dynamicYawRate,centerSteerAngle:steerAngle,longitudinalAccel,lateralAccel:physicalSignedLatAccel,
       requestedDriveAccel,requestedBrakeAccel,handbrake:hand,surfaceId:onPavement?'asphalt-dry':'dirt'
     });
 
@@ -303,17 +308,17 @@ export function createDrivingRuntime({
     const targetFrontSlip=perWheelGrip.frontLateral;
     const targetRearSlip=perWheelGrip.rearLateral*handbrakeLateralEffect;
     let frictionYawAccel=Number.isFinite(perWheelGrip.frictionYawAccel)?perWheelGrip.frictionYawAccel:0;
-    const rawNetLateralAccel=Number.isFinite(perWheelGrip.netLateralAccel)?perWheelGrip.netLateralAccel:signedLatAccel;
+    const rawNetLateralAccel=Number.isFinite(perWheelGrip.netLateralAccel)?perWheelGrip.netLateralAccel:physicalSignedLatAccel;
     const rawRearLateralForceScale=Number.isFinite(perWheelGrip.rearLateralForceScale)?physicsClamp(perWheelGrip.rearLateralForceScale,0,1):1;
 
     if(hand&&!airborneNow)frictionYawAccel*=handbrakeLateralEffect;
     const netLateralAccel=hand&&!airborneNow
-      ?signedLatAccel+(rawNetLateralAccel-signedLatAccel)*handbrakeLateralEffect
+      ?physicalSignedLatAccel+(rawNetLateralAccel-physicalSignedLatAccel)*handbrakeLateralEffect
       :rawNetLateralAccel;
     const rearLateralForceScale=hand&&!airborneNow
       ?1-(1-rawRearLateralForceScale)*handbrakeLateralEffect
       :rawRearLateralForceScale;
-    const rearLateralForceLoss=Math.abs(signedLatAccel)>.15?1-rearLateralForceScale:0;
+    const rearLateralForceLoss=Math.abs(physicalSignedLatAccel)>.15?1-rearLateralForceScale:0;
     const slipDt=Math.min(.05,dt);
     const lowSpeedSlipReleaseBoost=1+(1-physicsClamp(speedAbs/8,0,1))*1.6;
 
@@ -333,7 +338,9 @@ export function createDrivingRuntime({
     const gripResponse=rawGripUsage>lateralGripUsage?12:18;
     lateralGripUsage+=(rawGripUsage-lateralGripUsage)*(1-Math.exp(-dt*gripResponse));
     if(lateralGripUsage<.002&&rawGripUsage===0)lateralGripUsage=0;
-    if(requestedLatAccel>latLimit&&requestedLatAccel>0)yawRate*=latLimit/requestedLatAccel;
+    // Steady cornering yaw is grip-limited. A J-turn is intentionally excluded:
+    // tire force/momentum curvature stays capped, but chassis yaw may continue.
+    if(!jTurnYawActive&&requestedLatAccel>latLimit&&requestedLatAccel>0)yawRate*=latLimit/requestedLatAccel;
 
     const frontDominance=Math.max(0,frontSlipAmount-rearSlipAmount*.55);
     const rearDominance=Math.max(0,rearSlipAmount-frontSlipAmount*.55);
