@@ -7,7 +7,7 @@ export function createOverpassClient({
   keyFor,
   endpoints=[
     'https://overpass-api.de/api/interpreter',
-    'https://overpass.kumi.systems/api/interpreter'
+    'https://overpass.private.coffee/api/interpreter'
   ]
 }={}) {
   if(!cache)throw new Error('Overpass client requires a cache');
