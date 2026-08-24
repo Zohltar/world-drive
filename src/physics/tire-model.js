@@ -262,7 +262,25 @@ export function resolveTireForces({
   const friction=effectiveTireFriction({tire:profile,surface,normalLoadN:fz});
 
   const fxDemand=profile.longitudinalStiffnessN*slip.slipRatio;
-  const fyDemand=-profile.corneringStiffnessNPerRad*slip.slipAngle;
+
+  // V21.27 P1 — lateral stiffness must scale with the same load sensitivity as
+  // available tire force. A fixed N/rad stiffness made a lightly loaded rear
+  // tire reach the friction ceiling much earlier than a front tire at the exact
+  // same slip angle. Cap the load-scaled stiffness so the profile's declared
+  // peakSlipAngleRad remains the earliest ordinary lateral-force peak.
+  const referenceLoad=Math.max(1,finite(profile.referenceLoadN,4000));
+  const loadExponent=clamp(finite(profile.loadSensitivityExponent,.90),.65,1.05);
+  const loadScale=Math.pow(fz/referenceLoad,loadExponent);
+  const rawCorneringStiffness=
+    Math.max(1,finite(profile.corneringStiffnessNPerRad,70000))*loadScale;
+  const peakSlipAngle=Math.max(1*DEG,finite(profile.peakSlipAngleRad,8*DEG));
+  const peakForce=Math.max(1,friction.peak*fz);
+  const peakConsistentStiffness=peakForce/peakSlipAngle;
+  const effectiveCorneringStiffness=Math.min(
+    rawCorneringStiffness,
+    peakConsistentStiffness
+  );
+  const fyDemand=-effectiveCorneringStiffness*slip.slipAngle;
 
   const slipSeverity=Math.hypot(
     slip.slipRatio/Math.max(.02,profile.peakSlipRatio),
