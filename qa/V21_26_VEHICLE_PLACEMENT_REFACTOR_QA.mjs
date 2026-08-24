@@ -32,10 +32,12 @@ for(const pattern of [
   assert.match(main,pattern,`main.js missing vehicle placement facade/live bridge: ${pattern}`);
 }
 
+// Only the placement/reset implementations must leave main.js. A separate
+// physicsWheelCount calculation still legitimately exists in applyVehicleSelection()
+// and belongs to that later cleanup target, not to this extraction.
 for(const pattern of [
   /function placeAt\(frac\)\{/,
   /function resetToRoad\(\)\{/,
-  /const physicsWheelCount=Math\.max\(/,
   /resetTransmissionState\(\);vehiclePresentation\.reset\(\);skidMarks\.resetSource\('local'\);/
 ]){
   assert.doesNotMatch(main,pattern,`main.js still owns vehicle placement implementation: ${pattern}`);
