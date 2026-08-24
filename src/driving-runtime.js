@@ -47,17 +47,26 @@ export function bodyRelativeSteeringSpeed({speed=0,heading=0,velocityHeading=0,h
   return direction*speedAbs;
 }
 
-// During extreme post-spin sideslip the bicycle steering model is outside its
-// valid range. Preserve the correct steering sign, but fade its yaw authority
-// until rear grip begins to return. This avoids both a wrong-way countersteer
-// and an instantaneous snap from spin dynamics to clean reverse cornering.
+// P9 — measure extreme slip against the nearest longitudinal travel axis, not
+// always against the chassis nose. A clean 180 with the car moving backward has
+// heading-vs-momentum delta ~= PI, but its true lateral slip relative to the
+// reverse axis is ~= 0. Treating PI as maximum sideslip suppressed front-tire
+// steering authority to ~28% exactly when a J-turn needs it most.
+export function travelAxisSideslip({heading=0,velocityHeading=0}={}){
+  let delta=(Number(velocityHeading)||0)-(Number(heading)||0);
+  delta=Math.atan2(Math.sin(delta),Math.cos(delta));
+  return Math.atan2(Math.abs(Math.sin(delta)),Math.abs(Math.cos(delta)));
+}
+
+// During a genuinely sideways post-spin state the bicycle steering model is
+// outside its valid range, so fade steering yaw authority until rear grip
+// begins to return. Once motion is aligned with either the forward OR reverse
+// body axis, full front-tire steering authority is restored naturally.
 export function postSpinSteeringAuthority({rearSlipAmount=0,heading=0,velocityHeading=0,handbrake=false}={}){
   if(handbrake)return 1;
   const slip=Math.max(0,Math.min(1,Number(rearSlipAmount)||0));
-  let delta=(Number(velocityHeading)||0)-(Number(heading)||0);
-  delta=Math.atan2(Math.sin(delta),Math.cos(delta));
-  const sideslip=Math.abs(delta);
-  const extremeSideslip=smoothstep01((sideslip-.70)/1.25);
+  const sideslip=travelAxisSideslip({heading,velocityHeading});
+  const extremeSideslip=smoothstep01((sideslip-.70)/.70); // ~40 deg -> ~80 deg
   const rearSlipGate=smoothstep01((slip-.18)/.55);
   const suppression=extremeSideslip*rearSlipGate;
   return 1-.72*suppression;
