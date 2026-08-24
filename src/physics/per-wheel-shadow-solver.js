@@ -168,6 +168,159 @@ function wheelShare(axle,key,count){
   return Math.max(0,finite(axle?.[key],0))/Math.max(1,count||1);
 }
 
+function tireForceAtOmega({
+  tire,
+  surfaceId,
+  normalLoadN,
+  patch,
+  omega,
+  steerAngle,
+  localX,
+  localZ
+}){
+  return resolveTireForces({
+    tire,
+    surface:surfaceId,
+    normalLoadN,
+    longitudinalSpeed:patch.longitudinal,
+    lateralSpeed:patch.lateral,
+    wheelOmega:omega,
+    steerAngle,
+    localX,
+    localZ
+  });
+}
+
+// The tire longitudinal stiffness is intentionally high. Integrating wheelOmega
+// with explicit Euler at only 120 Hz makes the tire reaction numerically stiff:
+// two otherwise identical wheels can oscillate on opposite sides of the rolling
+// speed and report opposite forces. Use a local implicit linearization of the
+// longitudinal brush stiffness instead. Saturated/combined-slip force scales the
+// effective stiffness down, so wheelspin and lock remain possible.
+function integrateWheelOmegaStable({
+  state,
+  step,
+  tire,
+  surfaceId,
+  normalLoadN,
+  patch,
+  steerAngle,
+  localX,
+  localZ,
+  driveTorqueNm,
+  serviceBrakeTorqueNm,
+  handbrakeTorqueNm
+}){
+  const radius=Math.max(.05,finite(tire?.rollingRadiusM,.32));
+  const inertia=Math.max(.05,finite(tire?.wheelInertiaKgM2,1.2));
+  const previousOmega=finite(state?.omega,0);
+  const brakeTorqueNm=finite(serviceBrakeTorqueNm)+finite(handbrakeTorqueNm);
+  const hasDrive=Math.abs(finite(driveTorqueNm))>.01;
+  const brakingOnly=!hasDrive&&Math.abs(brakeTorqueNm)>.01;
+
+  const lockedForce=()=>tireForceAtOmega({
+    tire,
+    surfaceId,
+    normalLoadN,
+    patch,
+    omega:0,
+    steerAngle,
+    localX,
+    localZ
+  });
+
+  // Once a brake has physically stopped the wheel, its static caliper/handbrake
+  // torque may hold omega at exactly zero while the contact patch continues to
+  // slide under it. Do not let the tire reaction numerically spin the wheel
+  // backwards on the next fixed step.
+  if(brakingOnly&&Math.abs(previousOmega)<.35){
+    const forceAtLock=lockedForce();
+    const reactionAtLock=-forceAtLock.fxWheel*radius;
+    const opposing=brakeTorqueNm*reactionAtLock<=0;
+    if(opposing&&Math.abs(brakeTorqueNm)+1>=Math.abs(reactionAtLock)){
+      state.omega=0;
+      return {force:forceAtLock,locked:true};
+    }
+  }
+
+  const forceAtPrevious=tireForceAtOmega({
+    tire,
+    surfaceId,
+    normalLoadN,
+    patch,
+    omega:previousOmega,
+    steerAngle,
+    localX,
+    localZ
+  });
+
+  const treadSpeed=previousOmega*radius;
+  const referenceSpeed=Math.max(
+    1,
+    Math.abs(patch.longitudinal),
+    Math.abs(treadSpeed)
+  );
+  const slipRatio=(treadSpeed-patch.longitudinal)/referenceSpeed;
+  const linearFx=finite(tire?.longitudinalStiffnessN,80000)*slipRatio;
+  const forceScale=
+    Math.abs(linearFx)>1e-6
+      ?clamp(Math.abs(forceAtPrevious.fxWheel/linearFx),.015,1)
+      :1;
+  const effectiveStiffness=
+    Math.max(1,finite(tire?.longitudinalStiffnessN,80000)*forceScale);
+
+  // I*dω/dt = Text - K*r*(ω*r-v)/Vref
+  // Backward Euler on the K term is unconditionally stable for the linearized
+  // contact patch and preserves the exact free-rolling equilibrium ω=v/r.
+  const dampingTorquePerOmega=
+    effectiveStiffness*radius*radius/referenceSpeed;
+  const roadDriveTorque=
+    effectiveStiffness*radius*patch.longitudinal/referenceSpeed;
+  const externalTorque=
+    finite(driveTorqueNm)+brakeTorqueNm;
+  const dt=Math.max(0,finite(step,0));
+  const denominator=1+dt*dampingTorquePerOmega/inertia;
+  let nextOmega=
+    (previousOmega+dt*(externalTorque+roadDriveTorque)/inertia)/
+    Math.max(1e-9,denominator);
+
+  // Pure braking may reach zero during this step, but cannot numerically power
+  // the wheel through zero in the opposite direction.
+  if(
+    brakingOnly&&
+    Math.abs(previousOmega)>.001&&
+    Math.sign(previousOmega)!==Math.sign(nextOmega)
+  ){
+    nextOmega=0;
+  }
+
+  state.omega=Number.isFinite(nextOmega)?nextOmega:0;
+
+  if(brakingOnly&&Math.abs(state.omega)<.35){
+    const forceAtLock=lockedForce();
+    const reactionAtLock=-forceAtLock.fxWheel*radius;
+    const opposing=brakeTorqueNm*reactionAtLock<=0;
+    if(opposing&&Math.abs(brakeTorqueNm)+1>=Math.abs(reactionAtLock)){
+      state.omega=0;
+      return {force:forceAtLock,locked:true};
+    }
+  }
+
+  return {
+    force:tireForceAtOmega({
+      tire,
+      surfaceId,
+      normalLoadN,
+      patch,
+      omega:state.omega,
+      steerAngle,
+      localX,
+      localZ
+    }),
+    locked:false
+  };
+}
+
 function serializableWheel(wheel){
   return {
     index:wheel.index,
@@ -182,6 +335,7 @@ function serializableWheel(wheel){
     lateralSpeed:wheel.lateralSpeed,
     wheelOmega:wheel.wheelOmega,
     wheelRpm:wheel.wheelOmega*60/(2*Math.PI),
+    locked:!!wheel.locked,
     slipRatio:wheel.slipRatio,
     slipAngle:wheel.slipAngle,
     fxWheel:wheel.fxWheel,
@@ -304,18 +458,6 @@ export function createPerWheelShadowSolver({hz=120,maxSubSteps=8}={}){
       }
       if(!Number.isFinite(state.omega))state.omega=0;
 
-      const force=resolveTireForces({
-        tire,
-        surface:surfaceId,
-        normalLoadN,
-        longitudinalSpeed:patch.longitudinal,
-        lateralSpeed:patch.lateral,
-        wheelOmega:state.omega,
-        steerAngle,
-        localX,
-        localZ
-      });
-
       const axleContactCount=Math.max(1,counts[axleIndex]?.total||1);
       const driveTorqueNm=
         driveForceN*
@@ -341,18 +483,21 @@ export function createPerWheelShadowSolver({hz=120,maxSubSteps=8}={}){
           hardwareScale;
       }
 
-      const inputTorqueNm=driveTorqueNm+serviceBrakeTorqueNm+handbrakeTorqueNm;
-      const reactionTorqueNm=-force.fxWheel*tire.rollingRadiusM;
-      const previousOmega=state.omega;
-      state.omega+=(inputTorqueNm+reactionTorqueNm)/Math.max(.05,tire.wheelInertiaKgM2)*step;
-
-      // A pure brake must stop at zero rather than numerically powering the wheel
-      // backwards after crossing zero during one 120 Hz step.
-      const hasDrive=Math.abs(driveTorqueNm)>.01;
-      const brakingOnly=!hasDrive&&(Math.abs(serviceBrakeTorqueNm)+Math.abs(handbrakeTorqueNm)>.01);
-      if(brakingOnly&&previousOmega!==0&&Math.sign(previousOmega)!==Math.sign(state.omega)){
-        state.omega=0;
-      }
+      const integrated=integrateWheelOmegaStable({
+        state,
+        step,
+        tire,
+        surfaceId,
+        normalLoadN,
+        patch,
+        steerAngle,
+        localX,
+        localZ,
+        driveTorqueNm,
+        serviceBrakeTorqueNm,
+        handbrakeTorqueNm
+      });
+      const force=integrated.force;
 
       totalForceX+=force.forceX;
       totalForceZ+=force.forceZ;
@@ -369,6 +514,7 @@ export function createPerWheelShadowSolver({hz=120,maxSubSteps=8}={}){
         longitudinalSpeed:patch.longitudinal,
         lateralSpeed:patch.lateral,
         wheelOmega:state.omega,
+        locked:integrated.locked,
         ...force
       }));
     }
