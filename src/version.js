@@ -2,10 +2,10 @@
 //
 // Keep the visible runtime version in one place. Development branches use an
 // explicit "dev" channel so local testing cannot be confused with the current
-// stable baseline. main remains on the stable release version until promotion.
+// stable baseline. Stable releases use the explicit "stable" channel.
 
 export const WORLD_DRIVE_VERSION='21.26';
-export const WORLD_DRIVE_CHANNEL='dev';
+export const WORLD_DRIVE_CHANNEL='stable';
 export const WORLD_DRIVE_VERSION_LABEL=`V${WORLD_DRIVE_VERSION} ${WORLD_DRIVE_CHANNEL}`;
 export const WORLD_DRIVE_TITLE=`World Drive ${WORLD_DRIVE_VERSION_LABEL}`;
 
