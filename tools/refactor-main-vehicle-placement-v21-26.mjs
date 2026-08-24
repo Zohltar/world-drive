@@ -12,10 +12,41 @@ const eol=raw.includes('\r\n')?'\r\n':'\n';
 let main=raw.replace(/\r\n/g,'\n');
 
 const moduleImport="import { createVehiclePlacementController } from './vehicle-placement-controller.js';";
+const directDrawMapDependency='  drawMap,\n  DRIVE_HUD_INTERVAL,';
+const lazyDrawMapDependency='  drawMap:(...args)=>drawMap(...args),\n  DRIVE_HUD_INTERVAL,';
 
+function syntaxCheck(file){
+  const result=spawnSync(process.execPath,['--check',file],{encoding:'utf8'});
+  if(result.status!==0){
+    throw new Error(`Syntax check failed for ${path.basename(file)}:\n${result.stderr||result.stdout}`);
+  }
+}
+
+// Repair an already-generated local extraction from the first V21.26 tool.
+// drawMap is a later const facade, so reading it by value while this controller
+// initializes triggers a temporal-dead-zone crash. A lazy callback preserves the
+// exact runtime behavior while deferring the lookup until placeAt() actually runs.
 if(main.includes(moduleImport)&&fs.existsSync(modulePath)){
-  console.log('V21.26 VEHICLE PLACEMENT REFACTOR: already applied');
-  process.exit(0);
+  if(main.includes(directDrawMapDependency)){
+    main=main.replace(directDrawMapDependency,lazyDrawMapDependency);
+    const tempMain=path.join(root,'tools','__v21_26_vehicle_placement_repair_check__.mjs');
+    try{
+      fs.writeFileSync(tempMain,main,'utf8');
+      syntaxCheck(tempMain);
+    }finally{
+      fs.rmSync(tempMain,{force:true});
+    }
+    const outputMain=eol==='\n'?main:main.replace(/\n/g,eol);
+    fs.writeFileSync(mainPath,outputMain,'utf8');
+    console.log('V21.26 VEHICLE PLACEMENT REFACTOR: REPAIRED');
+    console.log('Fixed: drawMap is now resolved lazily to avoid initialization-order TDZ.');
+    process.exit(0);
+  }
+  if(main.includes(lazyDrawMapDependency)){
+    console.log('V21.26 VEHICLE PLACEMENT REFACTOR: already applied');
+    process.exit(0);
+  }
+  throw new Error('V21.26 vehicle placement refactor: generated controller exists but drawMap dependency shape is unexpected. No files changed.');
 }
 if(main.includes(moduleImport)||fs.existsSync(modulePath)){
   throw new Error('V21.26 vehicle placement refactor: partial previous application detected. Restore generated files before retrying.');
@@ -231,7 +262,7 @@ const vehiclePlacementController=createVehiclePlacementController({
   TIRE_VISUAL_CLEARANCE,
   car,
   truckTrailerSystem,
-  drawMap,
+  drawMap:(...args)=>drawMap(...args),
   DRIVE_HUD_INTERVAL,
   MINIMAP_INTERVAL,
   GRIP_SOLVER_INTERVAL
@@ -258,6 +289,10 @@ for(const forbidden of [
   }
 }
 
+if(main.includes(directDrawMapDependency)){
+  throw new Error('V21.26 vehicle placement refactor: drawMap must be resolved lazily to avoid initialization-order TDZ.');
+}
+
 for(const required of [
   'export function createVehiclePlacementController({',
   'function resetVehicleDynamics({resetGripSolver=false}={}){',
@@ -277,12 +312,6 @@ for(const required of [
 
 const tempMain=path.join(root,'tools','__v21_26_vehicle_placement_main_check__.mjs');
 const tempModule=path.join(root,'tools','__v21_26_vehicle_placement_module_check__.mjs');
-function syntaxCheck(file){
-  const result=spawnSync(process.execPath,['--check',file],{encoding:'utf8'});
-  if(result.status!==0){
-    throw new Error(`Syntax check failed for ${path.basename(file)}:\n${result.stderr||result.stdout}`);
-  }
-}
 
 try{
   fs.writeFileSync(tempMain,main,'utf8');
