@@ -11,6 +11,24 @@ export function bodyRelativeLongitudinalSpeed({speed=0,heading=0,velocityHeading
   return v*Math.cos(bodyDelta);
 }
 
+// P8 — the velocityHeading state is paired with a SIGNED scalar speed. During
+// a handbrake 180 we can temporarily have speed>0 while motion is rearward
+// relative to the chassis. In that representation the no-slip momentum target
+// is heading+PI, not heading. Conversely a canonical true reverse (speed<0,
+// velocityHeading~=heading) should continue targeting heading. Pick whichever
+// parameter-space heading represents the body's actual forward/reverse travel.
+export function bodyRelativeMomentumTargetHeading({speed=0,heading=0,velocityHeading=0}={}){
+  const v=Number(speed)||0;
+  const h=Number(heading)||0;
+  const vh=Number(velocityHeading)||0;
+  if(Math.abs(v)<1e-8)return h;
+  const bodyLong=bodyRelativeLongitudinalSpeed({speed:v,heading:h,velocityHeading:vh});
+  const speedSign=Math.sign(v||1);
+  const bodySign=Math.sign(bodyLong||v||1);
+  if(bodySign===speedSign)return h;
+  return h+Math.PI;
+}
+
 // P6.4 — steering DIRECTION follows body-relative travel immediately once the
 // handbrake is released. Do not blend the sign through rear-slip memory: if the
 // chassis is moving backward, steering must act like reverse. Grip recovery is
@@ -39,7 +57,7 @@ export function postSpinSteeringAuthority({rearSlipAmount=0,heading=0,velocityHe
   let delta=(Number(velocityHeading)||0)-(Number(heading)||0);
   delta=Math.atan2(Math.sin(delta),Math.cos(delta));
   const sideslip=Math.abs(delta);
-  const extremeSideslip=smoothstep01((sideslip-.70)/1.25); // starts ~40 deg, near-full ~112 deg
+  const extremeSideslip=smoothstep01((sideslip-.70)/1.25);
   const rearSlipGate=smoothstep01((slip-.18)/.55);
   const suppression=extremeSideslip*rearSlipGate;
   return 1-.72*suppression;
@@ -348,13 +366,14 @@ export function createDrivingRuntime({
     const trajectoryRearSlip=Math.max(0,rearSlipAmount-frontSlipAmount*.45);
     const frictionTrajectoryLoss=frictionYawLoss;
     const lowSpeedNoSlip=!airborneNow&&speedAbs<8.5&&forceCoupledSlide<.18&&frontSlipAmount<.16&&rearSlipAmount<.16;
+    const momentumTargetHeading=bodyRelativeMomentumTargetHeading({speed,heading,velocityHeading});
 
     if(lowSpeedNoSlip){
-      if(speedAbs<2.5)velocityHeading=heading;
+      if(speedAbs<2.5)velocityHeading=momentumTargetHeading;
       else{
         const lowSpeedLockT=1-physicsClamp((speedAbs-2.5)/6.0,0,1);
         const lowSpeedFollowRate=34+lowSpeedLockT*48;
-        velocityHeading+=angleDelta(heading,velocityHeading)*(1-Math.exp(-dt*lowSpeedFollowRate));
+        velocityHeading+=angleDelta(momentumTargetHeading,velocityHeading)*(1-Math.exp(-dt*lowSpeedFollowRate));
       }
     }else{
       let attemptedTrajectoryDelta=0;
@@ -363,10 +382,10 @@ export function createDrivingRuntime({
         const forceTrajectoryYawRate=netLateralAccel/signedSpeedForCurvature;
         attemptedTrajectoryDelta+=forceTrajectoryYawRate*dt;
         const slideAlignmentRate=.65+(1-forceCoupledSlide)*3.20;
-        attemptedTrajectoryDelta+=angleDelta(heading,velocityHeading)*(1-Math.exp(-dt*slideAlignmentRate));
+        attemptedTrajectoryDelta+=angleDelta(momentumTargetHeading,velocityHeading)*(1-Math.exp(-dt*slideAlignmentRate));
       }else{
         const velocityFollowRate=airborneNow?0:((2.8-1.45*frictionTrajectoryLoss)+27.2*Math.pow(1-physicsClamp(trajectoryRearSlip,0,1),2));
-        attemptedTrajectoryDelta+=angleDelta(heading,velocityHeading)*(1-Math.exp(-dt*velocityFollowRate));
+        attemptedTrajectoryDelta+=angleDelta(momentumTargetHeading,velocityHeading)*(1-Math.exp(-dt*velocityFollowRate));
       }
       const rawTrajectoryLateralCapacityAccel=Number.isFinite(perWheelGrip.trajectoryLateralCapacityAccel)?Math.max(0,perWheelGrip.trajectoryLateralCapacityAccel):Math.max(0,latLimit);
       const trajectoryLateralCapacityAccel=hand&&!airborneNow
