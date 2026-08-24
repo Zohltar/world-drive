@@ -34,6 +34,7 @@ import { createDrivingRuntime } from './driving-runtime.js';
 import { createEnvironmentController } from './environment-controller.js';
 import { createTransmissionController } from './transmission-controller.js';
 import { createAutopilotController } from './autopilot-controller.js';
+import { createWheelGroundSupport } from './wheel-ground-support.js';
 import { createCameraController } from './camera.js';
 import { createRoutingGeometry, angleDelta, nearestPointOnPolyline } from './routing.js';
 import { createRoutingService } from './routing-service.js';
@@ -2217,62 +2218,20 @@ autopilotController=createAutopilotController({
   toast
 });
 
-const groundHeightRoadScratch={};
-
-// V21.21.5 CPU fast path. While the vehicle is fully on the road, wheel support
-// is evaluated from the already-resolved center road plane instead of repeating
-// four spatial nearest-segment searches every frame. Precise lookups remain
-// available for crest/jump probes and for wheels outside the road corridor.
-const fastWheelRoadSupport={
-  active:false,
-  centerX:0,
-  centerZ:0,
-  centerY:0,
-  sinAngle:0,
-  cosAngle:1,
-  tanPitch:0,
-  tanRoll:0,
-  halfWidth:ROAD_WHEEL_CONTACT_HALF_WIDTH
-};
-let currentOnPavementForInstruments=true;
-
+// ---------- wheel / road ground support facade ----------
+const wheelGroundSupport=createWheelGroundSupport({
+  roadSurfaceAt,
+  terrainAbs,
+  roadHalfWidth:ROAD_WHEEL_CONTACT_HALF_WIDTH
+});
 function setFastWheelRoadSupport(active,roadFrame,centerY,centerX=absX,centerZ=absZ){
-  if(!active||!roadFrame||!Number.isFinite(centerY)){
-    fastWheelRoadSupport.active=false;
-    return;
-  }
-  fastWheelRoadSupport.active=true;
-  fastWheelRoadSupport.centerX=centerX;
-  fastWheelRoadSupport.centerZ=centerZ;
-  fastWheelRoadSupport.centerY=centerY;
-  fastWheelRoadSupport.sinAngle=Math.sin(roadFrame.angle||0);
-  fastWheelRoadSupport.cosAngle=Math.cos(roadFrame.angle||0);
-  fastWheelRoadSupport.tanPitch=Math.tan(roadFrame.pitch||0);
-  fastWheelRoadSupport.tanRoll=Math.tan(roadFrame.roll||0);
+  return wheelGroundSupport.setFastWheelRoadSupport(active,roadFrame,centerY,centerX,centerZ);
+}
+function groundHeightForWheel(...args){
+  return wheelGroundSupport.groundHeightForWheel(...args);
 }
 
-function groundHeightForWheel(absx,absz,preferLocalRoadPlane=false){
-  if(preferLocalRoadPlane&&fastWheelRoadSupport.active){
-    const dx=absx-fastWheelRoadSupport.centerX;
-    const dz=absz-fastWheelRoadSupport.centerZ;
-    const along=dx*fastWheelRoadSupport.sinAngle+dz*fastWheelRoadSupport.cosAngle;
-    const lateral=-dx*fastWheelRoadSupport.cosAngle+dz*fastWheelRoadSupport.sinAngle;
-    if(
-      Math.abs(lateral)<fastWheelRoadSupport.halfWidth&&
-      Math.abs(along)<8.5
-    ){
-      return fastWheelRoadSupport.centerY+
-        fastWheelRoadSupport.tanPitch*along+
-        fastWheelRoadSupport.tanRoll*lateral;
-    }
-  }
-
-  const rs=roadSurfaceAt(absx,absz,groundHeightRoadScratch);
-  if(rs&&Math.abs(rs.lateral)<ROAD_WHEEL_CONTACT_HALF_WIDTH)return rs.y;
-  return terrainAbs(absx,absz);
-}
-
-
+let currentOnPavementForInstruments=true;
 
 // V21.21.3 PERFORMANCE: simulation stays per-frame, but DOM/canvas telemetry does
 // not need render-frame cadence. This avoids repeatedly invalidating layout and
