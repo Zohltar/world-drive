@@ -35,6 +35,7 @@ import { createEnvironmentController } from './environment-controller.js';
 import { createTransmissionController } from './transmission-controller.js';
 import { createAutopilotController } from './autopilot-controller.js';
 import { createWheelGroundSupport } from './wheel-ground-support.js';
+import { createVehiclePlacementController } from './vehicle-placement-controller.js';
 import { createCameraController } from './camera.js';
 import { createRoutingGeometry, angleDelta, nearestPointOnPolyline } from './routing.js';
 import { createRoutingService } from './routing-service.js';
@@ -2252,75 +2253,55 @@ function updateDrive(dt){
   drivingRuntime?.update(dt);
 }
 
-function placeAt(frac){
- const p=routePointAt(frac);
- absX=p.x;absZ=p.z;heading=p.angle;
- speed=0;steer=0;visualSteer=0;currentSteerAngle=0;
- driveHudAccumulator=DRIVE_HUD_INTERVAL;minimapAccumulator=MINIMAP_INTERVAL;
- longitudinalAccel=0;lateralGripUsage=0;
- const physicsWheelCount=Math.max(
-   4,
-   (VEHICLE.axles||[]).reduce(
-     (sum,axle)=>sum+(Number(axle.wheelCount)||0),
-     0
-   )
- );
- wheelGripUsage=Array(physicsWheelCount).fill(0);
- wheelSlipLevels=Array(physicsWheelCount).fill(0);
- wheelLateralUsage=Array(physicsWheelCount).fill(0);
- wheelLongitudinalUsage=Array(physicsWheelCount).fill(0);
- frontSlipAmount=0;rearSlipAmount=0;dynamicYawRate=0;velocityHeading=heading;
- resetTransmissionState();vehiclePresentation.reset();skidMarks.resetSource('local');
- roadContact=true;recenterIfNeeded(absX,absZ,true);ensureRoadProfileNear(absX,absZ);
-
- // On stacked mountain roads, roadSurfaceAt(X,Z) can legitimately see two
- // branches at the same horizontal position. Spawn by ROUTE CUMULATIVE DISTANCE
- // instead so 0% always means the actual first road segment.
- const placedFrame=roadProfileFrameAtCum(p.cum);
- if(placedFrame){
-   absX=placedFrame.x;
-   absZ=placedFrame.z;
-   heading=placedFrame.angle;
-   velocityHeading=heading;
- }
- const placedY=(placedFrame?.y??roadHeightAt(absX,absZ))+ROAD_SURFACE_OFFSET;
- car.position.set(
-   absX-worldOffset.x,
-   placedY+.38+TIRE_VISUAL_CLEARANCE,
-   absZ-worldOffset.z
- );
- if(truckTrailerSystem.active){
-   truckTrailerSystem.resetPose(absX,absZ,heading);
- }
- drawMap(p.cum);
-}
-function resetToRoad(){
- const n=nearestRoute(absX,absZ);
- if(!n)return;
- absX=n.px;absZ=n.pz;heading=n.angle;speed=0;
- driveHudAccumulator=DRIVE_HUD_INTERVAL;
- minimapAccumulator=MINIMAP_INTERVAL;
- gripSolverAccumulator=GRIP_SOLVER_INTERVAL;
- steer=0;visualSteer=0;currentSteerAngle=0;
- longitudinalAccel=0;lateralGripUsage=0;
- const physicsWheelCount=Math.max(
-   4,
-   (VEHICLE.axles||[]).reduce(
-     (sum,axle)=>sum+(Number(axle.wheelCount)||0),
-     0
-   )
- );
- wheelGripUsage=Array(physicsWheelCount).fill(0);
- wheelSlipLevels=Array(physicsWheelCount).fill(0);
- wheelLateralUsage=Array(physicsWheelCount).fill(0);
- wheelLongitudinalUsage=Array(physicsWheelCount).fill(0);
- frontSlipAmount=0;rearSlipAmount=0;dynamicYawRate=0;velocityHeading=heading;
- resetTransmissionState();vehiclePresentation.reset();skidMarks.resetSource('local');
- roadContact=true;recenterIfNeeded(absX,absZ,true);ensureRoadProfileNear(absX,absZ);
- if(truckTrailerSystem.active){
-   truckTrailerSystem.resetPose(absX,absZ,heading);
- }
-}
+// ---------- vehicle placement / reset controller facade ----------
+const vehiclePlacementState={};
+Object.defineProperties(vehiclePlacementState,{
+  absX:{get:()=>absX,set:value=>{absX=value;}},
+  absZ:{get:()=>absZ,set:value=>{absZ=value;}},
+  heading:{get:()=>heading,set:value=>{heading=value;}},
+  speed:{get:()=>speed,set:value=>{speed=value;}},
+  steer:{get:()=>steer,set:value=>{steer=value;}},
+  visualSteer:{get:()=>visualSteer,set:value=>{visualSteer=value;}},
+  currentSteerAngle:{get:()=>currentSteerAngle,set:value=>{currentSteerAngle=value;}},
+  driveHudAccumulator:{get:()=>driveHudAccumulator,set:value=>{driveHudAccumulator=value;}},
+  minimapAccumulator:{get:()=>minimapAccumulator,set:value=>{minimapAccumulator=value;}},
+  gripSolverAccumulator:{get:()=>gripSolverAccumulator,set:value=>{gripSolverAccumulator=value;}},
+  longitudinalAccel:{get:()=>longitudinalAccel,set:value=>{longitudinalAccel=value;}},
+  lateralGripUsage:{get:()=>lateralGripUsage,set:value=>{lateralGripUsage=value;}},
+  wheelGripUsage:{get:()=>wheelGripUsage,set:value=>{wheelGripUsage=value;}},
+  wheelSlipLevels:{get:()=>wheelSlipLevels,set:value=>{wheelSlipLevels=value;}},
+  wheelLateralUsage:{get:()=>wheelLateralUsage,set:value=>{wheelLateralUsage=value;}},
+  wheelLongitudinalUsage:{get:()=>wheelLongitudinalUsage,set:value=>{wheelLongitudinalUsage=value;}},
+  frontSlipAmount:{get:()=>frontSlipAmount,set:value=>{frontSlipAmount=value;}},
+  rearSlipAmount:{get:()=>rearSlipAmount,set:value=>{rearSlipAmount=value;}},
+  dynamicYawRate:{get:()=>dynamicYawRate,set:value=>{dynamicYawRate=value;}},
+  velocityHeading:{get:()=>velocityHeading,set:value=>{velocityHeading=value;}},
+  roadContact:{get:()=>roadContact,set:value=>{roadContact=value;}},
+  worldOffset:{get:()=>worldOffset}
+});
+const vehiclePlacementController=createVehiclePlacementController({
+  state:vehiclePlacementState,
+  VEHICLE,
+  routePointAt,
+  nearestRoute,
+  resetTransmissionState,
+  vehiclePresentation,
+  skidMarks,
+  recenterIfNeeded,
+  ensureRoadProfileNear,
+  roadProfileFrameAtCum,
+  roadHeightAt,
+  ROAD_SURFACE_OFFSET,
+  TIRE_VISUAL_CLEARANCE,
+  car,
+  truckTrailerSystem,
+  drawMap:(...args)=>drawMap(...args),
+  DRIVE_HUD_INTERVAL,
+  MINIMAP_INTERVAL,
+  GRIP_SOLVER_INTERVAL
+});
+function placeAt(...args){return vehiclePlacementController.placeAt(...args);}
+function resetToRoad(...args){return vehiclePlacementController.resetToRoad(...args);}
 
 const maxSpeedSlider=$('maxSpeedSlider');
 const maxSpeedLabel=$('maxSpeedLabel');
