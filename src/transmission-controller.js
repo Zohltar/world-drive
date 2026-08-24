@@ -183,7 +183,7 @@ export function createTransmissionController({
     return gear;
   }
   
-  function updateTransmission(dt,requestedThrottle,onPavement=true){
+  function updateTransmission(dt,requestedThrottle,onPavement=true,automaticOverride=false){
     const profile=activeTransmissionProfile();
     const profileKey=
       `${vehicleSystem.activeId}:${profile.profile||profile.type||''}`;
@@ -214,6 +214,10 @@ export function createTransmissionController({
       );
   
     const kmh=Math.abs(getSpeed())*3.6;
+
+    const automaticShiftMode=
+      automaticOverride||
+      state.transmissionMode==='automatic';
   
     if(getSpeed()<-.25){
       state.transmissionGear=-1;
@@ -278,10 +282,16 @@ export function createTransmissionController({
         :requestedThrottle;
     }
   
+    if(automaticOverride){
+      // Autopilot owns the drivetrain while active. Ignore any queued manual
+      // request without changing the player's selected transmission mode.
+      state.manualShiftRequest=null;
+    }
+
     let desiredGear=
       state.transmissionGear;
   
-    if(state.transmissionMode==='automatic'){
+    if(automaticShiftMode){
       desiredGear=
         desiredTransmissionGear(
           kmh,
@@ -432,9 +442,9 @@ export function createTransmissionController({
       );
   
     const limiterAllowed=
-      state.transmissionMode==='manual'
-        ?state.transmissionGear>=1
-        :topGear;
+      automaticShiftMode
+        ?topGear
+        :state.transmissionGear>=1;
   
     const touchingLimiter=
       limiterAllowed&&

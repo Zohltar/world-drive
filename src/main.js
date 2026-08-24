@@ -33,6 +33,7 @@ import { createKeyboardControls } from './keyboard-controls.js';
 import { createDrivingRuntime } from './driving-runtime.js';
 import { createEnvironmentController } from './environment-controller.js';
 import { createTransmissionController } from './transmission-controller.js';
+import { createAutopilotController } from './autopilot-controller.js';
 import { createCameraController } from './camera.js';
 import { createRoutingGeometry, angleDelta, nearestPointOnPolyline } from './routing.js';
 import { createRoutingService } from './routing-service.js';
@@ -1931,7 +1932,7 @@ function transmissionRedlineSpeedKmh(...args){return transmissionController.tran
 function resetTransmissionState(...args){return transmissionController.resetTransmissionState(...args);}
 function requestManualShift(...args){return transmissionController.requestManualShift(...args);}
 function desiredTransmissionGear(...args){return transmissionController.desiredTransmissionGear(...args);}
-function updateTransmission(...args){return transmissionController.updateTransmission(...args);}
+function updateTransmission(dt,requestedThrottle,onPavement=true){return transmissionController.updateTransmission(dt,requestedThrottle,onPavement,autopilot);}
 // V21.21: generalized vehicle dynamics math lives in vehicle-dynamics.js.
 
 // Mutable object identity is intentional: audio/physics keep the same reference
@@ -2179,94 +2180,42 @@ function vehicleReverseLimitMps(){
 let obeyRoadSpeedLimits=true;
 let roadContact=false;
 
-function setAutopilot(enabled,message=''){
-  autopilot=enabled;
-  $('autopilotBtn').textContent='Pilote auto: '+(autopilot?'ON':'OFF');
-  autopilotStatus.textContent=autopilot?'ACTIF':'OFF';
-  if(autopilot){
-    assist=true;
-    appSettings.assist=true;
-    queueSettingsSave();
-    $('assist').textContent='Assist: ON';
-    roadContact=true;
-    const n=nearestRoute(absX,absZ);
-    if(n && n.d>6){
-      absX=n.px;absZ=n.pz;
-      recenterIfNeeded(absX,absZ,true);
-    }
-    toast(message||'Pilote automatique activé');
-  }else{
-    autopilotSteer=0;
-    toast(message||'Pilote automatique désactivé');
-  }
+// ---------- autopilot / assist controller facade ----------
+let autopilotController=null;
+function setAutopilot(...args){return autopilotController.setAutopilot(...args);}
+function toggleAutopilot(...args){return autopilotController.toggleAutopilot(...args);}
+function autopilotControl(...args){return autopilotController.autopilotControl(...args);}
+function toggleAssist(...args){return autopilotController.toggleAssist(...args);}
+function updateSpeedLimitModeUI(...args){return autopilotController.updateSpeedLimitModeUI(...args);}
+function toggleRoadSpeedLimits(...args){return autopilotController.toggleRoadSpeedLimits(...args);}
 
-  syncV21RuntimeControls();
-}
-function toggleAutopilot(){ setAutopilot(!autopilot); }
-
-function autopilotControl(dt,nr){
-  if(!autopilot||!nr||!routeLength)return {throttle:0,turn:0,hand:false};
-
-  const kmh=Math.abs(speed)*3.6;
-  const lookAhead=Math.max(18,Math.min(105,18+kmh*.40));
-  const target=routePointAtCum(Math.min(routeLength-1,nr.cum+lookAhead));
-
-  const desired=Math.atan2(target.x-absX,target.z-absZ);
-  const headingErr=angleDelta(desired,heading);
-
-  // Cross-track correction is blended with heading correction.
-  const lateralSign=Math.sign(
-    Math.sin(nr.angle)*(absZ-nr.pz)-Math.cos(nr.angle)*(absX-nr.px)
-  )||0;
-  const crossTrack=Math.min(1,nr.d/5)*lateralSign;
-  const steerRequest=Math.max(-1,Math.min(1,headingErr*1.55-crossTrack*.34));
-  autopilotSteer+=(steerRequest-autopilotSteer)*(1-Math.exp(-dt*(kmh>130?4.5:6.5)));
-
-  // Sample several points instead of comparing only two headings.
-  // This makes braking start before a sequence of bends rather than in the bend.
-  let maxCurve=0;
-  const step=Math.max(12,lookAhead*.45);
-  let prev=routePointAtCum(Math.min(routeLength-1,nr.cum+step));
-  for(let d=step*2;d<=lookAhead*2.6;d+=step){
-    const q=routePointAtCum(Math.min(routeLength-1,nr.cum+d));
-    const ds=Math.max(5,q.cum-prev.cum);
-    maxCurve=Math.max(maxCurve,Math.abs(angleDelta(q.angle,prev.angle))/ds);
-    prev=q;
-  }
-
-  // Approximate safe speed from lateral acceleration v²*kappa.
-  // 3.0 m/s² keeps the autopilot comfortable rather than race-car aggressive.
-  const curveSpeed=maxCurve>.00015?Math.sqrt(3.0/maxCurve):MAX;
-
-  // Optional legal-speed cap. Curve safety remains active in both modes.
-  const roadLimit=(
-    obeyRoadSpeedLimits &&
-    activeRoadMeta.maxspeed
-  ) ? activeRoadMeta.maxspeed/3.6 : MAX;
-
-  let targetSpeed=Math.min(
-    MAX,
-    roadLimit,
-    Math.max(7.5,curveSpeed)
-  );
-
-  // Progressive destination braking.
-  const remaining=routeLength-nr.cum;
-  if(remaining<120)targetSpeed=Math.min(targetSpeed,Math.sqrt(Math.max(0,remaining)*5.2));
-  if(remaining<8)targetSpeed=0;
-
-  const errorV=targetSpeed-speed;
-  let throttle=0;
-  if(errorV>1.0)throttle=Math.min(1,.30+errorV/5);
-  else if(errorV>.12)throttle=Math.max(.08,errorV/1.2);
-  else if(errorV<-.25)throttle=Math.max(-1,errorV/3.5);
-
-  if(remaining<5&&Math.abs(speed)<.45){
-    speed=0;setAutopilot(false,'Arrivée à destination');
-  }
-  return {throttle,turn:autopilotSteer,hand:false};
-}
-
+const autopilotStateBridge={};
+Object.defineProperties(autopilotStateBridge,{
+  autopilot:{get:()=>autopilot,set:value=>{autopilot=value;}},
+  autopilotSteer:{get:()=>autopilotSteer,set:value=>{autopilotSteer=value;}},
+  assist:{get:()=>assist,set:value=>{assist=value;}},
+  roadContact:{get:()=>roadContact,set:value=>{roadContact=value;}},
+  speed:{get:()=>speed,set:value=>{speed=value;}},
+  absX:{get:()=>absX,set:value=>{absX=value;}},
+  absZ:{get:()=>absZ,set:value=>{absZ=value;}},
+  heading:{get:()=>heading},
+  routeLength:{get:()=>routeLength},
+  maxSpeedMps:{get:()=>MAX},
+  obeyRoadSpeedLimits:{get:()=>obeyRoadSpeedLimits,set:value=>{obeyRoadSpeedLimits=value;}},
+  activeRoadMeta:{get:()=>activeRoadMeta},
+  appSettings:{get:()=>appSettings}
+});
+autopilotController=createAutopilotController({
+  state:autopilotStateBridge,
+  $,
+  nearestRoute,
+  recenterIfNeeded,
+  routePointAtCum,
+  angleDelta,
+  queueSettingsSave,
+  syncRuntimeControls:()=>syncV21RuntimeControls(),
+  toast
+});
 
 const groundHeightRoadScratch={};
 
@@ -2344,16 +2293,6 @@ function updateDrive(dt){
   drivingRuntime?.update(dt);
 }
 
-function toggleAssist(){
- if(autopilot){setAutopilot(false,'Pilote auto désactivé');}
- assist=!assist;
- appSettings.assist=assist;
- queueSettingsSave();
- $('assist').textContent='Assist: '+(assist?'ON':'OFF');
- syncV21RuntimeControls();
- toast('Assistance '+(assist?'activée':'désactivée'));
-}
-
 function placeAt(frac){
  const p=routePointAt(frac);
  absX=p.x;absZ=p.z;heading=p.angle;
@@ -2427,59 +2366,6 @@ function resetToRoad(){
 const maxSpeedSlider=$('maxSpeedSlider');
 const maxSpeedLabel=$('maxSpeedLabel');
 const speedLimitModeBtn=$('speedLimitModeBtn');
-
-function updateSpeedLimitModeUI(){
-  if(!speedLimitModeBtn)return;
-
-  speedLimitModeBtn.textContent=
-    'Limites route: '+
-    (
-      obeyRoadSpeedLimits
-        ?'ON'
-        :'OFF'
-    );
-
-  speedLimitModeBtn.classList.toggle(
-    'active',
-    obeyRoadSpeedLimits
-  );
-
-  speedLimitModeBtn.title=
-    obeyRoadSpeedLimits
-      ?'Le pilote automatique respecte les limites OSM'
-      :'Le pilote automatique ignore les limites OSM';
-}
-
-function toggleRoadSpeedLimits(){
-  obeyRoadSpeedLimits=
-    !obeyRoadSpeedLimits;
-
-  appSettings.obeyRoadSpeedLimits=
-    obeyRoadSpeedLimits;
-
-  queueSettingsSave();
-
-  updateSpeedLimitModeUI();
-  syncV21RuntimeControls();
-
-  if(
-    obeyRoadSpeedLimits&&
-    activeRoadMeta.maxspeed
-  ){
-    toast(
-      `Limites route ON · ${Math.round(activeRoadMeta.maxspeed)} km/h`
-    );
-  }else{
-    toast(
-      'Limites route '+
-      (
-        obeyRoadSpeedLimits
-          ?'ON'
-          :'OFF'
-      )
-    );
-  }
-}
 
 function vehicleTopSpeedKmh(){
   const profile=
