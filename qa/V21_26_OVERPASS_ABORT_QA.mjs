@@ -1,9 +1,30 @@
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
 import { pathToFileURL, fileURLToPath } from 'node:url';
 import path from 'node:path';
 
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
 const modulePath=path.join(root,'src','overpass.js');
+const desktopTransportPath=path.join(root,'src','desktop-overpass-transport.js');
+const overpassSource=fs.readFileSync(modulePath,'utf8').replace(/\r\n/g,'\n');
+const desktopTransportSource=fs.readFileSync(desktopTransportPath,'utf8').replace(/\r\n/g,'\n');
+
+assert.match(
+  overpassSource,
+  /https:\/\/overpass\.private\.coffee\/api\/interpreter/,
+  'current Private.coffee Overpass fallback endpoint missing'
+);
+assert.doesNotMatch(
+  overpassSource,
+  /https:\/\/overpass\.kumi\.systems\/api\/interpreter/,
+  'legacy Kumi Overpass endpoint still configured as a browser fallback'
+);
+assert.match(
+  desktopTransportSource,
+  /'overpass\.private\.coffee'/,
+  'desktop Overpass proxy does not recognize the current fallback host'
+);
+
 const { createOverpassClient }=await import(`${pathToFileURL(modulePath).href}?qa=${Date.now()}`);
 
 function createCache(){
@@ -77,7 +98,7 @@ try{
   assert.match(String(networkWarnings[0][0]),/OSM scenery Overpass failed/,'warning label changed');
 
   console.log('V21.26 OVERPASS ABORT QA: PASS');
-  console.log('AbortError is silent with endpoint fallback; genuine network failures still warn');
+  console.log('Current endpoint fallback / desktop proxy host / AbortError silence / genuine failure warning verified');
 }finally{
   globalThis.fetch=originalFetch;
   console.warn=originalWarn;
