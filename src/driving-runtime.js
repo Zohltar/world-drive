@@ -5,6 +5,16 @@ function smoothstep01(value){
   return t*t*(3-2*t);
 }
 
+// V21.27 P6 — signed speed along the chassis forward axis. The world-motion
+// scalar can remain positive after a handbrake 180 even though the car is now
+// moving backward relative to its body. Steering/yaw direction must follow the
+// body-relative longitudinal component, just like a true reverse manoeuvre.
+export function bodyRelativeLongitudinalSpeed({speed=0,heading=0,velocityHeading=0}={}){
+  const v=Number(speed)||0;
+  const bodyDelta=(Number(velocityHeading)||0)-(Number(heading)||0);
+  return v*Math.cos(bodyDelta);
+}
+
 // V21.27 P4 — translate actual chassis-vs-momentum misalignment at touchdown
 // into an initial four-wheel slip state. This does NOT rotate momentum, add tire
 // force or increase grip; it only prevents an oblique landing from re-entering
@@ -12,73 +22,26 @@ function smoothstep01(value){
 export function landingSideslipGripSeed({sideslipRad=0,speedAbs=0}={}){
   const slip=Math.abs(Number(sideslipRad)||0);
   const speed=Math.max(0,Math.abs(Number(speedAbs)||0));
-  const slipT=smoothstep01((slip-.035)/.19); // ~2 deg dead zone, near-full by ~13 deg.
+  const slipT=smoothstep01((slip-.035)/.19);
   const speedT=smoothstep01((speed-3.5)/7.5);
   return Math.min(.92,slipT*speedT*.92);
 }
 
 export function createDrivingRuntime({
-  getState,
-  setState,
-  getFlags,
-  getRouteLength,
-  getWorldOffset,
-  nearestRouteForVehicle,
-  autopilotControl,
-  keyboardActionDown,
-  gamepadState,
-  updateTransmission,
-  vehiclePresentation,
-  vehicleVisuals,
-  truckTrailerSystem,
-  roadSurfaceGrip,
-  getVehicleId,
-  VEHICLE,
-  vehicleTopSpeedKmh,
-  activeTransmissionProfile,
-  effectiveEngineRedlineRpm,
-  transmissionRedlineSpeedKmh,
-  vehicleReverseLimitMps,
-  physicsClamp,
-  longitudinalTractionLimit,
-  computeGradeAcceleration,
-  physicsRoadFrameScratch,
-  dynamicsScratch,
-  roadProfileFrameAtCum,
-  ensureRoadProfileNear,
-  roadFrameAt,
-  terrainAbs,
-  routePointAtCum,
-  laneKeepAssistCommand,
-  angleDelta,
-  steeringCommand,
-  advanceSteeringRack,
-  lateralDynamicsEnvelope,
-  estimateWheelGripUsage,
-  yawResponseRate,
-  limitMomentumHeadingDelta,
-  recenterIfNeeded,
-  updateRunChallenge,
-  terrainFrameAt,
-  ROAD_SURFACE_OFFSET,
-  TIRE_VISUAL_CLEARANCE,
-  setFastWheelRoadSupport,
-  car,
-  skidMarks,
-  xzToLL,
-  elevationService,
-  altitudeEl,
-  updatePassedSignReadout,
-  drawMap,
-  worldStreaming,
-  $,
-  DRIVE_HUD_INTERVAL,
-  MINIMAP_INTERVAL,
-  GRIP_SOLVER_INTERVAL,
-  WORLD_STREAMING_INTERVAL,
+  getState,setState,getFlags,getRouteLength,getWorldOffset,nearestRouteForVehicle,
+  autopilotControl,keyboardActionDown,gamepadState,updateTransmission,
+  vehiclePresentation,vehicleVisuals,truckTrailerSystem,roadSurfaceGrip,getVehicleId,
+  VEHICLE,vehicleTopSpeedKmh,activeTransmissionProfile,effectiveEngineRedlineRpm,
+  transmissionRedlineSpeedKmh,vehicleReverseLimitMps,physicsClamp,
+  longitudinalTractionLimit,computeGradeAcceleration,physicsRoadFrameScratch,
+  dynamicsScratch,roadProfileFrameAtCum,ensureRoadProfileNear,roadFrameAt,terrainAbs,
+  routePointAtCum,laneKeepAssistCommand,angleDelta,steeringCommand,advanceSteeringRack,
+  lateralDynamicsEnvelope,estimateWheelGripUsage,yawResponseRate,limitMomentumHeadingDelta,
+  recenterIfNeeded,updateRunChallenge,terrainFrameAt,ROAD_SURFACE_OFFSET,
+  TIRE_VISUAL_CLEARANCE,setFastWheelRoadSupport,car,skidMarks,xzToLL,elevationService,
+  altitudeEl,updatePassedSignReadout,drawMap,worldStreaming,$,DRIVE_HUD_INTERVAL,
+  MINIMAP_INTERVAL,GRIP_SOLVER_INTERVAL,WORLD_STREAMING_INTERVAL,
 }){
-  // V21.27.2 — non-authoritative 120 Hz per-wheel solver. It observes the
-  // V21.26 chassis state but never writes position, heading or speed.
   const physicsShadow=createPerWheelShadowSolver({hz:120,maxSubSteps:8});
   let wasAirborne=false;
 
@@ -88,74 +51,26 @@ export function createDrivingRuntime({
     const ap=autopilotControl(dt,nr);
 
     let {
-      absX,
-      absZ,
-      heading,
-      speed,
-      steer,
-      longitudinalAccel,
-      visualSteer,
-      currentSteerAngle,
-      countachBrakeLightRequested,
-      countachReverseLightRequested,
-      lateralGripUsage,
-      velocityHeading,
-      dynamicYawRate,
-      wheelGripUsage,
-      wheelSlipLevels,
-      wheelLateralUsage,
-      wheelLongitudinalUsage,
-      frontSlipAmount,
-      rearSlipAmount,
-      currentOnPavementForInstruments,
-      driveHudAccumulator,
-      minimapAccumulator,
-      gripSolverAccumulator,
-      worldStreamingAccumulator,
-      lastContactModeText,
-      roadContact,
+      absX,absZ,heading,speed,steer,longitudinalAccel,visualSteer,currentSteerAngle,
+      countachBrakeLightRequested,countachReverseLightRequested,lateralGripUsage,
+      velocityHeading,dynamicYawRate,wheelGripUsage,wheelSlipLevels,wheelLateralUsage,
+      wheelLongitudinalUsage,frontSlipAmount,rearSlipAmount,currentOnPavementForInstruments,
+      driveHudAccumulator,minimapAccumulator,gripSolverAccumulator,worldStreamingAccumulator,
+      lastContactModeText,roadContact,
     }=getState();
 
-    const {
-      assist,
-      autopilot,
-      menuOpen,
-      maxSpeedKmh,
-      maxSpeedMps:MAX
-    }=getFlags();
+    const {assist,autopilot,menuOpen,maxSpeedKmh,maxSpeedMps:MAX}=getFlags();
     const routeLength=getRouteLength();
 
     const syncState=()=>setState({
-      absX,
-      absZ,
-      heading,
-      speed,
-      steer,
-      longitudinalAccel,
-      visualSteer,
-      currentSteerAngle,
-      countachBrakeLightRequested,
-      countachReverseLightRequested,
-      lateralGripUsage,
-      velocityHeading,
-      dynamicYawRate,
-      wheelGripUsage,
-      wheelSlipLevels,
-      wheelLateralUsage,
-      wheelLongitudinalUsage,
-      frontSlipAmount,
-      rearSlipAmount,
-      currentOnPavementForInstruments,
-      driveHudAccumulator,
-      minimapAccumulator,
-      gripSolverAccumulator,
-      worldStreamingAccumulator,
-      lastContactModeText,
-      roadContact,
+      absX,absZ,heading,speed,steer,longitudinalAccel,visualSteer,currentSteerAngle,
+      countachBrakeLightRequested,countachReverseLightRequested,lateralGripUsage,
+      velocityHeading,dynamicYawRate,wheelGripUsage,wheelSlipLevels,wheelLateralUsage,
+      wheelLongitudinalUsage,frontSlipAmount,rearSlipAmount,currentOnPavementForInstruments,
+      driveHudAccumulator,minimapAccumulator,gripSolverAccumulator,worldStreamingAccumulator,
+      lastContactModeText,roadContact,
     });
 
-    // Presentation vertical physics was solved on the previous frame.
-    // This one-frame-old state is stable and avoids a circular dependency.
     const airborneNow=!!vehiclePresentation.airborne;
     const justLanded=wasAirborne&&!airborneNow;
     wasAirborne=airborneNow;
@@ -190,8 +105,7 @@ export function createDrivingRuntime({
     const offroadPowerFactor=onPavement?1:.80;
     const isAWD=VEHICLE.drivetrain==='AWD';
     const awdOffroadGripBonus=!onPavement&&isAWD?1.18:1;
-    let requestedDriveAccel=0;
-    let requestedBrakeAccel=0;
+    let requestedDriveAccel=0,requestedBrakeAccel=0;
 
     if(driveThrottle>0){
       if(speed>=0){
@@ -268,8 +182,7 @@ export function createDrivingRuntime({
     const speedAbs=Math.abs(speed);
     let assistedTurn=turn;
     if(assist&&!autopilot&&!airborneNow&&!hand&&nr&&routeLength&&nr.d<9.5&&speed>2){
-      let routeHeading=nr.angle;
-      let routeDirection=1;
+      let routeHeading=nr.angle,routeDirection=1;
       if(Math.abs(angleDelta(routeHeading+Math.PI,heading))<Math.abs(angleDelta(routeHeading,heading))){routeHeading+=Math.PI;routeDirection=-1;}
       const laneOffset=1.65;
       const lookAhead=Math.max(10,Math.min(36,9+speedAbs*.72));
@@ -292,11 +205,10 @@ export function createDrivingRuntime({
     const steerAngle=steer*steeringModel.maxRoadWheelAngle;
     currentSteerAngle=steerAngle;
 
-    // V21.27 P5 — do not feed historical rearSlipAmount back into the lateral
-    // envelope. The per-wheel friction-circle solver already owns real current
-    // grip loss. Letting slip memory reduce latLimit created a self-sustaining
-    // drift after the handbrake was released.
-    const lateralEnvelope=lateralDynamicsEnvelope({vehicle:VEHICLE,speed,steerAngle,steerInput:steer,driveThrottle,onPavement,surfaceGrip,awdOffroadGripBonus,rearSlipAmount:0,airborne:airborneNow},dynamicsScratch.lateral);
+    const bodyLongitudinalSpeed=bodyRelativeLongitudinalSpeed({speed,heading,velocityHeading});
+    // P5 remains: historical slip memory does not reduce the envelope. P6 adds
+    // the real body-relative travel sign, so a post-180 slide steers like reverse.
+    const lateralEnvelope=lateralDynamicsEnvelope({vehicle:VEHICLE,speed:bodyLongitudinalSpeed,steerAngle,steerInput:steer,driveThrottle,onPavement,surfaceGrip,awdOffroadGripBonus,rearSlipAmount:0,airborne:airborneNow},dynamicsScratch.lateral);
     let yawRate=lateralEnvelope.yawRate*truckTrailerSystem.tractorYawScale(speedAbs);
     const drivetrain=lateralEnvelope.drivetrain;
     const powerCorneringLoad=lateralEnvelope.powerCorneringLoad;
@@ -329,8 +241,7 @@ export function createDrivingRuntime({
     wheelSlipLevels=perWheelGrip.slip;
     wheelLateralUsage=perWheelGrip.lateralUsage;
     wheelLongitudinalUsage=perWheelGrip.longitudinalUsage;
-    const targetFrontSlip=perWheelGrip.frontLateral;
-    const targetRearSlip=perWheelGrip.rearLateral;
+    const targetFrontSlip=perWheelGrip.frontLateral,targetRearSlip=perWheelGrip.rearLateral;
     let frictionYawAccel=Number.isFinite(perWheelGrip.frictionYawAccel)?perWheelGrip.frictionYawAccel:0;
     const netLateralAccel=Number.isFinite(perWheelGrip.netLateralAccel)?perWheelGrip.netLateralAccel:signedLatAccel;
     const rearLateralForceScale=Number.isFinite(perWheelGrip.rearLateralForceScale)?physicsClamp(perWheelGrip.rearLateralForceScale,0,1):1;
@@ -341,13 +252,9 @@ export function createDrivingRuntime({
     frontSlipAmount+=(targetFrontSlip-frontSlipAmount)*(1-Math.exp(-slipDt*(targetFrontSlip>frontSlipAmount?7.8:5.8*lowSpeedSlipReleaseBoost)));
     rearSlipAmount+=(targetRearSlip-rearSlipAmount)*(1-Math.exp(-slipDt*(targetRearSlip>rearSlipAmount?7.8:5.8*lowSpeedSlipReleaseBoost)));
     if(airborneNow){
-      frontSlipAmount*=Math.exp(-dt*5);
-      rearSlipAmount*=Math.exp(-dt*5);
+      frontSlipAmount*=Math.exp(-dt*5);rearSlipAmount*=Math.exp(-dt*5);
     }else if(justLanded){
-      const landingSeed=landingSideslipGripSeed({
-        sideslipRad:angleDelta(velocityHeading,heading),
-        speedAbs
-      });
+      const landingSeed=landingSideslipGripSeed({sideslipRad:angleDelta(velocityHeading,heading),speedAbs});
       if(landingSeed>0){
         frontSlipAmount=Math.max(frontSlipAmount,landingSeed);
         rearSlipAmount=Math.max(rearSlipAmount,landingSeed);
@@ -369,13 +276,8 @@ export function createDrivingRuntime({
     if(drivetrain==='RWD'&&powerCorneringLoad>.05&&!airborneNow){
       const powerOversteerYaw=VEHICLE.powerOversteerYaw??.035;
       const rearSlipYaw=Math.sign(steer||1)*powerOversteerYaw*powerCorneringLoad*(.30+rearDominance*.70)*Math.min(1,speedAbs/18);
-      yawRate+=rearSlipYaw*Math.sign(speed||1);
+      yawRate+=rearSlipYaw*Math.sign(bodyLongitudinalSpeed||speed||1);
     }
-
-    // V21.27 P5 — legacy rear-slip yaw injection removed. Rear axle force loss
-    // is already converted into frictionYawAccel by estimateWheelGripUsage().
-    // Keeping the old rearSlipAmount-based helper double-counted oversteer and
-    // continued to feed yaw for several tenths after handbrake release.
 
     if(Math.abs(steerAngle)>.006&&Math.abs(yawRate)>1e-5&&frictionYawAccel*yawRate<0)frictionYawAccel=0;
     const yawResponse=yawResponseRate({vehicle:VEHICLE,speedAbs,airborne:airborneNow});
@@ -388,21 +290,17 @@ export function createDrivingRuntime({
     heading+=dynamicYawRate*dt;
 
     if(!airborneNow&&fourWheelSlide>.01&&speedAbs>6){
-      const scrubDecel=1.0+fourWheelSlide*3.2;
-      const scrubDelta=scrubDecel*dt;
-      if(speed>0)speed=Math.max(0,speed-scrubDelta);
-      else if(speed<0)speed=Math.min(0,speed+scrubDelta);
+      const scrubDecel=1.0+fourWheelSlide*3.2,scrubDelta=scrubDecel*dt;
+      if(speed>0)speed=Math.max(0,speed-scrubDelta);else if(speed<0)speed=Math.min(0,speed+scrubDelta);
     }
 
     if(!airborneNow&&assist&&autopilot&&nr&&nr.d<12&&speedAbs>2){
       let routeHeading=nr.angle;
       if(Math.abs(angleDelta(routeHeading+Math.PI,heading))<Math.abs(angleDelta(routeHeading,heading)))routeHeading+=Math.PI;
-      const hErr=angleDelta(routeHeading,heading);
-      heading+=hErr*dt*.55;
+      const hErr=angleDelta(routeHeading,heading);heading+=hErr*dt*.55;
       if(nr.d>.55){
         const centerRate=.48;
-        absX+=(nr.px-absX)*(1-Math.exp(-dt*centerRate));
-        absZ+=(nr.pz-absZ)*(1-Math.exp(-dt*centerRate));
+        absX+=(nr.px-absX)*(1-Math.exp(-dt*centerRate));absZ+=(nr.pz-absZ)*(1-Math.exp(-dt*centerRate));
       }
     }
 
@@ -434,18 +332,11 @@ export function createDrivingRuntime({
       velocityHeading+=limitMomentumHeadingDelta({attemptedDelta:attemptedTrajectoryDelta,speedAbs,lateralCapacityAccel:trajectoryLateralCapacityAccel,dt,airborne:airborneNow});
     }
 
-    absX+=Math.sin(velocityHeading)*speed*dt;
-    absZ+=Math.cos(velocityHeading)*speed*dt;
-    syncState();
-    recenterIfNeeded(absX,absZ);
-    const worldOffset=getWorldOffset();
-    const rx=absX-worldOffset.x,rz=absZ-worldOffset.z;
+    absX+=Math.sin(velocityHeading)*speed*dt;absZ+=Math.cos(velocityHeading)*speed*dt;
+    syncState();recenterIfNeeded(absX,absZ);
+    const worldOffset=getWorldOffset();const rx=absX-worldOffset.x,rz=absZ-worldOffset.z;
 
-    if(nr){
-      if(!roadContact&&nr.d<8.5)roadContact=true;
-      else if(roadContact&&nr.d>11)roadContact=false;
-    }else roadContact=false;
-
+    if(nr){if(!roadContact&&nr.d<8.5)roadContact=true;else if(roadContact&&nr.d>11)roadContact=false;}else roadContact=false;
     let roadFrame=roadFrameAt(absX,absZ);
     if(roadContact&&(!roadFrame||roadFrame.distance>18))roadFrame=ensureRoadProfileNear(absX,absZ);
     const onRoad=roadContact&&roadFrame&&roadFrame.distance<18;
@@ -462,37 +353,24 @@ export function createDrivingRuntime({
     }
     setFastWheelRoadSupport(onRoad,roadFrame,centerRoadSurfaceY,absX,absZ);
     const baseGround=onRoad?(centerRoadSurfaceY??roadFrame.y+ROAD_SURFACE_OFFSET):(terrainFrame?terrainFrame.y:terrainAbs(absX,absZ));
-    const targetY=baseGround+.38+(onRoad?TIRE_VISUAL_CLEARANCE:0);
-    void targetY;
-    car.position.x=rx;
-    car.position.z=rz;
-    car.rotation.set(0,heading,0);
+    const targetY=baseGround+.38+(onRoad?TIRE_VISUAL_CLEARANCE:0);void targetY;
+    car.position.x=rx;car.position.z=rz;car.rotation.set(0,heading,0);
     vehiclePresentation.updateSuspensionVisuals(dt,onRoad,steerAngle);
     visualSteer+=(steerAngle-visualSteer)*(1-Math.exp(-dt*7));
     vehiclePresentation.updateWheels(dt,speed,visualSteer);
 
-    skidMarks.updateLocal({
-      contacts:vehiclePresentation.wheelContacts,onRoad,speed,steerAngle,lateralGripUsage,wheelGripUsage,wheelSlipLevels,
-      wheelLateralUsage,wheelLongitudinalUsage,longitudinalAccel,handbrake:hand,vehicle:VEHICLE,dt
-    });
+    skidMarks.updateLocal({contacts:vehiclePresentation.wheelContacts,onRoad,speed,steerAngle,lateralGripUsage,wheelGripUsage,wheelSlipLevels,wheelLateralUsage,wheelLongitudinalUsage,longitudinalAccel,handbrake:hand,vehicle:VEHICLE,dt});
 
-    driveHudAccumulator+=dt;
-    minimapAccumulator+=dt;
+    driveHudAccumulator+=dt;minimapAccumulator+=dt;
     if(driveHudAccumulator>=DRIVE_HUD_INTERVAL){
-      driveHudAccumulator%=DRIVE_HUD_INTERVAL;
-      $('speed').textContent=Math.round(Math.abs(speed)*3.6);
-      const llNow=xzToLL(absX,absZ);
-      const realElev=elevationService.elevationAt(llNow.lat,llNow.lon);
+      driveHudAccumulator%=DRIVE_HUD_INTERVAL;$('speed').textContent=Math.round(Math.abs(speed)*3.6);
+      const llNow=xzToLL(absX,absZ);const realElev=elevationService.elevationAt(llNow.lat,llNow.lon);
       altitudeEl.textContent=realElev!==null&&Number.isFinite(realElev)?Math.round(realElev):'—';
-      const frameNow=roadFrameAt(absX,absZ);
-      $('grade').textContent=frameNow?(Math.tan(frameNow.pitch)*100).toFixed(1):'0.0';
+      const frameNow=roadFrameAt(absX,absZ);$('grade').textContent=frameNow?(Math.tan(frameNow.pitch)*100).toFixed(1):'0.0';
       if(nr){
-        const pct=100*nr.cum/routeLength;
-        $('progress').textContent=pct.toFixed(1);
-        $('doneKm').textContent=(nr.cum/1000).toFixed(1);
-        $('remainKm').textContent=((routeLength-nr.cum)/1000).toFixed(1);
-        $('roadDist').textContent=Math.round(nr.d);
-        updatePassedSignReadout(nr);
+        const pct=100*nr.cum/routeLength;$('progress').textContent=pct.toFixed(1);
+        $('doneKm').textContent=(nr.cum/1000).toFixed(1);$('remainKm').textContent=((routeLength-nr.cum)/1000).toFixed(1);
+        $('roadDist').textContent=Math.round(nr.d);updatePassedSignReadout(nr);
       }
     }
     if(nr&&minimapAccumulator>=MINIMAP_INTERVAL){minimapAccumulator%=MINIMAP_INTERVAL;drawMap(nr.cum);}
@@ -501,8 +379,5 @@ export function createDrivingRuntime({
     syncState();
   }
 
-  return {
-    update,
-    physicsShadowDiagnostics:()=>physicsShadow.diagnostics()
-  };
+  return {update,physicsShadowDiagnostics:()=>physicsShadow.diagnostics()};
 }
