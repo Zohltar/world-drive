@@ -51,6 +51,12 @@ const contacts=[
   {localX: .78,localZ: 1.113,axleIndex:0,front:true, side:'right',contact:true,contactFactor:1}
 ];
 
+function pairByAxle(result,front){
+  const pair=result.wheels.filter(w=>w.front===front).sort((a,b)=>a.side.localeCompare(b.side));
+  assert.equal(pair.length,2,`${front?'front':'rear'} wheel pair classification changed`);
+  return pair;
+}
+
 // 1) Fixed-step cadence and zero-slip straight rolling state.
 const straight=createPerWheelShadowSolver({hz:120});
 const straightResult=straight.advance(1/60,{
@@ -70,7 +76,49 @@ for(const wheel of straightResult.wheels){
   assert.ok(Math.abs(wheel.slipAngle)<1e-9,'free-rolling wheel started with lateral slip');
 }
 
-// 2) Ackermann steering must give different inner/outer angles and real front
+// 2) Numerical stiffness guard. Identical left/right wheels on a straight road
+// must remain identical under sustained drive and braking. The original explicit
+// wheelOmega Euler step could oscillate across rolling speed, causing equal-load
+// wheels to report opposite force signs and even negative RPM while moving forward.
+const powered=createPerWheelShadowSolver({hz:120});
+let poweredResult=null;
+for(let frame=0;frame<120;frame++){
+  poweredResult=powered.advance(1/60,{
+    vehicleId:'wrx',vehicle,contacts,
+    speed:20,heading:0,velocityHeading:0,yawRate:0,
+    centerSteerAngle:0,longitudinalAccel:3,lateralAccel:0,
+    requestedDriveAccel:3,requestedBrakeAccel:0,handbrake:false,
+    surfaceId:'asphalt-dry'
+  });
+}
+for(const front of [false,true]){
+  const [left,right]=pairByAxle(poweredResult,front);
+  assert.ok(Math.abs(left.wheelOmega-right.wheelOmega)<1e-9,'straight drive broke left/right wheel-speed symmetry');
+  assert.ok(Math.abs(left.fxWheel-right.fxWheel)<1e-6,'straight drive broke left/right longitudinal-force symmetry');
+  assert.ok(left.wheelOmega>0&&right.wheelOmega>0,'straight forward drive reversed a wheel angular speed');
+}
+assert.ok(Math.abs(poweredResult.totalYawMomentNm)<1e-6,'symmetric straight drive invented yaw moment');
+
+const braking=createPerWheelShadowSolver({hz:120});
+let brakingResult=null;
+for(let frame=0;frame<90;frame++){
+  brakingResult=braking.advance(1/60,{
+    vehicleId:'wrx',vehicle,contacts,
+    speed:20,heading:0,velocityHeading:0,yawRate:0,
+    centerSteerAngle:0,longitudinalAccel:-5,lateralAccel:0,
+    requestedDriveAccel:0,requestedBrakeAccel:-5,handbrake:false,
+    surfaceId:'asphalt-dry'
+  });
+}
+for(const front of [false,true]){
+  const [left,right]=pairByAxle(brakingResult,front);
+  assert.ok(Math.abs(left.wheelOmega-right.wheelOmega)<1e-9,'straight braking broke left/right wheel-speed symmetry');
+  assert.ok(Math.abs(left.fxWheel-right.fxWheel)<1e-6,'straight braking broke left/right longitudinal-force symmetry');
+  assert.ok(left.wheelOmega>=-1e-9&&right.wheelOmega>=-1e-9,'straight forward braking numerically reversed a wheel');
+}
+assert.ok(Math.abs(brakingResult.totalYawMomentNm)<1e-6,'symmetric straight braking invented yaw moment');
+
+// 3) Ackermann steering must give different inner/outer angles and real front
 // tire lateral force/yaw without any explicit drift/yaw helper.
 const corner=createPerWheelShadowSolver({hz:120});
 const cornerResult=corner.advance(1/60,{
@@ -88,7 +136,7 @@ assert.ok(Math.abs(cornerResult.totalYawMomentNm)>100,'contact-patch forces prod
 assert.equal(cornerResult.authoritative,false,'shadow solver became authoritative unexpectedly');
 assert.equal(cornerResult.shadow,true,'shadow solver lost shadow marker');
 
-// 3) Rear handbrake torque must be capable of physically locking the rear wheel
+// 4) Rear handbrake torque must be capable of physically locking the rear wheel
 // while the body keeps moving. No handbrake=>yaw shortcut is used by the solver.
 const handbrakeSolver=createPerWheelShadowSolver({hz:120});
 let handResult=null;
@@ -104,12 +152,14 @@ for(let frame=0;frame<45;frame++){
 const rear=handResult.wheels.filter(w=>!w.front);
 const frontAfterHand=handResult.wheels.filter(w=>w.front);
 assert.equal(rear.length,2,'rear wheel classification changed');
-assert.ok(rear.every(w=>Math.abs(w.wheelOmega)<1e-6),'handbrake failed to bring rear wheel angular speed to zero');
+assert.ok(rear.every(w=>w.locked),'handbrake did not enter a stable rear-wheel lock state');
+assert.ok(rear.every(w=>Math.abs(w.wheelOmega)<1e-9),'handbrake failed to hold rear wheel angular speed at zero');
 assert.ok(rear.every(w=>w.slipRatio<-.85),'locked rear wheels did not reach near-full braking slip');
 assert.ok(rear.every(w=>w.saturated),'locked rear tires were not friction saturated');
+assert.ok(frontAfterHand.every(w=>!w.locked),'handbrake incorrectly marked a front wheel locked');
 assert.ok(frontAfterHand.every(w=>Math.abs(w.slipRatio)<.15),'handbrake incorrectly locked the front wheels');
 
-// 4) Runtime integration must be observational only.
+// 5) Runtime integration must be observational only.
 const runtime=fs.readFileSync(runtimePath,'utf8');
 const main=fs.readFileSync(mainPath,'utf8');
 assert.match(runtime,/createPerWheelShadowSolver/,'driving runtime does not import/create shadow solver');
@@ -125,4 +175,4 @@ assert.doesNotMatch(runtime,/predictedAccelZ\s*[+\-*/]?=/,'shadow predictedAccel
 assert.doesNotMatch(runtime,/predictedYawAccel\s*[+\-*/]?=/,'shadow predictedYawAccel is being written into runtime state');
 
 console.log('V21.27 PHYSICS SHADOW QA: PASS');
-console.log('120 Hz per-wheel shadow forces / Ackermann / rear-wheel lock / non-authoritative runtime integration verified');
+console.log('120 Hz per-wheel forces / stable wheel spin / Ackermann / rear lock / non-authoritative runtime integration verified');
