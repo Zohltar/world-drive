@@ -292,7 +292,11 @@ export function createDrivingRuntime({
     const steerAngle=steer*steeringModel.maxRoadWheelAngle;
     currentSteerAngle=steerAngle;
 
-    const lateralEnvelope=lateralDynamicsEnvelope({vehicle:VEHICLE,speed,steerAngle,steerInput:steer,driveThrottle,onPavement,surfaceGrip,awdOffroadGripBonus,rearSlipAmount,airborne:airborneNow},dynamicsScratch.lateral);
+    // V21.27 P5 — do not feed historical rearSlipAmount back into the lateral
+    // envelope. The per-wheel friction-circle solver already owns real current
+    // grip loss. Letting slip memory reduce latLimit created a self-sustaining
+    // drift after the handbrake was released.
+    const lateralEnvelope=lateralDynamicsEnvelope({vehicle:VEHICLE,speed,steerAngle,steerInput:steer,driveThrottle,onPavement,surfaceGrip,awdOffroadGripBonus,rearSlipAmount:0,airborne:airborneNow},dynamicsScratch.lateral);
     let yawRate=lateralEnvelope.yawRate*truckTrailerSystem.tractorYawScale(speedAbs);
     const drivetrain=lateralEnvelope.drivetrain;
     const powerCorneringLoad=lateralEnvelope.powerCorneringLoad;
@@ -368,12 +372,10 @@ export function createDrivingRuntime({
       yawRate+=rearSlipYaw*Math.sign(speed||1);
     }
 
-    if(rearDominance>.015&&!airborneNow&&speedAbs>4){
-      const highSpeedRearStabilityT=physicsClamp((speedAbs-25)/30,0,1);
-      const legacySlipYawScale=1-highSpeedRearStabilityT*.55;
-      const slipYaw=Math.sign(yawRate||steerAngle||1)*rearDominance*Math.min(.135,.040+speedAbs*.0022)*legacySlipYawScale;
-      yawRate+=slipYaw*Math.sign(speed||1);
-    }
+    // V21.27 P5 — legacy rear-slip yaw injection removed. Rear axle force loss
+    // is already converted into frictionYawAccel by estimateWheelGripUsage().
+    // Keeping the old rearSlipAmount-based helper double-counted oversteer and
+    // continued to feed yaw for several tenths after handbrake release.
 
     if(Math.abs(steerAngle)>.006&&Math.abs(yawRate)>1e-5&&frictionYawAccel*yawRate<0)frictionYawAccel=0;
     const yawResponse=yawResponseRate({vehicle:VEHICLE,speedAbs,airborne:airborneNow});
