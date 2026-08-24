@@ -24,7 +24,7 @@ assert.match(main,/import \{ createTransmissionController \} from '\.\/transmiss
 assert.match(main,/let transmissionController=null;/,'main.js missing transmission controller facade');
 assert.match(main,/const transmissionStateBridge=\{\};/,'main.js missing live transmission-state bridge');
 assert.match(main,/transmissionController=createTransmissionController\(\{/,'main.js missing transmission controller initialization');
-assert.match(main,/function updateTransmission\(\.\.\.args\)\{return transmissionController\.updateTransmission\(\.\.\.args\);\}/,'main.js missing narrow updateTransmission facade');
+assert.match(main,/function updateTransmission\(dt,requestedThrottle,onPavement=true\)\{return transmissionController\.updateTransmission\(dt,requestedThrottle,onPavement,autopilot\);\}/,'main.js missing live autopilot-aware updateTransmission facade');
 assert.match(main,/transmissionGear:\{get:\(\)=>transmissionGear,set:value=>\{transmissionGear=value;\}\}/,'main.js bridge no longer keeps transmissionGear live');
 assert.match(main,/engineRpm:\{get:\(\)=>engineRpm,set:value=>\{engineRpm=value;\}\}/,'main.js bridge no longer keeps engineRpm live');
 assert.match(main,/transmissionMode:\{get:\(\)=>transmissionMode,set:value=>\{transmissionMode=value;\}\}/,'main.js bridge no longer keeps transmissionMode live');
@@ -32,7 +32,7 @@ assert.match(main,/transmissionMode:\{get:\(\)=>transmissionMode,set:value=>\{tr
 for(const pattern of [
   /function activeTransmissionProfile\(\)\{/,
   /function requestManualShift\(direction\)\{/,
-  /function updateTransmission\(dt,requestedThrottle,onPavement=true\)\{/
+  /function updateTransmission\(dt,requestedThrottle,onPavement=true,automaticOverride=false\)\{/
 ]){
   assert.doesNotMatch(main,pattern,`main.js still owns heavy transmission behavior: ${pattern}`);
   assert.match(transmission,pattern,`transmission-controller.js missing extracted behavior: ${pattern}`);
