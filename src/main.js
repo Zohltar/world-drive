@@ -2788,6 +2788,7 @@ drivingRuntime=createDrivingRuntime({
   vehicleVisuals,
   truckTrailerSystem,
   roadSurfaceGrip,
+  getVehicleId:()=>vehicleSystem.activeId,
   VEHICLE,
   vehicleTopSpeedKmh,
   activeTransmissionProfile,
@@ -2983,6 +2984,11 @@ window.WorldDriveFramePacing=()=>({
   fps:perfGovernor.fps,
   ...(streamingCoordinator?.diagnostics?.()||{})
 });
+
+// V21.27.2 diagnostics only. Safe to inspect from DevTools; values do not
+// feed back into the authoritative V21.26 vehicle integrator.
+window.WorldDrivePhysicsShadow=()=>
+  drivingRuntime?.physicsShadowDiagnostics?.()||null;
 
 // ---------- main ----------
 function animate(now){

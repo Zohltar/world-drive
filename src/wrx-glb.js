@@ -1,3 +1,5 @@
+import { ackermannSteeringAngles, ackermannAngleForSide } from './physics/steering-geometry.js';
+
 // World Drive V21.24.40 — WRX stronger visible rear night-running lights on outer red taillamps.
 // Night: only the outer left/right rear red lamps glow, now more visibly.
 // Braking: lower/main red lamp + CHMSL add strong illumination.
@@ -492,6 +494,12 @@ export function createWrxGlbSystem({
     if(!wheelControllers.length)return;
     const safeDt=Math.max(.001,Math.min(.05,Number(dt)||.016));
     const wheelRadius=.317;
+    const physics=vehicleSystem?.active?.physics||{};
+    const geometry=ackermannSteeringAngles({
+      wheelbase:physics.wheelbase||2.65,
+      trackWidth:physics.trackWidth||1.56,
+      centerAngle:Number(steerAngle)||0
+    });
 
     // +Z is forward, therefore positive rotation around +X gives the correct
     // rolling direction for a wheel whose axle lies along local X.
@@ -499,12 +507,17 @@ export function createWrxGlbSystem({
     if(Math.abs(wheelSpin)>Math.PI*2048)wheelSpin%=Math.PI*2;
 
     spinQuaternion.setFromAxisAngle(spinAxis,wheelSpin);
-    steerQuaternion.setFromAxisAngle(steerAxis,Number(steerAngle)||0);
 
     for(const wheel of wheelControllers){
       wheel.spinPivot.quaternion.copy(spinQuaternion);
-      if(wheel.front)wheel.steerPivot.quaternion.copy(steerQuaternion);
-      else wheel.steerPivot.quaternion.identity();
+      if(wheel.front){
+        const side=wheel.side<0?'left':'right';
+        const wheelSteer=ackermannAngleForSide(geometry,side);
+        steerQuaternion.setFromAxisAngle(steerAxis,wheelSteer);
+        wheel.steerPivot.quaternion.copy(steerQuaternion);
+      }else{
+        wheel.steerPivot.quaternion.identity();
+      }
     }
   }
 

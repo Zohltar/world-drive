@@ -65,3 +65,26 @@ export function ackermannAngleForRole(geometry,role='outer'){
   if(role==='center')return finite(geometry?.centerAngle,0);
   return finite(geometry?.outerAngle,0);
 }
+
+// Maps one physical wheel side to the inner/outer Ackermann angle.
+// World Drive convention: positive steering is a right turn, therefore the
+// right front wheel is inside for positive angles and the left is inside for
+// negative angles. Accept both string and numeric (-1/+1) side metadata.
+export function ackermannAngleForSide(geometry,side='left'){
+  const turnSign=Math.sign(finite(geometry?.turnSign,0));
+  if(!turnSign)return 0;
+  const normalizedSide=
+    side==='right'||Number(side)>0
+      ?'right'
+      :'left';
+  const inside=
+    turnSign>0
+      ?normalizedSide==='right'
+      :normalizedSide==='left';
+  return finite(
+    inside
+      ?geometry?.innerAngle
+      :geometry?.outerAngle,
+    0
+  );
+}

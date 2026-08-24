@@ -1,3 +1,5 @@
+import { createPerWheelShadowSolver } from './physics/per-wheel-shadow-solver.js';
+
 export function createDrivingRuntime({
   getState,
   setState,
@@ -13,6 +15,7 @@ export function createDrivingRuntime({
   vehicleVisuals,
   truckTrailerSystem,
   roadSurfaceGrip,
+  getVehicleId,
   VEHICLE,
   vehicleTopSpeedKmh,
   activeTransmissionProfile,
@@ -57,6 +60,10 @@ export function createDrivingRuntime({
   GRIP_SOLVER_INTERVAL,
   WORLD_STREAMING_INTERVAL,
 }){
+  // V21.27.2 — non-authoritative 120 Hz per-wheel solver. It observes the
+  // V21.26 chassis state but never writes position, heading or speed.
+  const physicsShadow=createPerWheelShadowSolver({hz:120,maxSubSteps:8});
+
   function update(dt){
     const initialState=getState();
     const nr=nearestRouteForVehicle(initialState.absX,initialState.absZ);
@@ -614,6 +621,27 @@ export function createDrivingRuntime({
       },dynamicsScratch.grip);
     }
    
+    // V21.27.2 shadow simulation. The new contact-patch model receives the
+    // exact wheel contacts and current chassis motion, then runs independently
+    // at 120 Hz. Its result is intentionally ignored by the authoritative
+    // V21.26 integrator until calibration/QA says otherwise.
+    physicsShadow.advance(dt,{
+      vehicleId:getVehicleId?.()||'unknown',
+      vehicle:VEHICLE,
+      contacts:vehiclePresentation?.wheelContacts||[],
+      speed,
+      heading,
+      velocityHeading,
+      yawRate:dynamicYawRate,
+      centerSteerAngle:steerAngle,
+      longitudinalAccel,
+      lateralAccel:signedLatAccel,
+      requestedDriveAccel,
+      requestedBrakeAccel,
+      handbrake:hand,
+      surfaceId:onPavement?'asphalt-dry':'dirt'
+    });
+
     wheelGripUsage=
       perWheelGrip.smoothed;
    
@@ -1297,5 +1325,8 @@ export function createDrivingRuntime({
     syncState();
   }
 
-  return {update};
+  return {
+    update,
+    physicsShadowDiagnostics:()=>physicsShadow.diagnostics()
+  };
 }

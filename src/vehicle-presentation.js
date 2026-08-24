@@ -1,4 +1,5 @@
 import { aerodynamicLoad, fitWheelSupportPlane } from './vehicle-dynamics.js';
+import { ackermannSteeringAngles, ackermannAngleForSide } from './physics/steering-geometry.js';
 
 // World Drive V21.21.26 — vehicle presentation + aero-aware vertical dynamics.
 // Multi-wheel suspension support, airborne motion, body pose and projected contact shadow.
@@ -1334,6 +1335,13 @@ export function createVehiclePresentation({
   }
 
   function updateWheels(dt,speed,visualSteer){
+    const vehicle=getDrivingState()?.VEHICLE||{};
+    const geometry=ackermannSteeringAngles({
+      wheelbase:vehicle.wheelbase,
+      trackWidth:vehicle.trackWidth,
+      centerAngle:visualSteer
+    });
+
     for(const w of wheels){
       if(w.vehicleId&&w.vehicleId!==vehicleSystem.activeId)continue;
 
@@ -1341,9 +1349,13 @@ export function createVehiclePresentation({
       w.tire.rotation.x-=speed*dt/.38;
       w.rim.rotation.x-=speed*dt/.38;
 
+      const side=
+        w.side!==undefined
+          ?w.side
+          :(Number(w.pivot?.position?.x)<0?'left':'right');
       const targetWheelYaw=
         w.front
-          ?visualSteer
+          ?ackermannAngleForSide(geometry,side)
           :0;
 
       w.pivot.rotation.y+=
