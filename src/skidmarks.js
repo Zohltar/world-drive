@@ -1,6 +1,7 @@
-// World Drive V21.8 — pooled skid-mark renderer + shared tire-audio slip cue.
+// World Drive V21.29 — pooled skid-mark renderer + shared tire-audio slip cue.
 // Local rubber is driven by independent per-wheel adhesion loss; multiplayer
-// keeps the compact front/rear aggregate state.
+// keeps the compact front/rear aggregate state. V21.29 adds low-speed rubber
+// for genuine longitudinal wheelspin so clutch dumps can leave driven-wheel marks.
 export function createSkidMarkSystem({THREE,scene,getWorldOffset,getRoadSurface,maxSegments=7200}){
   const MIN_SEGMENT=.12,MAX_SEGMENT=3.0,REMOTE_DRAW_DISTANCE=520,MIN_RECYCLE_AGE_MS=20000;
   const geometry=new THREE.PlaneGeometry(1,1);geometry.rotateX(-Math.PI/2);
@@ -24,12 +25,17 @@ export function createSkidMarkSystem({THREE,scene,getWorldOffset,getRoadSurface,
   function resetSource(sourceId){const prefix=`${sourceId}:`;for(const key of [...tracks.keys()])if(key.startsWith(prefix))tracks.delete(key);}
   function updateSource(sourceId,contacts,{front=0,rear=0,wheels=null,onRoad=false,distance=0}={}){refreshForFloatingOrigin();if(Number.isFinite(distance)&&distance>REMOTE_DRAW_DISTANCE){resetSource(sourceId);return;}if(!onRoad||!Array.isArray(contacts)||contacts.length!==4){resetSource(sourceId);return;}for(let index=0;index<contacts.length;index++){const c=contacts[index],absX=Number(c?.absX),absZ=Number(c?.absZ),ground=Number(c?.ground);if(!Number.isFinite(absX)||!Number.isFinite(absZ)||!Number.isFinite(ground))continue;const wheelIntensity=Array.isArray(wheels)&&Number.isFinite(Number(wheels[index]))?Number(wheels[index]):(c.front?front:rear);const intensity=smoothstep01(wheelIntensity),key=`${sourceId}:${index}`;let track=tracks.get(key);if(!track){track={absX,absZ,ground,skidding:false};tracks.set(key,track);continue;}const travel=Math.hypot(absX-track.absX,absZ-track.absZ);if(intensity<.055||travel>MAX_SEGMENT){track.absX=absX;track.absZ=absZ;track.ground=ground;track.skidding=false;continue;}if(!track.skidding){track.absX=absX;track.absZ=absZ;track.ground=ground;track.skidding=true;continue;}if(travel>=MIN_SEGMENT){const placed=placeSegment(track,{absX,absZ,ground},intensity,c.width);if(placed){track.absX=absX;track.absZ=absZ;track.ground=ground;}}}}
   function computeSlip({onRoad,speed,steerAngle,lateralGripUsage,wheelGripUsage,wheelSlipLevels,wheelLateralUsage,wheelLongitudinalUsage,contacts,longitudinalAccel,handbrake,vehicle,dt=0}){
-    if(!onRoad||Math.abs(speed)<3.4){lateralSquealTime=0;brakingSlipTime=0;for(let i=0;i<4;i++)wheelSlipTime[i]=0;return{front:0,rear:0,wheels:[0,0,0,0],tireAudio:0,brakeAudio:0,onRoad:!!onRoad};}
+    if(!onRoad){lateralSquealTime=0;brakingSlipTime=0;for(let i=0;i<4;i++)wheelSlipTime[i]=0;return{front:0,rear:0,wheels:[0,0,0,0],tireAudio:0,brakeAudio:0,onRoad:false};}
     if(Array.isArray(wheelGripUsage)&&wheelGripUsage.length===4){
       const safeDt=Math.max(0,Math.min(.05,Number(dt)||0));
-      const speedGate=smoothstep01((Math.abs(speed)*3.6-16)/18),handbrakeSpeedGate=smoothstep01((Math.abs(speed)*3.6-10)/16);
+      const speedKmh=Math.abs(speed)*3.6;
+      const speedGate=smoothstep01((speedKmh-16)/18),handbrakeSpeedGate=smoothstep01((speedKmh-10)/16);
+      // A spinning driven tire can lay rubber almost from rest. Keep ordinary
+      // lateral marks gated by road speed, but give deep longitudinal wheelspin
+      // its own low-speed gate that reaches full authority by ~12 km/h.
+      const wheelspinSpeedGate=smoothstep01((speedKmh-.8)/11.2);
       const hasDeepSlip=Array.isArray(wheelSlipLevels)&&wheelSlipLevels.length===4,hasLateralUsage=Array.isArray(wheelLateralUsage)&&wheelLateralUsage.length===4,hasLongitudinalUsage=Array.isArray(wheelLongitudinalUsage)&&wheelLongitudinalUsage.length===4;
-      const accelerating=Number(longitudinalAccel)>0.20,braking=Number(longitudinalAccel)<-0.20;
+      const accelerating=Number(longitudinalAccel)>0.05,braking=Number(longitudinalAccel)<-0.20;
       const globalLateralUsage=Math.max(0,Number(lateralGripUsage)||0);
       const globalLateralRubber=smoothstep01((globalLateralUsage-1.15)/.20);
       const lateralAdhesionCue=smoothstep01((globalLateralUsage-.84)/.36)*.38*speedGate;
@@ -46,32 +52,27 @@ export function createSkidMarkSystem({THREE,scene,getWorldOffset,getRoadSurface,
         const conservativeLateralUtil=Math.min(lateralUtil,globalLateralUsage*1.18+.06);
         const wheelLateralBias=.62+.38*smoothstep01((conservativeLateralUtil-1.02)/.30);
         const lateralRubber=globalLateralRubber*wheelLateralBias*rubberLoadGate;
-
-        // V21.27 visual follow-up — a genuinely deep lateral slide can deposit
-        // rubber even before the slower vehicle-wide lateralGripUsage filter has
-        // caught up. This is especially important immediately after an oblique
-        // landing (P4), where wheel slip is already real but the global envelope
-        // is still rebuilding. It is visual-only: no grip/force state is changed.
-        const deepLateralRubber=hasLateralUsage
-          ?smoothstep01((lateralUtil-1.08)/.42)*smoothstep01((deepSlip-.38)/.42)*rubberLoadGate
-          :0;
-
-        const driveRubber=accelerating&&hasLongitudinalUsage?smoothstep01((longitudinalUtil-1.40)/.34)*smoothstep01((deepSlip-.82)/.18)*rubberLoadGate:0;
+        const deepLateralRubber=hasLateralUsage?smoothstep01((lateralUtil-1.08)/.42)*smoothstep01((deepSlip-.38)/.42)*rubberLoadGate:0;
+        const driveRubber=accelerating&&hasLongitudinalUsage?smoothstep01((longitudinalUtil-1.12)/.30)*smoothstep01((deepSlip-.38)/.34)*rubberLoadGate:0;
         const brakeRubber=braking&&hasLongitudinalUsage?smoothstep01((longitudinalUtil-1.26)/.30)*smoothstep01((deepSlip-.76)/.24)*rubberLoadGate:0;
-        const driveAudio=accelerating&&hasLongitudinalUsage?smoothstep01((longitudinalUtil-1.08)/.32)*smoothstep01((deepSlip-.42)/.42)*rubberLoadGate:0;
+        const driveAudio=accelerating&&hasLongitudinalUsage?smoothstep01((longitudinalUtil-1.03)/.28)*smoothstep01((deepSlip-.24)/.40)*rubberLoadGate:0;
         const brakeAudio=braking&&hasLongitudinalUsage?smoothstep01((longitudinalUtil-.95)/.34)*smoothstep01((deepSlip-.34)/.42)*rubberLoadGate:0;
         const mixedRubber=globalLateralRubber>.02&&lateralUtil>.85&&longitudinalUtil>.48?globalLateralRubber*smoothstep01((deepSlip-.84)/.16)*rubberLoadGate*.82:0;
-        const raw=Math.max(lateralRubber,deepLateralRubber,driveRubber,brakeRubber,mixedRubber)*speedGate;
+        const lateralRaw=Math.max(lateralRubber,deepLateralRubber,brakeRubber,mixedRubber)*speedGate;
+        const driveRaw=driveRubber*wheelspinSpeedGate;
+        const raw=Math.max(lateralRaw,driveRaw);
         const markLinkedAudio=raw>.02?Math.min(1,.30+raw*.70):0;
-        tireAudioWheels[index]=Math.max(markLinkedAudio,driveAudio*.72*speedGate,brakeAudio*.48*speedGate);
+        tireAudioWheels[index]=Math.max(markLinkedAudio,driveAudio*.80*Math.max(.32,wheelspinSpeedGate),brakeAudio*.48*speedGate);
         brakeAudioWheels[index]=Math.max(brakeAudio*.78*speedGate,brakeRubber>0?Math.min(1,.26+brakeRubber*.74)*speedGate:0);
         if(raw>.035)wheelSlipTime[index]+=safeDt;else wheelSlipTime[index]=0;
         const intenseLateral=deepLateralRubber>.72;
-        const delay=intenseLateral?.18:raw>.86?.36:raw>.62?.56:.84;
+        const intenseDrive=driveRubber>.58&&deepSlip>.58;
+        const delay=intenseDrive?.045:intenseLateral?.18:raw>.86?.36:raw>.62?.56:.84;
         return wheelSlipTime[index]>=delay?raw:0;
       });
       return{front:Math.max(wheels[1]||0,wheels[3]||0),rear:Math.max(wheels[0]||0,wheels[2]||0),wheels,tireAudio:Math.max(lateralAdhesionCue,...tireAudioWheels),brakeAudio:Math.max(...brakeAudioWheels),onRoad:true};
     }
+    if(Math.abs(speed)<3.4){lateralSquealTime=0;brakingSlipTime=0;for(let i=0;i<4;i++)wheelSlipTime[i]=0;return{front:0,rear:0,wheels:[0,0,0,0],tireAudio:0,brakeAudio:0,onRoad:true};}
     const gripUsage=Math.max(0,Number(lateralGripUsage)||0),lateralSqueal=smoothstep01((gripUsage-.98)/.17);
     if(lateralSqueal>.001)lateralSquealTime+=Math.max(0,Math.min(.05,Number(dt)||0));else lateralSquealTime=0;
     const lateralSlip=lateralSquealTime>=LATERAL_MARK_DELAY?lateralSqueal:0;
