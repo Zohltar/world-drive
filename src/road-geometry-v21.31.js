@@ -9,74 +9,72 @@ function smoothstep01(v){const t=clamp01(v);return t*t*(3-2*t);}
 function angleDelta(a,b){return Math.atan2(Math.sin(b-a),Math.cos(b-a));}
 
 export function applyRoadSuperelevationV21_31(profile){
-  if(!Array.isArray(profile)||profile.length<21)return Array.isArray(profile)?profile.map(p=>({...p,roll:0})):[];
+  if(!Array.isArray(profile)||profile.length<25)return Array.isArray(profile)?profile.map(p=>({...p,roll:0})):[];
   const out=profile.map(p=>({...p}));
   const n=out.length;
-  const turn=new Array(n).fill(0);
-  const radius=new Array(n).fill(Infinity);
+  const coarseTurn=new Array(n).fill(0);
+  const coarseRadius=new Array(n).fill(Infinity);
+  const halfSpan=10; // roughly 30 m each side at the normal <=3 m sampling
 
-  for(let i=1;i<n-1;i++){
-    const a=out[i-1],p=out[i],b=out[i+1];
+  // P2.2 — determine curvature from long chords, not point-to-point router jitter.
+  // This makes a visually straight OSRM polyline genuinely flat even if individual
+  // 3 m samples contain tiny heading corrections.
+  for(let i=halfSpan;i<n-halfSpan;i++){
+    const a=out[i-halfSpan],p=out[i],b=out[i+halfSpan];
     const h0=Math.atan2(p.x-a.x,p.z-a.z);
     const h1=Math.atan2(b.x-p.x,b.z-p.z);
     const d=angleDelta(h0,h1);
     const ds=.5*(Math.hypot(p.x-a.x,p.z-a.z)+Math.hypot(b.x-p.x,b.z-p.z));
-    turn[i]=d;
-    radius[i]=Math.abs(d)>1e-5?Math.max(1,ds/Math.abs(d)):Infinity;
+    coarseTurn[i]=d;
+    coarseRadius[i]=Math.abs(d)>.002?Math.max(1,ds/Math.abs(d)):Infinity;
   }
 
   const target=new Array(n).fill(0);
-  const maxBank=1.75*Math.PI/180;
+  const maxBank=1.5*Math.PI/180;
 
-  // V21.31 P2.1 — public-road banking, not racetrack banking.
-  // Samples are usually <=3 m apart. A +/-10 sample window therefore verifies
-  // that the turn persists for roughly 50-60 m before any meaningful bank is added.
-  for(let i=10;i<n-10;i++){
-    let signed=0,absSum=0,same=0;
-    for(let k=-10;k<=10;k++){
-      const d=turn[i+k];
+  for(let i=12;i<n-12;i++){
+    // A real bank candidate must bend consistently over a broad road section.
+    let signed=0,absSum=0,same=0,active=0;
+    for(let k=-4;k<=4;k++){
+      const d=coarseTurn[i+k];
       signed+=d;
       absSum+=Math.abs(d);
+      if(Math.abs(d)>.004){active++;}
     }
-
     const sign=Math.sign(signed);
-    if(!sign||absSum<.035)continue;
-
-    for(let k=-10;k<=10;k++){
-      const d=turn[i+k];
-      if(Math.sign(d)===sign||Math.abs(d)<=.00035)same++;
+    if(!sign||active<5||absSum<.055)continue;
+    for(let k=-4;k<=4;k++){
+      const d=coarseTurn[i+k];
+      if(Math.abs(d)<=.004||Math.sign(d)===sign)same++;
     }
-    const consistency=same/21;
-    if(consistency<.84)continue;
+    const consistency=same/9;
+    if(consistency<.89)continue;
 
     let rSum=0,rWeight=0;
-    for(let k=-6;k<=6;k++){
-      const r=radius[i+k];
-      if(Number.isFinite(r)&&r<3000){
-        const w=7-Math.abs(k);
-        rSum+=r*w;
-        rWeight+=w;
+    for(let k=-3;k<=3;k++){
+      const r=coarseRadius[i+k];
+      if(Number.isFinite(r)&&r<4000){
+        const w=4-Math.abs(k);
+        rSum+=r*w;rWeight+=w;
       }
     }
     if(!rWeight)continue;
     const r=rSum/rWeight;
 
-    // Tight bends are assumed low-speed and remain essentially flat. Banking
-    // appears only on broader, sustained curves and stays deliberately subtle.
-    const tightGate=smoothstep01((r-120)/140);       // 0 <=120 m, full around 260 m
-    const broadGate=1-smoothstep01((r-1000)/700);   // fade again on nearly-straight arcs
-    const persistence=smoothstep01((absSum-.035)/.08);
-    const consistencyGate=smoothstep01((consistency-.82)/.15);
-    const radiusShape=.55+.45*smoothstep01((r-180)/350);
-    const strength=tightGate*broadGate*persistence*consistencyGate*radiusShape;
+    // Public-road envelope: tight/ordinary bends remain nearly flat; banking is
+    // reserved for broad, sustained curves that plausibly carry higher speed.
+    const tightGate=smoothstep01((r-150)/180);       // zero <=150 m, full ~330 m
+    const broadGate=1-smoothstep01((r-1200)/900);   // fade on almost-straight arcs
+    const persistence=smoothstep01((absSum-.055)/.14);
+    const strength=tightGate*broadGate*persistence*smoothstep01((consistency-.86)/.12);
     if(strength<=0)continue;
-
     target[i]=sign*maxBank*strength;
   }
 
-  // Long transitions into/out of the small amount of bank that remains.
+  // Smooth only the bank transition. Afterwards a coarse straightness gate is
+  // re-applied so smoothing can never leak visible bank far into a true straight.
   let bank=target;
-  for(let pass=0;pass<8;pass++){
+  for(let pass=0;pass<6;pass++){
     const next=bank.slice();
     for(let i=2;i<n-2;i++){
       next[i]=(bank[i-2]+2*bank[i-1]+4*bank[i]+2*bank[i+1]+bank[i+2])/10;
@@ -86,8 +84,11 @@ export function applyRoadSuperelevationV21_31(profile){
 
   const routeStart=(out[0]?.cum||0)<=1;
   for(let i=0;i<n;i++){
-    // Less than ~0.08 degree is visually/physically irrelevant: snap it flat.
-    let roll=Math.abs(bank[i])<.0014?0:Math.max(-maxBank,Math.min(maxBank,bank[i]));
+    const longTurn=Math.abs(coarseTurn[i]);
+    // <~1.7° heading change across ~60 m is treated as a real straight.
+    const straight=longTurn<.030;
+    let roll=straight?0:Math.max(-maxBank,Math.min(maxBank,bank[i]));
+    if(Math.abs(roll)<.0012)roll=0;
     if(routeStart&&out[i].cum<=50)roll=0;
     out[i].roll=roll;
   }
