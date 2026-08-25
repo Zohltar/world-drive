@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import {readdirSync} from 'node:fs';
 import {spawnSync} from 'node:child_process';
+import {fileURLToPath} from 'node:url';
 import {createVehicleSystem,validateVehicleProfiles} from '../src/vehicle-system.js';
 import {
   MANIC2,MANIC5,R169_START,R169_END,R132_START,R132_END,
@@ -110,8 +111,9 @@ const qaFiles=readdirSync(qaDir,{withFileTypes:true})
 
 const failures=[];
 for(const file of qaFiles){
-  const result=spawnSync(process.execPath,[new URL(file,qaDir)],{
-    cwd:ROOT,
+  const scriptPath=fileURLToPath(new URL(file,qaDir));
+  const result=spawnSync(process.execPath,[scriptPath],{
+    cwd:fileURLToPath(ROOT),
     encoding:'utf8',
     timeout:30000
   });
