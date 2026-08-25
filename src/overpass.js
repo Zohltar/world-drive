@@ -7,6 +7,7 @@ export function createOverpassClient({
   keyFor,
   endpoints=[
     'https://overpass-api.de/api/interpreter',
+    'https://overpass.kumi.systems/api/interpreter',
     'https://overpass.private.coffee/api/interpreter'
   ]
 }={}) {
@@ -16,6 +17,51 @@ export function createOverpassClient({
   }
 
   const pending=cache.pending || new Map();
+  const endpointCooldownUntil=new Map();
+  const endpointFailures=new Map();
+
+  function nowMs(){return Date.now();}
+
+  function endpointAvailable(endpoint){
+    return (endpointCooldownUntil.get(endpoint)||0)<=nowMs();
+  }
+
+  function markEndpointSuccess(endpoint){
+    endpointFailures.delete(endpoint);
+    endpointCooldownUntil.delete(endpoint);
+  }
+
+  function markEndpointFailure(endpoint){
+    const failures=(endpointFailures.get(endpoint)||0)+1;
+    endpointFailures.set(endpoint,failures);
+
+    // Back off quickly when a public endpoint is unhealthy so directional
+    // prefetches do not hammer the same failing service every few frames.
+    const cooldownMs=Math.min(
+      120000,
+      15000*Math.pow(2,Math.min(3,failures-1))
+    );
+    endpointCooldownUntil.set(endpoint,nowMs()+cooldownMs);
+  }
+
+  function transportUrl(endpoint){
+    if(typeof window==='undefined')return endpoint;
+
+    // Electron installs its own transport by intercepting direct Overpass URLs.
+    if(window.worldDriveDesktop?.isDesktop)return endpoint;
+
+    const host=window.location?.hostname||'';
+    if(host==='localhost'||host==='127.0.0.1'){
+      const proxy=new URL(
+        '/__worlddrive_proxy/overpass',
+        window.location.origin
+      );
+      proxy.searchParams.set('target',endpoint);
+      return proxy.toString();
+    }
+
+    return endpoint;
+  }
 
   async function requestEndpoint({
     endpoint,
@@ -33,7 +79,7 @@ export function createOverpassClient({
     );
 
     try{
-      const response=await fetch(endpoint,{
+      const response=await fetch(transportUrl(endpoint),{
         method:'POST',
         body:new URLSearchParams({data:query}),
         signal:controller.signal,
@@ -61,7 +107,10 @@ export function createOverpassClient({
   }){
     if(!query)throw new Error('Overpass query is required');
 
-    for(const endpoint of endpoints){
+    const available=endpoints.filter(endpointAvailable);
+    const candidates=available.length?available:endpoints.slice(0,1);
+
+    for(const endpoint of candidates){
       if(!shouldContinue())return null;
 
       try{
@@ -74,13 +123,16 @@ export function createOverpassClient({
         });
 
         if(!shouldContinue())return null;
-        if(data)return data;
+        if(data){
+          markEndpointSuccess(endpoint);
+          return data;
+        }
       }catch(error){
-        // AbortError is expected when an Overpass endpoint reaches its timeout
-        // or a caller deliberately cancels an obsolete request. Continue to the
-        // next endpoint silently; genuine HTTP/network failures remain visible.
-        const expectedAbort=
-          error?.name==='AbortError';
+        const expectedAbort=error?.name==='AbortError';
+
+        if(shouldContinue()){
+          markEndpointFailure(endpoint);
+        }
 
         if(shouldContinue()&&!expectedAbort){
           console.warn(
