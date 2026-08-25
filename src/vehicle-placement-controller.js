@@ -33,6 +33,62 @@ export function createVehiclePlacementController({
     return Number.isFinite(Number(value));
   }
 
+  function angleDelta(a,b){
+    return Math.atan2(Math.sin(a-b),Math.cos(a-b));
+  }
+
+  // V21.31 P3.5 — the geographic route start can sit directly on a crest,
+  // switchback hinge or severe grade break. For the initial spawn only, search
+  // a short distance forward for a calmer engineered-road section instead of
+  // forcing a large artificial platform at cumulative distance zero.
+  function stableDepartureCum(){
+    let bestCum=0;
+    let bestScore=Infinity;
+
+    for(let cum=35;cum<=140;cum+=5){
+      const center=roadProfileFrameAtCum(cum);
+      const before=roadProfileFrameAtCum(Math.max(0,cum-12));
+      const after=roadProfileFrameAtCum(cum+12);
+      if(!center||!before||!after)continue;
+      if(
+        !finite(center.px)||!finite(center.pz)||!finite(center.y)||
+        !finite(center.pitch)||!finite(center.angle)||
+        !finite(before.pitch)||!finite(after.pitch)||
+        !finite(before.angle)||!finite(after.angle)
+      )continue;
+
+      const grade=Math.abs(Number(center.pitch));
+      const gradeChange=Math.abs(Number(after.pitch)-Number(before.pitch));
+      const turn=Math.abs(angleDelta(Number(after.angle),Number(before.angle)));
+
+      // Prefer a nearly constant grade and a modestly straight section. A road
+      // does not need to be horizontal; it only needs to avoid an abrupt crest
+      // or hinge directly under the spawned vehicle.
+      const score=
+        grade*1.0+
+        gradeChange*3.2+
+        turn*1.4+
+        cum*0.0008;
+
+      if(score<bestScore){
+        bestScore=score;
+        bestCum=cum;
+      }
+
+      // First clearly good candidate wins so we do not move the user farther
+      // down the route than necessary.
+      if(
+        grade<6*Math.PI/180 &&
+        gradeChange<2.5*Math.PI/180 &&
+        turn<10*Math.PI/180
+      ){
+        return cum;
+      }
+    }
+
+    return bestCum;
+  }
+
   function resetVehicleDynamics({resetGripSolver=false}={}){
     state.speed=0;
     state.steer=0;
@@ -77,7 +133,8 @@ export function createVehiclePlacementController({
   }
 
   function placeAt(frac){
-    const p=routePointAt(frac);
+    const requestedFrac=Math.max(0,Math.min(1,Number(frac)||0));
+    const p=routePointAt(requestedFrac);
     if(!p||!finite(p.x)||!finite(p.z)||!finite(p.angle)){
       throw new Error('Route placement returned non-finite coordinates');
     }
@@ -90,11 +147,13 @@ export function createVehiclePlacementController({
     // route-point placement before the cumulative road-profile correction.
     resetVehicleDynamics({resetGripSolver:false});
 
+    const targetCum=requestedFrac<=1e-6
+      ?stableDepartureCum()
+      :p.cum;
+
     // On stacked mountain roads, horizontal X/Z can overlap multiple branches.
     // roadProfileFrameAtCum() exposes the interpolated centreline as px/pz.
-    // Older placement code incorrectly read x/z here, poisoning absX/absZ with
-    // undefined once the engineered profile became available during startup.
-    const placedFrame=roadProfileFrameAtCum(p.cum);
+    const placedFrame=roadProfileFrameAtCum(targetCum);
     const frameX=placedFrame?.px;
     const frameZ=placedFrame?.pz;
     const frameAngle=placedFrame?.angle;
@@ -124,7 +183,7 @@ export function createVehiclePlacementController({
     );
 
     resetTrailerPose();
-    drawMap(p.cum);
+    drawMap(targetCum);
   }
 
   function resetToRoad(){
