@@ -6,6 +6,7 @@ const state={
   clutchHeld:false,
   engineThrottle:0,
   serviceBrake:0,
+  selectorGear:1,
   clutchShockMultiplier:1,
   sequence:0
 };
@@ -23,6 +24,13 @@ export function publishTransmissionRuntimeState({
   state.serviceBrake=Math.max(0,Math.min(1,Number(serviceBrake)||0));
   state.sequence++;
   return state.sequence;
+}
+
+export function publishTransmissionSelectorGear(value=1){
+  const next=Number(value);
+  state.selectorGear=next<0?-1:next===0?0:1;
+  state.sequence++;
+  return state.selectorGear;
 }
 
 export function publishClutchShockMultiplier(value=1){
@@ -46,6 +54,7 @@ export function resetTransmissionRuntimeState(){
   state.clutchHeld=false;
   state.engineThrottle=0;
   state.serviceBrake=0;
+  state.selectorGear=1;
   state.clutchShockMultiplier=1;
   state.sequence++;
 }
