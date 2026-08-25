@@ -4,7 +4,7 @@ import { antiRollCalibration } from './vehicle-dynamics.js';
 function clamp(v,min,max){return Math.max(min,Math.min(max,Number(v)||0));}
 function smoothstep01(v){const t=clamp(v,0,1);return t*t*(3-2*t);}
 
-export function createAntiRollPresentation(args={}){
+export function createVehiclePresentation(args={}){
   const base=createBaseVehiclePresentation(args);
   const activeVehicleWheels=typeof args.activeVehicleWheels==='function'?args.activeVehicleWheels:()=>[];
   const getDrivingState=typeof args.getDrivingState==='function'?args.getDrivingState:()=>({});
@@ -49,8 +49,6 @@ export function createAntiRollPresentation(args={}){
       const lg=Number(pair.left.contact?.ground);
       const rg=Number(pair.right.contact?.ground);
       const terrainDelta=Number.isFinite(lg)&&Number.isFinite(rg)?Math.abs(lg-rg):0;
-      // Preserve wheel independence on one-wheel bumps/ditches. On relatively
-      // even pavement, the anti-roll bar resists differential suspension travel.
       const terrainProtection=1-smoothstep01((terrainDelta-.025)/.11);
       const k=coupling*terrainProtection;
       if(k<.002)continue;
@@ -60,8 +58,6 @@ export function createAntiRollPresentation(args={}){
       pair.left.wheel.pivot.position.y=nextL;
       pair.right.wheel.pivot.position.y=nextR;
 
-      // Keep the exposed contact telemetry consistent with the visual wheel
-      // travel. Physics grip remains governed by V21.30 P1, not these offsets.
       const lc=pair.left.contact,rc=pair.right.contact;
       if(lc&&rc){
         const lComp=Math.max(0,Number(lc.suspensionCompression)||0);
