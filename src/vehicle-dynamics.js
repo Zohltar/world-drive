@@ -1,9 +1,10 @@
 // World Drive V21.29 — steering + clutch-demand wrapper over frozen V21.27 dynamics.
 //
 // V21.28 removed the duplicate high-speed steering input attenuation. V21.29
-// additionally preserves the RAW propulsion demand before the traction limiter
-// so clutch-dump torque that cannot reach the road can still appear as driven-
-// wheel slip. The actual chassis acceleration remains traction-limited.
+// preserves RAW propulsion demand before the traction limiter so clutch-dump
+// torque that cannot reach the road can appear as driven-wheel slip. The
+// chassis remains grip limited and drops slightly from static to sliding grip
+// once a genuine clutch overtorque breaks adhesion.
 
 export * from './vehicle-dynamics-base.js';
 import {
@@ -20,29 +21,71 @@ function safeNumber(value,fallback){
   return Number.isFinite(n)?n:fallback;
 }
 
-// The base runtime asks for drive force first, then brake force, then runs the
-// per-wheel grip estimator. Keep the latest raw DRIVE request long enough for
-// that grip pass. Normal driving is unchanged because raw demand <= tire limit;
-// only saturation (notably clutch shock) exposes the excess to the tire model.
 let latestRawDriveDemandAccel=0;
+let latestAppliedDriveAccel=0;
+
+function clutchSlidingGripFactor(vehicle={},requested=0,limit=0){
+  const normalAccel=Math.max(.1,Math.abs(safeNumber(vehicle?.accel,0)));
+  const request=Math.abs(safeNumber(requested,0));
+  const cap=Math.max(.1,Math.abs(safeNumber(limit,0)));
+  // Ordinary full-throttle acceleration is left unchanged. A clutch dump is
+  // identifiable because its request exceeds both static traction and the
+  // vehicle's normal engine acceleration by a meaningful margin.
+  if(request<=cap*1.05||request<=normalAccel*1.10)return 1;
+  const layout=vehicleLayout(vehicle);
+  if(vehicle?.vehicleClass==='tractor')return .96;
+  if(layout.drivetrain==='AWD')return .94;
+  if(layout.drivetrain==='FWD')return .88;
+  return .90;
+}
 
 export function longitudinalTractionLimit(args={},out=null){
   const result=baseLongitudinalTractionLimit(args,out);
   if(String(args?.mode||'')==='drive'){
-    latestRawDriveDemandAccel=safeNumber(result?.requested,safeNumber(args?.requestedAccel,0));
+    const requested=safeNumber(result?.requested,safeNumber(args?.requestedAccel,0));
+    latestRawDriveDemandAccel=requested;
+    if(result?.limited){
+      const slideFactor=clutchSlidingGripFactor(args?.vehicle||{},requested,result?.limit);
+      if(slideFactor<1){
+        result.staticTractionAcceleration=result.acceleration;
+        result.slidingGripFactor=slideFactor;
+        result.acceleration*=slideFactor;
+      }
+    }
+    latestAppliedDriveAccel=safeNumber(result?.acceleration,0);
   }
   return result;
 }
 
 function fallbackWheelAxleIndex(index){
-  // Same ordering used by the frozen base dynamics for four-wheel cars:
+  // Four-wheel ordering used by the frozen dynamics:
   // rear-left, front-left, rear-right, front-right.
   if(index===1||index===3)return 0;
   return 1;
 }
 
+function publishWheelSpinTelemetry(result,propulsionDemand,applied){
+  if(typeof globalThis==='undefined')return;
+  const levels=Array.isArray(result?.slip)?result.slip.map(v=>Math.max(0,Number(v)||0)):[];
+  const longitudinalUsage=Array.isArray(result?.longitudinalUsage)
+    ?result.longitudinalUsage.map(v=>Math.max(0,Number(v)||0))
+    :[];
+  const ratio=Math.abs(applied)>1e-6
+    ?Math.abs(propulsionDemand)/Math.abs(applied)
+    :(Math.abs(propulsionDemand)>1e-6?4:1);
+  globalThis.WorldDriveWheelSpinTelemetry={
+    levels,
+    longitudinalUsage,
+    saturationRatio:Number.isFinite(ratio)?ratio:4,
+    driveSign:Math.sign(propulsionDemand||1),
+    requestedAccel:propulsionDemand,
+    appliedAccel:applied,
+    updatedAt:typeof performance!=='undefined'&&performance.now?performance.now():Date.now()
+  };
+}
+
 export function estimateWheelGripUsage(args={},out=null){
-  const applied=safeNumber(args?.propulsionAccel,0);
+  const applied=safeNumber(args?.propulsionAccel,latestAppliedDriveAccel);
   const raw=latestRawDriveDemandAccel;
   const propulsionDemand=
     Math.abs(raw)>Math.abs(applied)+1e-6
@@ -60,12 +103,10 @@ export function estimateWheelGripUsage(args={},out=null){
       ?Math.abs(propulsionDemand)/Math.abs(applied)
       :(Math.abs(propulsionDemand)>1e-6?Infinity:1);
 
-  // V21.29 P3.8 — a clutch dump is much shorter than the ordinary tire-slip
-  // smoothing window. A real driven wheel can angularly accelerate within a few
-  // tens of milliseconds when engine torque suddenly exceeds road capacity, so
-  // do not make a ~95 ms clutch shock disappear behind the normal 11 Hz filter.
-  // This changes ONLY slip telemetry/combined friction usage on driven wheels;
-  // chassis force remains the already traction-limited `applied` value above.
+  // A clutch shock is far shorter than the ordinary tire-slip smoothing
+  // window. Real driven wheels angularly accelerate within a few tens of ms
+  // when engine torque exceeds road capacity, so make longitudinal spin react
+  // immediately while keeping non-driven wheels untouched.
   const ratio=Number.isFinite(result.propulsionSaturationRatio)
     ?result.propulsionSaturationRatio
     :4;
@@ -76,8 +117,8 @@ export function estimateWheelGripUsage(args={},out=null){
     const count=Math.max(4,contacts.length||0);
     const dt=Math.min(.05,Math.max(0,safeNumber(args?.dt,0)));
     const previous=Array.isArray(args?.previousUsage)?args.previousUsage:[];
-    const targetUsage=1.04+.40*overtorque;
-    const transientResponse=58;
+    const targetUsage=1.08+.48*overtorque;
+    const transientResponse=78;
     const step=1-Math.exp(-dt*transientResponse);
 
     for(let i=0;i<count;i++){
@@ -96,13 +137,15 @@ export function estimateWheelGripUsage(args={},out=null){
       if(result.slip){
         result.slip[i]=Math.max(
           result.slip[i]||0,
-          smoothstep01((fastUsage-.96)/.22)
+          smoothstep01((fastUsage-.94)/.20)
         );
       }
     }
   }
 
+  publishWheelSpinTelemetry(result,propulsionDemand,applied);
   latestRawDriveDemandAccel=0;
+  latestAppliedDriveAccel=0;
   return result;
 }
 
