@@ -22,6 +22,14 @@ export function selectTransmissionDriveDirection({
   return current;
 }
 
+function publishEngineInput({throttle=0,clutchHeld=false}={}){
+  if(typeof window==='undefined')return;
+  window.WorldDriveEngineInput={
+    throttle:clamp01(Math.max(0,Number(throttle)||0)),
+    clutchHeld:!!clutchHeld
+  };
+}
+
 export function createTransmissionController(args={}){
   const rawGetSpeed=typeof args.getSpeed==='function'?args.getSpeed:()=>0;
   let bodyLongitudinalSpeed=NaN;
@@ -51,6 +59,7 @@ export function createTransmissionController(args={}){
     driveDirection=1;
     bodyLongitudinalSpeed=NaN;
     lastProfileKey=activeProfileKey();
+    publishEngineInput({throttle:0,clutchHeld:false});
     return baseResetTransmissionState();
   }
 
@@ -91,13 +100,19 @@ export function createTransmissionController(args={}){
       );
 
       const profile=base.activeTransmissionProfile();
-      if(profile?.type==='combustion'&&clutchHeld){
+      const combustion=profile?.type==='combustion';
+      publishEngineInput({
+        throttle:combustion?requestedThrottle:0,
+        clutchHeld:combustion&&clutchHeld
+      });
+
+      if(combustion&&clutchHeld){
         const idle=Math.max(500,Number(profile.idleRpm)||850);
         const redline=Math.max(idle+500,Number(profile.redlineRpm)||6500);
         const pedal=clamp01(Math.max(0,Number(requestedThrottle)||0));
-        const freeRevTarget=idle+(redline-idle)*Math.pow(pedal,.72)*.94;
+        const freeRevTarget=idle+(redline-idle)*Math.pow(pedal,.72)*.97;
         const current=Math.max(idle,Number(args.state?.engineRpm)||idle);
-        const response=freeRevTarget>current?8.5:5.5;
+        const response=freeRevTarget>current?11.5:6.0;
         args.state.engineRpm=current+(freeRevTarget-current)*(1-Math.exp(-Math.max(0,Number(dt)||0)*response));
       }
 
