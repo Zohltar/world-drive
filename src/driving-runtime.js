@@ -4,6 +4,20 @@ import {
   bodyRelativeLongitudinalSpeed
 } from './driving-runtime-base.js';
 
+export function semiAutoClutchReleaseMultiplier({
+  releaseRemaining=0,
+  releaseDuration=.22,
+  requestedThrottle=0,
+  baseThrottle=0,
+  bodyLongitudinalSpeed=0
+}={}){
+  const duration=Math.max(.001,Number(releaseDuration)||.22);
+  const releaseT=Math.max(0,Math.min(1,(Number(releaseRemaining)||0)/duration));
+  const pedal=Math.min(1,Math.abs(Number(requestedThrottle)||0));
+  const opposingTravel=(Number(baseThrottle)>0&&Number(bodyLongitudinalSpeed)<-.25)||(Number(baseThrottle)<0&&Number(bodyLongitudinalSpeed)>.25);
+  return opposingTravel?1+1.25*pedal*releaseT:1+.35*pedal*releaseT;
+}
+
 export function createDrivingRuntime(args={}){
   const originalUpdateTransmission=args.updateTransmission;
   if(typeof originalUpdateTransmission!=='function')return createBaseDrivingRuntime(args);
@@ -48,11 +62,13 @@ export function createDrivingRuntime(args={}){
 
     if(clutchReleaseTimer>0){
       clutchReleaseTimer=Math.max(0,clutchReleaseTimer-Math.max(0,Number(dt)||0));
-      const releaseT=clutchReleaseTimer/.22;
-      const pedal=Math.min(1,Math.abs(Number(requestedThrottle)||0));
-      const opposingTravel=(baseThrottle>0&&bodySpeed<-.25)||(baseThrottle<0&&bodySpeed>.25);
-      const shock=opposingTravel?1+1.25*pedal*releaseT:1+.35*pedal*releaseT;
-      return baseThrottle*shock;
+      return baseThrottle*semiAutoClutchReleaseMultiplier({
+        releaseRemaining:clutchReleaseTimer,
+        releaseDuration:.22,
+        requestedThrottle,
+        baseThrottle,
+        bodyLongitudinalSpeed:bodySpeed
+      });
     }
 
     return baseThrottle;
