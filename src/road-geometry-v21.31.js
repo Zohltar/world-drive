@@ -115,7 +115,11 @@ export function applyRoadSuperelevationV21_31(profile){
     const straight=Math.abs(coarseTurn[i])<.030;
     let roll=straight?0:Math.max(-maxBank,Math.min(maxBank,bank[i]));
     if(Math.abs(roll)<.0012)roll=0;
-    if(routeStart&&out[i].cum<=50)roll=0;
+    if(routeStart){
+      const cum=Number(out[i].cum)||0;
+      if(cum<=50)roll=0;
+      else if(cum<110)roll*=smoothstep01((cum-50)/60);
+    }
     out[i].roll=roll;
   }
   return out;
