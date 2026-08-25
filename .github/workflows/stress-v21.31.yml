@@ -23,6 +23,8 @@ jobs:
           cache: npm
       - name: Apply lazy GLB optimization
         run: node tools/apply-v21-31-lazy-glb.mjs
+      - name: Apply passenger module code split
+        run: node tools/apply-v21-31-code-split.mjs
       - name: Install
         run: npm ci
       - name: Stress QA
@@ -35,12 +37,14 @@ jobs:
         run: npm audit --omit=dev --audit-level=high
       - name: Production build
         run: npm run build
-      - name: Persist validated lazy GLB optimization
+      - name: Production code split QA
+        run: node qa/BUILD_V21_31_CODE_SPLIT_QA.mjs
+      - name: Persist validated startup optimizations
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add src
           if ! git diff --cached --quiet; then
-            git commit -m "Stress V21.31: lazy-load vehicle GLBs on selection"
+            git commit -m "Stress V21.31: code-split passenger GLB systems"
             git push
           fi
