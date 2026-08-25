@@ -54,28 +54,9 @@ function normalizeSubtree(root){
   }
 }
 
-// V21.31 compatibility repair: the extracted instrument cluster looks up
-// #compassCanvas while the current shell still exposes the historical #compass
-// canvas. Reuse that exact canvas under the runtime ID expected by the cluster,
-// while preserving the horizontal HUD sizing previously supplied by #compass CSS.
-function repairCompassCanvasId(){
-  if(typeof document==='undefined')return;
-  if(document.getElementById('compassCanvas'))return;
-  const compass=document.getElementById('compass');
-  if(!compass)return;
-  compass.id='compassCanvas';
-  Object.assign(compass.style,{
-    position:'absolute',
-    inset:'0',
-    width:'100%',
-    height:'100%'
-  });
-}
-
 export function applyWorldDriveVersionBranding(){
   if(typeof document==='undefined')return;
   document.title=WORLD_DRIVE_TITLE;
-  repairCompassCanvasId();
   normalizeSubtree(document.documentElement);
 }
 
@@ -98,7 +79,6 @@ if(typeof window!=='undefined'&&typeof document!=='undefined'){
       for(const node of mutation.addedNodes)normalizeSubtree(node);
     }
 
-    repairCompassCanvasId();
     if(document.title!==WORLD_DRIVE_TITLE)document.title=WORLD_DRIVE_TITLE;
   });
 
