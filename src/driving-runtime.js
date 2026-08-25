@@ -43,6 +43,18 @@ export function wheelspinDynamicGripFactor(drivetrain='AWD',level=0,vehicleClass
   return 1-.10*s;
 }
 
+// Loaded highway tractors have very large low gears. The existing truck power
+// model is correct once road speed rises, but its old low-speed acceleration cap
+// made steep grades behave as if the engine had no crawler gearing. Keep wheel
+// power unchanged and only restore the low-speed torque multiplication envelope.
+export function truckLowSpeedTorqueScale(speedMps=0){
+  const v=Math.max(0,Math.abs(Number(speedMps)||0));
+  if(v>=12)return 1;
+  const t=1-Math.max(0,Math.min(1,(v-4)/8));
+  const smooth=t*t*(3-2*t);
+  return 1+0.34*smooth;
+}
+
 export function createDrivingRuntime(args={}){
   const originalUpdateTransmission=args.updateTransmission;
   const originalLongitudinalTractionLimit=args.longitudinalTractionLimit;
@@ -75,6 +87,13 @@ export function createDrivingRuntime(args={}){
     ...originalTruckTrailerSystem,
     setBrakeLights(){
       return originalTruckTrailerSystem.setBrakeLights?.(lightingState().braking);
+    },
+    driveAccelScaleForSpeed(speedAbs=0){
+      const base=typeof originalTruckTrailerSystem.driveAccelScaleForSpeed==='function'
+        ?Number(originalTruckTrailerSystem.driveAccelScaleForSpeed(speedAbs))||0
+        :1;
+      if(args.getVehicleId?.()!=='semi_6x4')return base;
+      return base*truckLowSpeedTorqueScale(speedAbs);
     }
   }:originalTruckTrailerSystem;
 
