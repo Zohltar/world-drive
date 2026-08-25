@@ -3,6 +3,7 @@ import {
   createDrivingRuntime as createBaseDrivingRuntime,
   bodyRelativeLongitudinalSpeed
 } from './driving-runtime-base.js';
+import { publishTransmissionRuntimeState } from './transmission-runtime-bridge.js';
 
 export function semiAutoClutchReleaseMultiplier({
   releaseRemaining=0,
@@ -33,6 +34,15 @@ export function createDrivingRuntime(args={}){
     const keyboardClutch=!!args.keyboardActionDown?.('clutch');
     const gamepadClutch=!!args.gamepadState?.clutch;
     const clutchHeld=combustion&&(keyboardClutch||gamepadClutch);
+
+    // main.js still exposes the legacy 3-argument transmission facade. Publish
+    // the V21.29-only state through the dedicated bridge before entering it, so
+    // body-relative speed and manual clutch survive that facade unchanged.
+    publishTransmissionRuntimeState({
+      bodyLongitudinalSpeed:bodySpeed,
+      clutchHeld,
+      engineThrottle:requestedThrottle
+    });
 
     const baseThrottle=originalUpdateTransmission(
       dt,
