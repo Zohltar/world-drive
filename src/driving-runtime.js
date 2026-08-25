@@ -25,7 +25,8 @@ export function createDrivingRuntime(args={}){
       requestedThrottle,
       onPavement,
       automaticOverride,
-      bodySpeed
+      bodySpeed,
+      clutchHeld
     );
 
     if(!combustion){
