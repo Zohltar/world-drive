@@ -32,19 +32,74 @@ export function createVehicleAudio(args={}){
       return {...s,tireSquealLevel:0,skidFrontLevel:0,skidRearLevel:0,frontSlipAmount:0,rearSlipAmount:0,chassisSlipAngle:0,lateralGripUsage:0};
     }
   });
+
   let tireAudio=null,tireLevel=0,tirePlayRequested=false;
-  function ensureTireAudio(){
+  let tireCtx=null,tireSource=null,tireHighpass=null,tirePresence=null,tireLowpass=null,tireOutputGain=null;
+
+  function ensureFilteredTireAudio(){
     if(tireAudio||typeof Audio==='undefined')return tireAudio;
+
     tireAudio=new Audio('./assets/audio/tire-squeal.mp3');
-    tireAudio.loop=true;tireAudio.preload='auto';tireAudio.volume=0;
+    tireAudio.loop=true;
+    tireAudio.preload='auto';
+    tireAudio.volume=1;
+
+    const AudioContextClass=globalThis.AudioContext||globalThis.webkitAudioContext;
+    if(!AudioContextClass)return tireAudio;
+
+    try{
+      tireCtx=new AudioContextClass();
+      tireSource=tireCtx.createMediaElementSource(tireAudio);
+
+      // P3.13 — clean the supplied recording instead of changing its dynamics.
+      // The raw sample contains broad-band ambience that reads as wind when the
+      // loop gets loud. Remove the low rumble and upper hiss while preserving the
+      // 1–3 kHz rubber squeal body, with a small presence lift around 1.6 kHz.
+      tireHighpass=tireCtx.createBiquadFilter();
+      tireHighpass.type='highpass';
+      tireHighpass.frequency.value=560;
+      tireHighpass.Q.value=.58;
+
+      tirePresence=tireCtx.createBiquadFilter();
+      tirePresence.type='peaking';
+      tirePresence.frequency.value=1600;
+      tirePresence.Q.value=.85;
+      tirePresence.gain.value=2.5;
+
+      tireLowpass=tireCtx.createBiquadFilter();
+      tireLowpass.type='lowpass';
+      tireLowpass.frequency.value=3800;
+      tireLowpass.Q.value=.62;
+
+      tireOutputGain=tireCtx.createGain();
+      tireOutputGain.gain.value=.0001;
+
+      tireSource.connect(tireHighpass);
+      tireHighpass.connect(tirePresence);
+      tirePresence.connect(tireLowpass);
+      tireLowpass.connect(tireOutputGain);
+      tireOutputGain.connect(tireCtx.destination);
+    }catch(error){
+      console.warn('Filtered tire audio setup failed',error);
+      tireCtx=null;tireOutputGain=null;
+    }
+
     return tireAudio;
   }
+
   function syncTirePlayback(){
-    const audio=ensureTireAudio();if(!audio)return;
+    const audio=ensureFilteredTireAudio();if(!audio)return;
     if(base.enabled){
-      if(audio.paused&&!tirePlayRequested){tirePlayRequested=true;audio.play().catch(()=>{}).finally(()=>{tirePlayRequested=false;});}
-    }else if(!audio.paused){audio.pause();audio.currentTime=0;}
+      if(tireCtx?.state==='suspended')tireCtx.resume().catch(()=>{});
+      if(audio.paused&&!tirePlayRequested){
+        tirePlayRequested=true;
+        audio.play().catch(()=>{}).finally(()=>{tirePlayRequested=false;});
+      }
+    }else if(!audio.paused){
+      audio.pause();audio.currentTime=0;
+    }
   }
+
   function update(){
     base.update();
     const state=originalGetState()||{};
@@ -53,14 +108,34 @@ export function createVehicleAudio(args={}){
     tireLevel+=(target-tireLevel)*(1-Math.exp(-.016*attack));
     if(tireLevel<.001&&target===0)tireLevel=0;
     syncTirePlayback();
+
+    const volume=Math.min(1,.006+.20*tireLevel+.74*Math.pow(tireLevel,1.35));
     if(tireAudio){
-      // Much wider audible range than P3.11. Pre-skid remains subtle because its
-      // level is capped near .11; visible skid rapidly grows toward full volume.
-      tireAudio.volume=Math.min(1,.006+.20*tireLevel+.74*Math.pow(tireLevel,1.35));
       tireAudio.playbackRate=.93+.15*tireLevel;
+      if(tireOutputGain&&tireCtx){
+        tireAudio.volume=1;
+        tireOutputGain.gain.setTargetAtTime(Math.max(.0001,volume),tireCtx.currentTime,.018);
+      }else{
+        // Browser fallback if MediaElementSource/WebAudio is unavailable.
+        tireAudio.volume=volume;
+      }
     }
   }
-  async function wake(){await base.wake();syncTirePlayback();}
-  async function setEnabled(enabled){await base.setEnabled(enabled);syncTirePlayback();if(!enabled&&tireAudio)tireAudio.volume=0;}
+
+  async function wake(){
+    await base.wake();
+    syncTirePlayback();
+    if(tireCtx?.state==='suspended')await tireCtx.resume().catch(()=>{});
+  }
+
+  async function setEnabled(enabled){
+    await base.setEnabled(enabled);
+    syncTirePlayback();
+    if(!enabled){
+      if(tireAudio)tireAudio.volume=tireOutputGain?1:0;
+      if(tireOutputGain&&tireCtx)tireOutputGain.gain.setTargetAtTime(.0001,tireCtx.currentTime,.018);
+    }
+  }
+
   return {...base,update,wake,setEnabled,enable:()=>setEnabled(true),disable:()=>setEnabled(false),resume:wake,toggle:()=>setEnabled(!base.enabled),get enabled(){return base.enabled;},get ready(){return base.ready;}};
 }
