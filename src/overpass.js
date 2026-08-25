@@ -19,11 +19,14 @@ export function createOverpassClient({
   const pending=cache.pending || new Map();
   const endpointCooldownUntil=new Map();
   const endpointFailures=new Map();
+  const MIN_REQUEST_GAP_MS=900;
   let globalCooldownUntil=0;
   let networkTail=Promise.resolve();
+  let lastNetworkRequestAt=0;
   let lastAllMirrorsLogAt=0;
 
   function nowMs(){return Date.now();}
+  function delay(ms){return new Promise(resolve=>setTimeout(resolve,ms));}
 
   function endpointAvailable(endpoint){
     return (endpointCooldownUntil.get(endpoint)||0)<=nowMs();
@@ -57,6 +60,13 @@ export function createOverpassClient({
     console.info('OSM Overpass temporarily unavailable; cached data and driving continue');
   }
 
+  async function paceNextRequest(){
+    const elapsed=nowMs()-lastNetworkRequestAt;
+    const waitMs=Math.max(0,MIN_REQUEST_GAP_MS-elapsed);
+    if(waitMs>0)await delay(waitMs);
+    lastNetworkRequestAt=nowMs();
+  }
+
   function transportUrl(endpoint){
     if(typeof window==='undefined')return endpoint;
 
@@ -83,6 +93,11 @@ export function createOverpassClient({
     onControllerStart,
     onControllerEnd
   }){
+    // Be deliberately polite to public Overpass infrastructure. This applies to
+    // normal requests and mirror failover alike, so a failing mirror cannot make
+    // World Drive immediately hammer the next one in the same burst.
+    await paceNextRequest();
+
     const controller=new AbortController();
     onControllerStart?.(controller);
 
@@ -192,9 +207,10 @@ export function createOverpassClient({
     if(!query)return Promise.reject(new Error('Overpass query is required'));
     void label;
 
-    // Overpass public instances dislike bursts. Hydro, road metadata, scenery
-    // and signs therefore share one network lane. Cache hits never enter this
-    // queue, and driving/rendering never waits on it.
+    // Public Overpass instances dislike bursts. Hydro, road metadata, scenery
+    // and signs therefore share one network lane, and each outbound request is
+    // spaced by MIN_REQUEST_GAP_MS. Cache hits never enter this queue, and the
+    // driving/rendering loop never waits on it.
     const run=networkTail.then(
       ()=>fetchRawSerial({
         query,
