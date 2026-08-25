@@ -20,6 +20,8 @@ export function createOverpassClient({
   const endpointCooldownUntil=new Map();
   const endpointFailures=new Map();
   let globalCooldownUntil=0;
+  let networkTail=Promise.resolve();
+  let lastAllMirrorsLogAt=0;
 
   function nowMs(){return Date.now();}
 
@@ -46,6 +48,13 @@ export function createOverpassClient({
 
   function allEndpointsCoolingDown(){
     return endpoints.every(endpoint=>!endpointAvailable(endpoint));
+  }
+
+  function noteAllMirrorsUnavailable(){
+    const now=nowMs();
+    if(now-lastAllMirrorsLogAt<30000)return;
+    lastAllMirrorsLogAt=now;
+    console.info('OSM Overpass temporarily unavailable; cached data and driving continue');
   }
 
   function transportUrl(endpoint){
@@ -115,24 +124,21 @@ export function createOverpassClient({
     }
   }
 
-  async function fetchRaw({
+  async function fetchRawSerial({
     query,
-    timeoutMs=7500,
-    label='OSM',
-    shouldContinue=()=>true,
-    onControllerStart=null,
-    onControllerEnd=null
+    timeoutMs,
+    shouldContinue,
+    onControllerStart,
+    onControllerEnd
   }){
-    if(!query)throw new Error('Overpass query is required');
-
-    // If every mirror just failed, do not let hydro/scenery/sign prefetch loops
-    // immediately restart the whole mirror cascade. Cached cells still return
-    // before this function is reached.
+    // Re-check health only when this queued request actually gets its turn.
+    // A request ahead of it may just have discovered that a mirror is down.
     if(globalCooldownUntil>nowMs())return null;
 
     const available=endpoints.filter(endpointAvailable);
     if(!available.length){
       globalCooldownUntil=Math.max(globalCooldownUntil,nowMs()+15000);
+      noteAllMirrorsUnavailable();
       return null;
     }
 
@@ -157,35 +163,57 @@ export function createOverpassClient({
         }
       }catch(error){
         const expectedAbort=error?.name==='AbortError';
-
         if(shouldContinue())markEndpointFailure(endpoint);
 
-        // Proxy-reported upstream outages are expected operational failures.
-        // Keep one compact diagnostic per attempted mirror instead of dumping
-        // a stack trace for every hydro/scenery directional prefetch.
-        if(shouldContinue()&&!expectedAbort){
-          if(error?.softProxyFailure){
-            console.info(
-              `${label} Overpass mirror unavailable`,
-              endpoint,
-              error.status||''
-            );
-          }else{
-            console.warn(
-              `${label} Overpass failed`,
-              endpoint,
-              error
-            );
-          }
+        // Soft proxy failures are expected service-health events, not game
+        // errors. Do not dump one stack trace per hydro/scenery/sign request.
+        if(shouldContinue()&&!expectedAbort&&!error?.softProxyFailure){
+          console.warn('Overpass request failed',endpoint,error);
         }
       }
     }
 
     if(attempted>0&&allEndpointsCoolingDown()){
       globalCooldownUntil=nowMs()+30000;
+      noteAllMirrorsUnavailable();
     }
 
     return null;
+  }
+
+  function fetchRaw({
+    query,
+    timeoutMs=7500,
+    label='OSM', // retained for API compatibility / diagnostics callers
+    shouldContinue=()=>true,
+    onControllerStart=null,
+    onControllerEnd=null
+  }){
+    if(!query)return Promise.reject(new Error('Overpass query is required'));
+    void label;
+
+    // Overpass public instances dislike bursts. Hydro, road metadata, scenery
+    // and signs therefore share one network lane. Cache hits never enter this
+    // queue, and driving/rendering never waits on it.
+    const run=networkTail.then(
+      ()=>fetchRawSerial({
+        query,
+        timeoutMs,
+        shouldContinue,
+        onControllerStart,
+        onControllerEnd
+      }),
+      ()=>fetchRawSerial({
+        query,
+        timeoutMs,
+        shouldContinue,
+        onControllerStart,
+        onControllerEnd
+      })
+    );
+
+    networkTail=run.catch(()=>null);
+    return run;
   }
 
   async function fetchCached({
