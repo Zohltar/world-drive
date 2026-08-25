@@ -1,6 +1,7 @@
-// World Drive V21.31 — engineered road geometry over the proven sampling/query base.
-// The V21.30 module still supplies contiguous route sampling and mesh/query helpers,
-// but V21.31 owns the final centreline height and cross-slope.
+// World Drive V21.31 — engineered road geometry over the proven mesh/query base.
+// V21.31 owns route sampling, final centreline height and cross-slope. The base
+// module remains responsible only for mesh builders, active-profile indexing and
+// surface queries.
 
 import { createRoadGeometrySystem as createBaseRoadGeometrySystem } from './road-geometry-base.js';
 
@@ -8,15 +9,65 @@ function clamp01(v){return Math.max(0,Math.min(1,Number(v)||0));}
 function smoothstep01(v){const t=clamp01(v);return t*t*(3-2*t);}
 function angleDelta(a,b){return Math.atan2(Math.sin(b-a),Math.cos(b-a));}
 
-// P3.2 — explicitly discard the legacy terrain-following Y/roll returned by
-// road-geometry-base. The base profile is now used only as a route sampler.
-export function stripLegacyTerrainAuthorityV21_31(profile,{terrainAbs}={}){
+// Stress/V21.31 — sample only route geometry. The legacy base buildProfile()
+// also computed terrain-following Y, bridge smoothing and ±12° terrain roll,
+// all of which V21.31 immediately discarded. Keeping sampling here removes that
+// duplicate DEM/camber work while preserving the exact 3 m corridor density.
+export function sampleRoutePlanarV21_31({getState,nearestRoute}={}){
+  const state=typeof getState==='function'?(getState()||{}):{};
+  const absX=Number(state.absX)||0,absZ=Number(state.absZ)||0;
+  const routeLength=Math.max(0,Number(state.routeLength)||0);
+  const segments=Array.isArray(state.segments)?state.segments:[];
+  if(!segments.length||routeLength<=0)return [];
+
+  const nr=typeof nearestRoute==='function'?nearestRoute(absX,absZ):null;
+  const centerCum=Number(nr?.cum)||0;
+  const minCum=Math.max(0,centerCum-1800);
+  const maxCum=Math.min(routeLength,centerCum+3600);
+  const raw=[];
+  let lastIncluded=null;
+
+  for(const seg of segments){
+    const segStart=Number(seg.cum)||0;
+    const segLen=Math.max(0,Number(seg.len)||0);
+    const segEnd=segStart+segLen;
+    if(segEnd<minCum||segStart>maxCum)continue;
+    const t0=segLen>0?Math.max(0,(minCum-segStart)/segLen):0;
+    const t1=segLen>0?Math.min(1,(maxCum-segStart)/segLen):1;
+    if(t1<t0)continue;
+    const sampledLen=Math.max(0,segLen*(t1-t0));
+    const steps=Math.max(1,Math.ceil(sampledLen/3));
+    for(let k=0;k<steps;k++){
+      const u=k/steps,t=t0+(t1-t0)*u;
+      const x=Number(seg.ax)+(Number(seg.bx)-Number(seg.ax))*t;
+      const z=Number(seg.az)+(Number(seg.bz)-Number(seg.az))*t;
+      const cum=segStart+segLen*t;
+      if(!Number.isFinite(x)||!Number.isFinite(z))continue;
+      if(!raw.length||Math.hypot(x-raw[raw.length-1].x,z-raw[raw.length-1].z)>.4)raw.push({x,z,cum,y:0,roll:0});
+    }
+    lastIncluded={seg,t:t1};
+  }
+
+  if(lastIncluded&&raw.length){
+    const {seg,t}=lastIncluded;
+    const x=Number(seg.ax)+(Number(seg.bx)-Number(seg.ax))*t;
+    const z=Number(seg.az)+(Number(seg.bz)-Number(seg.az))*t;
+    const cum=(Number(seg.cum)||0)+(Number(seg.len)||0)*t;
+    if(Number.isFinite(x)&&Number.isFinite(z)&&Math.hypot(x-raw[raw.length-1].x,z-raw[raw.length-1].z)>.05)raw.push({x,z,cum,y:0,roll:0});
+  }
+  return raw;
+}
+
+// Explicitly discard any legacy terrain authority. Terrain is intentionally NOT
+// sampled here: horizontal smoothing changes X/Z immediately afterward, so the
+// previous pre-smoothing DEM lookup was pure duplicate work.
+export function stripLegacyTerrainAuthorityV21_31(profile){
   if(!Array.isArray(profile))return [];
   return profile.map(p=>({
     x:Number(p.x)||0,
     z:Number(p.z)||0,
     cum:Number(p.cum)||0,
-    y:typeof terrainAbs==='function' ? terrainAbs(Number(p.x)||0,Number(p.z)||0) : (Number(p.y)||0),
+    y:Number(p.y)||0,
     roll:0
   }));
 }
@@ -113,7 +164,7 @@ export function engineerVerticalProfileV21_31(source,{bridgeHeightAtCum,bridgeMa
 
 export function smoothRoadProfileV21_31(profile,{terrainAbs,bridgeHeightAtCum,bridgeManager}={}){
   if(!Array.isArray(profile)||profile.length<5)return Array.isArray(profile)?profile.map(p=>({...p,roll:0})):[];
-  const source=stripLegacyTerrainAuthorityV21_31(profile,{terrainAbs});
+  const source=stripLegacyTerrainAuthorityV21_31(profile);
   let xy=source.map(p=>({x:p.x,z:p.z}));
   for(let pass=0;pass<2;pass++){
     const next=xy.map(p=>({...p}));
@@ -142,8 +193,6 @@ export function smoothRoadProfileV21_31(profile,{terrainAbs,bridgeHeightAtCum,br
   const START_BLEND_END=115;
   const rounded=source.map((p,i)=>{
     let y=heights[i];
-    // P3.3: the previous wrapper held 0..28 m flat and then jumped directly to
-    // the engineered grade. Blend continuously instead, including first slope.
     if(routeStart){
       if(p.cum<=START_FLAT)y=startY;
       else if(p.cum<START_BLEND_END){
@@ -164,5 +213,13 @@ export function smoothRoadProfileV21_31(profile,{terrainAbs,bridgeHeightAtCum,br
 
 export function createRoadGeometrySystem(args={}){
   const base=createBaseRoadGeometrySystem(args);
-  return Object.freeze({...base,buildProfile(){return smoothRoadProfileV21_31(base.buildProfile(),args);}});
+  return Object.freeze({
+    ...base,
+    buildProfile(){
+      // Keep base mesh/query state (notably worldOffset) synchronized, but do
+      // not invoke its legacy terrain/camber profile builder.
+      base.syncState?.();
+      return smoothRoadProfileV21_31(sampleRoutePlanarV21_31(args),args);
+    }
+  });
 }
