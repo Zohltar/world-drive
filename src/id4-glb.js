@@ -22,6 +22,7 @@ export function createId4GlbSystem({
   let swapped=false;
   let ready=false;
   let loadError=null;
+  let loadStarted=false;
   let root=null;
 
   const brakeLamps=[];
@@ -184,6 +185,8 @@ export function createId4GlbSystem({
   }
 
   async function load(){
+    if(loadStarted)return;
+    loadStarted=true;
     try{
       const {GLTFLoader}=await import('three/addons/loaders/GLTFLoader.js'),loader=new GLTFLoader(),url=new URL('./assets/id4_2021_detailed.glb',import.meta.url).href,gltf=await loader.loadAsync(url);root=gltf.scene||gltf.scenes?.[0];if(!root)throw new Error('ID.4 detailed GLB sans scène');
       root.name='volkswagen_id4_2021_detailed_root';root.traverse(obj=>{if(obj?.isMesh||obj?.isSkinnedMesh){obj.castShadow=true;obj.receiveShadow=true;for(const mat of (Array.isArray(obj.material)?obj.material:[obj.material])){if(!mat)continue;mat.dithering=true;if(mat.transparent)mat.depthWrite=false;}}});
@@ -191,8 +194,7 @@ export function createId4GlbSystem({
     }catch(error){loadError=error;ready=false;console.warn('Detailed ID.4 GLB unavailable; procedural ID.4 fallback kept.',error);applyVisibility();}
   }
 
-  function setActive(value){requestedActive=!!value;if(!requestedActive){wheelSpin=0;setLampState({});}applyVisibility();}
+  function setActive(value){requestedActive=!!value;if(requestedActive&&!ready&&!loadStarted)load();if(!requestedActive){wheelSpin=0;setLampState({});}applyVisibility();}
   function update(dt,{speed=0,steerAngle=0,braking=false,reversing=false,nightLevel=0}={}){if(!requestedActive||!ready||vehicleSystem?.activeId!==vehicleId)return;applyVisibility();animateWheels(dt,speed,steerAngle);setLampState({braking,reversing,nightLevel});}
-  load();
   return {setActive,update,get ready(){return ready;},get loadError(){return loadError;},get active(){return requestedActive&&ready;},host};
 }

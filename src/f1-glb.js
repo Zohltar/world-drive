@@ -23,6 +23,7 @@ export function createF1GlbSystem({
   let swapped=false;
   let ready=false;
   let loadError=null;
+  let loadStarted=false;
   let root=null;
   let wheelSpin=0;
   let rearBlinkTimer=0;
@@ -286,6 +287,8 @@ export function createF1GlbSystem({
   }
 
   async function load(){
+    if(loadStarted)return;
+    loadStarted=true;
     try{
       const {GLTFLoader}=await import('three/addons/loaders/GLTFLoader.js');
       const loader=new GLTFLoader();
@@ -326,7 +329,7 @@ export function createF1GlbSystem({
   }
 
   function setActive(value){
-    requestedActive=!!value;
+    requestedActive=!!value;if(requestedActive&&!ready&&!loadStarted)load();
     if(!requestedActive){
       wheelSpin=0;
       rearBlinkTimer=0;
@@ -341,9 +344,6 @@ export function createF1GlbSystem({
     animateWheels(dt,speed,steerAngle);
     updateRearBrakeReverseLamp(dt,{braking,reversing});
   }
-
-  load();
-
   return {
     setActive,
     update,

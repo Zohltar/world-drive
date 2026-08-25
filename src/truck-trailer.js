@@ -486,6 +486,7 @@ export function createTruckTrailerSystem({
 
   let truckAssetReady=false;
   let truckAssetLoadError=null;
+  let truckAssetLoadStarted=false;
 
   // V21.24.47 — GPU-transform wheel animation for the detailed Saia GLB.
   // The source model stores several wheels inside shared meshes, so during the
@@ -775,7 +776,10 @@ export function createTruckTrailerSystem({
 
   // Load the new tractor+trailer asset once, split it into two visual bodies,
   // then let the existing articulation system drive each body independently.
-  (async()=>{
+  function loadTruckAsset(){
+    if(truckAssetLoadStarted)return;
+    truckAssetLoadStarted=true;
+    (async()=>{
     try{
       const {GLTFLoader}=await import('three/addons/loaders/GLTFLoader.js');
       const loader=new GLTFLoader();
@@ -795,6 +799,7 @@ export function createTruckTrailerSystem({
       console.warn('Saia truck/trailer GLB unavailable; procedural fallback kept.',error);
     }
   })();
+  }
 
   const hiddenBodyState=new Map();
   const hiddenWheelState=new Map();
@@ -856,6 +861,7 @@ export function createTruckTrailerSystem({
 
   function setActive(next,{absX=0,absZ=0,heading=0}={}){
     const should=!!next;
+    if(should&&!truckAssetReady&&!truckAssetLoadStarted)loadTruckAsset();
     if(should===active){
       if(should){
         applyTractorVisual();

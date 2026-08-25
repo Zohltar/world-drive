@@ -21,6 +21,7 @@ export function createCountachGlbSystem({
   let swapped=false;
   let ready=false;
   let loadError=null;
+  let loadStarted=false;
   let root=null;
 
   let leftFrontBone=null;
@@ -255,6 +256,8 @@ export function createCountachGlbSystem({
   }
 
   async function load(){
+    if(loadStarted)return;
+    loadStarted=true;
     try{
       const {GLTFLoader}=await import('three/addons/loaders/GLTFLoader.js');
       const loader=new GLTFLoader();
@@ -320,7 +323,7 @@ export function createCountachGlbSystem({
   }
 
   function setActive(value){
-    requestedActive=!!value;
+    requestedActive=!!value;if(requestedActive&&!ready&&!loadStarted)load();
     if(!requestedActive){
       wheelSpin=0;
       headYaw=0;
@@ -463,9 +466,6 @@ export function createCountachGlbSystem({
     }
     return true;
   }
-
-  load();
-
   return {
     setActive,
     update,

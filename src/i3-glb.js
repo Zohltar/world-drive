@@ -19,6 +19,7 @@ export function createI3GlbSystem({
   let swapped=false;
   let ready=false;
   let loadError=null;
+  let loadStarted=false;
   let root=null;
   let wheelSpin=0;
 
@@ -411,6 +412,8 @@ export function createI3GlbSystem({
   }
 
   async function load(){
+    if(loadStarted)return;
+    loadStarted=true;
     try{
       const {GLTFLoader}=await import('three/addons/loaders/GLTFLoader.js');
       const loader=new GLTFLoader();
@@ -434,12 +437,10 @@ export function createI3GlbSystem({
     }
   }
 
-  function setActive(value){requestedActive=!!value;if(!requestedActive)wheelSpin=0;applyVisibility();}
+  function setActive(value){requestedActive=!!value;if(requestedActive&&!ready&&!loadStarted)load();if(!requestedActive)wheelSpin=0;applyVisibility();}
   function update(dt,{speed=0,steerAngle=0,braking=false,reversing=false,nightLevel=0}={}){
     if(!requestedActive||!ready||vehicleSystem?.activeId!==vehicleId)return;
     applyVisibility();animateWheels(dt,speed,steerAngle);updateLights({braking,reversing,nightLevel});
   }
-
-  load();
   return {setActive,update,get ready(){return ready;},get loadError(){return loadError;},get active(){return requestedActive&&ready;},host};
 }

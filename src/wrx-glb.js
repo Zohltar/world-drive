@@ -23,6 +23,7 @@ export function createWrxGlbSystem({
   let swapped=false;
   let ready=false;
   let loadError=null;
+  let loadStarted=false;
   let root=null;
   let wheelSpin=0;
 
@@ -522,6 +523,8 @@ export function createWrxGlbSystem({
   }
 
   async function load(){
+    if(loadStarted)return;
+    loadStarted=true;
     try{
       const {GLTFLoader}=await import('three/addons/loaders/GLTFLoader.js');
       const loader=new GLTFLoader();
@@ -566,7 +569,7 @@ export function createWrxGlbSystem({
   }
 
   function setActive(value){
-    requestedActive=!!value;
+    requestedActive=!!value;if(requestedActive&&!ready&&!loadStarted)load();
     if(!requestedActive){
       wheelSpin=0;
       setRearLights(false,false,0);
@@ -582,9 +585,6 @@ export function createWrxGlbSystem({
     setRearLights(braking,reversing,nightLevel);
     setHeadlights(nightLevel);
   }
-
-  load();
-
   return {
     setActive,
     update,
