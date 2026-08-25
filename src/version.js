@@ -4,12 +4,14 @@
 // explicit "dev" channel so local testing cannot be confused with the current
 // stable baseline. Stable releases use the explicit "stable" channel.
 
-export const WORLD_DRIVE_VERSION='21.29';
-export const WORLD_DRIVE_CHANNEL='dev';
+export const WORLD_DRIVE_VERSION='21.31';
+export const WORLD_DRIVE_CHANNEL='stable';
 export const WORLD_DRIVE_VERSION_LABEL=`V${WORLD_DRIVE_VERSION} ${WORLD_DRIVE_CHANNEL}`;
 export const WORLD_DRIVE_TITLE=`World Drive ${WORLD_DRIVE_VERSION_LABEL}`;
 
 const LEGACY_VERSION_PATTERNS=[
+  /V21\.29\s+dev/g,
+  /V21\.29/g,
   /V21\.28\s+dev/g,
   /V21\.28/g,
   /V21\.27\s+stable/g,
