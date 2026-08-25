@@ -72,6 +72,17 @@ function roadLateralFrame(points,i){
   const n0={x:-incoming.z,z:incoming.x};
   const n1={x:-outgoing.z,z:outgoing.x};
 
+  // V21.31 P3.4 — bevel severe hairpins instead of stretching one mitered row
+  // across the inside of the corner. The previous 1.48x miter cap still created
+  // large diagonal asphalt/shoulder quads on Yungas-style switchbacks. Once the
+  // heading changes by more than ~95 degrees, use the outgoing cross-section at
+  // normal width. This trades a tiny local bevel for a guaranteed bounded join.
+  const headingDot=Math.max(-1,Math.min(1,incoming.x*outgoing.x+incoming.z*outgoing.z));
+  const severeHairpin=headingDot<Math.cos(95*Math.PI/180);
+  if(severeHairpin){
+    return {x:n1.x,z:n1.z,scale:1,bevel:true};
+  }
+
   let mx=n0.x+n1.x;
   let mz=n0.z+n1.z;
   const ml=Math.hypot(mx,mz);
@@ -79,7 +90,7 @@ function roadLateralFrame(points,i){
   // Near a 180° reversal the mathematical miter is undefined. A bounded
   // outgoing normal is visually far safer than an enormous spike.
   if(ml<0.18){
-    return {x:n1.x,z:n1.z,scale:1};
+    return {x:n1.x,z:n1.z,scale:1,bevel:true};
   }
 
   mx/=ml;
@@ -93,11 +104,11 @@ function roadLateralFrame(points,i){
   const denom=Math.abs(mx*n1.x+mz*n1.z);
   let scale=denom>0.15?1/denom:1;
 
-  // 90° corners naturally want ~1.414x. Allow that, but never permit the huge
-  // miters produced by switchbacks approaching 180°.
-  scale=Math.max(0.92,Math.min(1.48,scale));
+  // Normal curves can keep a miter, but V21.31 lowers the maximum because the
+  // large old 1.48x allowance was unnecessary once extreme joins are beveled.
+  scale=Math.max(0.94,Math.min(1.30,scale));
 
-  return {x:mx*scale,z:mz*scale,scale};
+  return {x:mx*scale,z:mz*scale,scale,bevel:false};
 }
 
 function buildLateralBand(points,leftOffset,rightOffset,material,yOffset=0){
@@ -564,17 +575,24 @@ function roadProfileCellList(cx,cz,create=false){
 }
 
 function rebuildRoadProfileSpatialIndex(){
-  roadProfileSpatialIndex=new Map();
-  roadProfileVisitMarks=new Uint32Array(Math.max(0,activeRoadProfile.length-1));
+  roadProfileSpatialIndex.clear();
+  const segmentCount=Math.max(0,activeRoadProfile.length-1);
+  if(roadProfileVisitMarks.length<segmentCount){
+    roadProfileVisitMarks=new Uint32Array(segmentCount);
+  }else{
+    roadProfileVisitMarks.fill(0,0,segmentCount);
+  }
   roadProfileVisitStamp=1;
 
-  for(let i=0;i<activeRoadProfile.length-1;i++){
-    const a=activeRoadProfile[i],b=activeRoadProfile[i+1];
-    const minCx=Math.floor(Math.min(a.x,b.x)/ROAD_PROFILE_INDEX_CELL);
-    const maxCx=Math.floor(Math.max(a.x,b.x)/ROAD_PROFILE_INDEX_CELL);
-    const minCz=Math.floor(Math.min(a.z,b.z)/ROAD_PROFILE_INDEX_CELL);
-    const maxCz=Math.floor(Math.max(a.z,b.z)/ROAD_PROFILE_INDEX_CELL);
-
+  for(let i=0;i<segmentCount;i++){
+    const a=activeRoadProfile[i];
+    const b=activeRoadProfile[i+1];
+    const minX=Math.min(a.x,b.x),maxX=Math.max(a.x,b.x);
+    const minZ=Math.min(a.z,b.z),maxZ=Math.max(a.z,b.z);
+    const minCx=Math.floor(minX/ROAD_PROFILE_INDEX_CELL);
+    const maxCx=Math.floor(maxX/ROAD_PROFILE_INDEX_CELL);
+    const minCz=Math.floor(minZ/ROAD_PROFILE_INDEX_CELL);
+    const maxCz=Math.floor(maxZ/ROAD_PROFILE_INDEX_CELL);
     for(let cx=minCx;cx<=maxCx;cx++){
       for(let cz=minCz;cz<=maxCz;cz++){
         roadProfileCellList(cx,cz,true).push(i);
@@ -583,175 +601,136 @@ function rebuildRoadProfileSpatialIndex(){
   }
 }
 
-function evaluateRoadProfileSegmentInto(i,x,z,state){
-  const a=activeRoadProfile[i],b=activeRoadProfile[i+1];
-  if(!a||!b)return;
-  const vx=b.x-a.x,vz=b.z-a.z,wx=x-a.x,wz=z-a.z;
-  const vv=vx*vx+vz*vz||1,t=Math.max(0,Math.min(1,(wx*vx+wz*vz)/vv));
-  const px=a.x+t*vx,pz=a.z+t*vz,dx=x-px,dz=z-pz,d2=dx*dx+dz*dz;
-  // Match the legacy full scan exactly on X/Z ties: earlier route segment wins.
-  // This matters on stacked switchbacks that can overlap almost perfectly in plan.
-  if(d2>state.bd+1e-12)return;
-  if(Math.abs(d2-state.bd)<=1e-12&&state.found&&i>=state.index)return;
-  const horizontal=Math.sqrt(vx*vx+vz*vz)||1;
-  state.found=true;
-  state.bd=d2;
-  state.y=a.y+(b.y-a.y)*t;
-  state.angle=Math.atan2(vx,vz);
-  state.pitch=Math.atan2(b.y-a.y,horizontal);
-  state.roll=(a.roll||0)+((b.roll||0)-(a.roll||0))*t;
-  state.px=px;state.pz=pz;state.index=i;state.t=t;state.distance=Math.sqrt(d2);
+function setActiveRoadProfile(profile){
+  activeRoadProfile.length=0;
+  if(Array.isArray(profile))activeRoadProfile.push(...profile);
+  rebuildRoadProfileSpatialIndex();
+  return activeRoadProfile;
 }
 
-function roadFrameAt(x,z,out=null){
-  const segmentCount=activeRoadProfile.length-1;
-  if(segmentCount<=0)return null;
+function clearActiveRoadProfile(){
+  activeRoadProfile.length=0;
+  roadProfileSpatialIndex.clear();
+}
 
-  const state=roadFrameSearchState;
-  state.found=false;
-  state.bd=Infinity;
-
-  const cx=Math.floor(x/ROAD_PROFILE_INDEX_CELL);
-  const cz=Math.floor(z/ROAD_PROFILE_INDEX_CELL);
-
+function collectRoadProfileCandidates(x,z,radius=20){
+  const minCx=Math.floor((x-radius)/ROAD_PROFILE_INDEX_CELL);
+  const maxCx=Math.floor((x+radius)/ROAD_PROFILE_INDEX_CELL);
+  const minCz=Math.floor((z-radius)/ROAD_PROFILE_INDEX_CELL);
+  const maxCz=Math.floor((z+radius)/ROAD_PROFILE_INDEX_CELL);
+  const segmentCount=Math.max(0,activeRoadProfile.length-1);
+  if(segmentCount<=0)return [];
   roadProfileVisitStamp=(roadProfileVisitStamp+1)>>>0;
   if(roadProfileVisitStamp===0){
-    roadProfileVisitMarks.fill(0);
+    roadProfileVisitMarks.fill(0,0,segmentCount);
     roadProfileVisitStamp=1;
   }
   const stamp=roadProfileVisitStamp;
-
-  for(let dx=-1;dx<=1;dx++){
-    const column=roadProfileSpatialIndex.get(cx+dx);
-    if(!column)continue;
-    for(let dz=-1;dz<=1;dz++){
-      const list=column.get(cz+dz);
+  const out=[];
+  for(let cx=minCx;cx<=maxCx;cx++){
+    for(let cz=minCz;cz<=maxCz;cz++){
+      const list=roadProfileCellList(cx,cz,false);
       if(!list)continue;
-      for(let k=0;k<list.length;k++){
-        const i=list[k];
-        if(roadProfileVisitMarks[i]===stamp)continue;
+      for(const i of list){
+        if(i<0||i>=segmentCount||roadProfileVisitMarks[i]===stamp)continue;
         roadProfileVisitMarks[i]=stamp;
-        evaluateRoadProfileSegmentInto(i,x,z,state);
+        out.push(i);
       }
     }
   }
+  return out;
+}
 
-  if(!(state.found&&state.bd<=ROAD_PROFILE_INDEX_CELL*ROAD_PROFILE_INDEX_CELL)){
-    for(let i=0;i<segmentCount;i++){
-      if(roadProfileVisitMarks[i]===stamp)continue;
-      evaluateRoadProfileSegmentInto(i,x,z,state);
+function roadFrameAt(x,z,searchRadius=22){
+  if(activeRoadProfile.length<2)return null;
+  const candidates=collectRoadProfileCandidates(x,z,searchRadius);
+  let bd=Infinity,best=null;
+  for(const i of candidates){
+    const a=activeRoadProfile[i],b=activeRoadProfile[i+1];
+    const vx=b.x-a.x,vz=b.z-a.z,wx=x-a.x,wz=z-a.z;
+    const vv=vx*vx+vz*vz||1;
+    const t=Math.max(0,Math.min(1,(wx*vx+wz*vz)/vv));
+    const px=a.x+t*vx,pz=a.z+t*vz;
+    const dx=x-px,dz=z-pz,d2=dx*dx+dz*dz;
+    if(d2<bd){
+      const y=a.y+(b.y-a.y)*t;
+      const roll=(a.roll||0)+((b.roll||0)-(a.roll||0))*t;
+      const len=Math.sqrt(vv)||1;
+      const tx=vx/len,tz=vz/len;
+      best={
+        found:true,
+        bd:d2,
+        y,
+        angle:Math.atan2(vx,vz),
+        pitch:Math.atan2(b.y-a.y,len),
+        roll,
+        px,pz,
+        index:i,t,
+        distance:Math.sqrt(d2),
+        tx,tz,
+        nx:-tz,nz:tx
+      };
+      bd=d2;
     }
   }
-
-  if(!state.found)return null;
-  const result=out||{};
-  result.y=state.y;
-  result.angle=state.angle;
-  result.pitch=state.pitch;
-  result.roll=state.roll;
-  result.px=state.px;
-  result.pz=state.pz;
-  result.index=state.index;
-  result.t=state.t;
-  result.distance=state.distance;
-  return result;
+  return best;
 }
-function roadProfileFrameAtCum(cum,out=null){
+
+function roadProfileFrameAtCum(cum){
   if(activeRoadProfile.length<2)return null;
-
-  const target=Math.max(
-    activeRoadProfile[0].cum||0,
-    Math.min(
-      activeRoadProfile[activeRoadProfile.length-1].cum||0,
-      Number.isFinite(cum)?cum:0
-    )
-  );
-
-  // Profiles are ordered by cumulative route distance. Binary search avoids the
-  // ambiguity of an X/Z nearest-point lookup when two Yungas switchbacks overlap.
-  let lo=0;
-  let hi=activeRoadProfile.length-2;
+  const c=Math.max(activeRoadProfile[0].cum,Math.min(activeRoadProfile[activeRoadProfile.length-1].cum,cum));
+  let lo=0,hi=activeRoadProfile.length-2;
   while(lo<=hi){
     const mid=(lo+hi)>>1;
-    const a=activeRoadProfile[mid];
-    const b=activeRoadProfile[mid+1];
-    if(target<a.cum){
-      hi=mid-1;
-      continue;
+    const a=activeRoadProfile[mid],b=activeRoadProfile[mid+1];
+    if(c<a.cum)hi=mid-1;
+    else if(c>b.cum)lo=mid+1;
+    else{
+      const span=Math.max(1e-6,b.cum-a.cum),t=(c-a.cum)/span;
+      const vx=b.x-a.x,vz=b.z-a.z,len=Math.hypot(vx,vz)||1;
+      return {
+        y:a.y+(b.y-a.y)*t,
+        angle:Math.atan2(vx,vz),
+        pitch:Math.atan2(b.y-a.y,len),
+        roll:(a.roll||0)+((b.roll||0)-(a.roll||0))*t,
+        tx:vx/len,tz:vz/len,
+        nx:-vz/len,nz:vx/len,
+        index:mid,t,
+        cum:c
+      };
     }
-    if(target>b.cum){
-      lo=mid+1;
-      continue;
-    }
-
-    const span=Math.max(.001,b.cum-a.cum);
-    const t=Math.max(0,Math.min(1,(target-a.cum)/span));
-    const vx=b.x-a.x;
-    const vz=b.z-a.z;
-    const horizontal=Math.hypot(vx,vz)||1;
-    const result=out||{};
-    result.x=a.x+(b.x-a.x)*t;result.z=a.z+(b.z-a.z)*t;result.y=a.y+(b.y-a.y)*t;
-    result.angle=Math.atan2(vx,vz);result.pitch=Math.atan2(b.y-a.y,horizontal);
-    result.roll=(a.roll||0)+((b.roll||0)-(a.roll||0))*t;result.cum=target;result.index=mid;result.t=t;
-    return result;
   }
-
-  const p=target<=(activeRoadProfile[0].cum||0)
-    ?activeRoadProfile[0]
-    :activeRoadProfile[activeRoadProfile.length-1];
-  const result=out||{};
-  result.x=p.x;result.z=p.z;result.y=p.y;result.angle=0;result.pitch=0;result.roll=p.roll||0;
-  result.cum=target;result.index=0;result.t=0;
-  return result;
+  return null;
 }
 
 function roadHeightAt(x,z){
-  const f=roadFrameAt(x,z);
-  return f?f.y:terrainAbs(x,z);
+  const frame=roadFrameAt(x,z,24);
+  return frame?frame.y:null;
 }
 
-function roadSurfaceAt(x,z,out=null){
-  const frame=roadFrameAt(x,z,out);
+function roadSurfaceAt(x,z){
+  const frame=roadFrameAt(x,z,26);
   if(!frame)return null;
-  const normalX=-Math.cos(frame.angle);
-  const normalZ= Math.sin(frame.angle);
-  const dx=x-frame.px;
-  const dz=z-frame.pz;
-  const lateral=dx*normalX+dz*normalZ;
-  const roll=Number.isFinite(frame.roll)?frame.roll:0;
-  frame.lateral=lateral;
-  frame.y=frame.y+Math.tan(roll)*lateral+ROAD_SURFACE_OFFSET;
-  return frame;
+  const lateral=(x-frame.px)*frame.nx+(z-frame.pz)*frame.nz;
+  const crossY=frame.y+Math.tan(frame.roll||0)*lateral;
+  return {...frame,y:crossY,lateral};
 }
 
-
-  function setProfile(nextProfile){
-    activeRoadProfile.length=0;
-    if(Array.isArray(nextProfile)){
-      for(const point of nextProfile)activeRoadProfile.push(point);
-    }
-    rebuildRoadProfileSpatialIndex();
-    return activeRoadProfile;
-  }
-
-  function clearProfile(){
-    activeRoadProfile.length=0;
-    rebuildRoadProfileSpatialIndex();
-  }
-
-  return Object.freeze({
-    profile:activeRoadProfile,
-    buildProfile(){syncState();return buildRoadProfile();},
-    setProfile,
-    clearProfile,
-    rebuildIndex:rebuildRoadProfileSpatialIndex,
-    buildLateralBand(...args){syncState();return buildLateralBand(...args);},
-    buildRibbon(...args){syncState();return buildRibbon(...args);},
-    buildOffsetRibbon(...args){syncState();return buildOffsetRibbon(...args);},
-    buildRoadVolume(...args){syncState();return buildRoadVolume(...args);},
-    roadFrameAt,
-    roadProfileFrameAtCum,
-    roadHeightAt,
-    roadSurfaceAt
-  });
+syncState();
+return Object.freeze({
+  profile:activeRoadProfile,
+  syncState,
+  buildProfile(){syncState();return buildRoadProfile();},
+  setProfile:setActiveRoadProfile,
+  clearProfile:clearActiveRoadProfile,
+  rebuildIndex:rebuildRoadProfileSpatialIndex,
+  buildLateralBand,
+  buildRibbon,
+  buildOffsetRibbon,
+  buildRoadVolume,
+  roadFrameAt,
+  roadProfileFrameAtCum,
+  roadHeightAt,
+  roadSurfaceAt
+});
 }
