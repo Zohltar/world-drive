@@ -8,6 +8,7 @@ import {
   clampDynamics,
   smoothstep01,
   vehicleLayout,
+  lateralDynamicsEnvelope as baseLateralDynamicsEnvelope,
   estimateWheelGripUsage as baseEstimateWheelGripUsage
 } from './vehicle-dynamics-v21.29.js';
 
@@ -44,6 +45,23 @@ export function antiRollCalibration(vehicle={}){
     strength:clampDynamics(.46+(response-13)*.04,.46,.76),
     frontBalance:clampDynamics(frontBalance,.40,.66)
   };
+}
+
+export function lowSpeedYawAuthority(speed=0){
+  const v=Math.abs(safeNumber(speed,0));
+  if(v<=.18)return 0;
+  return smoothstep01((v-.18)/1.02);
+}
+
+export function lateralDynamicsEnvelope(args={},out=null){
+  const result=baseLateralDynamicsEnvelope(args,out);
+  const authority=lowSpeedYawAuthority(args?.speed);
+  if(authority>=.999)return result;
+  result.yawRate=safeNumber(result.yawRate,0)*authority;
+  result.requestedLatAccel=safeNumber(result.requestedLatAccel,0)*authority;
+  result.signedLatAccel=safeNumber(result.signedLatAccel,0)*authority;
+  result.stationaryYawAuthority=authority;
+  return result;
 }
 
 export function antiRollAxleGripScales({vehicle={},signedLatAccel=0}={}){
