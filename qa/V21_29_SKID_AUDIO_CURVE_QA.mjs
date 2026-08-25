@@ -1,4 +1,4 @@
-import {skidLinkedTireLevel} from '../src/audio-v21-29-wrapper.tmp';
+import {skidLinkedTireLevel} from '../src/audio.js';
 function fail(m){throw new Error(m);}
 const pre=skidLinkedTireLevel({wheelGripUsage:[.94,.94,.94,.94],tireSquealLevel:.4});
 const light=skidLinkedTireLevel({skidFrontLevel:.18,skidRearLevel:.12,tireSquealLevel:.6});
