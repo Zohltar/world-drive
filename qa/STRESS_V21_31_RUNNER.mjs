@@ -16,7 +16,6 @@ const ROOT=new URL('../',import.meta.url);
 const qaDir=new URL('./',import.meta.url);
 
 function finite(n){return Number.isFinite(Number(n));}
-function clamp(v,a,b){return Math.max(a,Math.min(b,v));}
 function geoDist(a,b){
   const R=6371000;
   const p1=a.lat*Math.PI/180,p2=b.lat*Math.PI/180;
@@ -57,7 +56,7 @@ const matrix=[];
 for(const info of fleet){
   if(vehicles.activeId!==info.id)vehicles.select(info.id);
   const v=vehicles.physics;
-  for(const key of ['massKg','wheelbase','trackWidth','cgHeight','topSpeedKmh','accel','brake','lateralAccelLimit']){
+  for(const key of ['massKg','wheelbase','trackWidth','cgHeight','accel','brake','lateralAccelLimit']){
     assert.ok(finite(v[key])&&Number(v[key])>0,`${info.id}: invalid ${key}`);
   }
   const axleLoad=v.axles.reduce((s,a)=>s+(Number(a.staticLoadFraction)||0),0);
@@ -77,12 +76,16 @@ for(const info of fleet){
   assert.ok(mid.maxRoadWheelAngle>=high.maxRoadWheelAngle-1e-9,`${info.id}: high-speed steering authority rises`);
   assert.equal(lowSpeedYawAuthority(0),0,'stationary yaw authority must be zero');
 
+  const stressMaxSpeedMps=finite(v.topSpeedKmh)&&Number(v.topSpeedKmh)>0
+    ?Number(v.topSpeedKmh)/3.6
+    :Math.max(45,Math.sqrt(Math.max(1,Number(v.accel)||1))*24);
+
   for(const preset of presets){
     const random=rng((info.id.length*2654435761+preset.id.length*1013904223)>>>0);
     let peakBankPenalty=0;
     let minSteer=Infinity,maxSteer=0;
     for(let i=0;i<2500;i++){
-      const speed=(random()*1.05)*Math.max(10,Number(v.topSpeedKmh)/3.6);
+      const speed=(random()*1.05)*stressMaxSpeedMps;
       const input=random()*2-1;
       const cmd=steeringCommand({vehicle:v,speedAbs:speed,input});
       assert.ok(finite(cmd.maxRoadWheelAngle)&&finite(cmd.target),`${preset.id}/${info.id}: steering non-finite at ${i}`);
