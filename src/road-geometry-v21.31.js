@@ -9,10 +9,6 @@ function clamp01(v){return Math.max(0,Math.min(1,Number(v)||0));}
 function smoothstep01(v){const t=clamp01(v);return t*t*(3-2*t);}
 function angleDelta(a,b){return Math.atan2(Math.sin(b-a),Math.cos(b-a));}
 
-// Stress/V21.31 — sample only route geometry. The legacy base buildProfile()
-// also computed terrain-following Y, bridge smoothing and ±12° terrain roll,
-// all of which V21.31 immediately discarded. Keeping sampling here removes that
-// duplicate DEM/camber work while preserving the exact 3 m corridor density.
 export function sampleRoutePlanarV21_31({getState,nearestRoute}={}){
   const state=typeof getState==='function'?(getState()||{}):{};
   const absX=Number(state.absX)||0,absZ=Number(state.absZ)||0;
@@ -58,16 +54,13 @@ export function sampleRoutePlanarV21_31({getState,nearestRoute}={}){
   return raw;
 }
 
-// Explicitly discard any legacy terrain authority. Terrain is intentionally NOT
-// sampled here: horizontal smoothing changes X/Z immediately afterward, so the
-// previous pre-smoothing DEM lookup was pure duplicate work.
 export function stripLegacyTerrainAuthorityV21_31(profile){
   if(!Array.isArray(profile))return [];
   return profile.map(p=>({
     x:Number(p.x)||0,
     z:Number(p.z)||0,
     cum:Number(p.cum)||0,
-    y:Number(p.y)||0,
+    y:0,
     roll:0
   }));
 }
@@ -216,8 +209,6 @@ export function createRoadGeometrySystem(args={}){
   return Object.freeze({
     ...base,
     buildProfile(){
-      // Keep base mesh/query state (notably worldOffset) synchronized, but do
-      // not invoke its legacy terrain/camber profile builder.
       base.syncState?.();
       return smoothRoadProfileV21_31(sampleRoutePlanarV21_31(args),args);
     }
