@@ -9,18 +9,30 @@ function clamp01(value){
   return Math.max(0,Math.min(1,Number(value)||0));
 }
 
-export function freeRevRiseTimeSec(profile={}){
+export function freeRevRiseTimeSec(profile={},vehicleId=''){
   const explicit=Number(profile.freeRevIdleToRedlineSec);
   if(Number.isFinite(explicit)&&explicit>.25)return explicit;
 
+  if(vehicleId==='semi_6x4')return 2.35;
   switch(String(profile.profile||'')){
     case 'f1-v8': return .72;
     case 'countach-v12': return 1.18;
     case 'boxer-turbo': return 1.48;
     case 'civic': return 1.62;
     case 'sonata-sport': return 1.70;
-    case 'truck-diesel': return 2.35;
     default: return 1.55;
+  }
+}
+
+export function clutchShockCalibration(profile={},vehicleId=''){
+  if(vehicleId==='semi_6x4')return {gain:1.35,travelBonus:.18,max:2.15};
+  switch(String(profile.profile||'')){
+    case 'f1-v8': return {gain:2.30,travelBonus:.25,max:3.35};
+    case 'countach-v12': return {gain:2.85,travelBonus:.38,max:3.75};
+    case 'boxer-turbo': return {gain:2.65,travelBonus:.42,max:3.60};
+    case 'civic': return {gain:2.10,travelBonus:.28,max:3.05};
+    case 'sonata-sport': return {gain:2.00,travelBonus:.26,max:2.95};
+    default: return {gain:2.20,travelBonus:.30,max:3.20};
   }
 }
 
@@ -62,7 +74,10 @@ export function clutchShockMultiplierFromMismatch({
   idleRpm=850,
   redlineRpm=6500,
   throttle=0,
-  opposingTravel=false
+  opposingTravel=false,
+  gain=2.65,
+  travelBonus=.42,
+  maxMultiplier=3.6
 }={}){
   const idle=Math.max(400,Number(idleRpm)||850);
   const redline=Math.max(idle+500,Number(redlineRpm)||6500);
@@ -71,8 +86,10 @@ export function clutchShockMultiplierFromMismatch({
   const mismatch=clamp01(delta/span);
   const pedal=clamp01(Math.max(0,Number(throttle)||0));
   if(pedal<.08||mismatch<.025)return 1;
-  const travelBonus=opposingTravel?.42:0;
-  return Math.min(3.6,1+pedal*(.18+2.65*mismatch+travelBonus));
+  const bonus=opposingTravel?Math.max(0,Number(travelBonus)||0):0;
+  const configuredGain=Math.max(0,Number(gain)||0);
+  const cap=Math.max(1,Number(maxMultiplier)||1);
+  return Math.min(cap,1+pedal*(.18+configuredGain*mismatch+bonus));
 }
 
 export function selectTransmissionDriveDirection({
@@ -214,7 +231,7 @@ export function createTransmissionController(args={}){
           redlineRpm:redline,
           throttle:pedal,
           dt,
-          riseTimeSec:freeRevRiseTimeSec(profile)
+          riseTimeSec:freeRevRiseTimeSec(profile,args.vehicleSystem?.activeId||'')
         });
         args.state.engineRpm=freeRevRpm;
         args.state.revLimiterActive=pedal>.96&&freeRevRpm>=redline*.982;
@@ -225,13 +242,17 @@ export function createTransmissionController(args={}){
           const redline=Math.max(idle+500,Number(profile.redlineRpm)||6500);
           const coupledRpm=Math.max(idle,Number(args.state?.engineRpm)||idle);
           const opposingTravel=(driveDirection>0&&physicalBodySpeed<-.25)||(driveDirection<0&&physicalBodySpeed>.25);
+          const calibration=clutchShockCalibration(profile,args.vehicleSystem?.activeId||'');
           publishClutchShockMultiplier(clutchShockMultiplierFromMismatch({
             freeRpm:freeRpmBeforeCoupling,
             coupledRpm,
             idleRpm:idle,
             redlineRpm:redline,
             throttle:resolvedEngineThrottle,
-            opposingTravel
+            opposingTravel,
+            gain:calibration.gain,
+            travelBonus:calibration.travelBonus,
+            maxMultiplier:calibration.max
           }));
         }
         freeRevRpm=NaN;
