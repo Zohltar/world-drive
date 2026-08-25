@@ -30,6 +30,23 @@ const OVERPASS_HOSTS=new Set([
   'overpass.nchc.org.tw'
 ]);
 
+function sendSoftOverpassFailure(res,{status=502,target=null,message='Overpass upstream failure'}={}){
+  // Always answer the browser with HTTP 200. Public Overpass mirrors routinely
+  // return 429/5xx or time out; exposing that status through the same-origin
+  // development proxy makes Chrome emit a red network error even though the
+  // client is designed to fail over to another mirror. The payload remains an
+  // explicit failure and is never cached by overpass.js.
+  res.statusCode=200;
+  res.setHeader('content-type','application/json');
+  res.setHeader('cache-control','no-store');
+  res.end(JSON.stringify({
+    __worldDriveOverpassFailure:true,
+    status,
+    target,
+    message
+  }));
+}
+
 // Browser development uses a same-origin Vite middleware for Overpass. This
 // removes browser CORS from the equation while keeping the production/browser
 // and Electron transports independent.
@@ -68,19 +85,30 @@ function worldDriveOverpassProxy(){
             signal:AbortSignal.timeout(12000)
           });
 
-          res.statusCode=upstream.status;
+          if(!upstream.ok){
+            // Consume the upstream body so the connection can be reused, then
+            // report a soft application failure to the browser client.
+            await upstream.arrayBuffer().catch(()=>{});
+            sendSoftOverpassFailure(res,{
+              status:upstream.status,
+              target:target.hostname,
+              message:`Overpass upstream HTTP ${upstream.status}`
+            });
+            return;
+          }
+
+          res.statusCode=200;
           res.setHeader('content-type',upstream.headers.get('content-type')||'application/json');
           res.setHeader('cache-control','no-store');
           const payload=Buffer.from(await upstream.arrayBuffer());
           res.end(payload);
         }catch(error){
           const timeout=error?.name==='TimeoutError'||error?.name==='AbortError';
-          res.statusCode=timeout?504:502;
-          res.setHeader('content-type','application/json');
-          res.end(JSON.stringify({
-            error:timeout?'Overpass upstream timeout':'Overpass proxy failure',
-            target:target?.hostname||null
-          }));
+          sendSoftOverpassFailure(res,{
+            status:timeout?504:502,
+            target:target?.hostname||null,
+            message:timeout?'Overpass upstream timeout':'Overpass proxy failure'
+          });
         }
       });
     }
