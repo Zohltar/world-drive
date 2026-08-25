@@ -21,6 +21,7 @@ function makeController(){
     physicsClamp:(v,a,b)=>Math.max(a,Math.min(b,v)),physicsSmoothstep01:v=>v*v*(3-2*v),toast:()=>{},getSpeed:()=>rawSpeed,
     getLongitudinalAccel:()=>0,vehicleReverseLimitMps:()=>-12,state
   });
+  ctrl.resetTransmissionState();
   return {ctrl,state,setRawSpeed:v=>{rawSpeed=v;}};
 }
 
@@ -36,10 +37,10 @@ assert.ok(bodyRelativeLongitudinalSpeed({speed:20,heading:0,velocityHeading:Math
 
 {
   const {ctrl,state}=makeController();
-  ctrl.requestManualShift(-1); // 1st -> N
+  ctrl.requestManualShift(-1);
   assert.equal(ctrl.getTransmissionSelector(),0,'downshift below first must select Neutral');
   ctrl.updateTransmission(1/60,0,true,false,.1);
-  ctrl.requestManualShift(-1); // N -> R near stop
+  ctrl.requestManualShift(-1);
   assert.equal(ctrl.getTransmissionSelector(),-1,'N -> R must require explicit selector input near standstill');
   assert.equal(state.transmissionGear,-1);
 }
