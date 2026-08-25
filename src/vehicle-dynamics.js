@@ -34,6 +34,13 @@ export function longitudinalTractionLimit(args={},out=null){
   return result;
 }
 
+function fallbackWheelAxleIndex(index){
+  // Same ordering used by the frozen base dynamics for four-wheel cars:
+  // rear-left, front-left, rear-right, front-right.
+  if(index===1||index===3)return 0;
+  return 1;
+}
+
 export function estimateWheelGripUsage(args={},out=null){
   const applied=safeNumber(args?.propulsionAccel,0);
   const raw=latestRawDriveDemandAccel;
@@ -45,12 +52,56 @@ export function estimateWheelGripUsage(args={},out=null){
     ...args,
     propulsionAccel:propulsionDemand
   },out);
+
   result.appliedPropulsionAccel=applied;
   result.requestedPropulsionAccel=propulsionDemand;
   result.propulsionSaturationRatio=
     Math.abs(applied)>1e-6
       ?Math.abs(propulsionDemand)/Math.abs(applied)
       :(Math.abs(propulsionDemand)>1e-6?Infinity:1);
+
+  // V21.29 P3.8 — a clutch dump is much shorter than the ordinary tire-slip
+  // smoothing window. A real driven wheel can angularly accelerate within a few
+  // tens of milliseconds when engine torque suddenly exceeds road capacity, so
+  // do not make a ~95 ms clutch shock disappear behind the normal 11 Hz filter.
+  // This changes ONLY slip telemetry/combined friction usage on driven wheels;
+  // chassis force remains the already traction-limited `applied` value above.
+  const ratio=Number.isFinite(result.propulsionSaturationRatio)
+    ?result.propulsionSaturationRatio
+    :4;
+  const overtorque=clampDynamics((ratio-1.03)/.72,0,1);
+  if(overtorque>0&&Math.abs(safeNumber(args?.throttle,0))>1.01&&!args?.airborne){
+    const layout=vehicleLayout(args?.vehicle||{});
+    const contacts=Array.isArray(args?.contacts)?args.contacts:[];
+    const count=Math.max(4,contacts.length||0);
+    const dt=Math.min(.05,Math.max(0,safeNumber(args?.dt,0)));
+    const previous=Array.isArray(args?.previousUsage)?args.previousUsage:[];
+    const targetUsage=1.04+.40*overtorque;
+    const transientResponse=58;
+    const step=1-Math.exp(-dt*transientResponse);
+
+    for(let i=0;i<count;i++){
+      const meta=contacts[i];
+      const axleIndex=Number.isInteger(meta?.axleIndex)
+        ?clampDynamics(meta.axleIndex,0,layout.axles.length-1)
+        :clampDynamics(fallbackWheelAxleIndex(i),0,layout.axles.length-1);
+      const axle=layout.axles[axleIndex];
+      if(!axle||axle.driveShare<=1e-6||meta?.contact===false)continue;
+
+      const old=Math.max(0,safeNumber(previous[i],safeNumber(result.smoothed?.[i],0)));
+      const fastUsage=old+(targetUsage-old)*step;
+      if(result.longitudinalUsage)result.longitudinalUsage[i]=Math.max(result.longitudinalUsage[i]||0,targetUsage);
+      if(result.raw)result.raw[i]=Math.max(result.raw[i]||0,targetUsage);
+      if(result.smoothed)result.smoothed[i]=Math.max(result.smoothed[i]||0,fastUsage);
+      if(result.slip){
+        result.slip[i]=Math.max(
+          result.slip[i]||0,
+          smoothstep01((fastUsage-.96)/.22)
+        );
+      }
+    }
+  }
+
   latestRawDriveDemandAccel=0;
   return result;
 }
@@ -127,18 +178,18 @@ export function steeringCommand({vehicle,speedAbs=0,input=0}={},out=null){
     :(v>25?highSpeedResponse*highSpeedResponseScale:midSpeedResponse);
   result.returnRate=v<5?lowReturnRate:highReturnRate;
 
-  const centerToFullTime=safeNumber(vehicle?.steeringCenterToFullTimeSec,0);
-  const returnToCenterTime=safeNumber(
+  const centerToFullTimeSec=safeNumber(vehicle?.steeringCenterToFullTimeSec,0);
+  const returnToCenterTimeSec=safeNumber(
     vehicle?.steeringReturnToCenterTimeSec,
-    centerToFullTime
+    centerToFullTimeSec
   );
-  result.inputSlewRate=centerToFullTime>1e-4?1/centerToFullTime:0;
+  result.inputSlewRate=centerToFullTimeSec>1e-4?1/centerToFullTimeSec:0;
   result.returnSlewRate=
-    returnToCenterTime>1e-4
-      ?1/returnToCenterTime
+    returnToCenterTimeSec>1e-4
+      ?1/returnToCenterTimeSec
       :result.inputSlewRate;
-  result.centerToFullTimeSec=centerToFullTime>1e-4?centerToFullTime:0;
-  result.returnToCenterTimeSec=returnToCenterTime>1e-4?returnToCenterTime:0;
+  result.centerToFullTimeSec=centerToFullTimeSec>1e-4?centerToFullTimeSec:0;
+  result.returnToCenterTimeSec=returnToCenterTimeSec>1e-4?returnToCenterTimeSec:0;
   result.parkingSteerScale=parkingSteerScale;
   result.highSpeedAuthorityScale=highSpeedAuthorityScale;
   result.highSpeedResponseScale=highSpeedResponseScale;
