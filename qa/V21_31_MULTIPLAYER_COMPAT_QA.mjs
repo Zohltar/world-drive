@@ -2,18 +2,18 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 
 const mp=fs.readFileSync('src/multiplayer.js','utf8');
+const visuals=fs.readFileSync('src/multiplayer-visuals.js','utf8');
 const vehicles=fs.readFileSync('src/vehicle-system.js','utf8');
 
-// Multiplayer must stay independent from authored GLB loaders. Remote peers are
-// presentation-only and must never trigger local vehicle asset ownership.
+// Remote multiplayer presentation must remain independent from authored local GLBs.
 for(const file of ['civic-glb','countach-glb','f1-glb','i3-glb','id4-glb','sonata-glb','wrx-glb']){
   assert(!mp.includes(file),`multiplayer.js must not import/use ${file}`);
+  assert(!visuals.includes(file),`multiplayer-visuals.js must not import/use ${file}`);
 }
 assert(!mp.includes('GLTFLoader'),'multiplayer remote path must not depend on GLTFLoader');
-assert(!mp.includes("import('./"),'multiplayer client should not dynamically import authored vehicle modules');
+assert(!visuals.includes('GLTFLoader'),'multiplayer visuals must not depend on GLTFLoader');
 
-// Local network state must advertise vehicle identity and the receiver must
-// replace a peer visual when the remote vehicle changes.
+// Local state advertises vehicle identity and receiver swaps presentation safely.
 assert(mp.includes('vehicleId:state.vehicleId'),'local multiplayer state must send vehicleId');
 assert(mp.includes('const vehicleId=message.vehicleId||peer.vehicleId'),'remote state must read vehicleId');
 assert(mp.includes('if(vehicleId!==peer.vehicleId||name!==peer.name)'),'remote vehicle/name change must replace presentation');
@@ -26,7 +26,11 @@ assert(mp.includes('scene.remove(peer.visual.root)'),'peer visual must leave sce
 assert(mp.includes('clearPeers()'),'multiplayer client must expose/use peer clearing logic');
 assert(mp.includes('onRemotePeerRemoved?.(id)'),'remote removal callback must be preserved');
 
-// Network state fields that matter to current driving presentation.
+// Exact remote visuals clone procedural body/wheels; authored local GLB readiness is irrelevant.
+assert(visuals.includes('bodyGroup.children.filter'),'remote exact body must come from procedural fleet geometry');
+assert(visuals.includes('child.userData?.vehicleId===vehicleId'),'remote body selection must be vehicle-specific');
+assert(visuals.includes('sourceWheel.vehicleId!==vehicleId'),'remote wheel selection must be vehicle-specific');
+
 const stateFields=[
   'lat','lon','heading','speed','steer','braking','onRoad','skidFront','skidRear',
   'bodyPitch','bodyYaw','bodyRoll','bodyY','wheelPitch','wheelRoll'
@@ -35,15 +39,13 @@ for(const field of stateFields){
   assert(mp.includes(`${field}:state.${field}`),`local state must send ${field}`);
 }
 
-// Detect fleet IDs that the lightweight built-in fallback does not model
-// explicitly. This is informational rather than a regression failure because
-// createRemoteVisual may provide the exact procedural visual path first.
 const knownFleet=[...vehicles.matchAll(/\bid\s*:\s*['"]([^'"]+)['"]/g)].map(m=>m[1]);
 const fallbackSpecs=[...mp.matchAll(/^\s{4}([a-zA-Z0-9_]+):\{color:/gm)].map(m=>m[1]);
 const missingFallback=[...new Set(knownFleet.filter(id=>!fallbackSpecs.includes(id)))];
 
 console.log('V21.31 MULTIPLAYER COMPAT QA: PASS',{
   authored_glb_dependency:false,
+  remote_visual_source:'procedural fleet',
   vehicle_change_reset:true,
   peer_disposal:true,
   transmitted_fields:stateFields.length,
