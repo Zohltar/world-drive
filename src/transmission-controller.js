@@ -5,6 +5,58 @@ function clamp01(value){
   return Math.max(0,Math.min(1,Number(value)||0));
 }
 
+export function freeRevRiseTimeSec(profile={}){
+  const explicit=Number(profile.freeRevIdleToRedlineSec);
+  if(Number.isFinite(explicit)&&explicit>.25)return explicit;
+
+  switch(String(profile.profile||'')){
+    case 'f1-v8': return .72;
+    case 'countach-v12': return 1.18;
+    case 'boxer-turbo': return 1.48;
+    case 'civic': return 1.62;
+    case 'sonata-sport': return 1.70;
+    case 'truck-diesel': return 2.35;
+    default: return 1.55;
+  }
+}
+
+export function advanceFreeRevRpm({
+  currentRpm=850,
+  idleRpm=850,
+  redlineRpm=6500,
+  throttle=0,
+  dt=0,
+  riseTimeSec=1.5
+}={}){
+  const idle=Math.max(400,Number(idleRpm)||850);
+  const redline=Math.max(idle+500,Number(redlineRpm)||6500);
+  const current=Math.max(idle,Math.min(redline,Number(currentRpm)||idle));
+  const pedal=clamp01(Math.max(0,Number(throttle)||0));
+  const stepDt=Math.max(0,Math.min(.05,Number(dt)||0));
+  const span=redline-idle;
+  const target=idle+span*Math.pow(pedal,.72)*.985;
+
+  if(Math.abs(target-current)<.5)return target;
+
+  if(target>current){
+    // Free-rev acceleration is finite: crank/flywheel/accessory inertia means
+    // even an unloaded engine needs time to sweep the tachometer. A mild
+    // high-rpm taper represents rising friction/pumping losses near redline.
+    const normalized=clamp01((current-idle)/span);
+    const highRpmTaper=1-.32*Math.pow(normalized,2.2);
+    const pedalAuthority=.18+.82*Math.pow(pedal,.85);
+    const nominalRate=span/Math.max(.30,Number(riseTimeSec)||1.5);
+    const rpmStep=nominalRate*1.18*highRpmTaper*pedalAuthority*stepDt;
+    return Math.min(target,current+rpmStep);
+  }
+
+  // Closed-throttle decay is slower than the full-throttle rise because engine
+  // braking/friction bleeds stored rotational energy rather than reversing torque.
+  const fallTime=Math.max(.55,(Number(riseTimeSec)||1.5)*.78);
+  const fallRate=span/fallTime;
+  return Math.max(target,current-fallRate*stepDt);
+}
+
 export function selectTransmissionDriveDirection({
   currentDirection=1,
   requestedThrottle=0,
@@ -136,12 +188,15 @@ export function createTransmissionController(args={}){
         const idle=Math.max(500,Number(profile.idleRpm)||850);
         const redline=Math.max(idle+500,Number(profile.redlineRpm)||6500);
         const pedal=clamp01(Math.max(0,resolvedEngineThrottle));
-        const freeRevTarget=idle+(redline-idle)*Math.pow(pedal,.72)*.985;
         if(!Number.isFinite(freeRevRpm))freeRevRpm=Math.max(idle,Number(args.state?.engineRpm)||idle);
-        const response=freeRevTarget>freeRevRpm?7.8:4.8;
-        const step=1-Math.exp(-Math.max(0,Number(dt)||0)*response);
-        freeRevRpm+= (freeRevTarget-freeRevRpm)*step;
-        freeRevRpm=Math.max(idle,Math.min(redline,freeRevRpm));
+        freeRevRpm=advanceFreeRevRpm({
+          currentRpm:freeRevRpm,
+          idleRpm:idle,
+          redlineRpm:redline,
+          throttle:pedal,
+          dt,
+          riseTimeSec:freeRevRiseTimeSec(profile)
+        });
         args.state.engineRpm=freeRevRpm;
         args.state.revLimiterActive=pedal>.96&&freeRevRpm>=redline*.982;
         if(!args.state.revLimiterActive)args.state.revLimiterPhase=0;
