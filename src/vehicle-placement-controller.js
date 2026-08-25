@@ -29,6 +29,10 @@ export function createVehiclePlacementController({
     );
   }
 
+  function finite(value){
+    return Number.isFinite(Number(value));
+  }
+
   function resetVehicleDynamics({resetGripSolver=false}={}){
     state.speed=0;
     state.steer=0;
@@ -74,27 +78,44 @@ export function createVehiclePlacementController({
 
   function placeAt(frac){
     const p=routePointAt(frac);
-    state.absX=p.x;
-    state.absZ=p.z;
-    state.heading=p.angle;
+    if(!p||!finite(p.x)||!finite(p.z)||!finite(p.angle)){
+      throw new Error('Route placement returned non-finite coordinates');
+    }
+
+    state.absX=Number(p.x);
+    state.absZ=Number(p.z);
+    state.heading=Number(p.angle);
 
     // Preserve historical ordering: recenter/profile refresh occurs from the
     // route-point placement before the cumulative road-profile correction.
     resetVehicleDynamics({resetGripSolver:false});
 
     // On stacked mountain roads, horizontal X/Z can overlap multiple branches.
-    // Spawn from route cumulative distance so 0% remains the true first segment.
+    // roadProfileFrameAtCum() exposes the interpolated centreline as px/pz.
+    // Older placement code incorrectly read x/z here, poisoning absX/absZ with
+    // undefined once the engineered profile became available during startup.
     const placedFrame=roadProfileFrameAtCum(p.cum);
-    if(placedFrame){
-      state.absX=placedFrame.x;
-      state.absZ=placedFrame.z;
-      state.heading=placedFrame.angle;
+    const frameX=placedFrame?.px;
+    const frameZ=placedFrame?.pz;
+    const frameAngle=placedFrame?.angle;
+    const validPlacedFrame=
+      finite(frameX)&&
+      finite(frameZ)&&
+      finite(frameAngle)&&
+      finite(placedFrame?.y);
+
+    if(validPlacedFrame){
+      state.absX=Number(frameX);
+      state.absZ=Number(frameZ);
+      state.heading=Number(frameAngle);
       state.velocityHeading=state.heading;
     }
 
-    const placedY=
-      (placedFrame?.y??roadHeightAt(state.absX,state.absZ))+
-      ROAD_SURFACE_OFFSET;
+    const roadY=validPlacedFrame
+      ?Number(placedFrame.y)
+      :roadHeightAt(state.absX,state.absZ);
+    const safeRoadY=finite(roadY)?Number(roadY):0;
+    const placedY=safeRoadY+ROAD_SURFACE_OFFSET;
 
     car.position.set(
       state.absX-state.worldOffset.x,
@@ -108,11 +129,11 @@ export function createVehiclePlacementController({
 
   function resetToRoad(){
     const n=nearestRoute(state.absX,state.absZ);
-    if(!n)return;
+    if(!n||!finite(n.px)||!finite(n.pz)||!finite(n.angle))return;
 
-    state.absX=n.px;
-    state.absZ=n.pz;
-    state.heading=n.angle;
+    state.absX=Number(n.px);
+    state.absZ=Number(n.pz);
+    state.heading=Number(n.angle);
 
     // Historical reset-to-road behavior also forces the secondary tire solver
     // to run again immediately; placeAt() intentionally does not do this.
