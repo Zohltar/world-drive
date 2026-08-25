@@ -100,8 +100,16 @@ export function createDrivingRuntime(args={}){
   const setStateWithAuthoritativeLights=typeof originalSetState==='function'
     ?state=>{
       const lights=lightingState();
+      const residualSpeed=Math.abs(Number(state?.speed)||0);
+      const holdStopped=lights.braking&&residualSpeed<.18;
       return originalSetState({
         ...state,
+        ...(holdStopped?{
+          speed:0,
+          longitudinalAccel:0,
+          velocityHeading:Number.isFinite(Number(state?.heading))?Number(state.heading):state?.velocityHeading,
+          dynamicYawRate:0
+        }:null),
         countachBrakeLightRequested:lights.braking,
         countachReverseLightRequested:lights.reversing
       });
