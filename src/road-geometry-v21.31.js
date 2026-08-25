@@ -1,6 +1,6 @@
-// World Drive V21.31 — bounded curve/crest smoothing over the proven road geometry base.
-// Keeps the V21.30 road generator intact, then rounds routing-polyline corners and
-// vertical DEM crests without allowing the road centreline to drift far from source.
+// World Drive V21.31 — engineered road geometry over the proven sampling/query base.
+// The V21.30 module still supplies contiguous route sampling and mesh/query helpers,
+// but V21.31 owns the final centreline height and cross-slope.
 
 import { createRoadGeometrySystem as createBaseRoadGeometrySystem } from './road-geometry-base.js';
 
@@ -8,17 +8,27 @@ function clamp01(v){return Math.max(0,Math.min(1,Number(v)||0));}
 function smoothstep01(v){const t=clamp01(v);return t*t*(3-2*t);}
 function angleDelta(a,b){return Math.atan2(Math.sin(b-a),Math.cos(b-a));}
 
+// P3.2 — explicitly discard the legacy terrain-following Y/roll returned by
+// road-geometry-base. The base profile is now used only as a route sampler.
+export function stripLegacyTerrainAuthorityV21_31(profile,{terrainAbs}={}){
+  if(!Array.isArray(profile))return [];
+  return profile.map(p=>({
+    x:Number(p.x)||0,
+    z:Number(p.z)||0,
+    cum:Number(p.cum)||0,
+    y:typeof terrainAbs==='function' ? terrainAbs(Number(p.x)||0,Number(p.z)||0) : (Number(p.y)||0),
+    roll:0
+  }));
+}
+
 export function applyRoadSuperelevationV21_31(profile){
   if(!Array.isArray(profile)||profile.length<25)return Array.isArray(profile)?profile.map(p=>({...p,roll:0})):[];
   const out=profile.map(p=>({...p}));
   const n=out.length;
   const coarseTurn=new Array(n).fill(0);
   const coarseRadius=new Array(n).fill(Infinity);
-  const halfSpan=10; // roughly 30 m each side at the normal <=3 m sampling
+  const halfSpan=10; // ~30 m each side at normal <=3 m sampling
 
-  // P2.2 — determine curvature from long chords, not point-to-point router jitter.
-  // This makes a visually straight OSRM polyline genuinely flat even if individual
-  // 3 m samples contain tiny heading corrections.
   for(let i=halfSpan;i<n-halfSpan;i++){
     const a=out[i-halfSpan],p=out[i],b=out[i+halfSpan];
     const h0=Math.atan2(p.x-a.x,p.z-a.z);
@@ -33,13 +43,12 @@ export function applyRoadSuperelevationV21_31(profile){
   const maxBank=1.5*Math.PI/180;
 
   for(let i=12;i<n-12;i++){
-    // A real bank candidate must bend consistently over a broad road section.
     let signed=0,absSum=0,same=0,active=0;
     for(let k=-4;k<=4;k++){
       const d=coarseTurn[i+k];
       signed+=d;
       absSum+=Math.abs(d);
-      if(Math.abs(d)>.004){active++;}
+      if(Math.abs(d)>.004)active++;
     }
     const sign=Math.sign(signed);
     if(!sign||active<5||absSum<.055)continue;
@@ -61,32 +70,23 @@ export function applyRoadSuperelevationV21_31(profile){
     if(!rWeight)continue;
     const r=rSum/rWeight;
 
-    // Public-road envelope: tight/ordinary bends remain nearly flat; banking is
-    // reserved for broad, sustained curves that plausibly carry higher speed.
-    const tightGate=smoothstep01((r-150)/180);       // zero <=150 m, full ~330 m
-    const broadGate=1-smoothstep01((r-1200)/900);   // fade on almost-straight arcs
+    const tightGate=smoothstep01((r-150)/180);
+    const broadGate=1-smoothstep01((r-1200)/900);
     const persistence=smoothstep01((absSum-.055)/.14);
     const strength=tightGate*broadGate*persistence*smoothstep01((consistency-.86)/.12);
-    if(strength<=0)continue;
-    target[i]=sign*maxBank*strength;
+    if(strength>0)target[i]=sign*maxBank*strength;
   }
 
-  // Smooth only the bank transition. Afterwards a coarse straightness gate is
-  // re-applied so smoothing can never leak visible bank far into a true straight.
   let bank=target;
   for(let pass=0;pass<6;pass++){
     const next=bank.slice();
-    for(let i=2;i<n-2;i++){
-      next[i]=(bank[i-2]+2*bank[i-1]+4*bank[i]+2*bank[i+1]+bank[i+2])/10;
-    }
+    for(let i=2;i<n-2;i++)next[i]=(bank[i-2]+2*bank[i-1]+4*bank[i]+2*bank[i+1]+bank[i+2])/10;
     bank=next;
   }
 
   const routeStart=(out[0]?.cum||0)<=1;
   for(let i=0;i<n;i++){
-    const longTurn=Math.abs(coarseTurn[i]);
-    // <~1.7° heading change across ~60 m is treated as a real straight.
-    const straight=longTurn<.030;
+    const straight=Math.abs(coarseTurn[i])<.030;
     let roll=straight?0:Math.max(-maxBank,Math.min(maxBank,bank[i]));
     if(Math.abs(roll)<.0012)roll=0;
     if(routeStart&&out[i].cum<=50)roll=0;
@@ -95,16 +95,13 @@ export function applyRoadSuperelevationV21_31(profile){
   return out;
 }
 
-// V21.31 P3.1 — engineered longitudinal grade.
-// The DEM is now only the large-scale reference. A ~360 m full triangular window
-// rejects local hills/valleys and the repeated passes create long vertical curves.
-// This is intentionally much broader than the old ~60 m filter: the road should
-// follow the mountain, not every terrain ripple.
+// Engineered longitudinal grade. DEM samples are reference elevations only; broad
+// filtering establishes the road grade and rejects short terrain ripples.
 export function engineerVerticalProfileV21_31(source,{bridgeHeightAtCum,bridgeManager}={}){
   const n=source.length;
   if(n<9)return source.map(p=>p.y);
   let heights=source.map(p=>p.y);
-  const halfWindow=30; // samples are normally <=3 m: roughly +/-90 m, ~180 m full span
+  const halfWindow=30; // ~ +/-90 m, ~180 m full span
 
   for(let pass=0;pass<4;pass++){
     const next=heights.slice();
@@ -112,19 +109,16 @@ export function engineerVerticalProfileV21_31(source,{bridgeHeightAtCum,bridgeMa
       const cum=source[i].cum;
       const bridgeY=typeof bridgeHeightAtCum==='function'?bridgeHeightAtCum(cum):null;
       if(bridgeY!==null){next[i]=bridgeY;continue;}
-
       let sum=0,weightSum=0;
       for(let k=-halfWindow;k<=halfWindow;k++){
         const j=i+k;
         if(j<0||j>=n)continue;
         const w=halfWindow+1-Math.abs(k);
-        sum+=heights[j]*w;
-        weightSum+=w;
+        sum+=heights[j]*w;weightSum+=w;
       }
       const trend=weightSum?sum/weightSum:heights[i];
       const nearBridge=typeof bridgeManager?.isNearApproach==='function'&&bridgeManager.isNearApproach(cum,45);
-      const blend=nearBridge?.18:.94;
-      next[i]=heights[i]+(trend-heights[i])*blend;
+      next[i]=heights[i]+(trend-heights[i])*(nearBridge?.18:.94);
     }
     heights=next;
   }
@@ -142,10 +136,13 @@ export function engineerVerticalProfileV21_31(source,{bridgeHeightAtCum,bridgeMa
 }
 
 export function smoothRoadProfileV21_31(profile,{terrainAbs,bridgeHeightAtCum,bridgeManager}={}){
-  if(!Array.isArray(profile)||profile.length<5)return Array.isArray(profile)?profile.map(p=>({...p})):[];
-  const source=profile.map(p=>({...p}));
+  if(!Array.isArray(profile)||profile.length<5)return Array.isArray(profile)?profile.map(p=>({...p,roll:0})):[];
+
+  // IMPORTANT: p.y and p.roll from the legacy base are intentionally discarded.
+  const source=stripLegacyTerrainAuthorityV21_31(profile,{terrainAbs});
   let xy=source.map(p=>({x:p.x,z:p.z}));
 
+  // Horizontal curve rounding remains bounded to the routed centreline.
   for(let pass=0;pass<2;pass++){
     const next=xy.map(p=>({...p}));
     for(let i=2;i<xy.length-2;i++){
@@ -156,30 +153,35 @@ export function smoothRoadProfileV21_31(profile,{terrainAbs,bridgeHeightAtCum,br
       const tz=(xy[i-2].z+2*xy[i-1].z+4*xy[i].z+2*xy[i+1].z+xy[i+2].z)/10;
       const ox=source[i].x,oz=source[i].z;
       let dx=(tx-ox)*bridgeScale,dz=(tz-oz)*bridgeScale;
-      const d=Math.hypot(dx,dz);
-      const maxDrift=1.35;
+      const d=Math.hypot(dx,dz),maxDrift=1.35;
       if(d>maxDrift&&d>1e-6){const s=maxDrift/d;dx*=s;dz*=s;}
       next[i]={x:ox+dx,z:oz+dz};
     }
     xy=next;
   }
 
+  // Re-sample the raw DEM on the final rounded centreline. This is reference data,
+  // not a final road surface, and therefore has no terrain-derived cross-slope.
+  for(let i=0;i<source.length;i++){
+    if(typeof terrainAbs==='function')source[i].y=terrainAbs(xy[i].x,xy[i].z);
+    source[i].x=xy[i].x;source[i].z=xy[i].z;source[i].roll=0;
+  }
+
   const heights=engineerVerticalProfileV21_31(source,{bridgeHeightAtCum,bridgeManager});
   const routeStart=(source[0]?.cum||0)<=1;
   const startY=source[0]?.y||0;
-
   const rounded=source.map((p,i)=>{
     let y=heights[i];
     if(routeStart&&p.cum<=28)y=startY;
-
     const bridgeY=typeof bridgeHeightAtCum==='function'?bridgeHeightAtCum(p.cum):null;
     if(bridgeY!==null)y=bridgeY;
 
+    // Last-resort sanity envelope only. Normal road cuts/fills remain authoritative.
     if(typeof terrainAbs==='function'&&bridgeY===null&&!(routeStart&&p.cum<=28)){
-      const ground=terrainAbs(xy[i].x,xy[i].z);
+      const ground=terrainAbs(p.x,p.z);
       if(Number.isFinite(ground))y=Math.max(ground-18,Math.min(ground+18,y));
     }
-    return {...p,x:xy[i].x,z:xy[i].z,y,roll:0};
+    return {...p,y,roll:0};
   });
   return applyRoadSuperelevationV21_31(rounded);
 }
@@ -189,8 +191,9 @@ export function createRoadGeometrySystem(args={}){
   return Object.freeze({
     ...base,
     buildProfile(){
-      const profile=base.buildProfile();
-      return smoothRoadProfileV21_31(profile,args);
+      // base.buildProfile() is now strictly a route-window sampler for V21.31.
+      // Its legacy terrain-shaped y/roll fields are discarded immediately above.
+      return smoothRoadProfileV21_31(base.buildProfile(),args);
     }
   });
 }
