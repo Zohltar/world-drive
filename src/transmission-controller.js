@@ -15,43 +15,11 @@ export function selectTransmissionDriveDirection({
   const bodySpeed=Number(bodyLongitudinalSpeed)||0;
 
   if(throttle>.04)return 1;
-
   if(throttle<-.04){
     if(current<0)return -1;
     if(bodySpeed<=reverseEngageForwardThreshold)return -1;
   }
-
   return current;
-}
-
-export function clutchShockThrottle({
-  vehicleId='',
-  profileType='',
-  driveDirection=1,
-  bodyLongitudinalSpeed=0,
-  requestedThrottle=0,
-  transmittedThrottle=0
-}={}){
-  const base=Number(transmittedThrottle)||0;
-  if(
-    vehicleId!=='wrx'||
-    profileType!=='combustion'||
-    Number(driveDirection)<0||
-    Number(bodyLongitudinalSpeed)>=-.35||
-    Number(requestedThrottle)<=.18||
-    base<=0
-  )return base;
-
-  // A WRX 6MT clutch dump while the chassis is still travelling rearward is a
-  // torque transient, not steady-state 0-100 acceleration. The normal vehicle
-  // accel calibration remains untouched; this only increases the instantaneous
-  // drivetrain demand so the tire model/traction limiter can saturate the AWD
-  // contacts instead of unrealistically feeding torque in gently.
-  const oppositionT=clamp01((Math.abs(Number(bodyLongitudinalSpeed)||0)-.35)/3.65);
-  const pedalT=clamp01((Number(requestedThrottle)-.18)/.82);
-  const shockT=oppositionT*pedalT;
-  const maxMultiplier=2.25;
-  return base*(1+(maxMultiplier-1)*shockT);
 }
 
 export function createTransmissionController(args={}){
@@ -94,7 +62,8 @@ export function createTransmissionController(args={}){
       requestedThrottle,
       onPavement=true,
       automaticOverride=false,
-      nextBodyLongitudinalSpeed=NaN
+      nextBodyLongitudinalSpeed=NaN,
+      clutchHeld=false
     ){
       const next=Number(nextBodyLongitudinalSpeed);
       bodyLongitudinalSpeed=Number.isFinite(next)?next:NaN;
@@ -120,26 +89,24 @@ export function createTransmissionController(args={}){
         onPavement,
         automaticOverride
       );
+
       const profile=base.activeTransmissionProfile();
-      return clutchShockThrottle({
-        vehicleId:args.vehicleSystem?.activeId||'',
-        profileType:profile?.type||'',
-        driveDirection,
-        bodyLongitudinalSpeed:physicalBodySpeed,
-        requestedThrottle,
-        transmittedThrottle:transmitted
-      });
+      if(profile?.type==='combustion'&&clutchHeld){
+        const idle=Math.max(500,Number(profile.idleRpm)||850);
+        const redline=Math.max(idle+500,Number(profile.redlineRpm)||6500);
+        const pedal=clamp01(Math.max(0,Number(requestedThrottle)||0));
+        const freeRevTarget=idle+(redline-idle)*Math.pow(pedal,.72)*.94;
+        const current=Math.max(idle,Number(args.state?.engineRpm)||idle);
+        const response=freeRevTarget>current?8.5:5.5;
+        args.state.engineRpm=current+(freeRevTarget-current)*(1-Math.exp(-Math.max(0,Number(dt)||0)*response));
+      }
+
+      return transmitted;
     },
-    getTransmissionLongitudinalSpeed(){
-      return transmissionSpeed();
-    },
+    getTransmissionLongitudinalSpeed(){return transmissionSpeed();},
     getPhysicalBodyLongitudinalSpeed(){
-      return Number.isFinite(bodyLongitudinalSpeed)
-        ?bodyLongitudinalSpeed
-        :Number(rawGetSpeed())||0;
+      return Number.isFinite(bodyLongitudinalSpeed)?bodyLongitudinalSpeed:Number(rawGetSpeed())||0;
     },
-    getTransmissionDriveDirection(){
-      return driveDirection;
-    }
+    getTransmissionDriveDirection(){return driveDirection;}
   };
 }
