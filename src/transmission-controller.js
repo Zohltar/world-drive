@@ -2,7 +2,8 @@ import { createTransmissionController as createBaseTransmissionController } from
 import {
   readTransmissionRuntimeState,
   resetTransmissionRuntimeState,
-  publishClutchShockMultiplier
+  publishClutchShockMultiplier,
+  publishTransmissionSelectorGear
 } from './transmission-runtime-bridge.js';
 
 function clamp01(value){return Math.max(0,Math.min(1,Number(value)||0));}
@@ -96,6 +97,7 @@ export function createTransmissionController(args={}){
     if(selector<0){args.state.transmissionGear=-1;args.state.transmissionPendingGear=-1;}
     else if(selector===0){args.state.transmissionGear=0;args.state.transmissionPendingGear=0;}
     else if((Number(args.state.transmissionGear)||0)<1){args.state.transmissionGear=1;args.state.transmissionPendingGear=1;}
+    publishTransmissionSelectorGear(selector);
   }
 
   function resetTransmissionState(){
@@ -133,8 +135,6 @@ export function createTransmissionController(args={}){
       return;
     }
     if(mode==='manual')baseRequestManualShift(dir);
-    // Automatic mode intentionally ignores forward-gear paddle requests;
-    // paddles/buttons are still mandatory for D -> N -> R and back.
   }
 
   return {
