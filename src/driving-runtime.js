@@ -5,7 +5,8 @@ import {
 } from './driving-runtime-base.js';
 import {
   publishTransmissionRuntimeState,
-  consumeClutchShockMultiplier
+  consumeClutchShockMultiplier,
+  readTransmissionRuntimeState
 } from './transmission-runtime-bridge.js';
 
 export function clutchShockDurationSec(profile={},vehicleId=''){
@@ -48,12 +49,45 @@ export function createDrivingRuntime(args={}){
   const originalSkidMarks=args.skidMarks;
   const originalVehicleVisuals=args.vehicleVisuals;
   const originalTruckTrailerSystem=args.truckTrailerSystem;
+  const originalSetState=args.setState;
   if(typeof originalUpdateTransmission!=='function')return createBaseDrivingRuntime(args);
 
   let clutchWasHeld=false,clutchReleaseTimer=0,clutchShockMultiplier=1,clutchShockDuration=.095;
   let activeReleaseMultiplier=1,frameDt=1/60,requestedEngineThrottle=0;
   let wheelspinLevel=0,wheelspinHoldSec=0;
-  let serviceBrakeRequested=false;
+
+  const lightingState=()=>{
+    const bridge=readTransmissionRuntimeState();
+    return {
+      braking:(Number(bridge?.serviceBrake)||0)>.04,
+      reversing:Number(bridge?.selectorGear)===-1
+    };
+  };
+
+  const vehicleVisualsWithAuthoritativeBrake=originalVehicleVisuals?{
+    ...originalVehicleVisuals,
+    updateBrakeLights(dt){
+      return originalVehicleVisuals.updateBrakeLights?.(dt,lightingState().braking);
+    }
+  }:originalVehicleVisuals;
+
+  const truckTrailerWithAuthoritativeBrake=originalTruckTrailerSystem?{
+    ...originalTruckTrailerSystem,
+    setBrakeLights(){
+      return originalTruckTrailerSystem.setBrakeLights?.(lightingState().braking);
+    }
+  }:originalTruckTrailerSystem;
+
+  const setStateWithAuthoritativeLights=typeof originalSetState==='function'
+    ?state=>{
+      const lights=lightingState();
+      return originalSetState({
+        ...state,
+        countachBrakeLightRequested:lights.braking,
+        countachReverseLightRequested:lights.reversing
+      });
+    }
+    :originalSetState;
 
   const updateTransmissionWithBodySpeed=(dt,legacySignedInput,onPavement=true,automaticOverride=false)=>{
     frameDt=Math.max(.001,Math.min(.05,Number(dt)||1/60));
@@ -79,14 +113,6 @@ export function createDrivingRuntime(args={}){
       serviceBrake=Math.max(keyboardBrake,padBrake);
     }
     requestedEngineThrottle=engineThrottle;
-    serviceBrakeRequested=serviceBrake>.04;
-
-    // P4.1 — brake lamps are driven by the service-brake input itself, not by
-    // travel direction. This keeps LT/S lighting the lamps in both D and R.
-    if(serviceBrakeRequested){
-      originalVehicleVisuals?.updateBrakeLights?.(dt,true);
-      originalTruckTrailerSystem?.setBrakeLights?.(true);
-    }
 
     const keyboardClutch=!!args.keyboardActionDown?.('clutch');
     const gamepadClutch=!!args.gamepadState?.clutch;
@@ -188,5 +214,13 @@ export function createDrivingRuntime(args={}){
     }
   }:originalSkidMarks;
 
-  return createBaseDrivingRuntime({...args,updateTransmission:updateTransmissionWithBodySpeed,longitudinalTractionLimit:longitudinalTractionWithPersistentWheelspin,skidMarks:skidMarksWithWheelspin||args.skidMarks});
+  return createBaseDrivingRuntime({
+    ...args,
+    setState:setStateWithAuthoritativeLights,
+    updateTransmission:updateTransmissionWithBodySpeed,
+    longitudinalTractionLimit:longitudinalTractionWithPersistentWheelspin,
+    skidMarks:skidMarksWithWheelspin||args.skidMarks,
+    vehicleVisuals:vehicleVisualsWithAuthoritativeBrake,
+    truckTrailerSystem:truckTrailerWithAuthoritativeBrake
+  });
 }
