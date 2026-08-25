@@ -1,5 +1,9 @@
 import { createTransmissionController as createBaseTransmissionController } from './transmission-controller-base.js';
-import { readTransmissionRuntimeState, resetTransmissionRuntimeState } from './transmission-runtime-bridge.js';
+import {
+  readTransmissionRuntimeState,
+  resetTransmissionRuntimeState,
+  publishClutchShockMultiplier
+} from './transmission-runtime-bridge.js';
 
 function clamp01(value){
   return Math.max(0,Math.min(1,Number(value)||0));
@@ -39,9 +43,6 @@ export function advanceFreeRevRpm({
   if(Math.abs(target-current)<.5)return target;
 
   if(target>current){
-    // Free-rev acceleration is finite: crank/flywheel/accessory inertia means
-    // even an unloaded engine needs time to sweep the tachometer. A mild
-    // high-rpm taper represents rising friction/pumping losses near redline.
     const normalized=clamp01((current-idle)/span);
     const highRpmTaper=1-.32*Math.pow(normalized,2.2);
     const pedalAuthority=.18+.82*Math.pow(pedal,.85);
@@ -50,11 +51,28 @@ export function advanceFreeRevRpm({
     return Math.min(target,current+rpmStep);
   }
 
-  // Closed-throttle decay is slower than the full-throttle rise because engine
-  // braking/friction bleeds stored rotational energy rather than reversing torque.
   const fallTime=Math.max(.55,(Number(riseTimeSec)||1.5)*.78);
   const fallRate=span/fallTime;
   return Math.max(target,current-fallRate*stepDt);
+}
+
+export function clutchShockMultiplierFromMismatch({
+  freeRpm=0,
+  coupledRpm=0,
+  idleRpm=850,
+  redlineRpm=6500,
+  throttle=0,
+  opposingTravel=false
+}={}){
+  const idle=Math.max(400,Number(idleRpm)||850);
+  const redline=Math.max(idle+500,Number(redlineRpm)||6500);
+  const span=Math.max(500,redline-idle);
+  const delta=Math.abs((Number(freeRpm)||0)-(Number(coupledRpm)||0));
+  const mismatch=clamp01(delta/span);
+  const pedal=clamp01(Math.max(0,Number(throttle)||0));
+  if(pedal<.08||mismatch<.025)return 1;
+  const travelBonus=opposingTravel?.42:0;
+  return Math.min(3.6,1+pedal*(.18+2.65*mismatch+travelBonus));
 }
 
 export function selectTransmissionDriveDirection({
@@ -170,6 +188,7 @@ export function createTransmissionController(args={}){
         freeRevRpm=Math.max(idle,Number(args.state?.engineRpm)||idle);
       }
 
+      const freeRpmBeforeCoupling=freeRevRpm;
       const transmitted=baseUpdateTransmission(
         dt,
         requestedThrottle,
@@ -201,6 +220,20 @@ export function createTransmissionController(args={}){
         args.state.revLimiterActive=pedal>.96&&freeRevRpm>=redline*.982;
         if(!args.state.revLimiterActive)args.state.revLimiterPhase=0;
       }else{
+        if(combustion&&clutchWasHeld&&Number.isFinite(freeRpmBeforeCoupling)){
+          const idle=Math.max(500,Number(profile.idleRpm)||850);
+          const redline=Math.max(idle+500,Number(profile.redlineRpm)||6500);
+          const coupledRpm=Math.max(idle,Number(args.state?.engineRpm)||idle);
+          const opposingTravel=(driveDirection>0&&physicalBodySpeed<-.25)||(driveDirection<0&&physicalBodySpeed>.25);
+          publishClutchShockMultiplier(clutchShockMultiplierFromMismatch({
+            freeRpm:freeRpmBeforeCoupling,
+            coupledRpm,
+            idleRpm:idle,
+            redlineRpm:redline,
+            throttle:resolvedEngineThrottle,
+            opposingTravel
+          }));
+        }
         freeRevRpm=NaN;
       }
 
