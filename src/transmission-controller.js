@@ -1,5 +1,9 @@
 import { createTransmissionController as createBaseTransmissionController } from './transmission-controller-base.js';
 
+function clamp01(value){
+  return Math.max(0,Math.min(1,Number(value)||0));
+}
+
 export function selectTransmissionDriveDirection({
   currentDirection=1,
   requestedThrottle=0,
@@ -10,21 +14,44 @@ export function selectTransmissionDriveDirection({
   const throttle=Number(requestedThrottle)||0;
   const bodySpeed=Number(bodyLongitudinalSpeed)||0;
 
-  // Positive pedal is an explicit request for Drive.  This matters after a
-  // J-turn: the vehicle may still be travelling backwards by inertia, but the
-  // forward gear remains engaged and its torque works against that motion.
   if(throttle>.04)return 1;
 
-  // The negative control is brake while appreciably travelling forward.  It
-  // becomes a Reverse request only near standstill or once travel is already
-  // rearward.  This preserves World Drive's brake-to-reverse control scheme.
   if(throttle<-.04){
     if(current<0)return -1;
     if(bodySpeed<=reverseEngageForwardThreshold)return -1;
   }
 
-  // Coasting/sliding never changes the selected driveline direction by itself.
   return current;
+}
+
+export function clutchShockThrottle({
+  vehicleId='',
+  profileType='',
+  driveDirection=1,
+  bodyLongitudinalSpeed=0,
+  requestedThrottle=0,
+  transmittedThrottle=0
+}={}){
+  const base=Number(transmittedThrottle)||0;
+  if(
+    vehicleId!=='wrx'||
+    profileType!=='combustion'||
+    Number(driveDirection)<0||
+    Number(bodyLongitudinalSpeed)>=-.35||
+    Number(requestedThrottle)<=.18||
+    base<=0
+  )return base;
+
+  // A WRX 6MT clutch dump while the chassis is still travelling rearward is a
+  // torque transient, not steady-state 0-100 acceleration. The normal vehicle
+  // accel calibration remains untouched; this only increases the instantaneous
+  // drivetrain demand so the tire model/traction limiter can saturate the AWD
+  // contacts instead of unrealistically feeding torque in gently.
+  const oppositionT=clamp01((Math.abs(Number(bodyLongitudinalSpeed)||0)-.35)/3.65);
+  const pedalT=clamp01((Number(requestedThrottle)-.18)/.82);
+  const shockT=oppositionT*pedalT;
+  const maxMultiplier=2.25;
+  return base*(1+(maxMultiplier-1)*shockT);
 }
 
 export function createTransmissionController(args={}){
@@ -87,12 +114,21 @@ export function createTransmissionController(args={}){
         bodyLongitudinalSpeed:physicalBodySpeed
       });
 
-      return baseUpdateTransmission(
+      const transmitted=baseUpdateTransmission(
         dt,
         requestedThrottle,
         onPavement,
         automaticOverride
       );
+      const profile=base.activeTransmissionProfile();
+      return clutchShockThrottle({
+        vehicleId:args.vehicleSystem?.activeId||'',
+        profileType:profile?.type||'',
+        driveDirection,
+        bodyLongitudinalSpeed:physicalBodySpeed,
+        requestedThrottle,
+        transmittedThrottle:transmitted
+      });
     },
     getTransmissionLongitudinalSpeed(){
       return transmissionSpeed();
