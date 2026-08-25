@@ -9,7 +9,7 @@ function smoothstep01(v){const t=clamp01(v);return t*t*(3-2*t);}
 function angleDelta(a,b){return Math.atan2(Math.sin(b-a),Math.cos(b-a));}
 
 export function applyRoadSuperelevationV21_31(profile){
-  if(!Array.isArray(profile)||profile.length<9)return Array.isArray(profile)?profile.map(p=>({...p})):[];
+  if(!Array.isArray(profile)||profile.length<21)return Array.isArray(profile)?profile.map(p=>({...p,roll:0})):[];
   const out=profile.map(p=>({...p}));
   const n=out.length;
   const turn=new Array(n).fill(0);
@@ -26,41 +26,57 @@ export function applyRoadSuperelevationV21_31(profile){
   }
 
   const target=new Array(n).fill(0);
-  const maxBank=4*Math.PI/180;
+  const maxBank=1.75*Math.PI/180;
 
-  for(let i=4;i<n-4;i++){
+  // V21.31 P2.1 — public-road banking, not racetrack banking.
+  // Samples are usually <=3 m apart. A +/-10 sample window therefore verifies
+  // that the turn persists for roughly 50-60 m before any meaningful bank is added.
+  for(let i=10;i<n-10;i++){
     let signed=0,absSum=0,same=0;
-    for(let k=-4;k<=4;k++){
+    for(let k=-10;k<=10;k++){
       const d=turn[i+k];
       signed+=d;
       absSum+=Math.abs(d);
     }
+
     const sign=Math.sign(signed);
-    if(!sign||absSum<.018)continue;
-    for(let k=-4;k<=4;k++)if(Math.sign(turn[i+k])===sign||Math.abs(turn[i+k])<=.0004)same++;
-    const consistency=same/9;
-    if(consistency<.78)continue;
+    if(!sign||absSum<.035)continue;
 
-    let rSum=0,rCount=0;
-    for(let k=-3;k<=3;k++){
-      const r=radius[i+k];
-      if(Number.isFinite(r)&&r<2000){rSum+=r;rCount++;}
+    for(let k=-10;k<=10;k++){
+      const d=turn[i+k];
+      if(Math.sign(d)===sign||Math.abs(d)<=.00035)same++;
     }
-    if(!rCount)continue;
-    const r=rSum/rCount;
+    const consistency=same/21;
+    if(consistency<.84)continue;
 
-    const tightGate=smoothstep01((r-38)/62);
-    const broadGate=1-smoothstep01((r-650)/550);
-    const persistence=smoothstep01((absSum-.018)/.055);
-    const strength=tightGate*broadGate*(.35+.65*persistence)*smoothstep01((consistency-.72)/.22);
+    let rSum=0,rWeight=0;
+    for(let k=-6;k<=6;k++){
+      const r=radius[i+k];
+      if(Number.isFinite(r)&&r<3000){
+        const w=7-Math.abs(k);
+        rSum+=r*w;
+        rWeight+=w;
+      }
+    }
+    if(!rWeight)continue;
+    const r=rSum/rWeight;
+
+    // Tight bends are assumed low-speed and remain essentially flat. Banking
+    // appears only on broader, sustained curves and stays deliberately subtle.
+    const tightGate=smoothstep01((r-120)/140);       // 0 <=120 m, full around 260 m
+    const broadGate=1-smoothstep01((r-1000)/700);   // fade again on nearly-straight arcs
+    const persistence=smoothstep01((absSum-.035)/.08);
+    const consistencyGate=smoothstep01((consistency-.82)/.15);
+    const radiusShape=.55+.45*smoothstep01((r-180)/350);
+    const strength=tightGate*broadGate*persistence*consistencyGate*radiusShape;
     if(strength<=0)continue;
 
-    const radiusBias=.45+.55*(1-smoothstep01((r-120)/420));
-    target[i]=sign*maxBank*strength*radiusBias;
+    target[i]=sign*maxBank*strength;
   }
 
+  // Long transitions into/out of the small amount of bank that remains.
   let bank=target;
-  for(let pass=0;pass<6;pass++){
+  for(let pass=0;pass<8;pass++){
     const next=bank.slice();
     for(let i=2;i<n-2;i++){
       next[i]=(bank[i-2]+2*bank[i-1]+4*bank[i]+2*bank[i+1]+bank[i+2])/10;
@@ -70,8 +86,9 @@ export function applyRoadSuperelevationV21_31(profile){
 
   const routeStart=(out[0]?.cum||0)<=1;
   for(let i=0;i<n;i++){
-    let roll=Math.abs(bank[i])<.0008?0:Math.max(-maxBank,Math.min(maxBank,bank[i]));
-    if(routeStart&&out[i].cum<=40)roll=0;
+    // Less than ~0.08 degree is visually/physically irrelevant: snap it flat.
+    let roll=Math.abs(bank[i])<.0014?0:Math.max(-maxBank,Math.min(maxBank,bank[i]));
+    if(routeStart&&out[i].cum<=50)roll=0;
     out[i].roll=roll;
   }
   return out;
@@ -111,8 +128,6 @@ export function engineerVerticalProfileV21_31(source,{bridgeHeightAtCum,bridgeMa
     heights=next;
   }
 
-  // Limit abrupt changes in grade while preserving the broad elevation trend.
-  // This approximates a road vertical-curve design rather than another DEM blur.
   for(let pass=0;pass<3;pass++){
     const next=heights.slice();
     for(let i=2;i<n-2;i++){
@@ -159,9 +174,6 @@ export function smoothRoadProfileV21_31(profile,{terrainAbs,bridgeHeightAtCum,br
     const bridgeY=typeof bridgeHeightAtCum==='function'?bridgeHeightAtCum(p.cum):null;
     if(bridgeY!==null)y=bridgeY;
 
-    // Terrain is only a last-resort sanity envelope now. The engineered road grade
-    // remains authoritative through normal cuts/fills instead of being clamped back
-    // onto each local DEM bump.
     if(typeof terrainAbs==='function'&&bridgeY===null&&!(routeStart&&p.cum<=28)){
       const ground=terrainAbs(xy[i].x,xy[i].z);
       if(Number.isFinite(ground))y=Math.max(ground-18,Math.min(ground+18,y));
