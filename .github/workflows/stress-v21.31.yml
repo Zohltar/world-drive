@@ -22,5 +22,11 @@ jobs:
         run: npm ci
       - name: Stress QA
         run: npm run qa:stress
+      - name: Live route preset stress
+        continue-on-error: true
+        run: node qa/STRESS_ROUTE_PRESETS_LIVE.mjs
+      - name: Runtime dependency audit
+        continue-on-error: true
+        run: npm audit --omit=dev --audit-level=high
       - name: Production build
         run: npm run build
