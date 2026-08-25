@@ -7,6 +7,7 @@ const state={
   bodyLongitudinalSpeed:NaN,
   clutchHeld:false,
   engineThrottle:0,
+  clutchShockMultiplier:1,
   sequence:0
 };
 
@@ -23,6 +24,20 @@ export function publishTransmissionRuntimeState({
   return state.sequence;
 }
 
+export function publishClutchShockMultiplier(value=1){
+  const next=Number(value);
+  state.clutchShockMultiplier=Number.isFinite(next)
+    ?Math.max(1,Math.min(4,next))
+    :1;
+  return state.clutchShockMultiplier;
+}
+
+export function consumeClutchShockMultiplier(){
+  const value=Math.max(1,Number(state.clutchShockMultiplier)||1);
+  state.clutchShockMultiplier=1;
+  return value;
+}
+
 export function readTransmissionRuntimeState(){
   return state;
 }
@@ -31,5 +46,6 @@ export function resetTransmissionRuntimeState(){
   state.bodyLongitudinalSpeed=NaN;
   state.clutchHeld=false;
   state.engineThrottle=0;
+  state.clutchShockMultiplier=1;
   state.sequence++;
 }
