@@ -168,7 +168,6 @@ export function createDrivingRuntime({
     const combination=truckTrailerSystem.longitudinalScales();
     const previousSpeed=speed;
     const surfaceGrip=onPavement?roadSurfaceGrip():1;
-    const offroadPowerFactor=onPavement?1:.80;
     const isAWD=VEHICLE.drivetrain==='AWD';
     const awdOffroadGripBonus=!onPavement&&isAWD?1.18:1;
     let requestedDriveAccel=0,requestedBrakeAccel=0;
@@ -179,7 +178,6 @@ export function createDrivingRuntime({
       const powerTaper=truckTrailerSystem.active?1:1-.38*speedRatio;
       requestedDriveAccel=
         VEHICLE.accel*
-        offroadPowerFactor*
         driveThrottle*
         powerTaper*
         driveAxisProjection;
@@ -189,7 +187,6 @@ export function createDrivingRuntime({
       }else{
         requestedDriveAccel=
           VEHICLE.reverseAccel*
-          offroadPowerFactor*
           driveThrottle*
           driveAxisProjection;
       }
@@ -241,21 +238,9 @@ export function createDrivingRuntime({
       velocityHeading=heading;
     }
 
-    if(!airborneNow&&!onPavement&&speed>0){
-      const profile=activeTransmissionProfile();
-      if(profile.type==='combustion'){
-        const terrainRedline=effectiveEngineRedlineRpm(profile,false);
-        const terrainMechanicalTop=transmissionRedlineSpeedKmh(profile,terrainRedline)/3.6;
-        if(speed>terrainMechanicalTop){
-          const excess=speed-terrainMechanicalTop;
-          const terrainOverspeedResistance=Math.min(13.5,4.5+excess*.55);
-          speed=Math.max(terrainMechanicalTop,speed-terrainOverspeedResistance*dt);
-        }
-      }else{
-        const offroadEvMax=MAX*.80;
-        if(speed>offroadEvMax)speed=Math.max(offroadEvMax,speed-12.5*dt);
-      }
-    }
+    // V21.31 stress: no separate off-road speed governor. Terrain performance is
+    // now determined only by traction, off-road grip/drag, aero, grade and the
+    // normal transmission/vehicle physics model above.
 
     const mechanicalTop=vehicleTopSpeedKmh();
     const userSpeedCapActive=maxSpeedKmh<mechanicalTop-.5;
