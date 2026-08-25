@@ -73,20 +73,15 @@ export function createF1GlbSystem({
   }
 
   function normalizeModel(model){
-    // Supplied asset is already authored Y-up with +Z toward the nose.
     model.rotation.set(0,0,0);
     model.updateMatrixWorld(true);
-
     const initialBox=new THREE.Box3().setFromObject(model);
     const initialSize=new THREE.Vector3();
     initialBox.getSize(initialSize);
-
-    // Keep the visual aligned with the existing 2010 F1 physical envelope.
     const targetLength=5.00;
     const scale=targetLength/Math.max(.001,initialSize.z);
     model.scale.multiplyScalar(scale);
     model.updateMatrixWorld(true);
-
     const box=new THREE.Box3().setFromObject(model);
     const center=new THREE.Vector3();
     box.getCenter(center);
@@ -114,11 +109,6 @@ export function createF1GlbSystem({
   }
 
   function hostCenterOfObject(obj){
-    // The Ferrari source scene is authored at ~1/100 scale and root is
-    // enlarged ~97x during normalization. Lamp overlays must therefore live
-    // under the unscaled host, not under root, or a 10 cm square becomes
-    // almost 10 m. Convert the authored lamp world centre into host-local
-    // normalized vehicle coordinates instead.
     root.updateMatrixWorld(true);
     host.updateMatrixWorld(true);
     const box=new THREE.Box3().setFromObject(obj);
@@ -128,20 +118,14 @@ export function createF1GlbSystem({
   }
 
   function prepareRearBrakeReverseLamp(){
-    // The supplied Ferrari asset already contains a small rear lamp / LED
-    // assembly. Reuse its exact authored location instead of inventing a new
-    // position. A tiny square overlay makes the state unmistakable while
-    // preserving the model's own lamp housing underneath.
     const authoredLamp=
       findNamed('REARLEDs_011_001_RearLight_0')||
       findNamed('light_rear_light_4_0')||
       findNamed('REARLEDs_011_001')||
       findNamed('light');
-
     const center=authoredLamp
       ?hostCenterOfObject(authoredLamp)
       :new THREE.Vector3(0,.08,-2.27);
-
     const material=new THREE.MeshBasicMaterial({
       color:0xff1018,
       transparent:true,
@@ -151,8 +135,6 @@ export function createF1GlbSystem({
       depthTest:true,
       toneMapped:false
     });
-    // IMPORTANT: this mesh lives under `host`, whose local units are normalized
-    // World Drive metres. 0.10 therefore really is a 10 cm square.
     const mesh=new THREE.Mesh(new THREE.PlaneGeometry(.10,.10),material);
     mesh.name='f1-rear-brake-reverse-light';
     mesh.position.copy(center);
@@ -170,22 +152,37 @@ export function createF1GlbSystem({
     if(reversing){
       rearBlinkTimer+=safeDt;
       if(rearBlinkTimer>120)rearBlinkTimer%=.90;
-      // Reverse warning: clear, deliberately slow red flash.
       rearLampMesh.visible=(rearBlinkTimer%.90)<.45;
     }else{
       rearBlinkTimer=0;
-      // Brake light: steady red while braking.
       rearLampMesh.visible=!!braking;
     }
+  }
+
+  function matrixIsFinite(matrix){
+    return !!matrix?.elements?.every(Number.isFinite);
+  }
+
+  function geometryPositionsAreFinite(geometry){
+    const position=geometry?.getAttribute?.('position');
+    if(!position)return false;
+    const a=position.array;
+    for(let i=0;i<a.length;i++)if(!Number.isFinite(a[i]))return false;
+    return true;
+  }
+
+  function vectorIsFinite(v){
+    return !!v&&Number.isFinite(v.x)&&Number.isFinite(v.y)&&Number.isFinite(v.z);
   }
 
   function makeWheelController({corner,wheelNodeName,front=false,side=0,centerOverride=null,flattenRigid=false}){
     const wheelRoot=findNamed(wheelNodeName);
     if(!wheelRoot||!wheelRoot.parent)return null;
 
-    const center=centerOverride?.isVector3
+    const measuredCenter=centerOverride?.isVector3
       ?centerOverride.clone()
       :localCenterOfObject(wheelRoot);
+    const center=vectorIsFinite(measuredCenter)?measuredCenter:new THREE.Vector3();
 
     const steerPivot=new THREE.Group();
     steerPivot.name=`f1-${corner}-steer-pivot`;
@@ -197,11 +194,6 @@ export function createF1GlbSystem({
     steerPivot.add(spinPivot);
 
     if(flattenRigid){
-      // V21.24.60: the LF hierarchy has an authored origin/transform quirk that
-      // survives normal Object3D.attach() reparenting.  Bake every visible tire
-      // and rim mesh directly into root-local coordinates, then rebase all of
-      // them around ONE measured tire centre.  Only this clean rigid assembly
-      // is animated, so no child origin can make the wheel orbit/eccentric.
       root.updateMatrixWorld(true);
       const rootWorldInv=new THREE.Matrix4().copy(root.matrixWorld).invert();
       const localMatrix=new THREE.Matrix4();
@@ -209,9 +201,18 @@ export function createF1GlbSystem({
       wheelRoot.traverse(obj=>{
         if(!obj?.isMesh||!obj.geometry)return;
         localMatrix.multiplyMatrices(rootWorldInv,obj.matrixWorld);
+        if(!matrixIsFinite(localMatrix)){
+          console.warn('F1 wheel bake skipped non-finite transform',corner,obj.name);
+          return;
+        }
         const geometry=obj.geometry.clone();
         geometry.applyMatrix4(localMatrix);
         geometry.translate(-center.x,-center.y,-center.z);
+        if(!geometryPositionsAreFinite(geometry)){
+          console.warn('F1 wheel bake skipped non-finite geometry',corner,obj.name);
+          geometry.dispose?.();
+          return;
+        }
         geometry.computeBoundingBox();
         geometry.computeBoundingSphere();
         const mesh=new THREE.Mesh(geometry,obj.material);
@@ -223,20 +224,17 @@ export function createF1GlbSystem({
       });
       wheelRoot.visible=false;
       if(!bakedMeshes.length){
-        // Safety fallback if an unexpected asset revision removes mesh children.
         wheelRoot.visible=true;
         root.updateMatrixWorld(true);
         steerPivot.updateMatrixWorld(true);
         spinPivot.attach(wheelRoot);
       }
     }else{
-      // Other wheels keep the already validated authored hierarchy.
       root.updateMatrixWorld(true);
       steerPivot.updateMatrixWorld(true);
       spinPivot.attach(wheelRoot);
     }
 
-    // The brake disc is a separate authored hierarchy; spin it with the wheel.
     const disc=findNamed(`disc_${corner}`);
     if(disc?.parent){
       root.updateMatrixWorld(true);
@@ -244,8 +242,6 @@ export function createF1GlbSystem({
       spinPivot.attach(disc);
     }
 
-    // The caliper stays fixed relative to the upright. Front calipers steer,
-    // but deliberately do not spin with the tire/disc.
     const caliper=findNamed(`hub_caliper_${corner}`);
     if(caliper?.parent){
       root.updateMatrixWorld(true);
@@ -258,21 +254,10 @@ export function createF1GlbSystem({
 
   function prepareWheelAnimation(){
     wheelControllers.length=0;
-
-    // V21.24.61 — important source-coordinate quirk:
-    // With World Drive using +Z as forward, the GLB node labelled WHEEL_RF is
-    // physically on the visual LEFT side of the car (negative X), while
-    // WHEEL_LF is on the visual RIGHT side (positive X). Previous fixes were
-    // therefore applied to the wrong visible wheel.
-    //
-    // Flatten BOTH authored front wheel hierarchies into rigid assemblies and
-    // rotate each around the exact centre of its own tire. This removes any
-    // exporter-origin eccentricity regardless of the source's LF/RF labels.
     const sourceLfTire=findNamed('x0_tyre_fl')||findNamed('WHEEL_LF');
     const sourceRfTire=findNamed('x0_tyre_fr')||findNamed('WHEEL_RF');
     const sourceLfCenter=sourceLfTire?localCenterOfObject(sourceLfTire):null;
     const sourceRfCenter=sourceRfTire?localCenterOfObject(sourceRfTire):null;
-
     const specs=[
       {corner:'fl',wheelNodeName:'WHEEL_LF',front:true,side:1,centerOverride:sourceLfCenter,flattenRigid:true},
       {corner:'fr',wheelNodeName:'WHEEL_RF',front:true,side:-1,centerOverride:sourceRfCenter,flattenRigid:true},
@@ -289,15 +274,10 @@ export function createF1GlbSystem({
     if(!wheelControllers.length)return;
     const safeDt=Math.max(.001,Math.min(.05,Number(dt)||.016));
     const wheelRadius=.33;
-
-    // +Z is forward; positive rotation around the authored +X axle gives the
-    // same rolling convention used by the other high-detail World Drive cars.
     wheelSpin+=Number(speed||0)*safeDt/wheelRadius;
     if(Math.abs(wheelSpin)>Math.PI*2048)wheelSpin%=Math.PI*2;
-
     spinQuaternion.setFromAxisAngle(spinAxis,wheelSpin);
     steerQuaternion.setFromAxisAngle(steerAxis,Number(steerAngle)||0);
-
     for(const wheel of wheelControllers){
       wheel.spinPivot.quaternion.copy(spinQuaternion);
       if(wheel.front)wheel.steerPivot.quaternion.copy(steerQuaternion);
