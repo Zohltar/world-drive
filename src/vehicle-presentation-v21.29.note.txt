@@ -1,1 +1,0 @@
-V21.30 P2 wrapper depends on a frozen copy of the previous vehicle presentation. Finalization commit follows.
