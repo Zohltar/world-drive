@@ -1,12 +1,11 @@
 // V21.29 — narrow runtime/transmission bridge.
-// main.js still exposes the legacy 3-argument updateTransmission facade.
-// Keep the new body-relative speed and clutch state out of that legacy API by
-// sharing them explicitly between the driving runtime and transmission module.
+// Carries body-relative speed plus independent engine/brake/clutch channels.
 
 const state={
   bodyLongitudinalSpeed:NaN,
   clutchHeld:false,
   engineThrottle:0,
+  serviceBrake:0,
   clutchShockMultiplier:1,
   sequence:0
 };
@@ -14,12 +13,14 @@ const state={
 export function publishTransmissionRuntimeState({
   bodyLongitudinalSpeed=NaN,
   clutchHeld=false,
-  engineThrottle=0
+  engineThrottle=0,
+  serviceBrake=0
 }={}){
   const body=Number(bodyLongitudinalSpeed);
   state.bodyLongitudinalSpeed=Number.isFinite(body)?body:NaN;
   state.clutchHeld=!!clutchHeld;
-  state.engineThrottle=Number(engineThrottle)||0;
+  state.engineThrottle=Math.max(0,Math.min(1,Number(engineThrottle)||0));
+  state.serviceBrake=Math.max(0,Math.min(1,Number(serviceBrake)||0));
   state.sequence++;
   return state.sequence;
 }
@@ -38,14 +39,13 @@ export function consumeClutchShockMultiplier(){
   return value;
 }
 
-export function readTransmissionRuntimeState(){
-  return state;
-}
+export function readTransmissionRuntimeState(){return state;}
 
 export function resetTransmissionRuntimeState(){
   state.bodyLongitudinalSpeed=NaN;
   state.clutchHeld=false;
   state.engineThrottle=0;
+  state.serviceBrake=0;
   state.clutchShockMultiplier=1;
   state.sequence++;
 }
