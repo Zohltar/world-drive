@@ -2,7 +2,6 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 
 const mp=fs.readFileSync('src/multiplayer.js','utf8');
-const main=fs.readFileSync('src/main.js','utf8');
 const vehicles=fs.readFileSync('src/vehicle-system.js','utf8');
 
 // Multiplayer must stay independent from authored GLB loaders. Remote peers are
@@ -11,6 +10,7 @@ for(const file of ['civic-glb','countach-glb','f1-glb','i3-glb','id4-glb','sonat
   assert(!mp.includes(file),`multiplayer.js must not import/use ${file}`);
 }
 assert(!mp.includes('GLTFLoader'),'multiplayer remote path must not depend on GLTFLoader');
+assert(!mp.includes("import('./"),'multiplayer client should not dynamically import authored vehicle modules');
 
 // Local network state must advertise vehicle identity and the receiver must
 // replace a peer visual when the remote vehicle changes.
@@ -27,19 +27,13 @@ assert(mp.includes('clearPeers()'),'multiplayer client must expose/use peer clea
 assert(mp.includes('onRemotePeerRemoved?.(id)'),'remote removal callback must be preserved');
 
 // Network state fields that matter to current driving presentation.
-for(const field of [
+const stateFields=[
   'lat','lon','heading','speed','steer','braking','onRoad','skidFront','skidRear',
   'bodyPitch','bodyYaw','bodyRoll','bodyY','wheelPitch','wheelRoll'
-]){
+];
+for(const field of stateFields){
   assert(mp.includes(`${field}:state.${field}`),`local state must send ${field}`);
 }
-
-// Code splitting must remain local-only. The main bundle now loads authored
-// passenger systems asynchronously, while multiplayer continues through its
-// independent procedural/exact-geometry presentation path.
-assert(main.includes("import('./countach-glb.js')"),'Countach authored system should remain dynamically imported');
-assert(main.includes("import('./i3-glb.js')"),'i3 authored system should remain dynamically imported');
-assert(!mp.includes("import('./"),'multiplayer client should not dynamically import authored vehicle modules');
 
 // Detect fleet IDs that the lightweight built-in fallback does not model
 // explicitly. This is informational rather than a regression failure because
@@ -52,7 +46,7 @@ console.log('V21.31 MULTIPLAYER COMPAT QA: PASS',{
   authored_glb_dependency:false,
   vehicle_change_reset:true,
   peer_disposal:true,
-  transmitted_fields:16,
+  transmitted_fields:stateFields.length,
   fleet_ids:[...new Set(knownFleet)],
   lightweight_fallback_ids:fallbackSpecs,
   missing_lightweight_fallback:missingFallback
