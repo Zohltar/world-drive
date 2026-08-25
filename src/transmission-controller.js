@@ -1,4 +1,5 @@
 import { createTransmissionController as createBaseTransmissionController } from './transmission-controller-base.js';
+import { readTransmissionRuntimeState, resetTransmissionRuntimeState } from './transmission-runtime-bridge.js';
 
 function clamp01(value){
   return Math.max(0,Math.min(1,Number(value)||0));
@@ -59,6 +60,7 @@ export function createTransmissionController(args={}){
     driveDirection=1;
     bodyLongitudinalSpeed=NaN;
     lastProfileKey=activeProfileKey();
+    resetTransmissionRuntimeState();
     publishEngineInput({throttle:0,clutchHeld:false});
     return baseResetTransmissionState();
   }
@@ -72,10 +74,21 @@ export function createTransmissionController(args={}){
       onPavement=true,
       automaticOverride=false,
       nextBodyLongitudinalSpeed=NaN,
-      clutchHeld=false
+      clutchHeld=undefined
     ){
-      const next=Number(nextBodyLongitudinalSpeed);
-      bodyLongitudinalSpeed=Number.isFinite(next)?next:NaN;
+      const bridged=readTransmissionRuntimeState();
+      const explicitBody=Number(nextBodyLongitudinalSpeed);
+      const bridgeBody=Number(bridged?.bodyLongitudinalSpeed);
+      bodyLongitudinalSpeed=Number.isFinite(explicitBody)
+        ?explicitBody
+        :(Number.isFinite(bridgeBody)?bridgeBody:NaN);
+
+      const resolvedClutchHeld=typeof clutchHeld==='boolean'
+        ?clutchHeld
+        :!!bridged?.clutchHeld;
+      const resolvedEngineThrottle=Number.isFinite(Number(bridged?.engineThrottle))
+        ?Number(bridged.engineThrottle)
+        :Number(requestedThrottle)||0;
 
       const profileKey=activeProfileKey();
       if(profileKey!==lastProfileKey){
@@ -102,14 +115,14 @@ export function createTransmissionController(args={}){
       const profile=base.activeTransmissionProfile();
       const combustion=profile?.type==='combustion';
       publishEngineInput({
-        throttle:combustion?requestedThrottle:0,
-        clutchHeld:combustion&&clutchHeld
+        throttle:combustion?resolvedEngineThrottle:0,
+        clutchHeld:combustion&&resolvedClutchHeld
       });
 
-      if(combustion&&clutchHeld){
+      if(combustion&&resolvedClutchHeld){
         const idle=Math.max(500,Number(profile.idleRpm)||850);
         const redline=Math.max(idle+500,Number(profile.redlineRpm)||6500);
-        const pedal=clamp01(Math.max(0,Number(requestedThrottle)||0));
+        const pedal=clamp01(Math.max(0,resolvedEngineThrottle));
         const freeRevTarget=idle+(redline-idle)*Math.pow(pedal,.72)*.97;
         const current=Math.max(idle,Number(args.state?.engineRpm)||idle);
         const response=freeRevTarget>current?11.5:6.0;
