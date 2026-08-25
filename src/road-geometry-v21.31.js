@@ -15,9 +15,6 @@ export function applyRoadSuperelevationV21_31(profile){
   const turn=new Array(n).fill(0);
   const radius=new Array(n).fill(Infinity);
 
-  // Estimate signed curvature from the already-smoothed centreline. Positive/negative
-  // sign follows heading change; roll uses the same sign because positive roll raises
-  // the left edge and a right-hand curve needs the left (outer) edge raised.
   for(let i=1;i<n-1;i++){
     const a=out[i-1],p=out[i],b=out[i+1];
     const h0=Math.atan2(p.x-a.x,p.z-a.z);
@@ -32,14 +29,11 @@ export function applyRoadSuperelevationV21_31(profile){
   const maxBank=4*Math.PI/180;
 
   for(let i=4;i<n-4;i++){
-    // Require one consistent bend over roughly 25 m around the sample. This rejects
-    // isolated routing kinks and S-transition points.
-    let signed=0,absSum=0,same=0,total=0;
+    let signed=0,absSum=0,same=0;
     for(let k=-4;k<=4;k++){
       const d=turn[i+k];
       signed+=d;
       absSum+=Math.abs(d);
-      if(Math.abs(d)>.0004)total++;
     }
     const sign=Math.sign(signed);
     if(!sign||absSum<.018)continue;
@@ -47,8 +41,6 @@ export function applyRoadSuperelevationV21_31(profile){
     const consistency=same/9;
     if(consistency<.78)continue;
 
-    // Use the local mean radius. Very tight corners are low-speed and intentionally
-    // receive almost no banking; long, flowing highway curves get it.
     let rSum=0,rCount=0;
     for(let k=-3;k<=3;k++){
       const r=radius[i+k];
@@ -67,7 +59,6 @@ export function applyRoadSuperelevationV21_31(profile){
     target[i]=sign*maxBank*strength*radiusBias;
   }
 
-  // Long transition spirals into/out of bank.
   let bank=target;
   for(let pass=0;pass<6;pass++){
     const next=bank.slice();
@@ -86,17 +77,18 @@ export function applyRoadSuperelevationV21_31(profile){
   return out;
 }
 
-// Build a road-engineered vertical trend instead of reproducing each DEM sample.
-// Samples are normally <=3 m apart; a +/-10 sample triangular window therefore
-// represents roughly 60 m of terrain. Two passes preserve long climbs/descents but
-// strongly reject short humps, pits and DEM stair-stepping.
-export function engineerVerticalProfileV21_31(source,{terrainAbs,bridgeHeightAtCum,bridgeManager}={}){
+// V21.31 P3.1 — engineered longitudinal grade.
+// The DEM is now only the large-scale reference. A ~360 m full triangular window
+// rejects local hills/valleys and the repeated passes create long vertical curves.
+// This is intentionally much broader than the old ~60 m filter: the road should
+// follow the mountain, not every terrain ripple.
+export function engineerVerticalProfileV21_31(source,{bridgeHeightAtCum,bridgeManager}={}){
   const n=source.length;
-  if(n<7)return source.map(p=>p.y);
+  if(n<9)return source.map(p=>p.y);
   let heights=source.map(p=>p.y);
+  const halfWindow=30; // samples are normally <=3 m: roughly +/-90 m, ~180 m full span
 
-  const halfWindow=10;
-  for(let pass=0;pass<2;pass++){
+  for(let pass=0;pass<4;pass++){
     const next=heights.slice();
     for(let i=1;i<n-1;i++){
       const cum=source[i].cum;
@@ -112,21 +104,25 @@ export function engineerVerticalProfileV21_31(source,{terrainAbs,bridgeHeightAtC
         weightSum+=w;
       }
       const trend=weightSum?sum/weightSum:heights[i];
-      const nearBridge=typeof bridgeManager?.isNearApproach==='function'&&bridgeManager.isNearApproach(cum,36);
-      const blend=nearBridge?.22:.88;
+      const nearBridge=typeof bridgeManager?.isNearApproach==='function'&&bridgeManager.isNearApproach(cum,45);
+      const blend=nearBridge?.18:.94;
       next[i]=heights[i]+(trend-heights[i])*blend;
     }
     heights=next;
   }
 
-  // One final short pass removes any small slope discontinuity left by the broad fit.
-  const finalH=heights.slice();
-  for(let i=2;i<n-2;i++){
-    const bridgeY=typeof bridgeHeightAtCum==='function'?bridgeHeightAtCum(source[i].cum):null;
-    if(bridgeY!==null){finalH[i]=bridgeY;continue;}
-    finalH[i]=(heights[i-2]+2*heights[i-1]+4*heights[i]+2*heights[i+1]+heights[i+2])/10;
+  // Limit abrupt changes in grade while preserving the broad elevation trend.
+  // This approximates a road vertical-curve design rather than another DEM blur.
+  for(let pass=0;pass<3;pass++){
+    const next=heights.slice();
+    for(let i=2;i<n-2;i++){
+      const bridgeY=typeof bridgeHeightAtCum==='function'?bridgeHeightAtCum(source[i].cum):null;
+      if(bridgeY!==null){next[i]=bridgeY;continue;}
+      next[i]=(heights[i-2]+2*heights[i-1]+6*heights[i]+2*heights[i+1]+heights[i+2])/12;
+    }
+    heights=next;
   }
-  return finalH;
+  return heights;
 }
 
 export function smoothRoadProfileV21_31(profile,{terrainAbs,bridgeHeightAtCum,bridgeManager}={}){
@@ -134,7 +130,6 @@ export function smoothRoadProfileV21_31(profile,{terrainAbs,bridgeHeightAtCum,br
   const source=profile.map(p=>({...p}));
   let xy=source.map(p=>({x:p.x,z:p.z}));
 
-  // Round routing-polyline corners while staying close to the source centreline.
   for(let pass=0;pass<2;pass++){
     const next=xy.map(p=>({...p}));
     for(let i=2;i<xy.length-2;i++){
@@ -153,10 +148,10 @@ export function smoothRoadProfileV21_31(profile,{terrainAbs,bridgeHeightAtCum,br
     xy=next;
   }
 
-  let heights=engineerVerticalProfileV21_31(source,{terrainAbs,bridgeHeightAtCum,bridgeManager});
-
+  const heights=engineerVerticalProfileV21_31(source,{bridgeHeightAtCum,bridgeManager});
   const routeStart=(source[0]?.cum||0)<=1;
   const startY=source[0]?.y||0;
+
   const rounded=source.map((p,i)=>{
     let y=heights[i];
     if(routeStart&&p.cum<=28)y=startY;
@@ -164,11 +159,12 @@ export function smoothRoadProfileV21_31(profile,{terrainAbs,bridgeHeightAtCum,br
     const bridgeY=typeof bridgeHeightAtCum==='function'?bridgeHeightAtCum(p.cum):null;
     if(bridgeY!==null)y=bridgeY;
 
-    // Safety-only cut/fill envelope. Unlike the old +/-3.5 m clamp this is wide
-    // enough that the road profile, not every DEM ripple, remains authoritative.
+    // Terrain is only a last-resort sanity envelope now. The engineered road grade
+    // remains authoritative through normal cuts/fills instead of being clamped back
+    // onto each local DEM bump.
     if(typeof terrainAbs==='function'&&bridgeY===null&&!(routeStart&&p.cum<=28)){
       const ground=terrainAbs(xy[i].x,xy[i].z);
-      if(Number.isFinite(ground))y=Math.max(ground-7.0,Math.min(ground+7.0,y));
+      if(Number.isFinite(ground))y=Math.max(ground-18,Math.min(ground+18,y));
     }
     return {...p,x:xy[i].x,z:xy[i].z,y,roll:0};
   });
