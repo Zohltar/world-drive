@@ -8,6 +8,18 @@ import {
   consumeClutchShockMultiplier
 } from './transmission-runtime-bridge.js';
 
+export function clutchShockDurationSec(profile={},vehicleId=''){
+  if(vehicleId==='semi_6x4')return .18;
+  switch(String(profile.profile||'')){
+    case 'f1-v8': return .065;
+    case 'countach-v12': return .085;
+    case 'boxer-turbo': return .095;
+    case 'civic': return .11;
+    case 'sonata-sport': return .12;
+    default: return .105;
+  }
+}
+
 export function semiAutoClutchReleaseMultiplier({
   releaseRemaining=0,
   releaseDuration=.095,
@@ -16,9 +28,6 @@ export function semiAutoClutchReleaseMultiplier({
   const duration=Math.max(.001,Number(releaseDuration)||.095);
   const remaining=Math.max(0,Math.min(1,(Number(releaseRemaining)||0)/duration));
   const peak=Math.max(1,Number(shockMultiplier)||1);
-  // Fast, front-loaded engagement: clutch bites hard immediately, then the
-  // transient collapses over roughly a tenth of a second. Tire grip still caps
-  // the actual force in the base dynamics, so excess demand becomes slip.
   const envelope=Math.pow(remaining,1.65);
   return 1+(peak-1)*envelope;
 }
@@ -30,7 +39,7 @@ export function createDrivingRuntime(args={}){
   let clutchWasHeld=false;
   let clutchReleaseTimer=0;
   let clutchShockMultiplier=1;
-  const CLUTCH_SHOCK_DURATION=.095;
+  let clutchShockDuration=.095;
 
   const updateTransmissionWithBodySpeed=(dt,requestedThrottle,onPavement=true,automaticOverride=false)=>{
     const state=typeof args.getState==='function'?args.getState():null;
@@ -72,14 +81,15 @@ export function createDrivingRuntime(args={}){
 
     if(clutchWasHeld){
       clutchWasHeld=false;
-      clutchReleaseTimer=CLUTCH_SHOCK_DURATION;
+      clutchShockDuration=clutchShockDurationSec(profile,args.getVehicleId?.()||'');
+      clutchReleaseTimer=clutchShockDuration;
       clutchShockMultiplier=consumeClutchShockMultiplier();
     }
 
     if(clutchReleaseTimer>0){
       const multiplier=semiAutoClutchReleaseMultiplier({
         releaseRemaining:clutchReleaseTimer,
-        releaseDuration:CLUTCH_SHOCK_DURATION,
+        releaseDuration:clutchShockDuration,
         shockMultiplier:clutchShockMultiplier
       });
       clutchReleaseTimer=Math.max(0,clutchReleaseTimer-Math.max(0,Number(dt)||0));
