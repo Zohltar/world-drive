@@ -20,16 +20,11 @@ export function clutchShockDurationSec(profile={},vehicleId=''){
   }
 }
 
-export function semiAutoClutchReleaseMultiplier({
-  releaseRemaining=0,
-  releaseDuration=.095,
-  shockMultiplier=1
-}={}){
+export function semiAutoClutchReleaseMultiplier({releaseRemaining=0,releaseDuration=.095,shockMultiplier=1}={}){
   const duration=Math.max(.001,Number(releaseDuration)||.095);
   const remaining=Math.max(0,Math.min(1,(Number(releaseRemaining)||0)/duration));
   const peak=Math.max(1,Number(shockMultiplier)||1);
-  const envelope=Math.pow(remaining,1.65);
-  return 1+(peak-1)*envelope;
+  return 1+(peak-1)*Math.pow(remaining,1.65);
 }
 
 export function drivenWheelSlipLevels(drivetrain='AWD',level=0){
@@ -53,59 +48,73 @@ export function createDrivingRuntime(args={}){
   const originalSkidMarks=args.skidMarks;
   if(typeof originalUpdateTransmission!=='function')return createBaseDrivingRuntime(args);
 
-  let clutchWasHeld=false;
-  let clutchReleaseTimer=0;
-  let clutchShockMultiplier=1;
-  let clutchShockDuration=.095;
-  let activeReleaseMultiplier=1;
-  let frameDt=1/60;
-  let requestedEngineThrottle=0;
-  let wheelspinLevel=0;
-  let wheelspinHoldSec=0;
+  let clutchWasHeld=false,clutchReleaseTimer=0,clutchShockMultiplier=1,clutchShockDuration=.095;
+  let activeReleaseMultiplier=1,frameDt=1/60,requestedEngineThrottle=0;
+  let wheelspinLevel=0,wheelspinHoldSec=0;
 
-  const updateTransmissionWithBodySpeed=(dt,requestedThrottle,onPavement=true,automaticOverride=false)=>{
+  const updateTransmissionWithBodySpeed=(dt,legacySignedInput,onPavement=true,automaticOverride=false)=>{
     frameDt=Math.max(.001,Math.min(.05,Number(dt)||1/60));
-    requestedEngineThrottle=Number(requestedThrottle)||0;
     const state=typeof args.getState==='function'?args.getState():null;
     const bodySpeed=bodyRelativeLongitudinalSpeed(state||{});
+    const flags=typeof args.getFlags==='function'?args.getFlags():{};
+    const menuOpen=!!flags?.menuOpen;
+    const autopilot=!!flags?.autopilot;
     const profile=typeof args.activeTransmissionProfile==='function'?args.activeTransmissionProfile():null;
     const combustion=profile?.type==='combustion';
+
+    let engineThrottle=0;
+    let serviceBrake=0;
+    if(autopilot){
+      engineThrottle=Math.max(0,Number(legacySignedInput)||0);
+      serviceBrake=Math.max(0,-(Number(legacySignedInput)||0));
+    }else if(!menuOpen){
+      const keyboardGas=args.keyboardActionDown?.('accelerate')?1:0;
+      const keyboardBrake=args.keyboardActionDown?.('brake')?1:0;
+      const padGas=args.gamepadState?.connected?Math.max(0,Number(args.gamepadState.throttle)||0):0;
+      const padBrake=args.gamepadState?.connected?Math.max(0,Number(args.gamepadState.brake)||0):0;
+      engineThrottle=Math.max(keyboardGas,padGas);
+      serviceBrake=Math.max(keyboardBrake,padBrake);
+    }
+    requestedEngineThrottle=engineThrottle;
+
     const keyboardClutch=!!args.keyboardActionDown?.('clutch');
     const gamepadClutch=!!args.gamepadState?.clutch;
-    const clutchHeld=combustion&&(keyboardClutch||gamepadClutch);
+    const stationaryBrakeClutch=combustion&&serviceBrake>.04&&Math.abs(bodySpeed)<.35;
+    const clutchHeld=combustion&&(keyboardClutch||gamepadClutch||stationaryBrakeClutch);
 
-    publishTransmissionRuntimeState({
-      bodyLongitudinalSpeed:bodySpeed,
-      clutchHeld,
-      engineThrottle:requestedThrottle
-    });
+    publishTransmissionRuntimeState({bodyLongitudinalSpeed:bodySpeed,clutchHeld,engineThrottle,serviceBrake});
 
     const baseThrottle=originalUpdateTransmission(
-      dt,
-      requestedThrottle,
-      onPavement,
-      automaticOverride,
-      bodySpeed,
-      clutchHeld
+      dt,engineThrottle,onPavement,automaticOverride,bodySpeed,clutchHeld
     );
 
     activeReleaseMultiplier=1;
 
+    // LT/S is service brake only. While moving backward, return a forward-signed
+    // acceleration request scaled to service-brake authority so the frozen runtime
+    // slows reverse motion instead of interpreting LT as reverse propulsion.
+    if(serviceBrake>.04){
+      if(combustion&&clutchHeld){
+        clutchWasHeld=true;
+        clutchReleaseTimer=0;
+        clutchShockMultiplier=1;
+      }
+      if(bodySpeed<-.15){
+        const accel=Math.max(.1,Number(args.VEHICLE?.accel)||1);
+        const brake=Math.max(accel,Number(args.VEHICLE?.brake)||accel);
+        return serviceBrake*(brake/accel);
+      }
+      if(bodySpeed>.15)return -serviceBrake;
+      return 0;
+    }
+
     if(!combustion){
-      clutchWasHeld=false;
-      clutchReleaseTimer=0;
-      clutchShockMultiplier=1;
-      wheelspinLevel=0;
-      wheelspinHoldSec=0;
+      clutchWasHeld=false;clutchReleaseTimer=0;clutchShockMultiplier=1;wheelspinLevel=0;wheelspinHoldSec=0;
       return baseThrottle;
     }
 
     if(clutchHeld){
-      clutchWasHeld=true;
-      clutchReleaseTimer=0;
-      clutchShockMultiplier=1;
-      wheelspinLevel=0;
-      wheelspinHoldSec=0;
+      clutchWasHeld=true;clutchReleaseTimer=0;clutchShockMultiplier=1;wheelspinLevel=0;wheelspinHoldSec=0;
       return 0;
     }
 
@@ -117,17 +126,12 @@ export function createDrivingRuntime(args={}){
     }
 
     if(clutchReleaseTimer>0){
-      const multiplier=semiAutoClutchReleaseMultiplier({
-        releaseRemaining:clutchReleaseTimer,
-        releaseDuration:clutchShockDuration,
-        shockMultiplier:clutchShockMultiplier
-      });
+      const multiplier=semiAutoClutchReleaseMultiplier({releaseRemaining:clutchReleaseTimer,releaseDuration:clutchShockDuration,shockMultiplier:clutchShockMultiplier});
       activeReleaseMultiplier=multiplier;
       clutchReleaseTimer=Math.max(0,clutchReleaseTimer-frameDt);
       if(clutchReleaseTimer<=0)clutchShockMultiplier=1;
       return baseThrottle*multiplier;
     }
-
     return baseThrottle;
   };
 
@@ -135,94 +139,46 @@ export function createDrivingRuntime(args={}){
     const result=originalLongitudinalTractionLimit
       ?originalLongitudinalTractionLimit(tractionArgs,out)
       :{acceleration:Number(tractionArgs.requestedAccel)||0,requested:Number(tractionArgs.requestedAccel)||0,limit:Infinity,limited:false};
-
     if(String(tractionArgs?.mode||'')!=='drive')return result;
-
     const request=Math.abs(Number(result?.requested)||0);
     const limit=Math.max(.01,Math.abs(Number(result?.limit)||0));
     const overRatio=request/limit;
-    const clutchBreakaway=
-      activeReleaseMultiplier>1.05&&
-      requestedEngineThrottle>.35&&
-      !!result?.limited&&
-      overRatio>1.03;
-
+    const clutchBreakaway=activeReleaseMultiplier>1.05&&requestedEngineThrottle>.35&&!!result?.limited&&overRatio>1.03;
     const drivetrain=String(tractionArgs?.vehicle?.drivetrain||'AWD');
     const vehicleClass=String(tractionArgs?.vehicle?.vehicleClass||'passenger');
-
     if(clutchBreakaway){
       const seed=Math.max(0,Math.min(1,(overRatio-1.02)/.72));
       wheelspinLevel=Math.max(wheelspinLevel,.42+.58*seed);
-      wheelspinHoldSec=Math.max(
-        wheelspinHoldSec,
-        vehicleClass==='tractor'?.18:drivetrain==='FWD'?.62:drivetrain==='RWD'?.48:.24
-      );
+      wheelspinHoldSec=Math.max(wheelspinHoldSec,vehicleClass==='tractor'?.18:drivetrain==='FWD'?.62:drivetrain==='RWD'?.48:.24);
     }else if(wheelspinHoldSec>0){
       wheelspinHoldSec=Math.max(0,wheelspinHoldSec-frameDt);
-      const sustain=requestedEngineThrottle>.55?.995:.975;
-      wheelspinLevel*=Math.pow(sustain,frameDt*60);
+      wheelspinLevel*=Math.pow(requestedEngineThrottle>.55?.995:.975,frameDt*60);
     }else if(wheelspinLevel>0){
-      const recoveryRate=requestedEngineThrottle>.55?3.3:8.5;
-      wheelspinLevel*=Math.exp(-frameDt*recoveryRate);
+      wheelspinLevel*=Math.exp(-frameDt*(requestedEngineThrottle>.55?3.3:8.5));
       if(wheelspinLevel<.01)wheelspinLevel=0;
     }
-
     if(wheelspinLevel>.01&&result&&Number.isFinite(Number(result.acceleration))){
       const factor=wheelspinDynamicGripFactor(drivetrain,wheelspinLevel,vehicleClass);
       const staticAcceleration=Number(result.staticTractionAcceleration);
-      if(Number.isFinite(staticAcceleration)){
-        result.acceleration=Math.sign(result.acceleration||1)*Math.min(
-          Math.abs(result.acceleration),
-          Math.abs(staticAcceleration)*factor
-        );
-      }else{
-        result.acceleration*=factor;
-      }
-      result.runtimeWheelspinLevel=wheelspinLevel;
-      result.runtimeSlidingGripFactor=factor;
+      if(Number.isFinite(staticAcceleration))result.acceleration=Math.sign(result.acceleration||1)*Math.min(Math.abs(result.acceleration),Math.abs(staticAcceleration)*factor);
+      else result.acceleration*=factor;
+      result.runtimeWheelspinLevel=wheelspinLevel;result.runtimeSlidingGripFactor=factor;
     }
-
-    if(typeof globalThis!=='undefined'){
-      globalThis.WorldDriveRuntimeWheelspin={
-        level:wheelspinLevel,
-        holdSec:wheelspinHoldSec,
-        drivetrain,
-        wheels:drivenWheelSlipLevels(drivetrain,wheelspinLevel)
-      };
-    }
-
+    if(typeof globalThis!=='undefined')globalThis.WorldDriveRuntimeWheelspin={level:wheelspinLevel,holdSec:wheelspinHoldSec,drivetrain,wheels:drivenWheelSlipLevels(drivetrain,wheelspinLevel)};
     return result;
   };
 
-  const skidMarksWithWheelspin=originalSkidMarks&&typeof originalSkidMarks.updateLocal==='function'
-    ?{
-      updateLocal(input={}){
-        const drivetrain=String(args.VEHICLE?.drivetrain||'AWD');
-        const synthetic=drivenWheelSlipLevels(drivetrain,wheelspinLevel);
-        const levels=Array.isArray(input.wheelSlipLevels)?input.wheelSlipLevels.slice():[0,0,0,0];
-        const longitudinal=Array.isArray(input.wheelLongitudinalUsage)?input.wheelLongitudinalUsage.slice():[0,0,0,0];
-        const grip=Array.isArray(input.wheelGripUsage)?input.wheelGripUsage.slice():[0,0,0,0];
-        for(let i=0;i<4;i++){
-          if((synthetic[i]||0)<=0)continue;
-          levels[i]=Math.max(Number(levels[i])||0,synthetic[i]);
-          longitudinal[i]=Math.max(Number(longitudinal[i])||0,1.18+synthetic[i]*.62);
-          grip[i]=Math.max(Number(grip[i])||0,1.08+synthetic[i]*.50);
-        }
-        return originalSkidMarks.updateLocal({
-          ...input,
-          wheelSlipLevels:levels,
-          wheelLongitudinalUsage:longitudinal,
-          wheelGripUsage:grip,
-          longitudinalAccel:wheelspinLevel>.05?Math.max(.25,Number(input.longitudinalAccel)||0):input.longitudinalAccel
-        });
-      }
+  const skidMarksWithWheelspin=originalSkidMarks&&typeof originalSkidMarks.updateLocal==='function'?{
+    updateLocal(input={}){
+      const drivetrain=String(args.VEHICLE?.drivetrain||'AWD');
+      const synthetic=drivenWheelSlipLevels(drivetrain,wheelspinLevel);
+      const levels=Array.isArray(input.wheelSlipLevels)?input.wheelSlipLevels.slice():[0,0,0,0];
+      const longitudinal=Array.isArray(input.wheelLongitudinalUsage)?input.wheelLongitudinalUsage.slice():[0,0,0,0];
+      const grip=Array.isArray(input.wheelGripUsage)?input.wheelGripUsage.slice():[0,0,0,0];
+      for(let i=0;i<4;i++)if((synthetic[i]||0)>0){levels[i]=Math.max(Number(levels[i])||0,synthetic[i]);longitudinal[i]=Math.max(Number(longitudinal[i])||0,1.18+synthetic[i]*.62);grip[i]=Math.max(Number(grip[i])||0,1.08+synthetic[i]*.50);}
+      return originalSkidMarks.updateLocal({...input,wheelSlipLevels:levels,wheelLongitudinalUsage:longitudinal,wheelGripUsage:grip,longitudinalAccel:wheelspinLevel>.05?Math.max(.25,Number(input.longitudinalAccel)||0):input.longitudinalAccel});
     }
-    :originalSkidMarks;
+  }:originalSkidMarks;
 
-  return createBaseDrivingRuntime({
-    ...args,
-    updateTransmission:updateTransmissionWithBodySpeed,
-    longitudinalTractionLimit:longitudinalTractionWithPersistentWheelspin,
-    skidMarks:skidMarksWithWheelspin||args.skidMarks
-  });
+  return createBaseDrivingRuntime({...args,updateTransmission:updateTransmissionWithBodySpeed,longitudinalTractionLimit:longitudinalTractionWithPersistentWheelspin,skidMarks:skidMarksWithWheelspin||args.skidMarks});
 }
