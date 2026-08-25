@@ -35,6 +35,8 @@ jobs:
       - name: Runtime dependency audit
         continue-on-error: true
         run: npm audit --omit=dev --audit-level=high
+      - name: i3 and truck GLB payload audit
+        run: node qa/ASSET_V21_31_GLB_AUDIT.mjs
       - name: Production build
         run: npm run build
       - name: Production code split QA
