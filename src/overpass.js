@@ -8,7 +8,7 @@ export function createOverpassClient({
   endpoints=[
     'https://overpass-api.de/api/interpreter',
     'https://overpass.kumi.systems/api/interpreter',
-    'https://overpass.private.coffee/api/interpreter'
+    'https://overpass.nchc.org.tw/api/interpreter'
   ]
 }={}) {
   if(!cache)throw new Error('Overpass client requires a cache');
@@ -19,6 +19,7 @@ export function createOverpassClient({
   const pending=cache.pending || new Map();
   const endpointCooldownUntil=new Map();
   const endpointFailures=new Map();
+  let globalCooldownUntil=0;
 
   function nowMs(){return Date.now();}
 
@@ -29,19 +30,22 @@ export function createOverpassClient({
   function markEndpointSuccess(endpoint){
     endpointFailures.delete(endpoint);
     endpointCooldownUntil.delete(endpoint);
+    globalCooldownUntil=0;
   }
 
   function markEndpointFailure(endpoint){
     const failures=(endpointFailures.get(endpoint)||0)+1;
     endpointFailures.set(endpoint,failures);
 
-    // Back off quickly when a public endpoint is unhealthy so directional
-    // prefetches do not hammer the same failing service every few frames.
     const cooldownMs=Math.min(
       120000,
       15000*Math.pow(2,Math.min(3,failures-1))
     );
     endpointCooldownUntil.set(endpoint,nowMs()+cooldownMs);
+  }
+
+  function allEndpointsCoolingDown(){
+    return endpoints.every(endpoint=>!endpointAvailable(endpoint));
   }
 
   function transportUrl(endpoint){
@@ -90,7 +94,21 @@ export function createOverpassClient({
         throw new Error('HTTP '+response.status);
       }
 
-      return await response.json();
+      const data=await response.json();
+
+      // Vite dev proxy reports upstream 429/5xx/timeouts as an application-level
+      // JSON failure with HTTP 200. This keeps Chrome from logging expected red
+      // network errors while still letting this client fail over normally.
+      if(data?.__worldDriveOverpassFailure){
+        const error=new Error(
+          data.message||`Overpass upstream HTTP ${data.status||'failure'}`
+        );
+        error.status=Number(data.status)||0;
+        error.softProxyFailure=true;
+        throw error;
+      }
+
+      return data;
     }finally{
       clearTimeout(timer);
       onControllerEnd?.(controller);
@@ -107,11 +125,21 @@ export function createOverpassClient({
   }){
     if(!query)throw new Error('Overpass query is required');
 
-    const available=endpoints.filter(endpointAvailable);
-    const candidates=available.length?available:endpoints.slice(0,1);
+    // If every mirror just failed, do not let hydro/scenery/sign prefetch loops
+    // immediately restart the whole mirror cascade. Cached cells still return
+    // before this function is reached.
+    if(globalCooldownUntil>nowMs())return null;
 
-    for(const endpoint of candidates){
+    const available=endpoints.filter(endpointAvailable);
+    if(!available.length){
+      globalCooldownUntil=Math.max(globalCooldownUntil,nowMs()+15000);
+      return null;
+    }
+
+    let attempted=0;
+    for(const endpoint of available){
       if(!shouldContinue())return null;
+      attempted++;
 
       try{
         const data=await requestEndpoint({
@@ -130,18 +158,31 @@ export function createOverpassClient({
       }catch(error){
         const expectedAbort=error?.name==='AbortError';
 
-        if(shouldContinue()){
-          markEndpointFailure(endpoint);
-        }
+        if(shouldContinue())markEndpointFailure(endpoint);
 
+        // Proxy-reported upstream outages are expected operational failures.
+        // Keep one compact diagnostic per attempted mirror instead of dumping
+        // a stack trace for every hydro/scenery directional prefetch.
         if(shouldContinue()&&!expectedAbort){
-          console.warn(
-            `${label} Overpass failed`,
-            endpoint,
-            error
-          );
+          if(error?.softProxyFailure){
+            console.info(
+              `${label} Overpass mirror unavailable`,
+              endpoint,
+              error.status||''
+            );
+          }else{
+            console.warn(
+              `${label} Overpass failed`,
+              endpoint,
+              error
+            );
+          }
         }
       }
+    }
+
+    if(attempted>0&&allEndpointsCoolingDown()){
+      globalCooldownUntil=nowMs()+30000;
     }
 
     return null;
