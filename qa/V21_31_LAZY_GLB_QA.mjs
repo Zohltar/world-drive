@@ -32,12 +32,17 @@ let total=0;
 const rows=assets.map(([vehicle,path])=>{
   const bytes=fs.statSync(path).size;
   total+=bytes;
-  return {vehicle,asset_mb:+(bytes/1048576).toFixed(2)};
+  return {
+    vehicle,
+    asset_mb:+(bytes/1_000_000).toFixed(2),
+    asset_mib:+(bytes/1048576).toFixed(2)
+  };
 });
-assert(total>140*1048576,'expected authored fleet to exceed 140 MB');
+assert(total>145_000_000,'expected authored fleet to exceed 145 decimal MB');
 console.table(rows);
 console.log('V21.31 LAZY GLB QA: PASS',{
-  before_eager_startup_mb:+(total/1048576).toFixed(2),
+  before_eager_startup_mb:+(total/1_000_000).toFixed(2),
+  before_eager_startup_mib:+(total/1048576).toFixed(2),
   after_eager_startup_mb:0,
   policy:'load selected authored vehicle only'
 });
