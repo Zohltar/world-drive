@@ -36,6 +36,8 @@ export function createTransmissionController(args={}){
   let bodyLongitudinalSpeed=NaN;
   let driveDirection=1;
   let lastProfileKey='';
+  let freeRevRpm=NaN;
+  let clutchWasHeld=false;
 
   const transmissionSpeed=()=>{
     const raw=Number.isFinite(bodyLongitudinalSpeed)
@@ -59,6 +61,8 @@ export function createTransmissionController(args={}){
   function resetTransmissionState(){
     driveDirection=1;
     bodyLongitudinalSpeed=NaN;
+    freeRevRpm=NaN;
+    clutchWasHeld=false;
     lastProfileKey=activeProfileKey();
     resetTransmissionRuntimeState();
     publishEngineInput({throttle:0,clutchHeld:false});
@@ -93,6 +97,8 @@ export function createTransmissionController(args={}){
       const profileKey=activeProfileKey();
       if(profileKey!==lastProfileKey){
         driveDirection=1;
+        freeRevRpm=NaN;
+        clutchWasHeld=false;
         lastProfileKey=profileKey;
       }
 
@@ -104,6 +110,13 @@ export function createTransmissionController(args={}){
         requestedThrottle,
         bodyLongitudinalSpeed:physicalBodySpeed
       });
+
+      const profileBeforeBase=base.activeTransmissionProfile();
+      const combustionBeforeBase=profileBeforeBase?.type==='combustion';
+      if(combustionBeforeBase&&resolvedClutchHeld&&!clutchWasHeld){
+        const idle=Math.max(500,Number(profileBeforeBase.idleRpm)||850);
+        freeRevRpm=Math.max(idle,Number(args.state?.engineRpm)||idle);
+      }
 
       const transmitted=baseUpdateTransmission(
         dt,
@@ -123,12 +136,20 @@ export function createTransmissionController(args={}){
         const idle=Math.max(500,Number(profile.idleRpm)||850);
         const redline=Math.max(idle+500,Number(profile.redlineRpm)||6500);
         const pedal=clamp01(Math.max(0,resolvedEngineThrottle));
-        const freeRevTarget=idle+(redline-idle)*Math.pow(pedal,.72)*.97;
-        const current=Math.max(idle,Number(args.state?.engineRpm)||idle);
-        const response=freeRevTarget>current?11.5:6.0;
-        args.state.engineRpm=current+(freeRevTarget-current)*(1-Math.exp(-Math.max(0,Number(dt)||0)*response));
+        const freeRevTarget=idle+(redline-idle)*Math.pow(pedal,.72)*.985;
+        if(!Number.isFinite(freeRevRpm))freeRevRpm=Math.max(idle,Number(args.state?.engineRpm)||idle);
+        const response=freeRevTarget>freeRevRpm?7.8:4.8;
+        const step=1-Math.exp(-Math.max(0,Number(dt)||0)*response);
+        freeRevRpm+= (freeRevTarget-freeRevRpm)*step;
+        freeRevRpm=Math.max(idle,Math.min(redline,freeRevRpm));
+        args.state.engineRpm=freeRevRpm;
+        args.state.revLimiterActive=pedal>.96&&freeRevRpm>=redline*.982;
+        if(!args.state.revLimiterActive)args.state.revLimiterPhase=0;
+      }else{
+        freeRevRpm=NaN;
       }
 
+      clutchWasHeld=combustion&&resolvedClutchHeld;
       return transmitted;
     },
     getTransmissionLongitudinalSpeed(){return transmissionSpeed();},
