@@ -46,11 +46,14 @@ export function createDrivingRuntime(args={}){
   const originalUpdateTransmission=args.updateTransmission;
   const originalLongitudinalTractionLimit=args.longitudinalTractionLimit;
   const originalSkidMarks=args.skidMarks;
+  const originalVehicleVisuals=args.vehicleVisuals;
+  const originalTruckTrailerSystem=args.truckTrailerSystem;
   if(typeof originalUpdateTransmission!=='function')return createBaseDrivingRuntime(args);
 
   let clutchWasHeld=false,clutchReleaseTimer=0,clutchShockMultiplier=1,clutchShockDuration=.095;
   let activeReleaseMultiplier=1,frameDt=1/60,requestedEngineThrottle=0;
   let wheelspinLevel=0,wheelspinHoldSec=0;
+  let serviceBrakeRequested=false;
 
   const updateTransmissionWithBodySpeed=(dt,legacySignedInput,onPavement=true,automaticOverride=false)=>{
     frameDt=Math.max(.001,Math.min(.05,Number(dt)||1/60));
@@ -76,6 +79,14 @@ export function createDrivingRuntime(args={}){
       serviceBrake=Math.max(keyboardBrake,padBrake);
     }
     requestedEngineThrottle=engineThrottle;
+    serviceBrakeRequested=serviceBrake>.04;
+
+    // P4.1 — brake lamps are driven by the service-brake input itself, not by
+    // travel direction. This keeps LT/S lighting the lamps in both D and R.
+    if(serviceBrakeRequested){
+      originalVehicleVisuals?.updateBrakeLights?.(dt,true);
+      originalTruckTrailerSystem?.setBrakeLights?.(true);
+    }
 
     const keyboardClutch=!!args.keyboardActionDown?.('clutch');
     const gamepadClutch=!!args.gamepadState?.clutch;
@@ -90,9 +101,6 @@ export function createDrivingRuntime(args={}){
 
     activeReleaseMultiplier=1;
 
-    // LT/S is service brake only. While moving backward, return a forward-signed
-    // acceleration request scaled to service-brake authority so the frozen runtime
-    // slows reverse motion instead of interpreting LT as reverse propulsion.
     if(serviceBrake>.04){
       if(combustion&&clutchHeld){
         clutchWasHeld=true;
