@@ -259,16 +259,29 @@ export function createRouteLifecycle({
       setBootProgress('hydro','loading','Hydrographie initiale');
 
       let position=getState();
-      const hydroReady=await loadWaterAround(position.absX,position.absZ)
-        .catch(error=>{
-          console.warn('Initial hydrography failed',error);
-          return false;
-        });
+      // V21.31 — Hydrography is optional. Overpass mirrors can time out, reject
+      // CORS or return 5xx responses; none of those failures should block the
+      // drivable route. Let the request continue safely in the background, but
+      // give initial boot only a short grace period before moving on to DEM.
+      const hydroAttempt=Promise.resolve(
+        loadWaterAround(position.absX,position.absZ)
+      ).catch(error=>{
+        console.warn('Initial hydrography failed',error);
+        return {ok:false,error};
+      });
+      const hydroResult=await Promise.race([
+        hydroAttempt,
+        new Promise(resolve=>setTimeout(
+          ()=>resolve({ok:false,timeout:true}),
+          2500
+        ))
+      ]);
+      const hydroReady=hydroResult?.ok===true;
 
       setBootProgress(
         'hydro',
         hydroReady?'done':'warn',
-        hydroReady?'Hydrographie prête':'Hydrographie indisponible'
+        hydroReady?'Hydrographie prête':'Hydrographie différée / indisponible'
       );
 
       // Do not expose fallback terrain while the first real DEM/image tiles
