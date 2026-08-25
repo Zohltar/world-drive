@@ -1,0 +1,26 @@
+name: Stress V21.31
+
+on:
+  push:
+    branches:
+      - stress/v21.31
+  workflow_dispatch:
+
+jobs:
+  stress:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install
+        run: npm ci
+      - name: Stress QA
+        run: npm run qa:stress
+      - name: Production build
+        run: npm run build
