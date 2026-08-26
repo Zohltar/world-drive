@@ -173,7 +173,8 @@ export function createLocalWorldBuilder({
     return {
       totalMs:now()-totalStarted,
       profilePoints:profile.length,
-      phases
+      phases,
+      terrain:terrainService.diagnostics?.()||null
     };
   }
 
