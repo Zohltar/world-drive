@@ -126,13 +126,6 @@ export function createForestChunkStreamer({
     return out;
   }
 
-  function distanceToSegment(x,z,segment){
-    const vx=segment.bx-segment.ax,vz=segment.bz-segment.az;
-    const vv=vx*vx+vz*vz||1;
-    const t=Math.max(0,Math.min(1,((x-segment.ax)*vx+(z-segment.az)*vz)/vv));
-    return Math.hypot(x-(segment.ax+vx*t),z-(segment.az+vz*t));
-  }
-
   function routeSegmentsForCell(cell){
     const first=nearestRoute(cell.x,cell.z);
     if(!first)return [];
@@ -152,11 +145,15 @@ export function createForestChunkStreamer({
     return [...unique.values()];
   }
 
-  function tooCloseToRoad(x,z,segments){
-    for(const segment of segments){
-      if(distanceToSegment(x,z,segment)<FOREST.roadClearance)return true;
-    }
-    return false;
+  function tooCloseToRoadExact(x,z,nearRoadCell){
+    if(!nearRoadCell)return false;
+    // P9.5: cell probes are only a cheap broad phase. Tight curves, bridges and
+    // switchbacks can place a candidate close to a segment that none of the
+    // probes selected. The final rejection therefore uses nearestRoute at the
+    // exact candidate coordinate. This runs only in cells already known to be
+    // near the road corridor, so it does not burden the whole forest.
+    const nr=nearestRoute(x,z);
+    return !!nr&&Number.isFinite(nr.d)&&nr.d<FOREST.roadClearance;
   }
 
   function terrainSlope(x,z){
@@ -185,7 +182,9 @@ export function createForestChunkStreamer({
   }
 
   function pushMatrix(list,x,z,y,height,widthScale,rot,leanX,leanZ,originX,originZ){
-    dummy.position.set(x-originX,y-.10,z-originZ);
+    // A small root embed hides the visible seam caused by tree lean and tiny
+    // numerical differences at triangle edges without changing terrain height.
+    dummy.position.set(x-originX,y-.28,z-originZ);
     dummy.rotation.set(leanX,rot,leanZ);
     dummy.scale.set(height*widthScale,height,height*widthScale);
     dummy.updateMatrix();
@@ -212,6 +211,7 @@ export function createForestChunkStreamer({
         z:(cellCz+.5)*FOREST.cellSize
       };
       const roadSegments=routeSegmentsForCell(cell);
+      const nearRoadCell=roadSegments.length>0;
       const baseDensity=densityAt(cell.x,cell.z);
 
       for(let i=0;i<FOREST.candidatesPerCell;i++){
@@ -226,7 +226,7 @@ export function createForestChunkStreamer({
         if(slope>.82)keep*=.72;
         const keepSeed=forestHash(cellCx,cellCz,(0x51f15e+Math.imul(i,0x9e3779b1))|0);
         if(keepSeed>keep)continue;
-        if(roadSegments.length&&tooCloseToRoad(x,z,roadSegments))continue;
+        if(tooCloseToRoadExact(x,z,nearRoadCell))continue;
         if(isWaterAt(x,z,8))continue;
         if(blocksForest(x,z))continue;
 
@@ -404,8 +404,6 @@ export function createForestChunkStreamer({
       const perSlice=Math.max(1,FOREST.chunkBuildsPerSlice||1);
       while(queue.length&&built<perSlice){
         if(built>0&&!deadline.didTimeout&&deadline.timeRemaining()<2)break;
-        // Re-evaluate immediately before every build. If the car moved while the
-        // idle queue was running, the nearest missing chunk preempts old work.
         sortQueueByPriority(lastCenter);
         const desc=queue.shift();
         queued.delete(desc.key);
@@ -452,8 +450,6 @@ export function createForestChunkStreamer({
       data.lastUsed=performance.now();
     }
 
-    // Drop queued chunks that are no longer needed. Existing queued descriptors
-    // do not retain stale distance priority because sorting is dynamic.
     queue=queue.filter(desc=>{
       if(requiredKeys.has(desc.key))return true;
       queued.delete(desc.key);
