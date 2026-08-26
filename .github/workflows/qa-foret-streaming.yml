@@ -1,0 +1,49 @@
+name: Foret Streaming QA
+
+on:
+  push:
+    branches:
+      - foret
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  qa:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install
+        run: npm ci
+      - name: Forest runtime QA
+        run: node qa-forest-p912-runtime.mjs
+      - name: P9.17 load smoothing QA
+        run: node qa-streaming-p917-load-smoothing.mjs
+      - name: P9.18 loading QA
+        run: node qa-streaming-p918-loading.mjs
+      - name: P9.19 elevation QA
+        run: node qa-streaming-p919-elevation.mjs
+      - name: P9.20 world phases QA
+        run: node qa-streaming-p920-world-phases.mjs
+      - name: P9.21 terrain reuse QA
+        run: node qa-streaming-p921-terrain-reuse.mjs
+      - name: P9.22 road transition QA
+        run: node qa-streaming-p922-road-transition.mjs
+      - name: Forest route cache reset QA
+        run: node qa-forest-route-cache-reset.mjs
+      - name: P9.23 prepared refresh QA
+        run: node qa-streaming-p923-prepared-refresh.mjs
+      - name: P9.23 scheduler QA
+        run: node qa-streaming-p923-scheduler.mjs
+      - name: P9.24 frame budget QA
+        run: node qa-streaming-p924-frame-budget.mjs
+      - name: Production build
+        run: npm run build
