@@ -5,19 +5,19 @@ import {createStreamingCoordinator} from './src/streaming-coordinator.js';
 const imagerySource=fs.readFileSync(new URL('./src/imagery-p913.js',import.meta.url),'utf8');
 const coordinatorSource=fs.readFileSync(new URL('./src/streaming-coordinator-p913.js',import.meta.url),'utf8');
 
-assert.ok(imagerySource.includes('texture.generateMipmaps=false'),
+assert.ok(/texture\.generateMipmaps\s*=\s*false/.test(imagerySource),
   'streamed satellite chunks must not generate mipmaps during road transitions');
-assert.ok(imagerySource.includes('if(changed){\n      groundMaterial.needsUpdate=true;'),
+assert.ok(/if\s*\(changed\)\s*\{\s*groundMaterial\.needsUpdate\s*=\s*true\s*;/.test(imagerySource),
   'ground material updates must be conditional');
-assert.ok(imagerySource.includes('coverageMoved<80'),
+assert.ok(/coverageMoved\s*<\s*80/.test(imagerySource),
   'car-only movement should reprioritize imagery without rebuilding coverage');
-assert.ok(imagerySource.includes('deferCommits'),
+assert.ok(/function\s+deferCommits\s*\(/.test(imagerySource),
   'imagery must expose a transition commit guard');
-assert.ok(coordinatorSource.includes("const recenterOnly=reasons.length===1&&reasons[0]==='recenter'"),
+assert.ok(/const\s+recenterOnly\s*=\s*reasons\.length\s*===\s*1\s*&&\s*reasons\[0\]\s*===\s*['"]recenter['"]/.test(coordinatorSource),
   'coordinator must distinguish recenter-only world refreshes');
-assert.ok(coordinatorSource.includes('if(!recenterOnly){\n      imageryService.invalidateGeometry?.();'),
+assert.ok(/if\s*\(!recenterOnly\)\s*\{\s*imageryService\.invalidateGeometry\?\.\(\)\s*;/.test(coordinatorSource),
   'recenter-only refresh must not rebuild every satellite geometry');
-assert.ok(coordinatorSource.includes('imageryService.deferCommits?.(policy.imageryCommitGuardMs)'),
+assert.ok(/imageryService\.deferCommits\?\.\(policy\.imageryCommitGuardMs\)/.test(coordinatorSource),
   'world rebuild must guard satellite texture commits');
 
 let runtime={
