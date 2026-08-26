@@ -216,6 +216,22 @@ export function createSceneryRenderer({
     refreshForestMasks();
   }
 
+  function clearForestCache(){
+    // Route changes are fundamentally different from ordinary floating-origin
+    // refreshes: deterministic chunk keys are route/world-space relative, so a
+    // cached tree chunk from the previous route must never be reused on the new
+    // route. Suspend the streamer until the new route has rebuilt its final
+    // road/terrain state, then rebuild from the already-loaded forest asset.
+    forestStreamer.setAssets(null);
+    forestStreamer.clearAll();
+    forestAssetsActivated=false;
+    sceneryReadyForForest=false;
+    forestBlockers=[];
+    blockerSignature='';
+    lastForestStats={trees:0,near:0,mid:0,far:0,edge:0,chunks:0,cached:0,queued:0};
+    return true;
+  }
+
   function makeBuildingLOD(points,tags,dist){
     if(dist<520){
       let height=parseFloat(tags.height||'');
@@ -322,6 +338,7 @@ export function createSceneryRenderer({
   return {
     rebuild,
     clear,
+    clearForestCache,
     removeTreesOverWater,
     requestForestRefresh,
     whenInitialForestReady:()=>forestStreamer.whenInitialReady(),
