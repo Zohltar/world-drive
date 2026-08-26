@@ -1,4 +1,5 @@
 import {loadForestWaterAssets,getForestWaterAssets} from './forest-water-assets.js';
+import {createForestTerrainSampler} from './forest-terrain-sampler.js';
 import {
   FOREST_STREAMING_POLICY as FOREST,
   forestHash,
@@ -21,6 +22,17 @@ export function createSceneryRenderer({THREE,statusEl,features,terrainDetailGrou
   let forestPollTimer=null;
   let lastShown=0;
   let lastForestStats={total:0,near:0,mid:0,far:0,batches:0};
+
+  // P7.1: use the triangles actually rendered by the live 5.6 km terrain mesh.
+  // The previous DEM-at-point placement could differ from triangle interpolation
+  // by metres on steep relief, making trunks float or disappear into slopes.
+  const forestTerrain=createForestTerrainSampler({
+    THREE,
+    forestGroup,
+    getWorldOffset,
+    fallbackHeight:terrainHeight
+  });
+  const forestHeight=(x,z)=>forestTerrain.heightAt(x,z);
 
   function disposeObject(object){
     object.traverse?.(child=>{if(child.userData?.sharedForestGeometry)return;child.geometry?.dispose?.();});
@@ -127,8 +139,10 @@ export function createSceneryRenderer({THREE,statusEl,features,terrainDetailGrou
     const qx=Math.floor(x/q),qz=Math.floor(z/q),key=`${qx}:${qz}`;
     if(cache.has(key))return cache.get(key);
     const sx=(qx+.5)*q,sz=(qz+.5)*q,d=8;
-    const hx=terrainHeight(sx+d,sz)-terrainHeight(sx-d,sz);
-    const hz=terrainHeight(sx,sz+d)-terrainHeight(sx,sz-d);
+    // Match slope filtering to the same visible triangle surface used to anchor
+    // the tree. This avoids rejecting/accepting based on a different DEM surface.
+    const hx=forestHeight(sx+d,sz)-forestHeight(sx-d,sz);
+    const hz=forestHeight(sx,sz+d)-forestHeight(sx,sz-d);
     const slope=Math.hypot(hx,hz)/(d*2);
     cache.set(key,slope);
     return slope;
@@ -194,7 +208,7 @@ export function createSceneryRenderer({THREE,statusEl,features,terrainDetailGrou
       const leanZ=(forestHash(cell.cx,cell.cz,0x5f3+i*12289)-.5)*leanScale;
       const sector=forestSectorForOffset(dx,dz,FOREST.sectors);
       addBatchPlacement(job,lod,sector,variant,{
-        x,z,y:terrainHeight(x,z),height,widthScale,rot,leanX,leanZ
+        x,z,y:forestHeight(x,z),height,widthScale,rot,leanX,leanZ
       });
     }
   }
@@ -249,7 +263,9 @@ export function createSceneryRenderer({THREE,statusEl,features,terrainDetailGrou
         placements.forEach((p,i)=>{
           dummy.position.set(
             p.x-job.center.x-job.groupPosition.x,
-            p.y+.02,
+            // Exact triangle anchoring plus a tiny root embed hides sub-pixel
+            // cracks caused by the intentional tree lean without burying trunks.
+            p.y-.10,
             p.z-job.center.z-job.groupPosition.z
           );
           dummy.rotation.set(p.leanX,p.rot,p.leanZ);
