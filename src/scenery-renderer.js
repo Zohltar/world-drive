@@ -152,19 +152,25 @@ export function createSceneryRenderer({THREE,statusEl,features,terrainDetailGrou
     const variants=forestAssets?.trees||[];
     const find=name=>variants.findIndex(v=>String(v?.name||'').toLowerCase()===name);
     const authored=find('authored'),ps1=find('ps1'),scene=find('scene');
+    const proxyMid=find('proxy-mid'),proxyFar=find('proxy-far');
     const first=variants.length?0:-1;
+    const sceneFallback=scene>=0?scene:(ps1>=0?ps1:(authored>=0?authored:first));
     return {
-      authored:authored>=0?authored:(ps1>=0?ps1:(scene>=0?scene:first)),
-      ps1:ps1>=0?ps1:(scene>=0?scene:(authored>=0?authored:first)),
-      scene:scene>=0?scene:(ps1>=0?ps1:(authored>=0?authored:first))
+      authored:authored>=0?authored:(ps1>=0?ps1:sceneFallback),
+      ps1:ps1>=0?ps1:sceneFallback,
+      scene:sceneFallback,
+      proxyMid:proxyMid>=0?proxyMid:sceneFallback,
+      proxyFar:proxyFar>=0?proxyFar:(proxyMid>=0?proxyMid:sceneFallback)
     };
   }
 
   function chooseVariantForLod(lod,r,indices){
-    if(lod===2)return indices.scene;
-    if(lod===1)return r<.24?indices.ps1:indices.scene;
-    if(r<.15)return indices.authored;
-    if(r<.62)return indices.ps1;
+    // P8: only the near zone pays for authored GLB branch/texture detail.
+    // Mid/far are single-material opaque proxy meshes (68 / 20 triangles).
+    if(lod===2)return indices.proxyFar;
+    if(lod===1)return indices.proxyMid;
+    if(r<.13)return indices.authored;
+    if(r<.61)return indices.ps1;
     return indices.scene;
   }
 
