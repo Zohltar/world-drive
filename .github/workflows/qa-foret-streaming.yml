@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - foret
+  pull_request:
+    branches:
+      - foret
   workflow_dispatch:
 
 permissions:
