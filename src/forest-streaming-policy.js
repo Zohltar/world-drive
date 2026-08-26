@@ -14,7 +14,15 @@ export const FOREST_STREAMING_POLICY=Object.freeze({
   sectors:8,
   refreshDistance:240,
   pollMs:180,
-  roadClearance:21,
+
+  // P9.4 roadside anchoring guard. The visible road-terrain transition in
+  // terrain.js extends to terrainCutHalfWidth 16.5 + blendWidth 14.0 = 30.5 m.
+  // Trees inside that ribbon are anchored to the main terrain mesh while the
+  // ribbon itself can sit at a different elevation, which makes trunks appear
+  // buried or floating beside the road. Keep tree roots just outside the full
+  // transition footprint plus a small visual safety margin.
+  roadClearance:32,
+
   slopeCacheSize:44,
   maxSlope:1.28,
   densityNoiseScale:420,
