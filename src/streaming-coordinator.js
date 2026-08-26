@@ -1,12 +1,40 @@
-// World Drive P9.19 streaming coordinator entry point.
+// World Drive P9.20 streaming coordinator entry point.
 // P9.13 owns the proven transition scheduler. P9.17 added adaptive backoff;
 // P9.18 made that governor driving-aware and added per-job telemetry. P9.19
-// exposes DEM fast-path counters so terrain/horizon refresh cost can be compared
-// directly after the world-space elevation optimization.
+// accelerated DEM sampling. P9.20 records the synchronous local-world rebuild
+// by phase so the remaining road-transition hitch can be fixed at its source.
 import {createStreamingCoordinator as createStreamingCoordinatorP913} from './streaming-coordinator-p913.js';
 
 export function createStreamingCoordinator(options){
-  const base=createStreamingCoordinatorP913(options);
+  let lastLocalWorldPhases=null;
+  const localWorldPhaseMax={};
+  const originalRebuildLocalWorld=options.rebuildLocalWorld;
+
+  function captureLocalWorldPhases(result){
+    if(!result||typeof result!=='object'||!result.phases)return;
+    const phases={};
+    for(const [key,value] of Object.entries(result.phases)){
+      if(!Number.isFinite(value))continue;
+      phases[key]=value;
+      localWorldPhaseMax[key]=Math.max(localWorldPhaseMax[key]||0,value);
+    }
+    const totalMs=Number.isFinite(result.totalMs)?result.totalMs:0;
+    localWorldPhaseMax.totalMs=Math.max(localWorldPhaseMax.totalMs||0,totalMs);
+    lastLocalWorldPhases={
+      totalMs,
+      profilePoints:Number(result.profilePoints)||0,
+      phases
+    };
+  }
+
+  const base=createStreamingCoordinatorP913({
+    ...options,
+    rebuildLocalWorld:(...args)=>{
+      const result=originalRebuildLocalWorld?.(...args);
+      captureLocalWorldPhases(result);
+      return result;
+    }
+  });
 
   // Give heavy world refreshes more runway and avoid eager imagery work around
   // activity. These nested policy objects remain mutable although base is frozen.
@@ -161,11 +189,26 @@ export function createStreamingCoordinator(options){
     suspendedFrames=0;
     ignoredNonDrivingFrames=0;
     visualJobStats.clear();
+    lastLocalWorldPhases=null;
+    for(const key of Object.keys(localWorldPhaseMax))delete localWorldPhaseMax[key];
   }
 
   function reset(){
     base.reset();
     resetTelemetry();
+  }
+
+  function roundedLocalWorldReport(report){
+    if(!report)return null;
+    const phases={};
+    for(const [key,value] of Object.entries(report.phases||{})){
+      phases[key]=Number(value.toFixed(3));
+    }
+    return {
+      totalMs:Number((report.totalMs||0).toFixed(3)),
+      profilePoints:report.profilePoints||0,
+      phases
+    };
   }
 
   function diagnostics(){
@@ -179,9 +222,13 @@ export function createStreamingCoordinator(options){
         avgMs:Number((value.totalMs/Math.max(1,value.runs)).toFixed(3))
       };
     }
+    const phaseMax={};
+    for(const [key,value] of Object.entries(localWorldPhaseMax)){
+      phaseMax[key]=Number(value.toFixed(3));
+    }
     return {
       ...legacy,
-      // Top-level hitch values are gameplay-only and ignore tab suspension.
+      // Top-level hitch values are now gameplay-only and ignore tab suspension.
       hitchCount:gameplayHitchCount,
       maxFrameMs:maxGameplayFrameMs,
       suspendedFrames,
@@ -195,6 +242,8 @@ export function createStreamingCoordinator(options){
         over100Ms
       },
       visualJobs,
+      localWorldPhases:roundedLocalWorldReport(lastLocalWorldPhases),
+      localWorldPhaseMax:phaseMax,
       elevation:options.elevationService?.diagnostics?.()||null,
       p917:{
         frameBaselineMs,
