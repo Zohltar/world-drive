@@ -80,7 +80,17 @@ export function loadForestWaterAssets(){
       ['scene',new URL('./assets/forest/forest_pine_scene.glb',import.meta.url).href]
     ];
     const settled=await Promise.allSettled(sources.map(([name,url])=>loadTree(url,name)));
-    const hdTrees=settled.filter(result=>result.status==='fulfilled').map(result=>result.value);
+    const loaded=settled.filter(result=>result.status==='fulfilled').map(result=>result.value);
+    const byName=name=>loaded.find(tree=>tree.name===name)||null;
+
+    // P9.2 comparison profile: the current chunk renderer shares one tree mesh
+    // across all LOD states. Use the complete one-mesh PS1 asset first so the
+    // comparison is visually valid. The authored tree has separate trunk and
+    // foliage parts and would otherwise render only one of them in P9.1.
+    const ps1=byName('ps1');
+    const authored=byName('authored');
+    const scene=byName('scene');
+    const hdTrees=[ps1,authored,scene].filter(Boolean);
 
     if(hdTrees.length){
       cached={
@@ -90,11 +100,10 @@ export function loadForestWaterAssets(){
         simpleTrees,
         forestProfile:'hd-comparison',
         waterStyle:AUTHORED_WATER_STYLE,
-        source:'P9.2 HD comparison; lightweight proxy forest cached but hidden'
+        source:'P9.2 HD comparison using complete PS1 tree; lightweight proxies cached but hidden'
       };
       console.info(
-        `Forest assets ready: HD comparison · ${hdTrees.length} variants · `+
-        `${hdTrees.reduce((sum,t)=>sum+(t.triangles||0),0)} source triangles · `+
+        `Forest assets ready: HD comparison · active ${hdTrees[0].name} ${hdTrees[0].triangles} triangles · `+
         `${simpleTrees.length} lightweight LODs cached`
       );
       return cached;
