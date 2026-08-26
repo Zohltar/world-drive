@@ -1,10 +1,14 @@
 export const FOREST_STREAMING_POLICY=Object.freeze({
   cellSize:120,
 
-  // P9.11+ dense low-definition profile. Every visible tree uses the approved
-  // 68-triangle proxy, so 200 deterministic candidates per 120 m cell stays the
-  // visual density baseline while P9.12 focuses on transition smoothness.
-  candidatesPerCell:200,
+  // P9.14: keep the approved 68-triangle low-definition conifer everywhere,
+  // but trade 20% of the population for a much stronger forest silhouette.
+  // 200 -> 160 candidates per 120 m cell.
+  candidatesPerCell:160,
+
+  // Uniform tree-size multiplier. P9.14 doubles both height and crown width,
+  // preserving the original low-definition tree proportions.
+  treeScale:2,
 
   // Legacy LOD thresholds remain exported for QA/backward compatibility. P9.12
   // no longer swaps geometry at these boundaries; density is continuous instead.
@@ -34,8 +38,8 @@ export const FOREST_STREAMING_POLICY=Object.freeze({
   densityNoiseScale:420,
   cellsPerSlice:30,
 
-  // Persistent 480 m chunks. P9.12 builds only one 120 m cell per idle slice,
-  // bounding each background CPU burst to at most 200 candidate evaluations.
+  // Persistent 480 m chunks. One 120 m cell is built per idle slice. With P9.14
+  // that caps a background burst at 160 candidate evaluations.
   chunkCells:4,
   chunkCacheLimit:96,
   chunkBuildsPerSlice:1,
