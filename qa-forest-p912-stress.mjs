@@ -53,7 +53,7 @@ assert.ok(required({x:0,z:0}).length>=50&&required({x:0,z:0}).length<=70,'active
 assert.ok(line.maxEnteringAfterBoot<=4,'straight-line chunk burst regression');
 assert.ok(bends.maxEnteringAfterBoot<=6,'serpentine chunk burst regression');
 assert.ok(line.maxRefreshChunks<=12&&bends.maxRefreshChunks<=12,'terrain refresh ring is too large');
-assert.ok(sliceBudget<=400,'idle slice candidate budget is too large');
+assert.ok(sliceBudget<=200,'idle slice candidate budget is too large');
 assert.ok(newBytes/oldBytes<.40,'matrix cache regression');
 assert.equal((streamer.match(/instanceMatrix\.needsUpdate\s*=\s*true/g)||[]).length,1,
   'P9.12 should upload an instance matrix only when a chunk mesh is created');
