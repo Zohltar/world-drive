@@ -1,3 +1,140 @@
+const P922_GRID_NORMALS_FLAG='__worldDriveP922GridNormals';
+
+function installFastGroundGridNormals(THREE){
+  const proto=THREE?.BufferGeometry?.prototype;
+  if(!proto||proto[P922_GRID_NORMALS_FLAG])return false;
+  const original=proto.computeVertexNormals;
+  if(typeof original!=='function')return false;
+
+  proto[P922_GRID_NORMALS_FLAG]=original;
+  proto.computeVertexNormals=function(...args){
+    const segments=Number(this.userData?.worldDriveGroundSegments);
+    const positions=this.getAttribute?.('position');
+    const grid=segments+1;
+
+    // P9.22: only the explicitly tagged regular near-ground grid takes the
+    // O(vertices) height-gradient path. Every other geometry keeps Three.js'
+    // stock area-weighted triangle implementation unchanged.
+    if(
+      Number.isInteger(segments)&&segments>1&&
+      positions?.itemSize===3&&
+      positions.count===grid*grid&&
+      positions.array
+    ){
+      let normals=this.getAttribute?.('normal');
+      if(
+        !normals||
+        normals.itemSize!==3||
+        normals.count!==positions.count||
+        normals.array?.length!==positions.array.length
+      ){
+        normals=new THREE.BufferAttribute(
+          new Float32Array(positions.array.length),
+          3
+        );
+        this.setAttribute('normal',normals);
+      }
+
+      const p=positions.array;
+      const n=normals.array;
+
+      for(let row=0;row<grid;row++){
+        const upRow=Math.max(0,row-1);
+        const downRow=Math.min(segments,row+1);
+        for(let col=0;col<grid;col++){
+          const leftCol=Math.max(0,col-1);
+          const rightCol=Math.min(segments,col+1);
+          const index=row*grid+col;
+          const left=(row*grid+leftCol)*3;
+          const right=(row*grid+rightCol)*3;
+          const up=(upRow*grid+col)*3;
+          const down=(downRow*grid+col)*3;
+          const out=index*3;
+
+          const dx=p[right]-p[left];
+          const dz=p[down+2]-p[up+2];
+          let nx=dx?(p[left+1]-p[right+1])/dx:0;
+          let ny=1;
+          let nz=dz?(p[up+1]-p[down+1])/dz:0;
+          const inv=1/(Math.hypot(nx,ny,nz)||1);
+          nx*=inv;ny*=inv;nz*=inv;
+          n[out]=nx;
+          n[out+1]=ny;
+          n[out+2]=nz;
+        }
+      }
+
+      normals.needsUpdate=true;
+      return;
+    }
+
+    return original.apply(this,args);
+  };
+
+  return true;
+}
+
+function terrainTransitionProfile(profile){
+  if(!Array.isArray(profile)||profile.length<4)return profile||[];
+
+  // The transition ribbon has a hard 9 m continuity fuse in terrain.js.
+  // Stay safely below it while removing redundant 2-4 m samples on straights.
+  const MAX_STEP=8.25;
+  const TURN_SINE_KEEP=.032;       // ~1.8 degrees local heading change
+  const GRADE_DELTA_KEEP=.012;     // 1.2 percentage-point grade change
+  const ROLL_DELTA_KEEP=.0045;     // ~0.26 degrees banking change
+
+  const result=[profile[0]];
+  let lastKept=profile[0];
+
+  for(let i=1;i<profile.length-1;i++){
+    const prev=profile[i-1];
+    const cur=profile[i];
+    const next=profile[i+1];
+
+    const spanToNext=Math.hypot(
+      next.x-lastKept.x,
+      next.z-lastKept.z
+    );
+
+    const v0x=cur.x-prev.x;
+    const v0z=cur.z-prev.z;
+    const v1x=next.x-cur.x;
+    const v1z=next.z-cur.z;
+    const len0=Math.hypot(v0x,v0z)||1;
+    const len1=Math.hypot(v1x,v1z)||1;
+    const turnSine=Math.abs(v0x*v1z-v0z*v1x)/(len0*len1);
+
+    const grade0=Number.isFinite(cur.y)&&Number.isFinite(prev.y)
+      ?(cur.y-prev.y)/len0
+      :0;
+    const grade1=Number.isFinite(next.y)&&Number.isFinite(cur.y)
+      ?(next.y-cur.y)/len1
+      :grade0;
+
+    const prevRoll=Number(prev.roll)||0;
+    const curRoll=Number(cur.roll)||0;
+    const nextRoll=Number(next.roll)||0;
+    const rollDelta=Math.max(
+      Math.abs(curRoll-prevRoll),
+      Math.abs(nextRoll-curRoll)
+    );
+
+    if(
+      spanToNext>MAX_STEP||
+      turnSine>TURN_SINE_KEEP||
+      Math.abs(grade1-grade0)>GRADE_DELTA_KEEP||
+      rollDelta>ROLL_DELTA_KEEP
+    ){
+      result.push(cur);
+      lastKept=cur;
+    }
+  }
+
+  result.push(profile[profile.length-1]);
+  return result;
+}
+
 export function createLocalWorldBuilder({
   THREE,
   resetStreamedWorldOrigins,
@@ -32,6 +169,7 @@ export function createLocalWorldBuilder({
   markStaticShadowsDirty,
 }){
   const now=()=>globalThis.performance?.now?.()??Date.now();
+  installFastGroundGridNormals(THREE);
 
   function rebuild(){
     const totalStarted=now();
@@ -60,9 +198,15 @@ export function createLocalWorldBuilder({
     setActiveRoadProfile(profile);
     lap('roadProfile');
 
+    // P9.22: physics/asphalt keep the full engineered profile. The terrain cut
+    // and visual transition use an adaptively thinned copy because their ~30 m
+    // corridor does not need multiple nearly-collinear samples every few metres.
+    // Sharp turns, grade changes and banking changes remain at full density.
+    const terrainProfile=terrainTransitionProfile(profile);
+
     // Cut terrain fragments directly below the road corridor so coarse DEM
     // triangles can never protrude through asphalt or shoulders.
-    terrainService.setRoadBed(profile,{
+    terrainService.setRoadBed(terrainProfile,{
       roadHalfWidth:5.4,
       terrainCutHalfWidth:16.5,
       blendWidth:14.0,
@@ -173,6 +317,7 @@ export function createLocalWorldBuilder({
     return {
       totalMs:now()-totalStarted,
       profilePoints:profile.length,
+      terrainProfilePoints:terrainProfile.length,
       phases,
       terrain:terrainService.diagnostics?.()||null
     };
