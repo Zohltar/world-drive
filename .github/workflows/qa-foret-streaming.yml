@@ -48,5 +48,7 @@ jobs:
         run: node qa-streaming-p923-scheduler.mjs
       - name: P9.24 frame budget QA
         run: node qa-streaming-p924-frame-budget.mjs
+      - name: P9.25 scenery and prep QA
+        run: node qa-streaming-p925-scenery-and-prep.mjs
       - name: Production build
         run: npm run build
