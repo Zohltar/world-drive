@@ -1,8 +1,8 @@
-// World Drive P9.20 streaming coordinator entry point.
+// World Drive P9.21 streaming coordinator entry point.
 // P9.13 owns the proven transition scheduler. P9.17 added adaptive backoff;
 // P9.18 made that governor driving-aware and added per-job telemetry. P9.19
 // accelerated DEM sampling. P9.20 records the synchronous local-world rebuild
-// by phase so the remaining road-transition hitch can be fixed at its source.
+// by phase; P9.21 also exposes the terrain road-bed subphases and buffer reuse.
 import {createStreamingCoordinator as createStreamingCoordinatorP913} from './streaming-coordinator-p913.js';
 
 export function createStreamingCoordinator(options){
@@ -23,7 +23,8 @@ export function createStreamingCoordinator(options){
     lastLocalWorldPhases={
       totalMs,
       profilePoints:Number(result.profilePoints)||0,
-      phases
+      phases,
+      terrain:result.terrain||null
     };
   }
 
@@ -207,7 +208,8 @@ export function createStreamingCoordinator(options){
     return {
       totalMs:Number((report.totalMs||0).toFixed(3)),
       profilePoints:report.profilePoints||0,
-      phases
+      phases,
+      terrain:report.terrain||null
     };
   }
 
