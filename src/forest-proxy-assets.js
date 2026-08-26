@@ -1,9 +1,9 @@
-// World Drive Foret P8 - ultra-light conifer proxy geometry.
-//
-// The authored GLB trees stay untouched near the driver. These proxies are only
-// used once a tree is small enough on screen that silhouette matters much more
-// than branch-level detail. One opaque Lambert mesh per tree avoids both the
-// triangle cost and alpha-overdraw of textured foliage cards in the mid/far LODs.
+import {FOREST_STREAMING_POLICY as FOREST} from './forest-streaming-policy.js';
+
+// World Drive Foret P9.14 - ultra-light conifer proxy geometry.
+// The approved low-definition conifer is used throughout the active forest.
+// P9.14 applies a uniform global scale to the proxy itself, leaving the
+// transition-safe P9.12 instance streamer untouched.
 
 function pushColor(colors,color,count){
   for(let i=0;i<count;i++)colors.push(color.r,color.g,color.b);
@@ -87,6 +87,12 @@ function buildProxyGeometry(THREE,{
   geometry.setAttribute('position',new THREE.Float32BufferAttribute(positions,3));
   geometry.setAttribute('color',new THREE.Float32BufferAttribute(colors,3));
   geometry.setIndex(indices);
+
+  // P9.14: +100% size means twice the linear dimensions. Scaling the shared
+  // proxy once is cheaper than adding work to every streamed instance matrix.
+  const treeScale=Math.max(.1,Number(FOREST.treeScale)||1);
+  geometry.scale(treeScale,treeScale,treeScale);
+
   geometry.computeVertexNormals();
   geometry.computeBoundingSphere();
   geometry.computeBoundingBox();
@@ -114,7 +120,7 @@ function makeAsset(THREE,name,options){
 
 export function buildForestProxyAssets(THREE){
   return [
-    // ~68 triangles. Used from the end of the near GLB zone to 900 m.
+    // ~68 triangles. P9.11+ uses this approved silhouette for the active forest.
     makeAsset(THREE,'proxy-mid',{
       sides:8,
       layers:7,
@@ -124,8 +130,7 @@ export function buildForestProxyAssets(THREE){
       irregularity:.085
     }),
 
-    // ~20 triangles. Beyond 900 m, scene fog and sub-pixel branch detail make
-    // additional geometry pure cost.
+    // ~20 triangles retained as an ultra-light fallback/future far tier.
     makeAsset(THREE,'proxy-far',{
       sides:4,
       layers:3,
