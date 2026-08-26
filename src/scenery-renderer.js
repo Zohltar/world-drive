@@ -7,84 +7,40 @@ export function createSceneryRenderer({THREE,statusEl,features,terrainDetailGrou
   let rebuildingFromAsset=false;
 
   function disposeObject(object){
-    object.traverse?.(child=>{
-      if(child.userData?.sharedForestGeometry)return;
-      child.geometry?.dispose?.();
-    });
+    object.traverse?.(child=>{if(child.userData?.sharedForestGeometry)return;child.geometry?.dispose?.();});
   }
   function clearGroup(group){while(group.children.length){const child=group.children.pop();disposeObject(child);}}
   function clear(){clearGroup(terrainDetailGroup);clearGroup(infrastructureGroup);clearGroup(buildingGroup);clearGroup(forestGroup);}
 
   function makeFootprintMesh(points,height=6,material=buildingWallMat){
-    if(points.length<3)return null;
-    const offset=getWorldOffset(),shape=new THREE.Shape();
-    shape.moveTo(points[0].x-offset.x,-(points[0].z-offset.z));
-    for(let i=1;i<points.length;i++)shape.lineTo(points[i].x-offset.x,-(points[i].z-offset.z));
-    shape.closePath();
-    const geometry=new THREE.ExtrudeGeometry(shape,{depth:height,bevelEnabled:false,steps:1});
-    geometry.rotateX(-Math.PI/2);
-    const c=featureCentroid(points),mesh=new THREE.Mesh(geometry,material);
-    mesh.position.y=terrainHeight(c.x,c.z)+.08;mesh.castShadow=true;mesh.receiveShadow=true;
-    return mesh;
+    if(points.length<3)return null;const offset=getWorldOffset();const shape=new THREE.Shape();
+    const first=points[0];shape.moveTo(first.x-offset.x,-(first.z-offset.z));
+    for(let i=1;i<points.length;i++)shape.lineTo(points[i].x-offset.x,-(points[i].z-offset.z));shape.closePath();
+    const geometry=new THREE.ExtrudeGeometry(shape,{depth:height,bevelEnabled:false,steps:1});geometry.rotateX(-Math.PI/2);
+    const c=featureCentroid(points),mesh=new THREE.Mesh(geometry,material);mesh.position.y=terrainHeight(c.x,c.z)+.08;mesh.castShadow=true;mesh.receiveShadow=true;return mesh;
   }
-
   function addUtilityTower(x,z,scale=1){
     const offset=getWorldOffset(),group=new THREE.Group(),y=terrainHeight(x,z);
-    for(const sx of [-1,1])for(const sz of [-1,1]){
-      const leg=new THREE.Mesh(new THREE.CylinderGeometry(.07,.11,10*scale,5),towerMat);
-      leg.position.set(x-offset.x+sx*.9*scale,y+5*scale,z-offset.z+sz*.7*scale);leg.rotation.z=sx*.06;group.add(leg);
-    }
-    for(const h of [4,7.2,9.2]){
-      const bar=new THREE.Mesh(new THREE.BoxGeometry(5.2*scale,.12,.12),towerMat);
-      bar.position.set(x-offset.x,y+h*scale,z-offset.z);group.add(bar);
-    }
-    return group;
+    for(const sx of [-1,1])for(const sz of [-1,1]){const leg=new THREE.Mesh(new THREE.CylinderGeometry(.07,.11,10*scale,5),towerMat);leg.position.set(x-offset.x+sx*.9*scale,y+5*scale,z-offset.z+sz*.7*scale);leg.rotation.z=sx*.06;group.add(leg);}
+    for(const h of [4,7.2,9.2]){const bar=new THREE.Mesh(new THREE.BoxGeometry(5.2*scale,.12,.12),towerMat);bar.position.set(x-offset.x,y+h*scale,z-offset.z);group.add(bar);}return group;
   }
-
   function addDam(points){
-    if(points.length<2)return null;
-    const offset=getWorldOffset(),group=new THREE.Group();
-    for(let i=0;i<points.length-1;i++){
-      const a=points[i],b=points[i+1],dx=b.x-a.x,dz=b.z-a.z,len=Math.hypot(dx,dz);if(len<1)continue;
-      const h=14,mesh=new THREE.Mesh(new THREE.BoxGeometry(6,h,len),damMat),mx=(a.x+b.x)/2,mz=(a.z+b.z)/2;
-      mesh.position.set(mx-offset.x,Math.min(terrainHeight(a.x,a.z),terrainHeight(b.x,b.z))+h/2,mz-offset.z);
-      mesh.rotation.y=Math.atan2(dx,dz);mesh.castShadow=true;mesh.receiveShadow=true;group.add(mesh);
-    }
-    return group;
+    if(points.length<2)return null;const offset=getWorldOffset(),group=new THREE.Group();
+    for(let i=0;i<points.length-1;i++){const a=points[i],b=points[i+1],dx=b.x-a.x,dz=b.z-a.z,len=Math.hypot(dx,dz);if(len<1)continue;const h=14,mesh=new THREE.Mesh(new THREE.BoxGeometry(6,h,len),damMat),mx=(a.x+b.x)/2,mz=(a.z+b.z)/2;mesh.position.set(mx-offset.x,Math.min(terrainHeight(a.x,a.z),terrainHeight(b.x,b.z))+h/2,mz-offset.z);mesh.rotation.y=Math.atan2(dx,dz);mesh.castShadow=true;mesh.receiveShadow=true;group.add(mesh);}return group;
   }
-
   function addGuardRail(points){
-    const offset=getWorldOffset(),group=new THREE.Group();
-    for(let i=0;i<points.length-1;i++){
-      const a=points[i],b=points[i+1],dx=b.x-a.x,dz=b.z-a.z,len=Math.hypot(dx,dz);if(len<.5)continue;
-      const mesh=new THREE.Mesh(new THREE.BoxGeometry(.10,.18,len),railMat),mx=(a.x+b.x)/2,mz=(a.z+b.z)/2;
-      mesh.position.set(mx-offset.x,terrainHeight(mx,mz)+.72,mz-offset.z);mesh.rotation.y=Math.atan2(dx,dz);group.add(mesh);
-    }
-    return group;
+    const offset=getWorldOffset(),group=new THREE.Group();for(let i=0;i<points.length-1;i++){const a=points[i],b=points[i+1],dx=b.x-a.x,dz=b.z-a.z,len=Math.hypot(dx,dz);if(len<.5)continue;const mesh=new THREE.Mesh(new THREE.BoxGeometry(.10,.18,len),railMat),mx=(a.x+b.x)/2,mz=(a.z+b.z)/2;mesh.position.set(mx-offset.x,terrainHeight(mx,mz)+.72,mz-offset.z);mesh.rotation.y=Math.atan2(dx,dz);group.add(mesh);}return group;
   }
-
   function addPowerLine(points){
-    const group=new THREE.Group();if(points.length<2)return group;
-    const offset=getWorldOffset(),vertices=[];
-    for(const p of points)vertices.push(p.x-offset.x,terrainHeight(p.x,p.z)+14,p.z-offset.z);
-    const geometry=new THREE.BufferGeometry();geometry.setAttribute('position',new THREE.Float32BufferAttribute(vertices,3));
-    group.add(new THREE.Line(geometry,lineMatPower));return group;
+    const group=new THREE.Group();if(points.length<2)return group;const offset=getWorldOffset(),vertices=[];for(const p of points)vertices.push(p.x-offset.x,terrainHeight(p.x,p.z)+14,p.z-offset.z);
+    const geometry=new THREE.BufferGeometry();geometry.setAttribute('position',new THREE.Float32BufferAttribute(vertices,3));group.add(new THREE.Line(geometry,lineMatPower));return group;
   }
-
   function addLandPatch(points,material,yOffset=.03){
-    if(points.length<3)return null;
-    const offset=getWorldOffset(),shape=new THREE.Shape();shape.moveTo(points[0].x-offset.x,-(points[0].z-offset.z));
-    for(let i=1;i<points.length;i++)shape.lineTo(points[i].x-offset.x,-(points[i].z-offset.z));shape.closePath();
-    const geometry=new THREE.ShapeGeometry(shape);geometry.rotateX(-Math.PI/2);
-    const c=featureCentroid(points),mesh=new THREE.Mesh(geometry,material);mesh.position.y=terrainHeight(c.x,c.z)+yOffset;mesh.receiveShadow=true;return mesh;
+    if(points.length<3)return null;const offset=getWorldOffset(),shape=new THREE.Shape();shape.moveTo(points[0].x-offset.x,-(points[0].z-offset.z));for(let i=1;i<points.length;i++)shape.lineTo(points[i].x-offset.x,-(points[i].z-offset.z));shape.closePath();const geometry=new THREE.ShapeGeometry(shape);geometry.rotateX(-Math.PI/2);const c=featureCentroid(points),mesh=new THREE.Mesh(geometry,material);mesh.position.y=terrainHeight(c.x,c.z)+yOffset;mesh.receiveShadow=true;return mesh;
   }
 
   function seededRandom(seedValue){let seed=(seedValue>>>0)||1;return()=>{seed=(seed*1664525+1013904223)>>>0;return seed/4294967296;};}
-
-  function terrainSlope(x,z){
-    const d=7,hx=terrainHeight(x+d,z)-terrainHeight(x-d,z),hz=terrainHeight(x,z+d)-terrainHeight(x,z-d);
-    return Math.hypot(hx,hz)/(d*2);
-  }
+  function terrainSlope(x,z){const d=7,hx=terrainHeight(x+d,z)-terrainHeight(x-d,z),hz=terrainHeight(x,z+d)-terrainHeight(x,z-d);return Math.hypot(hx,hz)/(d*2);}
 
   function blocksForest(x,z){
     for(const feature of features){
@@ -99,26 +55,32 @@ export function createSceneryRenderer({THREE,statusEl,features,terrainDetailGrou
   function validTreePoint(x,z){
     if(isWaterAt(x,z,9))return null;
     const nr=nearestRoute(x,z);
-    if(!nr||nr.d<23||nr.d>215)return null;
-    if(terrainSlope(x,z)>.62)return null;
+    // Keep all geometry in the driver's useful visual corridor. The satellite
+    // terrain handles the distant forest impression beyond this distance.
+    if(!nr||nr.d<20||nr.d>175)return null;
+    if(terrainSlope(x,z)>.68)return null;
     if(blocksForest(x,z))return null;
     return nr;
   }
 
   function addPlacement(list,x,z,random){
     const nr=validTreePoint(x,z);if(!nr)return false;
-    // Spend the visual budget where the driver can actually see it.
-    const chance=nr.d<105?.92:nr.d<155?.58:.22;
+    const chance=nr.d<82?.97:nr.d<125?.76:.36;
     if(random()>chance)return false;
-    list.push({x,z,y:terrainHeight(x,z),height:8.0+random()*7.0,rot:random()*Math.PI*2});
+    list.push({
+      x,z,y:terrainHeight(x,z),
+      height:8.2+random()*6.8,
+      widthScale:.86+random()*.28,
+      rot:random()*Math.PI*2
+    });
     return true;
   }
 
   function collectMappedForest(points,id,list){
     const center=featureCentroid(points),random=seededRandom((Number(id)||1)*2654435761);
-    const radius=Math.min(190,Math.max(35,Math.sqrt(points.length)*26));
+    const radius=Math.min(175,Math.max(35,Math.sqrt(points.length)*24));
     let accepted=0;
-    for(let i=0;i<360&&accepted<95;i++){
+    for(let i=0;i<560&&accepted<145;i++){
       const angle=random()*Math.PI*2,r=Math.sqrt(random())*radius,x=center.x+Math.cos(angle)*r,z=center.z+Math.sin(angle)*r;
       if(!pointInPolygon(x,z,points))continue;
       if(addPlacement(list,x,z,random))accepted++;
@@ -127,16 +89,16 @@ export function createSceneryRenderer({THREE,statusEl,features,terrainDetailGrou
 
   function collectRoadsideForest(list,hasMappedForest){
     const offset=getWorldOffset();
-    const qx=Math.round(offset.x/90),qz=Math.round(offset.z/90);
+    const qx=Math.round(offset.x/80),qz=Math.round(offset.z/80);
     const random=seededRandom(((qx*73856093)^(qz*19349663)^0x70696e65)>>>0);
-    const target=hasMappedForest?190:275;
+    const target=hasMappedForest?290:390;
     let accepted=0;
 
-    // Only generate the roughly 450 m neighbourhood around the streamed centre.
-    // nearestRoute() then clips that area to a 23..215 m roadside corridor.
-    for(let i=0;i<target*10&&accepted<target;i++){
+    // Generate only around the currently streamed neighbourhood. nearestRoute
+    // then constrains every accepted instance to 20..175 m from the road.
+    for(let i=0;i<target*12&&accepted<target;i++){
       const angle=random()*Math.PI*2;
-      const radius=35+Math.sqrt(random())*420;
+      const radius=28+Math.sqrt(random())*360;
       const x=offset.x+Math.cos(angle)*radius,z=offset.z+Math.sin(angle)*radius;
       if(addPlacement(list,x,z,random))accepted++;
     }
@@ -149,10 +111,13 @@ export function createSceneryRenderer({THREE,statusEl,features,terrainDetailGrou
     const mesh=new THREE.InstancedMesh(pine.geometry,pine.material,list.length);
     mesh.userData.sharedForestGeometry=true;
     mesh.castShadow=false;mesh.receiveShadow=false;mesh.frustumCulled=true;
+
     list.forEach((p,i)=>{
       dummy.position.set(p.x-offset.x,p.y+.02,p.z-offset.z);
       dummy.rotation.set(0,p.rot,0);
-      dummy.scale.setScalar(p.height);
+      // The supplied pine geometry is normalized to 1 m high. Preserve a
+      // natural variation in height and crown width without distorting it.
+      dummy.scale.set(p.height*p.widthScale,p.height,p.height*p.widthScale);
       dummy.updateMatrix();mesh.setMatrixAt(i,dummy.matrix);
     });
     mesh.instanceMatrix.needsUpdate=true;
@@ -161,15 +126,8 @@ export function createSceneryRenderer({THREE,statusEl,features,terrainDetailGrou
   }
 
   function makeBuildingLOD(points,tags,dist){
-    if(dist<520){
-      let height=parseFloat(tags.height||'');if(!Number.isFinite(height)){const levels=parseFloat(tags['building:levels']||'');height=Number.isFinite(levels)?Math.max(3,levels*3.1):6.5;}
-      return makeFootprintMesh(points,Math.min(45,height));
-    }
-    const c=featureCentroid(points);let minx=Infinity,maxx=-Infinity,minz=Infinity,maxz=-Infinity;
-    for(const p of points){minx=Math.min(minx,p.x);maxx=Math.max(maxx,p.x);minz=Math.min(minz,p.z);maxz=Math.max(maxz,p.z);}
-    const width=Math.max(3,Math.min(35,maxx-minx)),depth=Math.max(3,Math.min(35,maxz-minz)),height=Math.max(4,Math.min(18,parseFloat(tags.height||'')||7));
-    const mesh=new THREE.Mesh(new THREE.BoxGeometry(width,height,depth),buildingWallMat),offset=getWorldOffset();
-    mesh.position.set(c.x-offset.x,terrainHeight(c.x,c.z)+height/2,c.z-offset.z);mesh.castShadow=dist<750;mesh.receiveShadow=true;return mesh;
+    if(dist<520){let height=parseFloat(tags.height||'');if(!Number.isFinite(height)){const levels=parseFloat(tags['building:levels']||'');height=Number.isFinite(levels)?Math.max(3,levels*3.1):6.5;}return makeFootprintMesh(points,Math.min(45,height));}
+    const c=featureCentroid(points);let minx=Infinity,maxx=-Infinity,minz=Infinity,maxz=-Infinity;for(const p of points){minx=Math.min(minx,p.x);maxx=Math.max(maxx,p.x);minz=Math.min(minz,p.z);maxz=Math.max(maxz,p.z);}const width=Math.max(3,Math.min(35,maxx-minx)),depth=Math.max(3,Math.min(35,maxz-minz)),height=Math.max(4,Math.min(18,parseFloat(tags.height||'')||7)),mesh=new THREE.Mesh(new THREE.BoxGeometry(width,height,depth),buildingWallMat),offset=getWorldOffset();mesh.position.set(c.x-offset.x,terrainHeight(c.x,c.z)+height/2,c.z-offset.z);mesh.castShadow=dist<750;mesh.receiveShadow=true;return mesh;
   }
 
   function rebuild(){
@@ -186,14 +144,14 @@ export function createSceneryRenderer({THREE,statusEl,features,terrainDetailGrou
       else if(tags.barrier==='guard_rail')infrastructureGroup.add(addGuardRail(feature.points));
       else if(tags.natural==='bare_rock'||tags.natural==='scree'||tags.natural==='cliff'){object=addLandPatch(feature.points,rockMat,.04);if(object)terrainDetailGroup.add(object);}
       else if(tags.natural==='scrub'||tags.landuse==='meadow'){object=addLandPatch(feature.points,scrubMat,.035);if(object)terrainDetailGroup.add(object);}
-      else if((tags.natural==='wood'||tags.landuse==='forest')&&dist<700){collectMappedForest(feature.points,feature.id,placements);mappedForestCount++;}
+      else if((tags.natural==='wood'||tags.landuse==='forest')&&dist<620){collectMappedForest(feature.points,feature.id,placements);mappedForestCount++;}
       shown++;
     }
 
     if(forestAssets?.pine){
       collectRoadsideForest(placements,mappedForestCount>0);
       const treeCount=addForestBatch(placements);
-      if(statusEl)statusEl.textContent=`${shown} objets · ${treeCount} pins proches`;
+      if(statusEl)statusEl.textContent=`${shown} objets · ${treeCount} pins 3D proches`;
     }else if(statusEl)statusEl.textContent=`${shown} objets · pins en chargement`;
     return shown;
   }
