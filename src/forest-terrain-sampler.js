@@ -33,7 +33,14 @@ export function createForestTerrainSampler({
     const sz=Number(p.heightSegments)||0;
     const width=Number(p.width)||0;
     const height=Number(p.height)||0;
-    return width>=3000&&height>=3000&&sx>=100&&sz>=100&&!!mesh.geometry.getAttribute?.('position');
+
+    // World Drive's visible near terrain is the 5.6 km / 448 segment plane.
+    // Do not accidentally latch onto a satellite/imaging PlaneGeometry. P7.1
+    // searched every large plane in the scene; selecting the wrong one can
+    // produce perfectly finite but completely unrelated heights and bury every
+    // tree while the forest still consumes render resources.
+    return width>=5200&&height>=5200&&sx>=400&&sz>=400&&
+      !!mesh.geometry.getAttribute?.('position');
   }
 
   function findGround(){
@@ -93,10 +100,10 @@ export function createForestTerrainSampler({
     const stepX=width/gridX;
     const stepZ=depth/gridZ;
     const fx=(localX+halfW)/stepX;
-    // Three.js PlaneGeometry emits row zero at local -Z after the geometry is
-    // rotated onto XZ with rotateX(-PI/2). P7.1 accidentally mirrored this
-    // lookup by treating row zero as +Z, which could sample terrain hundreds or
-    // thousands of metres away and bury/float the whole forest on steep relief.
+
+    // Three r179 PlaneGeometry creates row 0 at +Y in its original XY plane.
+    // World Drive bakes rotateX(-PI/2) into the geometry, therefore that first
+    // row becomes local -Z and row indices increase toward +Z.
     const fz=(localZ+halfD)/stepZ;
     const ix=Math.max(0,Math.min(gridX-1,Math.floor(Math.min(gridX-1e-9,fx))));
     const iz=Math.max(0,Math.min(gridZ-1,Math.floor(Math.min(gridZ-1e-9,fz))));
@@ -116,8 +123,24 @@ export function createForestTerrainSampler({
   }
 
   function heightAt(x,z){
+    const fallback=fallbackHeight(x,z);
     const visible=sampleGround(x,z);
-    return Number.isFinite(visible)?visible:fallbackHeight(x,z);
+
+    if(!Number.isFinite(visible))return fallback;
+    if(!Number.isFinite(fallback))return visible;
+
+    // Safety fuse. Exact triangle interpolation should normally stay close to
+    // the DEM height used to build that same terrain. A large delta means the
+    // sampler has latched onto stale/misaligned geometry during a floating-origin
+    // transition. Never let that transient state hide the forest underground.
+    const delta=visible-fallback;
+    if(Math.abs(delta)>6)return fallback;
+
+    // Even for a valid steep triangle, bound the correction so a single coarse
+    // facet cannot move a trunk several metres in one rebuild. This still fixes
+    // the visible float/bury gap while keeping placement robust.
+    const correction=Math.max(-2.5,Math.min(2.5,delta));
+    return fallback+correction;
   }
 
   return {
