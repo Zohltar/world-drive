@@ -9,6 +9,12 @@ export function createRouteChallenge({
   getRouteLength,
   toast
 }){
+  // The old "Défi parcours" subsection is legacy UI. The only remaining
+  // useful feature is the elapsed timer now shown directly in routeMapInfo.
+  // Remove the obsolete block from the live DOM so it cannot reserve space,
+  // reappear through old CSS, or interfere with the rebuilt map panel.
+  $('challengeSubsection')?.remove();
+
   const state={
     running:false,
     finished:false,
