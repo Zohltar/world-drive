@@ -34,7 +34,14 @@ export function createLocalWorldBuilder({
   function rebuild(){
     resetStreamedWorldOrigins();
     terrainService.resetRoadBedOrigin?.();
-    clearGroup(roadGroup);clearGroup(forestGroup);
+    clearGroup(roadGroup);
+
+    // P9.17: forestGroup is owned by the persistent forest streamer. Do NOT
+    // clear it here. sceneryRenderer.clear() intentionally preserves forest
+    // chunks and refreshes only the nearby height-sensitive placements after
+    // the terrain/road rebuild. Clearing this group externally detached every
+    // cached chunk while the streamer still considered it active, causing a
+    // burst of reattachment/replacement work during road transitions.
     clearGroup(infrastructureGroup);clearGroup(signGroup);
     sceneryRenderer.clear();
 
