@@ -1,9 +1,13 @@
 export const FOREST_STREAMING_POLICY=Object.freeze({
   cellSize:120,
-  candidatesPerCell:30,
 
-  // P9.3 hybrid GPU profile. The complete PS1 tree is kept only while a chunk
-  // is genuinely near the driver. Beyond this band, the streamer swaps to the
+  // P9.8 spends part of the large P9.7 GPU win on forest volume. The optimized
+  // 592-triangle near tree leaves enough headroom to raise candidate density by
+  // ~53% while keeping the persistent chunk architecture unchanged.
+  candidatesPerCell:46,
+
+  // P9.3 hybrid GPU profile. The detailed tree is kept only while a chunk is
+  // genuinely near the driver. Beyond this band, the streamer swaps to the
   // approved 68-triangle proxy. nearDistance===midDistance deliberately removes
   // the old medium HD tier; hysteresis in the chunk streamer makes the switch
   // occur around ~480 m approaching / ~640 m leaving, avoiding visible chatter.
@@ -78,7 +82,7 @@ export function forestLodForDistance(distance,policy=FOREST_STREAMING_POLICY){
 }
 
 export function forestKeepProbability(distance,densityNoise,policy=FOREST_STREAMING_POLICY){
-  const density=.42+.72*Math.max(0,Math.min(1,densityNoise));
+  const density=.55+.60*Math.max(0,Math.min(1,densityNoise));
   const lod=forestLodForDistance(distance,policy);
   if(lod<0)return 0;
   if(lod===0)return Math.min(1,density);
