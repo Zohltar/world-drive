@@ -1,10 +1,8 @@
-// World Drive P9.17 imagery entry point.
-// Wraps the P9.13 transition-safe chunk renderer with two load-smoothing layers:
-// 1) route-ahead satellite prefetch is serialized so image decode cannot arrive
-//    in large main-thread bursts;
-// 2) chunk geometry samples the already-rendered near-ground vertex buffer
-//    directly instead of repeating expensive DEM + road grading thousands of
-//    times for every 96x96 satellite chunk.
+// World Drive P9.18 imagery entry point.
+// Keeps P9.17's fast rendered-ground sampler and makes route-ahead warming much
+// cheaper: background probes fetch only the centre slippy tile instead of a 3x3
+// block. Visible satellite chunks still compose their full 3x3 imagery, so this
+// changes loading pressure only, not rendered image quality.
 import {createImageryService as createImageryServiceP913} from './imagery-p913.js';
 
 export function createImageryService(options){
@@ -121,7 +119,6 @@ export function createImageryService(options){
     ...options,
     sampleTerrainHeight:fastRenderedGroundHeight
   });
-  const basePrefetch=service.prefetchAt.bind(service);
   const baseDiagnostics=service.diagnostics?.bind(service);
 
   let prefetchBusy=false;
@@ -130,9 +127,23 @@ export function createImageryService(options){
   let lastPrefetchZ=Infinity;
   let prefetchStarted=0;
   let prefetchSkipped=0;
+  let prefetchTilesRequested=0;
 
   const PREFETCH_COOLDOWN_MS=420;
   const PREFETCH_NEAR_DUPLICATE_M=700;
+  const PREFETCH_ZOOM=Math.max(0,Math.floor(Number(options?.zoom)||16));
+
+  function centreTileForWorld(absx,absz){
+    const ll=options?.toLatLon?.(absx,absz);
+    if(!ll||!Number.isFinite(ll.lat)||!Number.isFinite(ll.lon))return null;
+    const n=2**PREFETCH_ZOOM;
+    const safeLat=Math.max(-85.05112878,Math.min(85.05112878,ll.lat));
+    const latRad=safeLat*Math.PI/180;
+    return {
+      x:Math.floor((ll.lon+180)/360*n),
+      y:Math.floor((1-Math.asinh(Math.tan(latRad))/Math.PI)/2*n)
+    };
+  }
 
   service.prefetchAt=async(absx,absz)=>{
     const now=performance.now();
@@ -150,14 +161,22 @@ export function createImageryService(options){
       return false;
     }
 
+    const tile=centreTileForWorld(absx,absz);
+    if(!tile){
+      prefetchSkipped++;
+      return false;
+    }
+
     prefetchBusy=true;
     lastPrefetchAt=now;
     lastPrefetchX=absx;
     lastPrefetchZ=absz;
     prefetchStarted++;
+    prefetchTilesRequested++;
 
     try{
-      return await basePrefetch(absx,absz);
+      await service.loadTile(tile.x,tile.y).catch(()=>null);
+      return true;
     }finally{
       prefetchBusy=false;
     }
@@ -170,7 +189,9 @@ export function createImageryService(options){
     p917PrefetchBusy:prefetchBusy,
     p917PrefetchStarted:prefetchStarted,
     p917PrefetchSkipped:prefetchSkipped,
-    p917PrefetchCooldownMs:PREFETCH_COOLDOWN_MS
+    p917PrefetchCooldownMs:PREFETCH_COOLDOWN_MS,
+    p918PrefetchTilesPerProbe:1,
+    p918PrefetchTilesRequested:prefetchTilesRequested
   });
 
   return service;
