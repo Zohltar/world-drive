@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import {buildPineTreeAsset} from './pine-tree-runtime.js';
+import {buildForestProxyAssets} from './forest-proxy-assets.js';
 import {AUTHORED_WATER_STYLE} from './forest-authored-lite.js';
 
 let cached=null;
@@ -10,7 +11,18 @@ function cloneMaterial(material){
   if(!material)return new THREE.MeshStandardMaterial({color:0x315b2d,roughness:.9});
   const copy=material.clone();
   copy.dithering=true;
-  if(copy.transparent){
+
+  // Vegetation exported as alpha BLEND is disproportionately expensive when
+  // thousands of instances overlap. For tree foliage the alpha channel is a
+  // cutout mask, so switch it to opaque + alphaTest: same silhouette, normal
+  // depth rejection, far less fragment overdraw/sorting pressure.
+  if(copy.transparent&&copy.map){
+    copy.transparent=false;
+    copy.opacity=1;
+    copy.depthWrite=true;
+    copy.alphaTest=Math.max(copy.alphaTest||0,.28);
+    copy.side=THREE.DoubleSide;
+  }else if(copy.transparent){
     copy.side=THREE.DoubleSide;
     copy.depthWrite=true;
     if(!copy.alphaTest)copy.alphaTest=.18;
@@ -80,18 +92,25 @@ export function loadForestWaterAssets(){
       ['scene',new URL('./assets/forest/forest_pine_scene.glb',import.meta.url).href]
     ];
     const settled=await Promise.allSettled(sources.map(([name,url])=>loadTree(url,name)));
-    const trees=settled.filter(result=>result.status==='fulfilled').map(result=>result.value);
-    if(!trees.length){
+    const authoredTrees=settled.filter(result=>result.status==='fulfilled').map(result=>result.value);
+    if(!authoredTrees.length){
       console.warn('Forest authored assets unavailable; legacy pine fallback kept.');
-      trees.push(legacyFallback());
+      authoredTrees.push(legacyFallback());
     }
+
+    // P8: procedural geometry here is not a visual replacement for the GLBs.
+    // It is an explicit distance LOD. Close trees remain authored; only trees
+    // already small on screen use the 68/20-triangle proxies.
+    const proxies=buildForestProxyAssets(THREE);
+    const trees=[...authoredTrees,...proxies];
+
     cached={
-      pine:trees[0],
+      pine:authoredTrees[0],
       trees,
       waterStyle:AUTHORED_WATER_STYLE,
-      source:'user supplied forest variants'
+      source:'user supplied forest variants + P8 proxy LODs'
     };
-    console.info(`Forest assets ready: ${trees.length} variants · ${trees.reduce((sum,t)=>sum+(t.triangles||0),0)} triangles across source meshes`);
+    console.info(`Forest assets ready: ${trees.length} variants · ${trees.reduce((sum,t)=>sum+(t.triangles||0),0)} triangles across source meshes/proxies`);
     return cached;
   })();
 
