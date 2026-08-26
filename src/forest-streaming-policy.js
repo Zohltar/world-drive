@@ -1,7 +1,10 @@
 export const FOREST_STREAMING_POLICY=Object.freeze({
   cellSize:120,
   candidatesPerCell:30,
-  nearDistance:360,
+  // P8: keep authored GLBs close enough to matter visually, then hand off to
+  // the 68-triangle proxy. At normal chase-camera FOV the branch detail beyond
+  // ~320 m is sub-pixel but still expensive to shade thousands of times.
+  nearDistance:320,
   midDistance:900,
   maxDistance:1750,
   outerFadeStart:1540,
