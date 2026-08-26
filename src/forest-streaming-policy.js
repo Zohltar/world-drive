@@ -1,12 +1,12 @@
 export const FOREST_STREAMING_POLICY=Object.freeze({
   cellSize:120,
 
-  // P9.14: keep the approved 68-triangle low-definition conifer everywhere,
-  // but trade 20% of the population for a much stronger forest silhouette.
-  // 200 -> 160 candidates per 120 m cell.
-  candidatesPerCell:160,
+  // P9.15: trees remain 2x scale, so reduce population another 15% while
+  // preserving the same strong forest silhouette with less instance work.
+  // 160 -> 136 candidates per 120 m cell.
+  candidatesPerCell:136,
 
-  // Uniform tree-size multiplier. P9.14 doubles both height and crown width,
+  // Uniform tree-size multiplier. P9.14+ doubles both height and crown width,
   // preserving the original low-definition tree proportions.
   treeScale:2,
 
@@ -38,8 +38,8 @@ export const FOREST_STREAMING_POLICY=Object.freeze({
   densityNoiseScale:420,
   cellsPerSlice:30,
 
-  // Persistent 480 m chunks. One 120 m cell is built per idle slice. With P9.14
-  // that caps a background burst at 160 candidate evaluations.
+  // Persistent 480 m chunks. One 120 m cell is built per idle slice. With P9.15
+  // that caps a background burst at 136 candidate evaluations.
   chunkCells:4,
   chunkCacheLimit:96,
   chunkBuildsPerSlice:1,
