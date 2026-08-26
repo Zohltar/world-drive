@@ -10,11 +10,15 @@ function cloneMaterial(material){
   if(!material)return new THREE.MeshStandardMaterial({color:0x315b2d,roughness:.9});
   const copy=material.clone();
   copy.dithering=true;
+
+  // Forest foliage must never use expensive alpha blending. The optimized fir
+  // still carries BLEND metadata in its source GLB, but World Drive converts it
+  // to a depth-writing alpha cutout: visually close, much cheaper in dense woods.
   if(copy.transparent&&copy.map){
     copy.transparent=false;
     copy.opacity=1;
     copy.depthWrite=true;
-    copy.alphaTest=Math.max(copy.alphaTest||0,.28);
+    copy.alphaTest=Math.max(copy.alphaTest||0,.30);
     copy.side=THREE.DoubleSide;
   }else if(copy.transparent){
     copy.side=THREE.DoubleSide;
@@ -65,73 +69,69 @@ async function loadTree(url,name){
   return tree;
 }
 
+async function tryLoadTree(url,name){
+  try{
+    return await loadTree(url,name);
+  }catch(error){
+    console.warn(`Forest asset ${name} unavailable`,error);
+    return null;
+  }
+}
+
 export function loadForestWaterAssets(){
   if(cached)return Promise.resolve(cached);
   if(loading)return loading;
 
   loading=(async()=>{
-    // Keep both approved lightweight LODs in memory. P9.3 renders the complete
-    // PS1 HD tree only in the near field, then hands distant chunks to the
-    // 68-triangle proxy. The 20-triangle proxy stays cached for later tuning.
     const simpleTrees=buildForestProxyAssets(THREE);
     const simpleMid=simpleTrees.find(tree=>tree.name==='proxy-mid')||simpleTrees[0]||null;
     const simpleFar=simpleTrees.find(tree=>tree.name==='proxy-far')||simpleMid;
 
-    const sources=[
-      ['authored',new URL('./assets/forest/forest_pine_authored.glb',import.meta.url).href],
-      ['ps1',new URL('./assets/forest/forest_pine_ps1.glb',import.meta.url).href],
-      ['scene',new URL('./assets/forest/forest_pine_scene.glb',import.meta.url).href]
-    ];
-    const settled=await Promise.allSettled(sources.map(([name,url])=>loadTree(url,name)));
-    const loaded=settled.filter(result=>result.status==='fulfilled').map(result=>result.value);
-    const byName=name=>loaded.find(tree=>tree.name===name)||null;
+    // P9.7 optimized near tree. The supplied fir source was 1612 triangles,
+    // 42 meshes and 4.8 MB. The World Drive optimized derivative keeps its
+    // textured silhouette but is reduced to one mesh, 592 triangles and a
+    // single 512px foliage texture (~0.4 MB). Load only this near asset instead
+    // of parsing all previous HD GLBs at startup.
+    const fir=await tryLoadTree(
+      new URL('./assets/forest/forest_fir_optimized.glb',import.meta.url).href,
+      'fir-optimized'
+    );
 
-    // The chunk streamer currently owns two render geometries: its `mid` asset
-    // serves the near tier and its `far` asset serves distant tiers. Alias the
-    // complete PS1 tree to proxy-mid, and the visually approved 68-triangle tree
-    // to proxy-far. This keeps P9.1 streaming untouched while making the GPU LOD
-    // transition explicit and reversible.
-    const ps1=byName('ps1');
-    const authored=byName('authored');
-    const scene=byName('scene');
-    const hdTrees=[ps1,authored,scene].filter(Boolean);
-    const activeHd=ps1||hdTrees[0]||null;
+    // Compatibility fallback for a local checkout that has not copied the new
+    // binary asset yet. This avoids a blank forest while making the missing file
+    // obvious in the console.
+    const legacy=fir?null:await tryLoadTree(
+      new URL('./assets/forest/forest_pine_ps1.glb',import.meta.url).href,
+      'ps1'
+    );
+    const activeNear=fir||legacy;
 
-    if(activeHd&&simpleMid){
-      const hdNear={...activeHd,name:'proxy-mid',sourceName:activeHd.name,hd:true};
-      const simpleDistant={...simpleMid,name:'proxy-far',sourceName:simpleMid.name,hd:false};
-      const trees=[hdNear,simpleDistant];
+    if(activeNear&&simpleMid){
+      const near={...activeNear,name:'proxy-mid',sourceName:activeNear.name,hd:true};
+      const distant={...simpleMid,name:'proxy-far',sourceName:simpleMid.name,hd:false};
+      const trees=[near,distant];
 
       cached={
-        pine:activeHd,
+        pine:activeNear,
         trees,
-        hdTrees,
+        hdTrees:[activeNear],
         simpleTrees,
-        forestProfile:'hybrid-hd-near',
+        forestProfile:fir?'optimized-fir-near':'legacy-ps1-fallback',
         waterStyle:AUTHORED_WATER_STYLE,
-        source:'P9.3 PS1 HD near + 68-triangle proxy distant'
+        source:fir
+          ?'P9.7 optimized 592-triangle fir near + 68-triangle proxy distant'
+          :'P9.7 legacy PS1 fallback + 68-triangle proxy distant'
       };
       console.info(
-        `Forest assets ready: hybrid · near ${activeHd.name} ${activeHd.triangles} triangles · `+
-        `distant ${simpleMid.triangles} triangles · ${simpleFar?.triangles||0} triangle ultra-far cached`
+        `Forest assets ready: ${fir?'optimized fir':'legacy fallback'} · `+
+        `near ${activeNear.triangles} triangles / ${activeNear.parts.length} mesh · `+
+        `distant ${simpleMid.triangles} triangles · `+
+        `${simpleFar?.triangles||0} triangle ultra-far cached`
       );
       return cached;
     }
 
-    if(activeHd){
-      cached={
-        pine:activeHd,
-        trees:[{...activeHd,name:'proxy-mid'},{...activeHd,name:'proxy-far'}],
-        hdTrees,
-        simpleTrees,
-        forestProfile:'hd-fallback',
-        waterStyle:AUTHORED_WATER_STYLE,
-        source:'P9.3 HD fallback because lightweight proxy is unavailable'
-      };
-      return cached;
-    }
-
-    console.warn('HD forest assets unavailable; reverting to lightweight proxy forest.');
+    console.warn('Near forest GLB unavailable; reverting to lightweight proxy forest.');
     cached={
       pine:simpleMid,
       trees:simpleTrees,
@@ -139,7 +139,7 @@ export function loadForestWaterAssets(){
       simpleTrees,
       forestProfile:'simple-fallback',
       waterStyle:AUTHORED_WATER_STYLE,
-      source:'P9.3 lightweight fallback because HD GLBs are unavailable'
+      source:'P9.7 lightweight fallback because near forest GLB is unavailable'
     };
     return cached;
   })();
