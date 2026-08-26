@@ -117,7 +117,14 @@ export function createRouteLifecycle({
     clearActiveRoadProfile();
     terrainService.clearRoadBed();
     clearGroup(roadGroup);
+
+    // A new route changes the coordinate origin and road blockers. Persistent
+    // P9 forest chunks from the previous route must never survive this boundary.
+    // Ordinary local-world refreshes still use sceneryRenderer.clear(), which
+    // deliberately preserves the forest cache for performance.
+    sceneryRenderer.clearForestCache?.();
     clearGroup(forestGroup);
+
     clearGroup(infrastructureGroup);
     clearGroup(signGroup);
     sceneryRenderer.clear();
