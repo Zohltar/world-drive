@@ -65,9 +65,6 @@ function installFastGroundGridNormals(THREE){
 
 function terrainTransitionProfile(profile){
   if(!Array.isArray(profile)||profile.length<4)return profile||[];
-
-  // Keep the P9.22 visual-safety contract. The transition mesh has a 9 m
-  // continuity fuse in terrain.js; 8.25 m leaves useful numerical margin.
   const MAX_STEP=8.25;
   const TURN_SINE_KEEP=.032;
   const GRADE_DELTA_KEEP=.012;
@@ -228,6 +225,15 @@ export function createLocalWorldBuilder({
 }){
   const now=()=>globalThis.performance?.now?.()??Date.now();
   installFastGroundGridNormals(THREE);
+
+  // main.js historically did not pass the near-ground mesh to this builder.
+  // P9.23 can find it safely: roadGroup -> world -> scene, where the near DEM
+  // mesh is the unique vertex-coloured renderOrder -5 mesh.
+  ground=ground||roadGroup?.parent?.parent?.children?.find?.(child=>
+    child?.isMesh&&child?.renderOrder===-5&&
+    child?.material?.vertexColors===true&&
+    child?.geometry?.attributes?.position
+  )||null;
 
   let prepareSerial=0;
   const p923Perf={
@@ -452,9 +458,7 @@ export function createLocalWorldBuilder({
     const geometry=prepared.geometry;
     const position=geometry.getAttribute('position');
     const p=position.array;
-    for(let i=0,j=0;i<prepared.heights.length;i++,j+=3){
-      p[j+1]=prepared.heights[i];
-    }
+    for(let i=0,j=0;i<prepared.heights.length;i++,j+=3)p[j+1]=prepared.heights[i];
     position.needsUpdate=true;
 
     let normal=geometry.getAttribute('normal');
@@ -514,25 +518,19 @@ export function createLocalWorldBuilder({
     clearGroup(infrastructureGroup);clearGroup(signGroup);
     sceneryRenderer.clear();
     lap('resetClear');
-
     setActiveRoadProfile(profile);
     lap('roadProfile');
-
     let groundCommit={ok:false,ms:0};
     if(preparedGround)groundCommit=commitGroundBuffers(preparedGround);
     lap('terrainRoadBed');
-
     buildRoadMeshes(profile);
     lap('roadMeshes');
-
     rebuildLocalWater();
     lap('water');
-
     scheduleVisualJob('scenery',rebuildLocalScenery,220);
     addEnhancedBridgeFurniture();
     refreshRoadSignsOnly();
     lap('furniture');
-
     freezeStaticMatrices(roadGroup);
     freezeStaticMatrices(forestGroup);
     freezeStaticMatrices(infrastructureGroup);
@@ -547,10 +545,7 @@ export function createLocalWorldBuilder({
       terrainProfilePoints:preparedMeta?.terrainProfilePoints||0,
       phases,
       terrain:terrainService.diagnostics?.()||null,
-      p923:preparedMeta?{
-        ...preparedMeta,
-        groundCommitMs:groundCommit.ms
-      }:null
+      p923:preparedMeta?{...preparedMeta,groundCommitMs:groundCommit.ms}:null
     };
   }
 
@@ -570,17 +565,14 @@ export function createLocalWorldBuilder({
     clearGroup(infrastructureGroup);clearGroup(signGroup);
     sceneryRenderer.clear();
     lap('resetClear');
-
     if(getBridgeFeatureCount())rebuildBridgeSpans();
     lap('bridges');
-
     const profile=buildRoadProfile();
     setActiveRoadProfile(profile);
     lap('roadProfile');
     const terrainProfile=terrainTransitionProfile(profile);
     terrainService.setRoadBed(terrainProfile,roadBedOptionsForProfile(profile));
     lap('terrainRoadBed');
-
     buildRoadMeshes(profile);
     lap('roadMeshes');
     rebuildLocalWater();
@@ -611,7 +603,6 @@ export function createLocalWorldBuilder({
     const serial=++prepareSerial;
     const wallStarted=now();
     p923Perf.preparations++;
-
     if(getBridgeFeatureCount())rebuildBridgeSpans();
     if(serial!==prepareSerial)return null;
 
@@ -623,8 +614,7 @@ export function createLocalWorldBuilder({
       roadBedOptionsForProfile(profile)
     );
     p923Perf.maxRoadStateInstallMs=Math.max(
-      p923Perf.maxRoadStateInstallMs,
-      install.ms
+      p923Perf.maxRoadStateInstallMs,install.ms
     );
     if(serial!==prepareSerial)return null;
 
@@ -683,11 +673,13 @@ export function createLocalWorldBuilder({
     };
   }
 
-  return {
+  const api={
     rebuild,
     prepareIncremental,
     commitPrepared,
     cancelPreparation,
     p923Diagnostics
   };
+  try{globalThis.__WORLD_DRIVE_P923_LOCAL_WORLD__=api;}catch{}
+  return api;
 }

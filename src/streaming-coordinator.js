@@ -1,18 +1,30 @@
 // World Drive P9.23 streaming coordinator entry point.
-// P9.13 remains the proven low-level world streamer. P9.17-P9.22 added
-// adaptive backoff, telemetry and CPU optimizations. P9.23 takes ownership of
-// periodic recenter refreshes: near-terrain buffers are prepared in short idle
-// slices while the previous rendered world remains visible, then committed in
-// one small atomic update. Forced startup/route-change rebuilds stay synchronous.
+// Periodic refreshes use the incremental local-world builder when available;
+// forced boot/route/reset refreshes keep the proven P9.13 synchronous path.
 import {createStreamingCoordinator as createStreamingCoordinatorP913} from './streaming-coordinator-p913.js';
 
 export function createStreamingCoordinator(options){
   let lastLocalWorldPhases=null;
   const localWorldPhaseMax={};
   const originalRebuildLocalWorld=options.rebuildLocalWorld;
-  const prepareLocalWorld=options.prepareLocalWorld;
-  const commitPreparedLocalWorld=options.commitPreparedLocalWorld;
-  const cancelLocalWorldPreparation=options.cancelLocalWorldPreparation;
+  const p923Builder=()=>globalThis.__WORLD_DRIVE_P923_LOCAL_WORLD__||null;
+  const hasPreparedPath=()=>{
+    if(typeof options.prepareLocalWorld==='function'&&typeof options.commitPreparedLocalWorld==='function')return true;
+    const builder=p923Builder();
+    return typeof builder?.prepareIncremental==='function'&&typeof builder?.commitPrepared==='function';
+  };
+  const prepareLocalWorld=()=>
+    typeof options.prepareLocalWorld==='function'
+      ?options.prepareLocalWorld()
+      :p923Builder()?.prepareIncremental?.();
+  const commitPreparedLocalWorld=prepared=>
+    typeof options.commitPreparedLocalWorld==='function'
+      ?options.commitPreparedLocalWorld(prepared)
+      :p923Builder()?.commitPrepared?.(prepared);
+  const cancelLocalWorldPreparation=()=>{
+    if(typeof options.cancelLocalWorldPreparation==='function')return options.cancelLocalWorldPreparation();
+    return p923Builder()?.cancelPreparation?.();
+  };
 
   function captureLocalWorldPhases(result){
     if(!result||typeof result!=='object'||!result.phases)return;
@@ -50,7 +62,6 @@ export function createStreamingCoordinator(options){
   const BACKGROUND_COOLDOWN_MS=460;
   const HITCH_IMAGERY_GUARD_MS=650;
   const SUSPENDED_FRAME_MS=250;
-
   let lastAdaptiveHitchAt=-Infinity;
   let adaptiveDeferrals=0;
   let adaptiveHitches=0;
@@ -58,318 +69,171 @@ export function createStreamingCoordinator(options){
   let gameplayFrames=0;
   let gameplayHitchCount=0;
   let maxGameplayFrameMs=0;
-  let over12Ms=0;
-  let over16_7Ms=0;
-  let over25Ms=0;
-  let over50Ms=0;
-  let over100Ms=0;
-  let suspendedFrames=0;
-  let ignoredNonDrivingFrames=0;
+  let over12Ms=0,over16_7Ms=0,over25Ms=0,over50Ms=0,over100Ms=0;
+  let suspendedFrames=0,ignoredNonDrivingFrames=0;
   const visualJobStats=new Map();
 
   let preparedSerial=0;
   let worldPreparePending=false;
-  let preparedStarts=0;
-  let preparedCommits=0;
-  let preparedDiscards=0;
-  let preparedFailures=0;
-  let lastPrepareWallMs=0;
-  let maxPrepareWallMs=0;
-  let lastPreparedCommitMs=0;
-  let maxPreparedCommitMs=0;
+  let preparedStarts=0,preparedCommits=0,preparedDiscards=0,preparedFailures=0;
+  let lastPrepareWallMs=0,maxPrepareWallMs=0;
+  let lastPreparedCommitMs=0,maxPreparedCommitMs=0;
   let lastPreparedReasons=[];
 
-  const hasPreparedPath=()=>
-    typeof prepareLocalWorld==='function'&&
-    typeof commitPreparedLocalWorld==='function';
-
-  function hitchThresholdMs(){
-    return Math.max(11.5,Math.min(30,frameBaselineMs*1.65));
-  }
-
+  function hitchThresholdMs(){return Math.max(11.5,Math.min(30,frameBaselineMs*1.65));}
   function updateFrameBaseline(rawFrameMs){
     if(!Number.isFinite(rawFrameMs)||rawFrameMs<2||rawFrameMs>80)return;
     const alpha=rawFrameMs<frameBaselineMs?.08:.004;
     const capped=Math.min(rawFrameMs,frameBaselineMs*1.12);
     frameBaselineMs+=(capped-frameBaselineMs)*alpha;
   }
-
-  function backgroundAllowed(now=performance.now()){
-    return now-lastAdaptiveHitchAt>=BACKGROUND_COOLDOWN_MS;
-  }
-
-  function runtimeState(){
-    try{return options.getRuntimeState?.()||{};}catch{return {};}
-  }
-
+  function backgroundAllowed(now=performance.now()){return now-lastAdaptiveHitchAt>=BACKGROUND_COOLDOWN_MS;}
+  function runtimeState(){try{return options.getRuntimeState?.()||{};}catch{return {};}}
   function recordVisualJob(key,ms){
     if(!Number.isFinite(ms))return;
     const previous=visualJobStats.get(key)||{runs:0,totalMs:0,maxMs:0,lastMs:0};
-    previous.runs++;
-    previous.totalMs+=ms;
-    previous.lastMs=ms;
-    previous.maxMs=Math.max(previous.maxMs,ms);
+    previous.runs++;previous.totalMs+=ms;previous.lastMs=ms;previous.maxMs=Math.max(previous.maxMs,ms);
     visualJobStats.set(key,previous);
   }
-
   function scheduleVisualJob(key,job,timeout=180){
     return base.scheduleVisualJob(key,()=>{
       const started=performance.now();
-      try{
-        const result=job();
-        recordVisualJob(key,performance.now()-started);
-        return result;
-      }catch(error){
-        recordVisualJob(key,performance.now()-started);
-        throw error;
-      }
+      try{const result=job();recordVisualJob(key,performance.now()-started);return result;}
+      catch(error){recordVisualJob(key,performance.now()-started);throw error;}
     },timeout);
   }
-
   function recordFrame(rawFrameMs,now){
     const current=runtimeState();
-    if(!current.gameStarted||current.menuOpen){
-      ignoredNonDrivingFrames++;
-      return;
-    }
+    if(!current.gameStarted||current.menuOpen){ignoredNonDrivingFrames++;return;}
     if(!Number.isFinite(rawFrameMs)||rawFrameMs<=0)return;
     if(rawFrameMs>SUSPENDED_FRAME_MS){
-      suspendedFrames++;
-      lastAdaptiveHitchAt=now;
-      if(base.state)base.state.lastHitchAt=now;
-      options.imageryService?.deferCommits?.(HITCH_IMAGERY_GUARD_MS);
-      return;
+      suspendedFrames++;lastAdaptiveHitchAt=now;if(base.state)base.state.lastHitchAt=now;
+      options.imageryService?.deferCommits?.(HITCH_IMAGERY_GUARD_MS);return;
     }
-
-    gameplayFrames++;
-    maxGameplayFrameMs=Math.max(maxGameplayFrameMs,rawFrameMs);
-    if(rawFrameMs>12)over12Ms++;
-    if(rawFrameMs>16.7)over16_7Ms++;
-    if(rawFrameMs>25)over25Ms++;
-    if(rawFrameMs>50)over50Ms++;
-    if(rawFrameMs>100)over100Ms++;
-    if(rawFrameMs>20)gameplayHitchCount++;
-
-    base.recordFrame(rawFrameMs,now);
-    updateFrameBaseline(rawFrameMs);
-
+    gameplayFrames++;maxGameplayFrameMs=Math.max(maxGameplayFrameMs,rawFrameMs);
+    if(rawFrameMs>12)over12Ms++;if(rawFrameMs>16.7)over16_7Ms++;if(rawFrameMs>25)over25Ms++;
+    if(rawFrameMs>50)over50Ms++;if(rawFrameMs>100)over100Ms++;if(rawFrameMs>20)gameplayHitchCount++;
+    base.recordFrame(rawFrameMs,now);updateFrameBaseline(rawFrameMs);
     if(rawFrameMs>hitchThresholdMs()){
-      lastAdaptiveHitchAt=now;
-      adaptiveHitches++;
-      if(base.state)base.state.lastHitchAt=now;
+      lastAdaptiveHitchAt=now;adaptiveHitches++;if(base.state)base.state.lastHitchAt=now;
       options.imageryService?.deferCommits?.(HITCH_IMAGERY_GUARD_MS);
     }
   }
-
   function restoreReasons(reasons){
     for(const reason of reasons||[])base.state.reasons.add(reason);
     if(base.state.reasons.size)base.state.pendingWorld=true;
   }
-
   function schedulePostPreparedImagery(current){
     base.cancelVisualJob('post-world-imagery');
     return base.scheduleVisualJob('post-world-imagery',()=>{
       if(!options.imageryService?.enabled)return;
-      return Promise.resolve(
-        options.buildImageryMosaic?.(current.absX,current.absZ)
-      ).catch(()=>{});
+      return Promise.resolve(options.buildImageryMosaic?.(current.absX,current.absZ)).catch(()=>{});
     },base.policy.postWorldImageryDelayMs);
   }
-
   function finalizePreparedCommit(prepared,reasons){
     const current=runtimeState();
     const started=performance.now();
     const result=commitPreparedLocalWorld(prepared);
     if(!result)return false;
     captureLocalWorldPhases(result);
-
     options.imageryService?.realignToOrigin?.();
     const recenterOnly=reasons.length===1&&reasons[0]==='recenter';
-    if(!recenterOnly){
-      options.imageryService?.invalidateGeometry?.();
-      options.applyImageryToGround?.();
-    }
+    if(!recenterOnly){options.imageryService?.invalidateGeometry?.();options.applyImageryToGround?.();}
     schedulePostPreparedImagery(current);
-
     const ms=performance.now()-started;
-    lastPreparedCommitMs=ms;
-    maxPreparedCommitMs=Math.max(maxPreparedCommitMs,ms);
+    lastPreparedCommitMs=ms;maxPreparedCommitMs=Math.max(maxPreparedCommitMs,ms);
     base.state.lastBuiltCenter={...(current.worldOffset||{x:0,z:0})};
     base.state.lastWorldBuildAt=performance.now();
-    base.state.lastWorldBuildMs=ms;
-    base.state.maxWorldBuildMs=Math.max(base.state.maxWorldBuildMs,ms);
-    base.state.worldBuildCount++;
-    base.state.pendingWorld=false;
-    base.state.reasons.clear();
-    preparedCommits++;
-    lastPreparedReasons=[...reasons];
-
+    base.state.lastWorldBuildMs=ms;base.state.maxWorldBuildMs=Math.max(base.state.maxWorldBuildMs,ms);
+    base.state.worldBuildCount++;base.state.pendingWorld=false;base.state.reasons.clear();
+    preparedCommits++;lastPreparedReasons=[...reasons];
     if(base.policy.perfConsoleLogging||ms>14){
-      console.info(
-        `World refresh ${ms.toFixed(1)} ms · prepared · reasons ${reasons.join(',')||'none'}`
-      );
+      console.info(`World refresh ${ms.toFixed(1)} ms · prepared · reasons ${reasons.join(',')||'none'}`);
     }
     options.markStaticShadowsDirty?.();
     return true;
   }
-
   function restartPreparedRefresh(reasons){
-    preparedDiscards++;
-    worldPreparePending=false;
-    restoreReasons(reasons);
-    const current=runtimeState();
-    const center=base.state.lastBuiltCenter;
-    const distance=Math.hypot(
-      (current.absX||0)-center.x,
-      (current.absZ||0)-center.z
-    );
+    preparedDiscards++;worldPreparePending=false;restoreReasons(reasons);
+    const current=runtimeState(),center=base.state.lastBuiltCenter;
+    const distance=Math.hypot((current.absX||0)-center.x,(current.absZ||0)-center.z);
     scheduleWorldRefresh({urgent:distance>=base.policy.urgentWorldRefreshDistance});
   }
-
   function beginPreparedRefresh(capturedReasons,serial){
-    const wallStarted=performance.now();
-    preparedStarts++;
+    const wallStarted=performance.now();preparedStarts++;
     options.imageryService?.deferCommits?.(base.policy.imageryCommitGuardMs);
-
-    Promise.resolve()
-      .then(()=>prepareLocalWorld())
-      .then(prepared=>{
-        if(serial!==preparedSerial)return;
-        lastPrepareWallMs=performance.now()-wallStarted;
-        maxPrepareWallMs=Math.max(maxPrepareWallMs,lastPrepareWallMs);
-
-        const newlyArrived=[...base.state.reasons];
-        const reasons=[...new Set([...capturedReasons,...newlyArrived])];
-        const current=runtimeState();
-        const preparedOffset=prepared?.offset||prepared?.meta?.preparedOffset;
-        const staleOffset=!preparedOffset||Math.hypot(
-          (current.worldOffset?.x||0)-preparedOffset.x,
-          (current.worldOffset?.z||0)-preparedOffset.z
-        )>.5;
-        const dataChangedDuringPreparation=newlyArrived.some(
-          reason=>reason==='dem'||reason==='hydro'
-        );
-
-        if(!prepared||staleOffset||dataChangedDuringPreparation){
-          restartPreparedRefresh(reasons);
-          return;
-        }
-
-        worldPreparePending=false;
-        base.state.reasons.clear();
-        base.state.pendingWorld=false;
-        if(!finalizePreparedCommit(prepared,reasons)){
-          restoreReasons(reasons);
-          preparedFailures++;
-        }
-      })
-      .catch(error=>{
-        if(serial!==preparedSerial)return;
-        console.warn('P9.23 prepared world refresh failed',error);
-        worldPreparePending=false;
-        preparedFailures++;
-        restoreReasons(capturedReasons);
-      });
+    Promise.resolve().then(()=>prepareLocalWorld()).then(prepared=>{
+      if(serial!==preparedSerial)return;
+      lastPrepareWallMs=performance.now()-wallStarted;maxPrepareWallMs=Math.max(maxPrepareWallMs,lastPrepareWallMs);
+      const newlyArrived=[...base.state.reasons];
+      const reasons=[...new Set([...capturedReasons,...newlyArrived])];
+      const current=runtimeState();
+      const preparedOffset=prepared?.offset||prepared?.meta?.preparedOffset;
+      const staleOffset=!preparedOffset||Math.hypot(
+        (current.worldOffset?.x||0)-preparedOffset.x,
+        (current.worldOffset?.z||0)-preparedOffset.z
+      )>.5;
+      const dataChangedDuringPreparation=newlyArrived.some(reason=>reason==='dem'||reason==='hydro');
+      if(!prepared||staleOffset||dataChangedDuringPreparation){restartPreparedRefresh(reasons);return;}
+      worldPreparePending=false;base.state.reasons.clear();base.state.pendingWorld=false;
+      if(!finalizePreparedCommit(prepared,reasons)){restoreReasons(reasons);preparedFailures++;}
+    }).catch(error=>{
+      if(serial!==preparedSerial)return;
+      console.warn('P9.23 prepared world refresh failed',error);
+      worldPreparePending=false;preparedFailures++;restoreReasons(capturedReasons);
+    });
   }
-
   function scheduleWorldRefresh({urgent=false}={}){
     if(!hasPreparedPath())return base.scheduleWorldRefresh({urgent});
     if(worldPreparePending||base.hasVisualJob('world-rebuild'))return false;
-
-    const current=runtimeState();
-    const center=base.state.lastBuiltCenter;
-    const buildDistance=Math.hypot(
-      (current.absX||0)-center.x,
-      (current.absZ||0)-center.z
-    );
+    const current=runtimeState(),center=base.state.lastBuiltCenter;
+    const buildDistance=Math.hypot((current.absX||0)-center.x,(current.absZ||0)-center.z);
     const now=performance.now();
-    const calm=
-      !current.gameStarted||current.menuOpen||
-      Math.abs(current.speed||0)<=base.policy.calmSpeed;
+    const calm=!current.gameStarted||current.menuOpen||Math.abs(current.speed||0)<=base.policy.calmSpeed;
     const quiet=now-base.state.lastHitchAt>=base.policy.quietWindowMs;
     const emergency=buildDistance>=base.policy.emergencyWorldRefreshDistance;
-
-    if(!emergency){
-      if(!calm&&!urgent)return false;
-      if(!quiet)return false;
-    }
-
+    if(!emergency){if(!calm&&!urgent)return false;if(!quiet)return false;}
     const capturedReasons=[...base.state.reasons];
-    base.state.reasons.clear();
-    base.state.pendingWorld=false;
-    worldPreparePending=true;
+    base.state.reasons.clear();base.state.pendingWorld=false;worldPreparePending=true;
     const serial=++preparedSerial;
     const timeout=emergency?40:(urgent?180:520);
-    const scheduled=base.scheduleVisualJob(
-      'world-rebuild',
-      ()=>beginPreparedRefresh(capturedReasons,serial),
-      timeout
-    );
-    if(!scheduled){
-      worldPreparePending=false;
-      restoreReasons(capturedReasons);
-      return false;
-    }
+    const scheduled=base.scheduleVisualJob('world-rebuild',()=>beginPreparedRefresh(capturedReasons,serial),timeout);
+    if(!scheduled){worldPreparePending=false;restoreReasons(capturedReasons);return false;}
     return true;
   }
-
   function recenterIfNeeded(absx,absz,force=false){
     if(force||!hasPreparedPath()){
-      preparedSerial++;
-      worldPreparePending=false;
-      cancelLocalWorldPreparation?.();
+      preparedSerial++;worldPreparePending=false;cancelLocalWorldPreparation();
       return base.recenterIfNeeded(absx,absz,force);
     }
-
     const hard=base.policy.hardWorldRefreshDistance;
     base.policy.hardWorldRefreshDistance=Number.MAX_SAFE_INTEGER;
     let moved=false;
-    try{
-      moved=base.recenterIfNeeded(absx,absz,false);
-    }finally{
-      base.policy.hardWorldRefreshDistance=hard;
-    }
+    try{moved=base.recenterIfNeeded(absx,absz,false);}finally{base.policy.hardWorldRefreshDistance=hard;}
     if(!moved)return false;
-
-    const dx=absx-base.state.lastBuiltCenter.x;
-    const dz=absz-base.state.lastBuiltCenter.z;
-    const buildDistance=Math.hypot(dx,dz);
+    const buildDistance=Math.hypot(absx-base.state.lastBuiltCenter.x,absz-base.state.lastBuiltCenter.z);
     if(buildDistance>=hard){
       base.markWorldRefresh('recenter');
-      scheduleWorldRefresh({
-        urgent:buildDistance>=base.policy.urgentWorldRefreshDistance
-      });
+      scheduleWorldRefresh({urgent:buildDistance>=base.policy.urgentWorldRefreshDistance});
     }
     return true;
   }
-
   function updateFrame(now){
-    if(!backgroundAllowed(now)){
-      adaptiveDeferrals++;
-      return false;
-    }
-
+    if(!backgroundAllowed(now)){adaptiveDeferrals++;return false;}
     const current=runtimeState();
     if(
-      base.state.pendingWorld&&!worldPreparePending&&
-      !base.hasVisualJob('world-rebuild')&&
+      base.state.pendingWorld&&!worldPreparePending&&!base.hasVisualJob('world-rebuild')&&
       (!current.gameStarted||current.menuOpen||Math.abs(current.speed||0)<=base.policy.calmSpeed)
-    ){
-      scheduleWorldRefresh({urgent:false});
-    }
+    )scheduleWorldRefresh({urgent:false});
 
     const pendingBefore=base.state.pendingWorld;
     const imageryDistance=base.policy.imageryPriorityRefreshDistance;
     if(hasPreparedPath()){
       base.state.pendingWorld=false;
-      if(pendingBefore||worldPreparePending){
-        base.policy.imageryPriorityRefreshDistance=Number.MAX_SAFE_INTEGER;
-      }
+      if(pendingBefore||worldPreparePending)base.policy.imageryPriorityRefreshDistance=Number.MAX_SAFE_INTEGER;
     }
     let result;
-    try{
-      result=base.updateFrame(now);
-    }finally{
+    try{result=base.updateFrame(now);}finally{
       if(hasPreparedPath()){
         const markedDuring=base.state.pendingWorld;
         base.state.pendingWorld=pendingBefore||markedDuring;
@@ -378,146 +242,65 @@ export function createStreamingCoordinator(options){
     }
     return result;
   }
-
   function prefetchRouteAhead(){
-    if(!backgroundAllowed()){
-      adaptiveDeferrals++;
-      return false;
-    }
+    if(!backgroundAllowed()){adaptiveDeferrals++;return false;}
     return base.prefetchRouteAhead();
   }
-
   function refreshCurrentImagerySooner(now=performance.now()){
-    if(!backgroundAllowed(now)||worldPreparePending){
-      adaptiveDeferrals++;
-      return false;
-    }
+    if(!backgroundAllowed(now)||worldPreparePending){adaptiveDeferrals++;return false;}
     return base.refreshCurrentImagerySooner(now);
   }
-
   function resetTelemetry(){
-    lastAdaptiveHitchAt=-Infinity;
-    adaptiveDeferrals=0;
-    adaptiveHitches=0;
-    frameBaselineMs=16.7;
-    gameplayFrames=0;
-    gameplayHitchCount=0;
-    maxGameplayFrameMs=0;
-    over12Ms=0;
-    over16_7Ms=0;
-    over25Ms=0;
-    over50Ms=0;
-    over100Ms=0;
-    suspendedFrames=0;
-    ignoredNonDrivingFrames=0;
-    visualJobStats.clear();
-    lastLocalWorldPhases=null;
-    for(const key of Object.keys(localWorldPhaseMax))delete localWorldPhaseMax[key];
-    preparedStarts=0;
-    preparedCommits=0;
-    preparedDiscards=0;
-    preparedFailures=0;
-    lastPrepareWallMs=0;
-    maxPrepareWallMs=0;
-    lastPreparedCommitMs=0;
-    maxPreparedCommitMs=0;
-    lastPreparedReasons=[];
+    lastAdaptiveHitchAt=-Infinity;adaptiveDeferrals=0;adaptiveHitches=0;frameBaselineMs=16.7;
+    gameplayFrames=0;gameplayHitchCount=0;maxGameplayFrameMs=0;
+    over12Ms=0;over16_7Ms=0;over25Ms=0;over50Ms=0;over100Ms=0;
+    suspendedFrames=0;ignoredNonDrivingFrames=0;visualJobStats.clear();
+    lastLocalWorldPhases=null;for(const key of Object.keys(localWorldPhaseMax))delete localWorldPhaseMax[key];
+    preparedStarts=0;preparedCommits=0;preparedDiscards=0;preparedFailures=0;
+    lastPrepareWallMs=0;maxPrepareWallMs=0;lastPreparedCommitMs=0;maxPreparedCommitMs=0;lastPreparedReasons=[];
   }
-
   function reset(){
-    preparedSerial++;
-    worldPreparePending=false;
-    cancelLocalWorldPreparation?.();
-    base.reset();
-    resetTelemetry();
+    preparedSerial++;worldPreparePending=false;cancelLocalWorldPreparation();base.reset();resetTelemetry();
   }
-
   function roundedLocalWorldReport(report){
     if(!report)return null;
-    const phases={};
-    for(const [key,value] of Object.entries(report.phases||{})){
-      phases[key]=Number(value.toFixed(3));
-    }
+    const phases={};for(const [key,value] of Object.entries(report.phases||{}))phases[key]=Number(value.toFixed(3));
     return {
       totalMs:Number((report.totalMs||0).toFixed(3)),
       profilePoints:report.profilePoints||0,
       terrainProfilePoints:report.terrainProfilePoints||0,
-      phases,
-      terrain:report.terrain||null,
-      p923:report.p923||null
+      phases,terrain:report.terrain||null,p923:report.p923||null
     };
   }
-
   function diagnostics(){
     const legacy=base.diagnostics();
     const visualJobs={};
     for(const [key,value] of visualJobStats){
-      visualJobs[key]={
-        runs:value.runs,
-        lastMs:Number(value.lastMs.toFixed(3)),
-        maxMs:Number(value.maxMs.toFixed(3)),
-        avgMs:Number((value.totalMs/Math.max(1,value.runs)).toFixed(3))
-      };
+      visualJobs[key]={runs:value.runs,lastMs:Number(value.lastMs.toFixed(3)),maxMs:Number(value.maxMs.toFixed(3)),avgMs:Number((value.totalMs/Math.max(1,value.runs)).toFixed(3))};
     }
-    const phaseMax={};
-    for(const [key,value] of Object.entries(localWorldPhaseMax)){
-      phaseMax[key]=Number(value.toFixed(3));
-    }
+    const phaseMax={};for(const [key,value] of Object.entries(localWorldPhaseMax))phaseMax[key]=Number(value.toFixed(3));
     return {
       ...legacy,
-      hitchCount:gameplayHitchCount,
-      maxFrameMs:maxGameplayFrameMs,
-      suspendedFrames,
-      ignoredNonDrivingFrames,
-      frameBins:{
-        gameplayFrames,
-        over12Ms,
-        over16_7Ms,
-        over25Ms,
-        over50Ms,
-        over100Ms
-      },
-      visualJobs,
-      localWorldPhases:roundedLocalWorldReport(lastLocalWorldPhases),
-      localWorldPhaseMax:phaseMax,
+      hitchCount:gameplayHitchCount,maxFrameMs:maxGameplayFrameMs,suspendedFrames,ignoredNonDrivingFrames,
+      frameBins:{gameplayFrames,over12Ms,over16_7Ms,over25Ms,over50Ms,over100Ms},
+      visualJobs,localWorldPhases:roundedLocalWorldReport(lastLocalWorldPhases),localWorldPhaseMax:phaseMax,
       elevation:options.elevationService?.diagnostics?.()||null,
       p917:{
-        frameBaselineMs,
-        hitchThresholdMs:hitchThresholdMs(),
-        backgroundCooldownMs:BACKGROUND_COOLDOWN_MS,
-        lastAdaptiveHitchAt,
-        adaptiveHitches,
-        adaptiveDeferrals,
-        backgroundAllowed:backgroundAllowed()
+        frameBaselineMs,hitchThresholdMs:hitchThresholdMs(),backgroundCooldownMs:BACKGROUND_COOLDOWN_MS,
+        lastAdaptiveHitchAt,adaptiveHitches,adaptiveDeferrals,backgroundAllowed:backgroundAllowed()
       },
       p923:{
-        enabled:hasPreparedPath(),
-        worldPreparePending,
-        preparedStarts,
-        preparedCommits,
-        preparedDiscards,
-        preparedFailures,
-        lastPrepareWallMs:Number(lastPrepareWallMs.toFixed(3)),
-        maxPrepareWallMs:Number(maxPrepareWallMs.toFixed(3)),
-        lastPreparedCommitMs:Number(lastPreparedCommitMs.toFixed(3)),
-        maxPreparedCommitMs:Number(maxPreparedCommitMs.toFixed(3)),
-        lastPreparedReasons,
-        builder:options.localWorldP923Diagnostics?.()||null
+        enabled:hasPreparedPath(),worldPreparePending,preparedStarts,preparedCommits,preparedDiscards,preparedFailures,
+        lastPrepareWallMs:Number(lastPrepareWallMs.toFixed(3)),maxPrepareWallMs:Number(maxPrepareWallMs.toFixed(3)),
+        lastPreparedCommitMs:Number(lastPreparedCommitMs.toFixed(3)),maxPreparedCommitMs:Number(maxPreparedCommitMs.toFixed(3)),
+        lastPreparedReasons,builder:p923Builder()?.p923Diagnostics?.()||options.localWorldP923Diagnostics?.()||null
       }
     };
   }
 
   return Object.freeze({
     ...base,
-    scheduleVisualJob,
-    recordFrame,
-    updateFrame,
-    prefetchRouteAhead,
-    refreshCurrentImagerySooner,
-    scheduleWorldRefresh,
-    recenterIfNeeded,
-    reset,
-    resetTelemetry,
-    diagnostics
+    scheduleVisualJob,recordFrame,updateFrame,prefetchRouteAhead,refreshCurrentImagerySooner,
+    scheduleWorldRefresh,recenterIfNeeded,reset,resetTelemetry,diagnostics
   });
 }
