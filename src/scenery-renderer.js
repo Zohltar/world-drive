@@ -1,16 +1,38 @@
 import {loadForestWaterAssets,getForestWaterAssets} from './forest-water-assets.js';
+import {
+  FOREST_STREAMING_POLICY as FOREST,
+  forestHash,
+  forestDensityNoise,
+  forestKeepProbability,
+  forestLodForDistance,
+  forestSectorForOffset,
+  forestCellRange
+} from './forest-streaming-policy.js';
 
 export function createSceneryRenderer({THREE,statusEl,features,terrainDetailGroup,infrastructureGroup,buildingGroup,forestGroup,materials,featureCentroid,terrainHeight,nearestRoute,isWaterAt,pointInPolygon,getWorldOffset}){
   if(!THREE)throw new Error('Scenery renderer requires THREE');
   const {buildingWallMat,rockMat,scrubMat,towerMat,lineMatPower,railMat,damMat}=materials;
   let forestAssets=getForestWaterAssets();
-  let rebuildingFromAsset=false;
+  let forestBlockers=[];
+  let forestLastCenter={x:NaN,z:NaN};
+  let forestRequestedCenter=null;
+  let forestBuildActive=false;
+  let forestRequestSerial=0;
+  let forestPollTimer=null;
+  let lastShown=0;
+  let lastForestStats={total:0,near:0,mid:0,far:0,batches:0};
 
   function disposeObject(object){
     object.traverse?.(child=>{if(child.userData?.sharedForestGeometry)return;child.geometry?.dispose?.();});
   }
   function clearGroup(group){while(group.children.length){const child=group.children.pop();disposeObject(child);}}
-  function clear(){clearGroup(terrainDetailGroup);clearGroup(infrastructureGroup);clearGroup(buildingGroup);clearGroup(forestGroup);}
+  function clear(){
+    clearGroup(terrainDetailGroup);clearGroup(infrastructureGroup);clearGroup(buildingGroup);
+    // Keep the previous streamed forest alive while the replacement is generated.
+    // A full world refresh must never expose an empty forest ring.
+    forestRequestSerial++;
+    refreshForestMasks();
+  }
 
   function makeFootprintMesh(points,height=6,material=buildingWallMat){
     if(points.length<3)return null;const offset=getWorldOffset();const shape=new THREE.Shape();
@@ -39,127 +61,274 @@ export function createSceneryRenderer({THREE,statusEl,features,terrainDetailGrou
     if(points.length<3)return null;const offset=getWorldOffset(),shape=new THREE.Shape();shape.moveTo(points[0].x-offset.x,-(points[0].z-offset.z));for(let i=1;i<points.length;i++)shape.lineTo(points[i].x-offset.x,-(points[i].z-offset.z));shape.closePath();const geometry=new THREE.ShapeGeometry(shape);geometry.rotateX(-Math.PI/2);const c=featureCentroid(points),mesh=new THREE.Mesh(geometry,material);mesh.position.y=terrainHeight(c.x,c.z)+yOffset;mesh.receiveShadow=true;return mesh;
   }
 
-  function seededRandom(seedValue){let seed=(seedValue>>>0)||1;return()=>{seed=(seed*1664525+1013904223)>>>0;return seed/4294967296;};}
-  function terrainSlope(x,z){const d=7,hx=terrainHeight(x+d,z)-terrainHeight(x-d,z),hz=terrainHeight(x,z+d)-terrainHeight(x,z-d);return Math.hypot(hx,hz)/(d*2);}
+  function bboxForPoints(points){
+    let minx=Infinity,maxx=-Infinity,minz=Infinity,maxz=-Infinity;
+    for(const p of points){minx=Math.min(minx,p.x);maxx=Math.max(maxx,p.x);minz=Math.min(minz,p.z);maxz=Math.max(maxz,p.z);}
+    return {minx,maxx,minz,maxz};
+  }
+
+  function refreshForestMasks(){
+    const next=[];
+    for(const feature of features){
+      const tags=feature.tags||{},points=feature.points;
+      if(!Array.isArray(points)||points.length<3)continue;
+      const blocked=
+        !!tags.building||
+        ['residential','commercial','industrial','retail','farmland','farmyard','meadow','grass','construction','quarry'].includes(tags.landuse)||
+        ['bare_rock','scree','sand','beach'].includes(tags.natural);
+      if(blocked)next.push({points,bbox:bboxForPoints(points)});
+    }
+    forestBlockers=next;
+  }
 
   function blocksForest(x,z){
-    for(const feature of features){
-      const tags=feature.tags||{};
-      const blocked=tags.building||['residential','commercial','industrial','retail','farmland'].includes(tags.landuse)||['bare_rock','scree'].includes(tags.natural);
-      if(!blocked||!Array.isArray(feature.points)||feature.points.length<3)continue;
-      if(pointInPolygon(x,z,feature.points))return true;
+    for(const blocker of forestBlockers){
+      const b=blocker.bbox;
+      if(x<b.minx||x>b.maxx||z<b.minz||z>b.maxz)continue;
+      if(pointInPolygon(x,z,blocker.points))return true;
     }
     return false;
   }
 
-  function validTreePoint(x,z){
-    if(isWaterAt(x,z,9))return null;
-    const nr=nearestRoute(x,z);
-    if(!nr||nr.d<20||nr.d>185)return null;
-    if(terrainSlope(x,z)>.70)return null;
-    if(blocksForest(x,z))return null;
-    return nr;
+  function distanceToSegment(x,z,segment){
+    const vx=segment.bx-segment.ax,vz=segment.bz-segment.az;
+    const vv=vx*vx+vz*vz||1;
+    const t=Math.max(0,Math.min(1,((x-segment.ax)*vx+(z-segment.az)*vz)/vv));
+    return Math.hypot(x-(segment.ax+vx*t),z-(segment.az+vz*t));
   }
 
-  function chooseVariant(random,nr,variantCount){
-    if(variantCount<=1)return 0;
-    const r=random();
-    // Detailed authored trees are deliberately rare and concentrated where the
-    // driver can appreciate them. Lighter silhouettes make up the forest mass.
-    if(nr.d<92&&r<.16)return 0;
-    if(variantCount===2)return r<.62?0:1;
-    if(r<.60)return 1;
-    return 2;
-  }
+  function routeSegmentsForCell(cell){
+    const first=nearestRoute(cell.x,cell.z);
+    if(!first)return [];
+    const halfDiagonal=FOREST.cellSize*Math.SQRT2*.5;
+    if(first.d>FOREST.roadClearance+halfDiagonal+4)return [];
 
-  function addPlacement(list,x,z,random){
-    const nr=validTreePoint(x,z);if(!nr)return false;
-    const chance=nr.d<78?.96:nr.d<125?.80:.48;
-    if(random()>chance)return false;
-    const variantCount=Math.max(1,forestAssets?.trees?.length||0);
-    list.push({
-      x,z,y:terrainHeight(x,z),
-      height:7.5+random()*8.2,
-      widthScale:.80+random()*.34,
-      rot:random()*Math.PI*2,
-      leanX:(random()-.5)*.045,
-      leanZ:(random()-.5)*.045,
-      variant:chooseVariant(random,nr,variantCount)
-    });
-    return true;
-  }
-
-  function collectMappedForest(points,id,list){
-    const center=featureCentroid(points),random=seededRandom((Number(id)||1)*2654435761);
-    const radius=Math.min(185,Math.max(35,Math.sqrt(points.length)*25));
-    let accepted=0;
-    for(let i=0;i<700&&accepted<175;i++){
-      const angle=random()*Math.PI*2,r=Math.sqrt(random())*radius,x=center.x+Math.cos(angle)*r,z=center.z+Math.sin(angle)*r;
-      if(!pointInPolygon(x,z,points))continue;
-      if(addPlacement(list,x,z,random))accepted++;
+    const h=FOREST.cellSize*.48;
+    const probes=[
+      [cell.x,cell.z],
+      [cell.x-h,cell.z-h],[cell.x+h,cell.z-h],[cell.x-h,cell.z+h],[cell.x+h,cell.z+h],
+      [cell.x-h,cell.z],[cell.x+h,cell.z],[cell.x,cell.z-h],[cell.x,cell.z+h]
+    ];
+    const unique=new Map();
+    for(const [x,z] of probes){
+      const nr=nearestRoute(x,z);
+      if(nr&&Number.isInteger(nr.i))unique.set(nr.i,nr);
     }
+    return [...unique.values()];
   }
 
-  function collectRoadsideForest(list,hasMappedForest){
-    const offset=getWorldOffset();
-    const qx=Math.round(offset.x/80),qz=Math.round(offset.z/80);
-    const random=seededRandom(((qx*73856093)^(qz*19349663)^0x666f7265)>>>0);
-    const target=hasMappedForest?360:470;
-    const clusters=[];
+  function tooCloseToRoad(x,z,routeSegments){
+    for(const segment of routeSegments){if(distanceToSegment(x,z,segment)<FOREST.roadClearance)return true;}
+    return false;
+  }
 
-    // Forests rarely read as uniform random noise. Stable local cluster centres
-    // create copses, openings and denser bands while remaining deterministic.
-    for(let i=0;i<24;i++){
-      const angle=random()*Math.PI*2;
-      const radius=34+Math.sqrt(random())*340;
-      clusters.push({
-        x:offset.x+Math.cos(angle)*radius,
-        z:offset.z+Math.sin(angle)*radius,
-        spread:16+random()*48
+  function terrainSlopeCached(cache,x,z){
+    const q=FOREST.slopeCacheSize;
+    const qx=Math.floor(x/q),qz=Math.floor(z/q),key=`${qx}:${qz}`;
+    if(cache.has(key))return cache.get(key);
+    const sx=(qx+.5)*q,sz=(qz+.5)*q,d=8;
+    const hx=terrainHeight(sx+d,sz)-terrainHeight(sx-d,sz);
+    const hz=terrainHeight(sx,sz+d)-terrainHeight(sx,sz-d);
+    const slope=Math.hypot(hx,hz)/(d*2);
+    cache.set(key,slope);
+    return slope;
+  }
+
+  function variantIndices(){
+    const variants=forestAssets?.trees||[];
+    const find=name=>variants.findIndex(v=>String(v?.name||'').toLowerCase()===name);
+    const authored=find('authored'),ps1=find('ps1'),scene=find('scene');
+    const first=variants.length?0:-1;
+    return {
+      authored:authored>=0?authored:(ps1>=0?ps1:(scene>=0?scene:first)),
+      ps1:ps1>=0?ps1:(scene>=0?scene:(authored>=0?authored:first)),
+      scene:scene>=0?scene:(ps1>=0?ps1:(authored>=0?authored:first))
+    };
+  }
+
+  function chooseVariantForLod(lod,r,indices){
+    if(lod===2)return indices.scene;
+    if(lod===1)return r<.24?indices.ps1:indices.scene;
+    if(r<.15)return indices.authored;
+    if(r<.62)return indices.ps1;
+    return indices.scene;
+  }
+
+  function addBatchPlacement(job,lod,sector,variant,placement){
+    const key=`${lod}:${sector}:${variant}`;
+    let list=job.batches.get(key);
+    if(!list){list=[];job.batches.set(key,list);}
+    list.push(placement);
+    job.counts[lod]++;
+  }
+
+  function processForestCell(job,cell){
+    const routeSegments=routeSegmentsForCell(cell);
+    const baseDensity=forestDensityNoise(cell.x,cell.z);
+    for(let i=0;i<FOREST.candidatesPerCell;i++){
+      const rx=forestHash(cell.cx,cell.cz,17+i*7919);
+      const rz=forestHash(cell.cx,cell.cz,31+i*104729);
+      const x=(cell.cx+rx)*FOREST.cellSize;
+      const z=(cell.cz+rz)*FOREST.cellSize;
+      const dx=x-job.center.x,dz=z-job.center.z,distance=Math.hypot(dx,dz);
+      const lod=forestLodForDistance(distance,FOREST);
+      if(lod<0)continue;
+
+      let keep=forestKeepProbability(distance,baseDensity,FOREST);
+      const slope=terrainSlopeCached(job.slopeCache,x,z);
+      if(slope>FOREST.maxSlope)continue;
+      if(slope>.82)keep*=.72;
+      if(forestHash(cell.cx,cell.cz,(0x51f15e+Math.imul(i,0x9e3779b1))|0)>keep)continue;
+      if(routeSegments.length&&tooCloseToRoad(x,z,routeSegments))continue;
+      if(isWaterAt(x,z,8))continue;
+      if(blocksForest(x,z))continue;
+
+      const variantRandom=forestHash(cell.cx,cell.cz,(0x73a2d1+Math.imul(i,2246822519))|0);
+      const variant=chooseVariantForLod(lod,variantRandom,job.indices);
+      if(variant<0)continue;
+      const height=8.2+forestHash(cell.cx,cell.cz,0x191+i*1013)*9.6;
+      const widthScale=.78+forestHash(cell.cx,cell.cz,0x2b7+i*2029)*.42;
+      const rot=forestHash(cell.cx,cell.cz,0x391+i*4093)*Math.PI*2;
+      const leanScale=lod===0?.052:lod===1?.028:.012;
+      const leanX=(forestHash(cell.cx,cell.cz,0x4d1+i*8191)-.5)*leanScale;
+      const leanZ=(forestHash(cell.cx,cell.cz,0x5f3+i*12289)-.5)*leanScale;
+      const sector=forestSectorForOffset(dx,dz,FOREST.sectors);
+      addBatchPlacement(job,lod,sector,variant,{
+        x,z,y:terrainHeight(x,z),height,widthScale,rot,leanX,leanZ
       });
     }
+  }
 
-    let accepted=0;
-    for(let i=0;i<target*15&&accepted<target;i++){
-      const cluster=clusters[Math.floor(random()*clusters.length)];
-      const angle=random()*Math.PI*2;
-      const radius=Math.sqrt(random())*cluster.spread;
-      const x=cluster.x+Math.cos(angle)*radius;
-      const z=cluster.z+Math.sin(angle)*radius;
-      if(addPlacement(list,x,z,random))accepted++;
+  function scheduleIdleSlice(callback){
+    if(typeof globalThis.requestIdleCallback==='function'){
+      globalThis.requestIdleCallback(callback,{timeout:90});
+    }else{
+      setTimeout(()=>callback({didTimeout:true,timeRemaining:()=>7}),0);
     }
   }
 
-  function addForestBatches(list){
+  function buildForestPlacements(job){
+    return new Promise(resolve=>{
+      const step=deadline=>{
+        if(job.serial!==forestRequestSerial){resolve(false);return;}
+        let processed=0;
+        while(job.cellIndex<job.cells.length&&processed<FOREST.cellsPerSlice){
+          if(processed>=6&&!deadline.didTimeout&&deadline.timeRemaining()<1.5)break;
+          processForestCell(job,job.cells[job.cellIndex++]);
+          processed++;
+        }
+        if(job.cellIndex<job.cells.length){scheduleIdleSlice(step);return;}
+        resolve(true);
+      };
+      scheduleIdleSlice(step);
+    });
+  }
+
+  function makeForestStaging(job){
+    const currentOffset=getWorldOffset();
+    if(Math.hypot(currentOffset.x-job.center.x,currentOffset.z-job.center.z)>.1)return null;
+    if(Math.abs(forestGroup.position.x-job.groupPosition.x)>.1||Math.abs(forestGroup.position.z-job.groupPosition.z)>.1)return null;
+
     const variants=forestAssets?.trees||[];
-    if(!variants.length||!list.length)return 0;
-    const offset=getWorldOffset(),dummy=new THREE.Object3D();
-    let rendered=0;
-
-    for(let variantIndex=0;variantIndex<variants.length;variantIndex++){
-      const variant=variants[variantIndex];
-      const placements=list.filter(p=>Math.min(p.variant,variants.length-1)===variantIndex);
-      if(!placements.length||!variant?.parts?.length)continue;
-      rendered+=placements.length;
-
+    const staging=new THREE.Group(),dummy=new THREE.Object3D();
+    let batches=0;
+    for(const [key,placements] of job.batches){
+      if(!placements.length)continue;
+      const [lodText,sectorText,variantText]=key.split(':');
+      const variant=variants[Number(variantText)];
+      if(!variant?.parts?.length)continue;
       for(const part of variant.parts){
         if(!part?.geometry||!part?.material)continue;
         const mesh=new THREE.InstancedMesh(part.geometry,part.material,placements.length);
         mesh.userData.sharedForestGeometry=true;
-        mesh.userData.forestVariant=variant.name||String(variantIndex);
+        mesh.userData.forestVariant=variant.name||variantText;
+        mesh.userData.forestLod=Number(lodText);
+        mesh.userData.forestSector=Number(sectorText);
         mesh.castShadow=false;mesh.receiveShadow=false;mesh.frustumCulled=true;
+        mesh.instanceMatrix.setUsage(THREE.StaticDrawUsage);
         placements.forEach((p,i)=>{
-          dummy.position.set(p.x-offset.x,p.y+.02,p.z-offset.z);
+          dummy.position.set(
+            p.x-job.center.x-job.groupPosition.x,
+            p.y+.02,
+            p.z-job.center.z-job.groupPosition.z
+          );
           dummy.rotation.set(p.leanX,p.rot,p.leanZ);
           dummy.scale.set(p.height*p.widthScale,p.height,p.height*p.widthScale);
           dummy.updateMatrix();
           mesh.setMatrixAt(i,dummy.matrix);
         });
         mesh.instanceMatrix.needsUpdate=true;
-        forestGroup.add(mesh);
+        mesh.computeBoundingSphere();
+        mesh.matrixAutoUpdate=false;
+        mesh.updateMatrix();
+        staging.add(mesh);batches++;
       }
     }
-    return rendered;
+    staging.userData.forestBatches=batches;
+    return staging;
+  }
+
+  function swapForest(staging,job){
+    if(!staging)return false;
+    clearGroup(forestGroup);
+    while(staging.children.length)forestGroup.add(staging.children[0]);
+    forestLastCenter={...job.center};
+    lastForestStats={
+      total:job.counts[0]+job.counts[1]+job.counts[2],
+      near:job.counts[0],mid:job.counts[1],far:job.counts[2],
+      batches:staging.userData.forestBatches||0
+    };
+    if(statusEl)statusEl.textContent=`${lastShown} objets · ${lastForestStats.total} arbres · LOD ${lastForestStats.near}/${lastForestStats.mid}/${lastForestStats.far}`;
+    return true;
+  }
+
+  async function runForestQueue(){
+    if(forestBuildActive||!forestRequestedCenter)return;
+    forestBuildActive=true;
+    try{
+      while(forestRequestedCenter){
+        const center=forestRequestedCenter;forestRequestedCenter=null;
+        const serial=forestRequestSerial;
+        const job={
+          serial,center,
+          groupPosition:{x:forestGroup.position.x,z:forestGroup.position.z},
+          cells:forestCellRange(center.x,center.z,FOREST),cellIndex:0,
+          batches:new Map(),counts:[0,0,0],slopeCache:new Map(),indices:variantIndices()
+        };
+        const complete=await buildForestPlacements(job);
+        if(!complete||serial!==forestRequestSerial)continue;
+        const staging=makeForestStaging(job);
+        if(!staging){
+          forestRequestedCenter={...getWorldOffset()};
+          forestRequestSerial++;
+          continue;
+        }
+        swapForest(staging,job);
+      }
+    }catch(error){
+      console.warn('Forest streaming rebuild failed',error);
+    }finally{
+      forestBuildActive=false;
+      if(forestRequestedCenter)runForestQueue();
+    }
+  }
+
+  function requestForestRefresh(force=false){
+    if(!forestAssets?.trees?.length)return false;
+    const offset=getWorldOffset();
+    const center={x:offset.x,z:offset.z};
+    if(!force&&Number.isFinite(forestLastCenter.x)){
+      if(Math.hypot(center.x-forestLastCenter.x,center.z-forestLastCenter.z)<FOREST.refreshDistance)return false;
+    }
+    forestRequestedCenter=center;
+    forestRequestSerial++;
+    runForestQueue();
+    return true;
+  }
+
+  function ensureForestPolling(){
+    if(forestPollTimer||typeof globalThis.setInterval!=='function')return;
+    forestPollTimer=globalThis.setInterval(()=>requestForestRefresh(false),FOREST.pollMs);
   }
 
   function makeBuildingLOD(points,tags,dist){
@@ -169,8 +338,9 @@ export function createSceneryRenderer({THREE,statusEl,features,terrainDetailGrou
 
   function rebuild(){
     clear();
-    const offset=getWorldOffset(),radius2=1500*1500,placements=[];
-    let shown=0,mappedForestCount=0;
+    const offset=getWorldOffset(),radius2=1500*1500;
+    let shown=0;
+    refreshForestMasks();
     for(const feature of features){
       const center=featureCentroid(feature.points),dx=center.x-offset.x,dz=center.z-offset.z,dist2=dx*dx+dz*dz;if(dist2>radius2)continue;
       const dist=Math.sqrt(dist2),tags=feature.tags||{};let object=null;
@@ -181,23 +351,24 @@ export function createSceneryRenderer({THREE,statusEl,features,terrainDetailGrou
       else if(tags.barrier==='guard_rail')infrastructureGroup.add(addGuardRail(feature.points));
       else if(tags.natural==='bare_rock'||tags.natural==='scree'||tags.natural==='cliff'){object=addLandPatch(feature.points,rockMat,.04);if(object)terrainDetailGroup.add(object);}
       else if(tags.natural==='scrub'||tags.landuse==='meadow'){object=addLandPatch(feature.points,scrubMat,.035);if(object)terrainDetailGroup.add(object);}
-      else if((tags.natural==='wood'||tags.landuse==='forest')&&dist<680){collectMappedForest(feature.points,feature.id,placements);mappedForestCount++;}
       shown++;
     }
-
-    if(forestAssets?.trees?.length){
-      collectRoadsideForest(placements,mappedForestCount>0);
-      const treeCount=addForestBatches(placements);
-      if(statusEl)statusEl.textContent=`${shown} objets · ${treeCount} arbres · ${forestAssets.trees.length} variantes`;
-    }else if(statusEl)statusEl.textContent=`${shown} objets · forêt en chargement`;
+    lastShown=shown;
+    requestForestRefresh(true);
+    if(statusEl){
+      if(lastForestStats.total)statusEl.textContent=`${shown} objets · ${lastForestStats.total} arbres · forêt streaming`;
+      else statusEl.textContent=`${shown} objets · forêt en chargement`;
+    }
     return shown;
   }
 
   function removeTreesOverWater(){return 0;}
 
+  ensureForestPolling();
   loadForestWaterAssets().then(asset=>{
     forestAssets=asset;
-    if(asset?.trees?.length&&!rebuildingFromAsset){rebuildingFromAsset=true;try{rebuild();}finally{rebuildingFromAsset=false;}}
+    ensureForestPolling();
+    requestForestRefresh(true);
   });
-  return {rebuild,clear,removeTreesOverWater};
+  return {rebuild,clear,removeTreesOverWater,requestForestRefresh};
 }
