@@ -45,14 +45,14 @@ export function createMinimapSystem({
         flex-direction:column!important;
         height:min(560px,calc(100vh - 28px))!important;
         min-height:420px;
-        background:rgba(4,10,18,var(--route-map-opacity,.80))!important;
+        background:rgba(4,10,18,.80)!important;
         overflow:hidden;
       }
       #mapbox .panelHeader{flex:0 0 28px}
       #routeMapInfo{
         flex:0 0 auto;
         display:grid;
-        grid-template-columns:1fr 1fr 1fr;
+        grid-template-columns:repeat(4,minmax(0,1fr));
         gap:6px;
         margin:4px 0 7px;
       }
@@ -126,7 +126,6 @@ export function createMinimapSystem({
       @media(max-width:900px){
         #mapbox{height:min(500px,calc(100vh - 28px))!important}
         #routeMapInfo{grid-template-columns:1fr 1fr}
-        #routeMapInfo .routeMapMetric:first-child{grid-column:1/-1}
       }
     `;
     document.head.appendChild(style);
@@ -147,6 +146,10 @@ export function createMinimapSystem({
         <span class="routeMapMetricLabel">Distance à faire</span>
         <strong class="routeMapMetricValue" id="routeMapRemain">— km</strong>
       </button>
+      <div class="routeMapMetric">
+        <span class="routeMapMetricLabel">Temps</span>
+        <strong class="routeMapMetricValue" id="routeMapTime">00:00.0</strong>
+      </div>
     `;
 
     const canvasZone=document.createElement('div');
@@ -159,7 +162,7 @@ export function createMinimapSystem({
     opacity.id='routeMapOpacity';
     opacity.innerHTML=`
       <label for="routeMapOpacitySlider">Opacité</label>
-      <input id="routeMapOpacitySlider" type="range" min="25" max="100" step="5" value="80" aria-label="Opacité du panneau de carte">
+      <input id="routeMapOpacitySlider" type="range" min="25" max="100" step="5" value="80" aria-label="Opacité de la carte du trajet">
       <span id="routeMapOpacityValue">80 %</span>
     `;
     mapbox.appendChild(opacity);
@@ -171,12 +174,16 @@ export function createMinimapSystem({
     $('routeMapDoneToggle')?.addEventListener('click',toggleMode);
     $('routeMapRemainToggle')?.addEventListener('click',toggleMode);
 
-    $('routeMapOpacitySlider')?.addEventListener('input',event=>{
-      const pct=Math.max(25,Math.min(100,Number(event.target.value)||80));
-      mapbox.style.setProperty('--route-map-opacity',(pct/100).toFixed(2));
+    const applyOpacity=pct=>{
+      const safe=Math.max(25,Math.min(100,Number(pct)||80));
+      // Apply opacity to the complete map widget, including the canvas itself,
+      // not only its translucent panel background/border.
+      mapbox.style.opacity=(safe/100).toFixed(2);
       const value=$('routeMapOpacityValue');
-      if(value)value.textContent=`${pct} %`;
-    });
+      if(value)value.textContent=`${safe} %`;
+    };
+    applyOpacity(80);
+    $('routeMapOpacitySlider')?.addEventListener('input',event=>applyOpacity(event.target.value));
   }
 
   let lastDrawCum=0;
@@ -320,8 +327,6 @@ export function createMinimapSystem({
       }
     }
 
-    // Endpoint labels stay inside the canvas map area. The route statistics are
-    // now DOM content above the canvas, so they can never overlap route geometry.
     const startPt=route[0],endPt=route[route.length-1];
     if(startPt&&endPt){
       const sxp=X(startPt.x),szp=Z(startPt.z),exp=X(endPt.x),ezp=Z(endPt.z);
