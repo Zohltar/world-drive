@@ -1,18 +1,19 @@
 import * as THREE from 'three';
-import {buildAuthoredTreeGeometries,AUTHORED_WATER_STYLE} from './forest-authored-lite.js';
+import {buildPineTreeAsset} from './pine-tree-runtime.js';
+import {AUTHORED_WATER_STYLE} from './forest-authored-lite.js';
 
 let cached=null;
 
 export function loadForestWaterAssets(){
   if(cached)return Promise.resolve(cached);
-
+  const pine=buildPineTreeAsset(THREE);
   cached={
-    trees:buildAuthoredTreeGeometries(THREE),
+    pine,
+    trees:[],
     waterStyle:AUTHORED_WATER_STYLE,
-    source:'supplied-glb-authored-lite'
+    source:'pine_tree_01.glb'
   };
-
-  console.info(`Forest assets ready: ${cached.trees.length} authored tree variants`);
+  console.info(`Forest assets ready: supplied pine · ${pine.triangles} triangles per tree`);
   return Promise.resolve(cached);
 }
 
