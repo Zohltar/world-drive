@@ -36,7 +36,7 @@ export function createStreamingCoordinator(options){
     // very slowly so an actual hitch cannot redefine itself as the new normal.
     const alpha=rawFrameMs<frameBaselineMs?.08:.004;
     const capped=Math.min(rawFrameMs,frameBaselineMs*1.12);
-    frameBaselineMs+= (capped-frameBaselineMs)*alpha;
+    frameBaselineMs+=(capped-frameBaselineMs)*alpha;
   }
 
   function backgroundAllowed(now=performance.now()){
@@ -50,6 +50,13 @@ export function createStreamingCoordinator(options){
     if(rawFrameMs>hitchThresholdMs()){
       lastAdaptiveHitchAt=now;
       adaptiveHitches++;
+
+      // Feed the more sensitive adaptive detector back into P9.13 as well.
+      // Its heavy world-refresh scheduler therefore respects the same quiet
+      // window after a 144->60 style frame spike instead of only reacting to
+      // legacy >20 ms hitches.
+      if(base.state)base.state.lastHitchAt=now;
+
       options.imageryService?.deferCommits?.(HITCH_IMAGERY_GUARD_MS);
     }
   }
