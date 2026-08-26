@@ -29,6 +29,55 @@ export function createTerrainService({
   let roadBedGroup=null;
   let nearTerrainColorRange={minY:null,maxY:null};
 
+  // P9.21: world refresh telemetry + allocation counters. The near terrain has
+  // fixed topology between recenter operations, so recreating a 448x448 plane,
+  // its index/UV buffers and colour buffer every time is pure CPU/GC overhead.
+  const nowMs=()=>globalThis.performance?.now?.()??Date.now();
+  const terrainPerf={
+    runs:0,
+    geometryBuilds:0,
+    geometryReuses:0,
+    last:null,
+    max:{
+      roadIndex:0,
+      groundTopology:0,
+      groundHeight:0,
+      groundNormals:0,
+      groundColors:0,
+      groundImagery:0,
+      groundTotal:0,
+      roadTransition:0,
+      total:0
+    }
+  };
+
+  function recordTerrainPerf(sample){
+    terrainPerf.runs++;
+    terrainPerf.last=sample;
+    for(const [key,value] of Object.entries(sample||{})){
+      if(!Number.isFinite(value)||!(key in terrainPerf.max))continue;
+      terrainPerf.max[key]=Math.max(terrainPerf.max[key]||0,value);
+    }
+  }
+
+  function roundedObject(source){
+    const out={};
+    for(const [key,value] of Object.entries(source||{})){
+      out[key]=Number.isFinite(value)?Number(value.toFixed(3)):value;
+    }
+    return out;
+  }
+
+  function diagnostics(){
+    return {
+      runs:terrainPerf.runs,
+      geometryBuilds:terrainPerf.geometryBuilds,
+      geometryReuses:terrainPerf.geometryReuses,
+      last:terrainPerf.last?roundedObject(terrainPerf.last):null,
+      max:roundedObject(terrainPerf.max)
+    };
+  }
+
   function disposeObject(object){
     object.traverse?.(child=>{
       child.geometry?.dispose?.();
@@ -728,6 +777,8 @@ export function createTerrainService({
     surfaceOffset=.20,
     startPad=null
   }={}){
+    const totalStarted=nowMs();
+
     activeRoadProfile=
       Array.isArray(profile)
         ?profile.slice()
@@ -745,12 +796,30 @@ export function createTerrainService({
 
     // Build once per local road profile. Terrain vertices then query only
     // nearby segments instead of scanning the full route.
+    let started=nowMs();
     rebuildRoadSegmentIndex();
+    const roadIndex=nowMs()-started;
 
     // Rebuild main terrain too: nearby ground vertices are lowered smoothly.
-    rebuildGround();
+    const groundStats=rebuildGround();
 
-    return rebuildRoadBedVisual();
+    started=nowMs();
+    const transitionResult=rebuildRoadBedVisual();
+    const roadTransition=nowMs()-started;
+
+    recordTerrainPerf({
+      roadIndex,
+      groundTopology:groundStats?.groundTopology||0,
+      groundHeight:groundStats?.groundHeight||0,
+      groundNormals:groundStats?.groundNormals||0,
+      groundColors:groundStats?.groundColors||0,
+      groundImagery:groundStats?.groundImagery||0,
+      groundTotal:groundStats?.groundTotal||0,
+      roadTransition,
+      total:nowMs()-totalStarted
+    });
+
+    return transitionResult;
   }
 
   function fallbackHeight(x,z){
@@ -880,19 +949,23 @@ export function createTerrainService({
     );
   }
 
-  function applyHillshadeColors(geometry){
+  function applyHillshadeColors(geometry,minYHint=null,maxYHint=null){
     const positions=geometry.attributes.position;
     const normals=geometry.attributes.normal;
 
     if(!positions||!normals)return;
 
-    let minY=Infinity;
-    let maxY=-Infinity;
+    const positionArray=positions.array;
+    const normalArray=normals.array;
+    let minY=Number.isFinite(minYHint)?minYHint:Infinity;
+    let maxY=Number.isFinite(maxYHint)?maxYHint:-Infinity;
 
-    for(let i=0;i<positions.count;i++){
-      const y=positions.getY(i);
-      if(y<minY)minY=y;
-      if(y>maxY)maxY=y;
+    if(!Number.isFinite(minYHint)||!Number.isFinite(maxYHint)){
+      for(let i=1;i<positionArray.length;i+=3){
+        const y=positionArray[i];
+        if(y<minY)minY=y;
+        if(y>maxY)maxY=y;
+      }
     }
 
     const heightSpan=Math.max(
@@ -905,21 +978,30 @@ export function createTerrainService({
     const lightY=.64;
     const lightZ=-.50;
 
-    const colors=new Float32Array(
-      positions.count*3
+    // P9.21: keep the existing GPU colour buffer when topology is unchanged.
+    // This removes a ~2.4 MB Float32 allocation + BufferAttribute replacement
+    // on every 448x448 terrain recenter.
+    const existingColor=geometry.getAttribute('color');
+    const expectedColorLength=positions.count*3;
+    const reuseColor=!!(
+      existingColor&&
+      existingColor.array instanceof Float32Array&&
+      existingColor.array.length===expectedColorLength
     );
+    const colors=reuseColor
+      ?existingColor.array
+      :new Float32Array(expectedColorLength);
 
     const lowColor=new THREE.Color(0x4f6e3e);
     const midColor=new THREE.Color(0x6f8150);
     const highColor=new THREE.Color(0x8b8d69);
     const tempColor=new THREE.Color();
 
-
-    for(let i=0;i<positions.count;i++){
-      const nx=normals.getX(i);
-      const ny=normals.getY(i);
-      const nz=normals.getZ(i);
-      const y=positions.getY(i);
+    for(let i=0,j=0;i<positions.count;i++,j+=3){
+      const nx=normalArray[j];
+      const ny=normalArray[j+1];
+      const nz=normalArray[j+2];
+      const y=positionArray[j+1];
 
       const directional=
         nx*lightX+
@@ -978,32 +1060,36 @@ export function createTerrainService({
       // loading, so contour-line styling would reintroduce visible banding.
       const finalShade=shade;
 
-      colors[i*3]=
+      colors[j]=
         Math.min(
           1,
           tempColor.r*finalShade
         );
 
-      colors[i*3+1]=
+      colors[j+1]=
         Math.min(
           1,
           tempColor.g*finalShade
         );
 
-      colors[i*3+2]=
+      colors[j+2]=
         Math.min(
           1,
           tempColor.b*finalShade
         );
     }
 
-    geometry.setAttribute(
-      'color',
-      new THREE.BufferAttribute(
-        colors,
-        3
-      )
-    );
+    if(reuseColor){
+      existingColor.needsUpdate=true;
+    }else{
+      geometry.setAttribute(
+        'color',
+        new THREE.BufferAttribute(
+          colors,
+          3
+        )
+      );
+    }
   }
 
   function applyDistantTerrainColors(geometry,{offset,nearHalf,farHalf}){
@@ -1153,7 +1239,7 @@ export function createTerrainService({
   }
 
   function rebuildGround(){
-    if(ground.geometry)ground.geometry.dispose();
+    const totalStarted=nowMs();
 
     // Fine road detail is handled by the separate road-bed transition mesh.
     // The main terrain only needs enough density to blend into that corridor.
@@ -1165,35 +1251,52 @@ export function createTerrainService({
     const effectiveSegments=
       effectiveGroundSegments();
 
-    const geometry=new THREE.PlaneGeometry(
-      groundSize,
-      groundSize,
-      effectiveSegments,
-      effectiveSegments
+    // P9.21: topology/UV/index data never changes for a fixed groundSize and
+    // segment count. Reuse the live geometry and mutate only Y/normals/colors.
+    let started=nowMs();
+    const expectedCount=(effectiveSegments+1)*(effectiveSegments+1);
+    let geometry=ground.geometry;
+    const reusable=!!(
+      geometry&&
+      geometry.userData?.worldDriveGroundSegments===effectiveSegments&&
+      geometry.userData?.worldDriveGroundSize===groundSize&&
+      geometry.attributes?.position?.count===expectedCount
     );
 
-    geometry.rotateX(-Math.PI/2);
+    if(!reusable){
+      if(ground.geometry)ground.geometry.dispose();
+      geometry=new THREE.PlaneGeometry(
+        groundSize,
+        groundSize,
+        effectiveSegments,
+        effectiveSegments
+      );
+      geometry.rotateX(-Math.PI/2);
+      geometry.userData.worldDriveGroundSegments=effectiveSegments;
+      geometry.userData.worldDriveGroundSize=groundSize;
+      ground.geometry=geometry;
+      terrainPerf.geometryBuilds++;
+    }else{
+      terrainPerf.geometryReuses++;
+    }
+    const groundTopology=nowMs()-started;
 
     const positions=geometry.attributes.position;
+    const positionArray=positions.array;
     const offset=getWorldOffset();
 
-    for(let i=0;i<positions.count;i++){
-      const rx=positions.getX(i);
-      const rz=positions.getZ(i);
-
-      const wx=offset.x+rx;
-      const wz=offset.z+rz;
-
-      positions.setY(
-        i,
-        renderedTerrainHeight(wx,wz)
-      );
-    }
-
+    // P9.21: direct typed-array access and min/max in the same height pass.
+    // Avoids ~400k BufferAttribute accessor calls plus a second 201k-vertex loop.
+    started=nowMs();
     let colorMinY=Infinity;
     let colorMaxY=-Infinity;
-    for(let i=0;i<positions.count;i++){
-      const y=positions.getY(i);
+    for(let i=0,j=0;i<positions.count;i++,j+=3){
+      const rx=positionArray[j];
+      const rz=positionArray[j+2];
+      const wx=offset.x+rx;
+      const wz=offset.z+rz;
+      const y=renderedTerrainHeight(wx,wz);
+      positionArray[j+1]=y;
       if(y<colorMinY)colorMinY=y;
       if(y>colorMaxY)colorMaxY=y;
     }
@@ -1201,17 +1304,25 @@ export function createTerrainService({
       minY:colorMinY,
       maxY:colorMaxY
     };
-
     positions.needsUpdate=true;
-    geometry.computeVertexNormals();
-    applyHillshadeColors(
-      geometry
-    );
+    const groundHeight=nowMs()-started;
 
-    ground.geometry=geometry;
+    started=nowMs();
+    geometry.computeVertexNormals();
+    const groundNormals=nowMs()-started;
+
+    started=nowMs();
+    applyHillshadeColors(
+      geometry,
+      colorMinY,
+      colorMaxY
+    );
+    const groundColors=nowMs()-started;
+
     ground.rotation.set(0,0,0);
     ground.position.set(0,0,0);
 
+    started=nowMs();
     applyImagery?.();
 
     if(roadBedGroup){
@@ -1225,6 +1336,17 @@ export function createTerrainService({
         }
       }
     }
+    const groundImagery=nowMs()-started;
+
+    return {
+      groundTopology,
+      groundHeight,
+      groundNormals,
+      groundColors,
+      groundImagery,
+      groundTotal:nowMs()-totalStarted,
+      reused:reusable
+    };
   }
 
   function rebuildHorizon(){
@@ -1458,6 +1580,7 @@ export function createTerrainService({
     shiftRoadBedOrigin,
     resetRoadBedOrigin,
     setRoadBed,
+    diagnostics,
     clearRoadBed:()=>{
       activeRoadProfile=[];
       roadSegmentIndex=new Map();
