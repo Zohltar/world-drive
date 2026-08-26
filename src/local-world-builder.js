@@ -1,4 +1,6 @@
 const P922_GRID_NORMALS_FLAG='__worldDriveP922GridNormals';
+const P924_PREP_BUDGET_MS=1.15;
+const P924_PREP_GAP_MS=8;
 
 function installFastGroundGridNormals(THREE){
   const proto=THREE?.BufferGeometry?.prototype;
@@ -65,10 +67,15 @@ function installFastGroundGridNormals(THREE){
 
 function terrainTransitionProfile(profile){
   if(!Array.isArray(profile)||profile.length<4)return profile||[];
-  const MAX_STEP=8.25;
-  const TURN_SINE_KEEP=.032;
-  const GRADE_DELTA_KEEP=.012;
-  const ROLL_DELTA_KEEP=.0045;
+
+  // P9.24: the transition mesh continuity fuse in terrain.js rejects only
+  // segments STRICTLY above 9 m. Use the full safe 9 m spacing instead of the
+  // former 8.25 m target (which quantised 3 m road samples down to ~6 m).
+  // The visible/physics road still keeps every original profile point.
+  const MAX_STEP=9.0;
+  const TURN_SINE_KEEP=.050;
+  const GRADE_DELTA_KEEP=.018;
+  const ROLL_DELTA_KEEP=.0075;
   const result=[profile[0]];
   let lastKept=profile[0];
 
@@ -182,10 +189,22 @@ function makeBypassGroundGeometry(realGeometry){
 }
 
 function schedulePreparationSlice(callback){
-  if(typeof globalThis.requestIdleCallback==='function'){
-    globalThis.requestIdleCallback(callback,{timeout:55});
+  const dispatch=()=>{
+    if(typeof globalThis.requestIdleCallback==='function'){
+      globalThis.requestIdleCallback(callback,{timeout:70});
+    }else{
+      setTimeout(()=>callback({didTimeout:true,timeRemaining:()=>0}),0);
+    }
+  };
+
+  // P9.24: never let a freshly completed idle slice immediately enqueue another
+  // slice into the SAME idle period. At 144 Hz several 3 ms P9.23 slices could
+  // otherwise accumulate between two rAF callbacks and make the renderer look
+  // effectively 60 Hz while preparation was active.
+  if(typeof globalThis.setTimeout==='function'){
+    globalThis.setTimeout(dispatch,P924_PREP_GAP_MS);
   }else{
-    setTimeout(()=>callback({didTimeout:true,timeRemaining:()=>0}),0);
+    dispatch();
   }
 }
 
@@ -226,9 +245,6 @@ export function createLocalWorldBuilder({
   const now=()=>globalThis.performance?.now?.()??Date.now();
   installFastGroundGridNormals(THREE);
 
-  // main.js historically did not pass the near-ground mesh to this builder.
-  // P9.23 can find it safely: roadGroup -> world -> scene, where the near DEM
-  // mesh is the unique vertex-coloured renderOrder -5 mesh.
   ground=ground||roadGroup?.parent?.parent?.children?.find?.(child=>
     child?.isMesh&&child?.renderOrder===-5&&
     child?.material?.vertexColors===true&&
@@ -303,7 +319,15 @@ export function createLocalWorldBuilder({
       maxY:-Infinity,
       vertices:count
     };
-    const BUDGET_MS=3.0;
+    const BUDGET_MS=P924_PREP_BUDGET_MS;
+
+    function recordSlice(started){
+      const elapsed=now()-started;
+      stats.slices++;
+      stats.maxSliceMs=Math.max(stats.maxSliceMs,elapsed);
+      p923Perf.maxSliceMs=Math.max(p923Perf.maxSliceMs,elapsed);
+      return elapsed;
+    }
 
     function runHeight(){
       return new Promise(resolve=>{
@@ -323,15 +347,11 @@ export function createLocalWorldBuilder({
             if(y>stats.maxY)stats.maxY=y;
             index++;processed++;
             if(
-              processed>=96&&
-              (now()-started>=BUDGET_MS||(!deadline.didTimeout&&deadline.timeRemaining()<.8))
+              processed>=64&&
+              (now()-started>=BUDGET_MS||(!deadline.didTimeout&&deadline.timeRemaining()<1.0))
             )break;
           }
-          const elapsed=now()-started;
-          stats.heightCpuMs+=elapsed;
-          stats.slices++;
-          stats.maxSliceMs=Math.max(stats.maxSliceMs,elapsed);
-          p923Perf.maxSliceMs=Math.max(p923Perf.maxSliceMs,elapsed);
+          stats.heightCpuMs+=recordSlice(started);
           if(index<count){schedulePreparationSlice(step);return;}
           resolve(true);
         };
@@ -375,14 +395,10 @@ export function createLocalWorldBuilder({
             row++;rows++;
             if(
               rows>=1&&
-              (now()-started>=BUDGET_MS||(!deadline.didTimeout&&deadline.timeRemaining()<.8))
+              (now()-started>=BUDGET_MS||(!deadline.didTimeout&&deadline.timeRemaining()<1.0))
             )break;
           }
-          const elapsed=now()-started;
-          stats.normalCpuMs+=elapsed;
-          stats.slices++;
-          stats.maxSliceMs=Math.max(stats.maxSliceMs,elapsed);
-          p923Perf.maxSliceMs=Math.max(p923Perf.maxSliceMs,elapsed);
+          stats.normalCpuMs+=recordSlice(started);
           if(row<grid){schedulePreparationSlice(step);return;}
           resolve(true);
         };
@@ -428,15 +444,11 @@ export function createLocalWorldBuilder({
             colors[j+2]=Math.min(1,b*shade);
             index++;processed++;
             if(
-              processed>=192&&
-              (now()-started>=BUDGET_MS||(!deadline.didTimeout&&deadline.timeRemaining()<.8))
+              processed>=128&&
+              (now()-started>=BUDGET_MS||(!deadline.didTimeout&&deadline.timeRemaining()<1.0))
             )break;
           }
-          const elapsed=now()-started;
-          stats.colorCpuMs+=elapsed;
-          stats.slices++;
-          stats.maxSliceMs=Math.max(stats.maxSliceMs,elapsed);
-          p923Perf.maxSliceMs=Math.max(p923Perf.maxSliceMs,elapsed);
+          stats.colorCpuMs+=recordSlice(started);
           if(index<count){schedulePreparationSlice(step);return;}
           resolve(true);
         };
@@ -527,15 +539,20 @@ export function createLocalWorldBuilder({
     lap('roadMeshes');
     rebuildLocalWater();
     lap('water');
-    scheduleVisualJob('scenery',rebuildLocalScenery,220);
-    addEnhancedBridgeFurniture();
-    refreshRoadSignsOnly();
+
+    // P9.24: furniture and sign canvases are not required for the atomic terrain
+    // swap. Do not stack them on the commit frame; let the existing visual-job
+    // scheduler place them later in separate idle windows.
+    scheduleVisualJob('scenery',rebuildLocalScenery,260);
+    scheduleVisualJob('bridge-furniture',addEnhancedBridgeFurniture,420);
+    scheduleVisualJob('road-signs',refreshRoadSignsOnly,560);
     lap('furniture');
+
     freezeStaticMatrices(roadGroup);
     freezeStaticMatrices(forestGroup);
     freezeStaticMatrices(infrastructureGroup);
     freezeStaticMatrices(signGroup);
-    scheduleVisualJob('horizon',rebuildHorizon,260);
+    scheduleVisualJob('horizon',rebuildHorizon,520);
     markStaticShadowsDirty();
     lap('finalize');
 
@@ -637,7 +654,9 @@ export function createLocalWorldBuilder({
         groundPrepared.stats.colorCpuMs,
       prepareSlices:groundPrepared.stats.slices,
       maxPrepareSliceMs:groundPrepared.stats.maxSliceMs,
-      preparedVertices:groundPrepared.stats.vertices
+      preparedVertices:groundPrepared.stats.vertices,
+      p924SliceBudgetMs:P924_PREP_BUDGET_MS,
+      p924SliceGapMs:P924_PREP_GAP_MS
     };
     p923Perf.last=meta;
     return {serial,profile,terrainProfile,offset,groundPrepared,meta};
@@ -669,6 +688,8 @@ export function createLocalWorldBuilder({
       maxSliceMs:Number(p923Perf.maxSliceMs.toFixed(3)),
       maxRoadStateInstallMs:Number(p923Perf.maxRoadStateInstallMs.toFixed(3)),
       maxGroundCommitMs:Number(p923Perf.maxGroundCommitMs.toFixed(3)),
+      p924SliceBudgetMs:P924_PREP_BUDGET_MS,
+      p924SliceGapMs:P924_PREP_GAP_MS,
       last:p923Perf.last
     };
   }
