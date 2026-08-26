@@ -1,7 +1,8 @@
-// World Drive P9.18 streaming coordinator entry point.
+// World Drive P9.19 streaming coordinator entry point.
 // P9.13 owns the proven transition scheduler. P9.17 added adaptive backoff;
-// P9.18 makes that governor driving-aware and adds useful per-job telemetry so
-// browser pauses/startup time cannot masquerade as road-transition hitches.
+// P9.18 made that governor driving-aware and added per-job telemetry. P9.19
+// exposes DEM fast-path counters so terrain/horizon refresh cost can be compared
+// directly after the world-space elevation optimization.
 import {createStreamingCoordinator as createStreamingCoordinatorP913} from './streaming-coordinator-p913.js';
 
 export function createStreamingCoordinator(options){
@@ -180,7 +181,7 @@ export function createStreamingCoordinator(options){
     }
     return {
       ...legacy,
-      // Top-level hitch values are now gameplay-only and ignore tab suspension.
+      // Top-level hitch values are gameplay-only and ignore tab suspension.
       hitchCount:gameplayHitchCount,
       maxFrameMs:maxGameplayFrameMs,
       suspendedFrames,
@@ -194,6 +195,7 @@ export function createStreamingCoordinator(options){
         over100Ms
       },
       visualJobs,
+      elevation:options.elevationService?.diagnostics?.()||null,
       p917:{
         frameBaselineMs,
         hitchThresholdMs:hitchThresholdMs(),
