@@ -36,11 +36,18 @@ export function createImageryService(options){
     const size=Number(options?.groundSize)||0;
     const center=options?.getGroundCenter?.();
 
+    // Before the first real terrain rebuild, main.js still owns an unrotated
+    // PlaneGeometry through mesh.rotation.x=-PI/2. Its position.y values are
+    // plane coordinates, not terrain height; use the authoritative fallback
+    // until rebuildGround() rotates geometry into X/Z and resets mesh rotation.
+    const meshStillRotated=Math.abs(Number(mesh?.rotation?.x)||0)>.01;
+
     if(
       !positions||
       segments<1||
       cols*cols!==count||
       !(size>0)||
+      meshStillRotated||
       !center||
       !Number.isFinite(center.x)||
       !Number.isFinite(center.z)
