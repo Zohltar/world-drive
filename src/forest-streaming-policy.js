@@ -3,8 +3,8 @@ export const FOREST_STREAMING_POLICY=Object.freeze({
 
   // P9.8 spends part of the large P9.7 GPU win on forest volume. The optimized
   // 592-triangle near tree leaves enough headroom to raise candidate density by
-  // ~53% while keeping the persistent chunk architecture unchanged.
-  candidatesPerCell:46,
+  // ~67% while keeping the persistent chunk architecture unchanged.
+  candidatesPerCell:50,
 
   // P9.3 hybrid GPU profile. The detailed tree is kept only while a chunk is
   // genuinely near the driver. Beyond this band, the streamer swaps to the
