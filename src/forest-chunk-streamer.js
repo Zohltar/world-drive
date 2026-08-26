@@ -83,6 +83,30 @@ export function createForestChunkStreamer({
     };
   }
 
+  // P9.1 priority is distance to the chunk footprint, not its centre. A 480 m
+  // chunk containing the car therefore always has priority 0 even when the car
+  // sits near one of its corners. Centre-distance alone could make a visually
+  // farther neighbouring chunk build first.
+  function chunkPriorityDistance(chunk,center){
+    const minX=chunk.originX,maxX=chunk.originX+chunkSize;
+    const minZ=chunk.originZ,maxZ=chunk.originZ+chunkSize;
+    const dx=center.x<minX?minX-center.x:(center.x>maxX?center.x-maxX:0);
+    const dz=center.z<minZ?minZ-center.z:(center.z>maxZ?center.z-maxZ:0);
+    return Math.hypot(dx,dz);
+  }
+
+  function chunkCenterDistance(chunk,center){
+    return Math.hypot(chunk.centerX-center.x,chunk.centerZ-center.z);
+  }
+
+  function sortQueueByPriority(center){
+    queue.sort((a,b)=>{
+      const pa=chunkPriorityDistance(a,center),pb=chunkPriorityDistance(b,center);
+      if(Math.abs(pa-pb)>.001)return pa-pb;
+      return chunkCenterDistance(a,center)-chunkCenterDistance(b,center);
+    });
+  }
+
   function requiredChunks(center){
     const minX=Math.floor((center.x-FOREST.maxDistance)/chunkSize)-1;
     const maxX=Math.floor((center.x+FOREST.maxDistance)/chunkSize)+1;
@@ -91,10 +115,14 @@ export function createForestChunkStreamer({
     const out=[];
     for(let cx=minX;cx<=maxX;cx++)for(let cz=minZ;cz<=maxZ;cz++){
       const chunk=chunkDescriptor(cx,cz);
-      const d=Math.hypot(chunk.centerX-center.x,chunk.centerZ-center.z);
-      if(d<=FOREST.maxDistance+halfChunkDiagonal){chunk.distance=d;out.push(chunk);}
+      const d=chunkCenterDistance(chunk,center);
+      if(d<=FOREST.maxDistance+halfChunkDiagonal){
+        chunk.distance=d;
+        chunk.priorityDistance=chunkPriorityDistance(chunk,center);
+        out.push(chunk);
+      }
     }
-    out.sort((a,b)=>a.distance-b.distance);
+    out.sort((a,b)=>a.priorityDistance-b.priorityDistance||a.distance-b.distance);
     return out;
   }
 
@@ -140,7 +168,6 @@ export function createForestChunkStreamer({
     const hz=forestHeight(sx,sz+d)-forestHeight(sx,sz-d);
     const slope=Math.hypot(hx,hz)/(d*2);
     slopeCache.set(key,slope);
-    // Keep this cache bounded independently of the chunk cache.
     if(slopeCache.size>12000){
       const next=new Map();
       let kept=0;
@@ -291,8 +318,6 @@ export function createForestChunkStreamer({
     if(tier.matrices.length)array.set(tier.matrices,0);
     mesh.count=tier.count;
     mesh.instanceMatrix.needsUpdate=true;
-    // Bounding sphere based on the densest tier is conservative for all lower
-    // tiers and only needs to be computed after the initial matrix upload.
     if(!mesh.userData.forestBoundsReady){
       mesh.computeBoundingSphere();
       mesh.userData.forestBoundsReady=true;
@@ -301,7 +326,7 @@ export function createForestChunkStreamer({
   }
 
   function updateChunkLod(data,center,force=false){
-    const distance=Math.hypot(data.centerX-center.x,data.centerZ-center.z);
+    const distance=chunkCenterDistance(data,center);
     const next=stateForDistance(distance,data.state);
     if(force||next!==data.state)applyTier(data,next);
     data.lastUsed=performance.now();
@@ -354,7 +379,7 @@ export function createForestChunkStreamer({
   function maybeResolveInitial(center){
     if(initialResolved)return;
     const readyDistance=FOREST.initialReadyDistance||720;
-    const required=requiredChunks(center).filter(chunk=>chunk.distance<=readyDistance+halfChunkDiagonal);
+    const required=requiredChunks(center).filter(chunk=>chunk.priorityDistance<=readyDistance);
     if(required.length&&required.every(chunk=>active.has(chunk.key))){
       initialResolved=true;
       resolveInitialReady?.(true);
@@ -379,6 +404,9 @@ export function createForestChunkStreamer({
       const perSlice=Math.max(1,FOREST.chunkBuildsPerSlice||1);
       while(queue.length&&built<perSlice){
         if(built>0&&!deadline.didTimeout&&deadline.timeRemaining()<2)break;
+        // Re-evaluate immediately before every build. If the car moved while the
+        // idle queue was running, the nearest missing chunk preempts old work.
+        sortQueueByPriority(lastCenter);
         const desc=queue.shift();
         queued.delete(desc.key);
         if(active.has(desc.key)){built++;continue;}
@@ -409,8 +437,6 @@ export function createForestChunkStreamer({
       ?Math.hypot(center.x-lastCenter.x,center.z-lastCenter.z)
       :Infinity;
     if(!force&&moved<Math.min(FOREST.cellSize,120)){
-      // LOD still needs occasional updates around a boundary, even if the
-      // floating origin itself has not crossed a full cell.
       for(const data of active.values())updateChunkLod(data,center,false);
       return false;
     }
@@ -426,7 +452,14 @@ export function createForestChunkStreamer({
       data.lastUsed=performance.now();
     }
 
-    const nextQueue=[];
+    // Drop queued chunks that are no longer needed. Existing queued descriptors
+    // do not retain stale distance priority because sorting is dynamic.
+    queue=queue.filter(desc=>{
+      if(requiredKeys.has(desc.key))return true;
+      queued.delete(desc.key);
+      return false;
+    });
+
     for(const desc of required){
       const existing=active.get(desc.key);
       if(existing){updateChunkLod(existing,center,false);continue;}
@@ -434,13 +467,10 @@ export function createForestChunkStreamer({
       if(cached){attach(cached,center);continue;}
       if(!queued.has(desc.key)){
         queued.set(desc.key,desc);
-        nextQueue.push(desc);
+        queue.push(desc);
       }
     }
-    if(nextQueue.length){
-      queue.push(...nextQueue);
-      queue.sort((a,b)=>a.distance-b.distance);
-    }
+    sortQueueByPriority(center);
     trimCache();
     report();
     maybeResolveInitial(center);
@@ -454,15 +484,12 @@ export function createForestChunkStreamer({
   }
 
   function refreshVisibleHeights(){
-    // Terrain/scenery refreshes no longer rebuild the whole forest. Only nearby
-    // chunks are discarded so they can be regenerated against the latest live
-    // terrain triangles. Distant cached chunks remain reusable.
     forestTerrain.invalidate?.();
     const center=Number.isFinite(lastCenter.x)?lastCenter:(getWorldOffset()||{x:0,z:0});
     const refreshDistance=FOREST.heightRefreshDistance||720;
     const removed=[];
     for(const [key,data] of active){
-      const d=Math.hypot(data.centerX-center.x,data.centerZ-center.z);
+      const d=chunkCenterDistance(data,center);
       if(d>refreshDistance+halfChunkDiagonal)continue;
       detach(data);
       active.delete(key);
@@ -471,8 +498,18 @@ export function createForestChunkStreamer({
       removed.push(chunkDescriptor(data.cx,data.cz));
     }
     if(removed.length){
-      queue=queue.filter(desc=>!removed.some(r=>r.key===desc.key));
-      for(const desc of removed){queued.set(desc.key,desc);queue.unshift(desc);}
+      const removedKeys=new Set(removed.map(r=>r.key));
+      queue=queue.filter(desc=>{
+        if(!removedKeys.has(desc.key))return true;
+        queued.delete(desc.key);
+        return false;
+      });
+      for(const desc of removed){
+        if(queued.has(desc.key))continue;
+        queued.set(desc.key,desc);
+        queue.push(desc);
+      }
+      sortQueueByPriority(center);
       runQueue();
     }
   }
