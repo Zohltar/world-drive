@@ -113,6 +113,8 @@ assert.ok(diag.p917.hitchThresholdMs<13,
 coordinator.recordFrame(16,1000);
 assert.equal(imageryGuards,1,
   'a 16 ms frame at learned 144-Hz cadence must defer satellite commits');
+assert.equal(coordinator.state.lastHitchAt,1000,
+  'adaptive hitch must feed the P9.13 world-refresh quiet window');
 assert.equal(coordinator.updateFrame(1200),false,
   'background streaming must back off immediately after a slow frame');
 assert.equal(directionalPrefetches,0,
