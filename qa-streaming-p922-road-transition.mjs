@@ -59,7 +59,7 @@ const builder=createLocalWorldBuilder({
 const report=builder.rebuild();
 assert.equal(activeProfile,fullProfile,'physics/road profile must remain the full profile');
 assert.ok(Array.isArray(terrainProfile),'terrain profile must be supplied');
-assert.ok(terrainProfile.length<fullProfile.length*.7,'straight terrain profile should be materially reduced');
+assert.ok(terrainProfile.length<fullProfile.length*.55,'straight terrain profile should be materially reduced');
 assert.equal(report.profilePoints,fullProfile.length);
 assert.equal(report.terrainProfilePoints,terrainProfile.length);
 
@@ -73,11 +73,10 @@ for(let i=1;i<terrainProfile.length;i++){
     )
   );
 }
-assert.ok(maxTerrainStep<=8.25+1e-9,'terrain transition must stay below the 9 m continuity fuse');
+// terrain.js rejects only centerStep > 9, so an exact 9 m step is safe and
+// lets 3 m route samples decimate to every third point instead of every second.
+assert.ok(maxTerrainStep<=9+1e-9,'terrain transition must stay inside the 9 m continuity fuse');
 
-// The fast normal path must work only on a terrain grid carrying the explicit
-// P9.21 topology tag. Other BufferGeometry instances still fall through to
-// Three.js's original computeVertexNormals implementation.
 const gridSegments=4;
 const grid=new THREE.PlaneGeometry(40,40,gridSegments,gridSegments);
 grid.rotateX(-Math.PI/2);
@@ -107,7 +106,7 @@ ordinary.setIndex([0,2,1]);
 ordinary.computeVertexNormals();
 assert.equal(ordinary.getAttribute('normal').count,3,'ordinary geometry must keep normal generation');
 
-console.log('Streaming P9.22 road-transition QA passed');
+console.log('Streaming P9.22/P9.24 road-transition QA passed');
 console.log({
   fullProfilePoints:fullProfile.length,
   terrainProfilePoints:terrainProfile.length,
