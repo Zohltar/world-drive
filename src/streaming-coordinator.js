@@ -1,8 +1,7 @@
-// World Drive P9.24 streaming coordinator entry point.
+// World Drive P9.25 streaming coordinator entry point.
 // Periodic refreshes use the incremental local-world builder when available;
 // forced boot/route/reset refreshes keep the proven P9.13 synchronous path.
-// P9.24 lets the now frame-budgeted preparation start while driving so it has
-// maximum runway before the near-terrain safety edge.
+// P9.25 keeps scenery-only data arrivals out of the terrain pipeline entirely.
 import {createStreamingCoordinator as createStreamingCoordinatorP913} from './streaming-coordinator-p913.js';
 
 export function createStreamingCoordinator(options){
@@ -79,6 +78,7 @@ export function createStreamingCoordinator(options){
   let preparedSerial=0;
   let worldPreparePending=false;
   let preparedStarts=0,preparedCommits=0,preparedDiscards=0,preparedFailures=0;
+  let sceneryOnlyRefreshes=0;
   let lastPrepareWallMs=0,maxPrepareWallMs=0;
   let lastPreparedCommitMs=0,maxPreparedCommitMs=0;
   let lastPreparedReasons=[];
@@ -105,6 +105,22 @@ export function createStreamingCoordinator(options){
       catch(error){recordVisualJob(key,performance.now()-started);throw error;}
     },timeout);
   }
+
+  function markWorldRefresh(reason='stream'){
+    // P9.25: OSM scenery completion changes buildings/rocks/masks only. The
+    // renderer already owns a cheap scenery rebuild (~single-digit ms in real
+    // telemetry), so never spend a 201k-vertex terrain preparation on it.
+    if(reason==='scenery'){
+      const builder=p923Builder();
+      if(typeof builder?.refreshSceneryOnly==='function'){
+        sceneryOnlyRefreshes++;
+        builder.refreshSceneryOnly();
+        return true;
+      }
+    }
+    return base.markWorldRefresh(reason);
+  }
+
   function recordFrame(rawFrameMs,now){
     const current=runtimeState();
     if(!current.gameStarted||current.menuOpen){ignoredNonDrivingFrames++;return;}
@@ -182,7 +198,7 @@ export function createStreamingCoordinator(options){
       if(!finalizePreparedCommit(prepared,reasons)){restoreReasons(reasons);preparedFailures++;}
     }).catch(error=>{
       if(serial!==preparedSerial)return;
-      console.warn('P9.24 prepared world refresh failed',error);
+      console.warn('P9.25 prepared world refresh failed',error);
       worldPreparePending=false;preparedFailures++;restoreReasons(capturedReasons);
     });
   }
@@ -194,11 +210,6 @@ export function createStreamingCoordinator(options){
     const now=performance.now();
     const quiet=now-base.state.lastHitchAt>=PREPARED_START_QUIET_MS;
     const emergency=buildDistance>=base.policy.emergencyWorldRefreshDistance;
-
-    // P9.24 preparation is deliberately tiny and frame-spaced, so it is safe
-    // to BEGIN while moving. Waiting for calm speed was wasting almost a km of
-    // useful runway and made a preparation more likely to collide with the next
-    // floating-origin recenter.
     if(!emergency&&!quiet)return false;
 
     const capturedReasons=[...base.state.reasons];
@@ -268,7 +279,7 @@ export function createStreamingCoordinator(options){
     over12Ms=0;over16_7Ms=0;over25Ms=0;over50Ms=0;over100Ms=0;
     suspendedFrames=0;ignoredNonDrivingFrames=0;visualJobStats.clear();
     lastLocalWorldPhases=null;for(const key of Object.keys(localWorldPhaseMax))delete localWorldPhaseMax[key];
-    preparedStarts=0;preparedCommits=0;preparedDiscards=0;preparedFailures=0;
+    preparedStarts=0;preparedCommits=0;preparedDiscards=0;preparedFailures=0;sceneryOnlyRefreshes=0;
     lastPrepareWallMs=0;maxPrepareWallMs=0;lastPreparedCommitMs=0;maxPreparedCommitMs=0;lastPreparedReasons=[];
   }
   function reset(){
@@ -303,16 +314,19 @@ export function createStreamingCoordinator(options){
       },
       p923:{
         enabled:hasPreparedPath(),worldPreparePending,preparedStarts,preparedCommits,preparedDiscards,preparedFailures,
+        sceneryOnlyRefreshes,
         lastPrepareWallMs:Number(lastPrepareWallMs.toFixed(3)),maxPrepareWallMs:Number(maxPrepareWallMs.toFixed(3)),
         lastPreparedCommitMs:Number(lastPreparedCommitMs.toFixed(3)),maxPreparedCommitMs:Number(maxPreparedCommitMs.toFixed(3)),
         lastPreparedReasons,builder:p923Builder()?.p923Diagnostics?.()||options.localWorldP923Diagnostics?.()||null,
-        p924PreparedStartQuietMs:PREPARED_START_QUIET_MS
+        p924PreparedStartQuietMs:PREPARED_START_QUIET_MS,
+        p925SceneryBypass:true
       }
     };
   }
 
   return Object.freeze({
     ...base,
+    markWorldRefresh,
     scheduleVisualJob,recordFrame,updateFrame,prefetchRouteAhead,refreshCurrentImagerySooner,
     scheduleWorldRefresh,recenterIfNeeded,reset,resetTelemetry,diagnostics
   });
