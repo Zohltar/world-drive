@@ -189,18 +189,12 @@ function makeBypassGroundGeometry(realGeometry){
 }
 
 function schedulePreparationSlice(callback){
-  const dispatch=()=>{
-    if(typeof globalThis.requestIdleCallback==='function'){
-      globalThis.requestIdleCallback(callback,{timeout:70});
-    }else{
-      setTimeout(()=>callback({didTimeout:true,timeRemaining:()=>0}),0);
-    }
-  };
+  const dispatch=()=>callback({didTimeout:true,timeRemaining:()=>0});
 
-  // P9.24: never let a freshly completed idle slice immediately enqueue another
-  // slice into the SAME idle period. At 144 Hz several 3 ms P9.23 slices could
-  // otherwise accumulate between two rAF callbacks and make the renderer look
-  // effectively 60 Hz while preparation was active.
+  // P9.25: P9.24 proved that ~1 ms frame-spaced slices preserve 144-Hz frame
+  // pacing, but routing each one through requestIdleCallback made 193 slices
+  // take ~13 seconds wall-clock. One direct timer turn per slice retains the
+  // 8 ms breathing room while removing browser idle-queue latency.
   if(typeof globalThis.setTimeout==='function'){
     globalThis.setTimeout(dispatch,P924_PREP_GAP_MS);
   }else{
@@ -259,7 +253,8 @@ export function createLocalWorldBuilder({
     maxSliceMs:0,
     last:null,
     maxRoadStateInstallMs:0,
-    maxGroundCommitMs:0
+    maxGroundCommitMs:0,
+    sceneryOnlyRefreshes:0
   };
 
   function installTerrainRoadStateFast(terrainProfile,options){
@@ -656,7 +651,8 @@ export function createLocalWorldBuilder({
       maxPrepareSliceMs:groundPrepared.stats.maxSliceMs,
       preparedVertices:groundPrepared.stats.vertices,
       p924SliceBudgetMs:P924_PREP_BUDGET_MS,
-      p924SliceGapMs:P924_PREP_GAP_MS
+      p924SliceGapMs:P924_PREP_GAP_MS,
+      p925DirectTimerSlices:true
     };
     p923Perf.last=meta;
     return {serial,profile,terrainProfile,offset,groundPrepared,meta};
@@ -679,17 +675,24 @@ export function createLocalWorldBuilder({
     });
   }
 
+  function refreshSceneryOnly(){
+    p923Perf.sceneryOnlyRefreshes++;
+    return scheduleVisualJob('scenery',rebuildLocalScenery,140);
+  }
+
   function cancelPreparation(){prepareSerial++;}
   function p923Diagnostics(){
     return {
       preparations:p923Perf.preparations,
       preparedCommits:p923Perf.preparedCommits,
       discarded:p923Perf.discarded,
+      sceneryOnlyRefreshes:p923Perf.sceneryOnlyRefreshes,
       maxSliceMs:Number(p923Perf.maxSliceMs.toFixed(3)),
       maxRoadStateInstallMs:Number(p923Perf.maxRoadStateInstallMs.toFixed(3)),
       maxGroundCommitMs:Number(p923Perf.maxGroundCommitMs.toFixed(3)),
       p924SliceBudgetMs:P924_PREP_BUDGET_MS,
       p924SliceGapMs:P924_PREP_GAP_MS,
+      p925DirectTimerSlices:true,
       last:p923Perf.last
     };
   }
@@ -698,6 +701,7 @@ export function createLocalWorldBuilder({
     rebuild,
     prepareIncremental,
     commitPrepared,
+    refreshSceneryOnly,
     cancelPreparation,
     p923Diagnostics
   };
