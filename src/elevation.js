@@ -2,6 +2,13 @@
 // Step 11A: owns Terrarium DEM tile loading, LRU memory cache,
 // bilinear sampling, local elevation baseline and directional prefetch.
 // Terrain mesh/rendering remains in main.js.
+//
+// P9.19 adds a world-space fast path for repeated terrain/horizon sampling.
+// The old path converted every terrain vertex world -> lat/lon -> WebMercator
+// with tan/asinh. A 448x448 ground refresh alone does 201,601 samples, and the
+// horizon performs several more height probes per vertex. The fast path locally
+// calibrates world metres directly to slippy-tile coordinates, then reuses the
+// currently-hot DEM tile while preserving the same bilinear Terrarium decoder.
 
 export function createElevationService({
   cache,
@@ -16,18 +23,45 @@ export function createElevationService({
 
   const tiles=new Map();
   const pending=new Map();
+  const TILE_SCALE=2**zoom;
 
   let base=null;
   let loading=false;
   let center={x:Infinity,z:Infinity};
+
+  // P9.19 world -> tile local affine calibration. The route coordinate system
+  // is locally metric; WebMercator is extremely close to affine across a local
+  // terrain patch. Recalibration every few kilometres keeps the approximation
+  // sub-pixel while avoiding trigonometry for hundreds of thousands of samples.
+  let fastAnchorX=NaN;
+  let fastAnchorZ=NaN;
+  let fastAnchorTileX=NaN;
+  let fastAnchorTileY=NaN;
+  let fastTileXPerX=0;
+  let fastTileXPerZ=0;
+  let fastTileYPerX=0;
+  let fastTileYPerZ=0;
+  let fastCalibrationCount=0;
+  let fastSampleCount=0;
+  let exactSampleCount=0;
+  let fastTileHits=0;
+  let fastTileMisses=0;
+  let hotTx=NaN;
+  let hotTy=NaN;
+  let hotImage=null;
+
+  const FAST_CALIBRATION_STEP_M=500;
+  const FAST_REBASE_DISTANCE_M=9000;
+  const FAST_REBASE_DISTANCE2=FAST_REBASE_DISTANCE_M*FAST_REBASE_DISTANCE_M;
 
   function setStatus(text){
     if(statusEl)statusEl.textContent=text;
   }
 
   function lonLatToTile(lon,lat,z=zoom){
-    const n=2**z;
-    const latRad=lat*Math.PI/180;
+    const n=z===zoom?TILE_SCALE:2**z;
+    const safeLat=Math.max(-85.05112878,Math.min(85.05112878,lat));
+    const latRad=safeLat*Math.PI/180;
 
     return {
       x:(lon+180)/360*n,
@@ -39,48 +73,72 @@ export function createElevationService({
     return `${zoom}/${tx}/${ty}`;
   }
 
-  function elevationAt(lat,lon){
-    const tile=lonLatToTile(lon,lat);
-    const tx=Math.floor(tile.x);
-    const ty=Math.floor(tile.y);
-    const image=cache.get(
-      tiles,
-      tileKey(tx,ty)
-    );
-
-    if(!image)return null;
-
-    // Bilinear interpolation avoids the staircase effect of nearest-pixel DEM.
-    const fx=(tile.x-tx)*image.width-.5;
-    const fy=(tile.y-ty)*image.height-.5;
+  function sampleTerrariumImage(image,tileX,tileY,tx,ty){
+    const fx=(tileX-tx)*image.width-.5;
+    const fy=(tileY-ty)*image.height-.5;
 
     const x0=Math.floor(fx);
     const y0=Math.floor(fy);
     const u=fx-x0;
     const v=fy-y0;
+    const width=image.width;
+    const height=image.height;
+    const data=image.data;
 
-    function sample(px,py){
-      px=Math.max(0,Math.min(image.width-1,px));
-      py=Math.max(0,Math.min(image.height-1,py));
+    const sx0=Math.max(0,Math.min(width-1,x0));
+    const sx1=Math.max(0,Math.min(width-1,x0+1));
+    const sy0=Math.max(0,Math.min(height-1,y0));
+    const sy1=Math.max(0,Math.min(height-1,y0+1));
 
-      const index=(py*image.width+px)*4;
-      const r=image.data[index];
-      const g=image.data[index+1];
-      const b=image.data[index+2];
+    let i=(sy0*width+sx0)*4;
+    const e00=data[i]*256+data[i+1]+data[i+2]/256-32768;
+    i=(sy0*width+sx1)*4;
+    const e10=data[i]*256+data[i+1]+data[i+2]/256-32768;
+    i=(sy1*width+sx0)*4;
+    const e01=data[i]*256+data[i+1]+data[i+2]/256-32768;
+    i=(sy1*width+sx1)*4;
+    const e11=data[i]*256+data[i+1]+data[i+2]/256-32768;
 
-      // Mapzen/AWS Terrarium encoding.
-      return r*256+g+b/256-32768;
+    const a=e00+(e10-e00)*u;
+    const b=e01+(e11-e01)*u;
+    return a+(b-a)*v;
+  }
+
+  function imageForTile(tx,ty,{fast=false}={}){
+    if(fast&&hotImage&&tx===hotTx&&ty===hotTy){
+      fastTileHits++;
+      return hotImage;
     }
 
-    const e00=sample(x0,y0);
-    const e10=sample(x0+1,y0);
-    const e01=sample(x0,y0+1);
-    const e11=sample(x0+1,y0+1);
+    const image=cache.get(
+      tiles,
+      tileKey(tx,ty)
+    );
 
-    const a=e00*(1-u)+e10*u;
-    const b=e01*(1-u)+e11*u;
+    if(fast){
+      if(image){
+        hotTx=tx;
+        hotTy=ty;
+        hotImage=image;
+        fastTileMisses++;
+      }
+    }
 
-    return a*(1-v)+b*v;
+    return image||null;
+  }
+
+  function elevationAtTileCoordinates(tileX,tileY,{fast=false}={}){
+    const tx=Math.floor(tileX);
+    const ty=Math.floor(tileY);
+    const image=imageForTile(tx,ty,{fast});
+    if(!image)return null;
+    return sampleTerrariumImage(image,tileX,tileY,tx,ty);
+  }
+
+  function elevationAt(lat,lon){
+    exactSampleCount++;
+    const tile=lonLatToTile(lon,lat);
+    return elevationAtTileCoordinates(tile.x,tile.y);
   }
 
   function relativeElevationAt(lat,lon){
@@ -94,6 +152,72 @@ export function createElevationService({
       base=elevation;
     }
 
+    return elevation-base;
+  }
+
+  function resetFastCalibration(){
+    fastAnchorX=NaN;
+    fastAnchorZ=NaN;
+    fastAnchorTileX=NaN;
+    fastAnchorTileY=NaN;
+    fastTileXPerX=0;
+    fastTileXPerZ=0;
+    fastTileYPerX=0;
+    fastTileYPerZ=0;
+    hotTx=NaN;
+    hotTy=NaN;
+    hotImage=null;
+  }
+
+  function calibrateFastWorldSampler(x,z){
+    const d=FAST_CALIBRATION_STEP_M;
+    const ll0=toLatLon(x,z);
+    const llX=toLatLon(x+d,z);
+    const llZ=toLatLon(x,z+d);
+    const t0=lonLatToTile(ll0.lon,ll0.lat);
+    const tX=lonLatToTile(llX.lon,llX.lat);
+    const tZ=lonLatToTile(llZ.lon,llZ.lat);
+
+    fastAnchorX=x;
+    fastAnchorZ=z;
+    fastAnchorTileX=t0.x;
+    fastAnchorTileY=t0.y;
+    fastTileXPerX=(tX.x-t0.x)/d;
+    fastTileXPerZ=(tZ.x-t0.x)/d;
+    fastTileYPerX=(tX.y-t0.y)/d;
+    fastTileYPerZ=(tZ.y-t0.y)/d;
+    fastCalibrationCount++;
+  }
+
+  function fastElevationAtWorld(x,z){
+    const dx=x-fastAnchorX;
+    const dz=z-fastAnchorZ;
+    if(
+      !Number.isFinite(fastAnchorX)||
+      dx*dx+dz*dz>FAST_REBASE_DISTANCE2
+    ){
+      calibrateFastWorldSampler(x,z);
+    }
+
+    const localX=x-fastAnchorX;
+    const localZ=z-fastAnchorZ;
+    const tileX=
+      fastAnchorTileX+
+      localX*fastTileXPerX+
+      localZ*fastTileXPerZ;
+    const tileY=
+      fastAnchorTileY+
+      localX*fastTileYPerX+
+      localZ*fastTileYPerZ;
+
+    fastSampleCount++;
+    return elevationAtTileCoordinates(tileX,tileY,{fast:true});
+  }
+
+  function relativeWorldHeightFast(x,z){
+    const elevation=fastElevationAtWorld(x,z);
+    if(elevation===null||!Number.isFinite(elevation))return null;
+    if(base===null)base=elevation;
     return elevation-base;
   }
 
@@ -196,6 +320,9 @@ export function createElevationService({
               tiles,
               cache.limits.elevation
             );
+
+            // A newly arrived image may satisfy the currently-hot fast tile.
+            if(tx===hotTx&&ty===hotTy)hotImage=imageData;
 
             return true;
           }catch(error){
@@ -361,16 +488,39 @@ export function createElevationService({
     base=null;
     loading=false;
     center={x:Infinity,z:Infinity};
+    resetFastCalibration();
     setStatus('Démo');
   }
 
-  return {
+  const api={
     elevationAt,
     relativeElevationAt,
     loadTile,
     loadAround,
     prefetchAt,
     reset,
+
+    // Compatibility with main.js: it historically assigns a slow adapter onto
+    // relativeWorldHeight after construction. Keep that assignment harmless and
+    // expose the P9.19 fast implementation through the same public property.
+    get relativeWorldHeight(){
+      return relativeWorldHeightFast;
+    },
+    set relativeWorldHeight(_value){
+      // Intentionally ignored: the service now owns the optimized world sampler.
+    },
+
+    diagnostics(){
+      return {
+        fastSampleCount,
+        exactSampleCount,
+        fastCalibrationCount,
+        fastTileHits,
+        fastTileMisses,
+        fastRebaseDistanceM:FAST_REBASE_DISTANCE_M,
+        tileCount:tiles.size
+      };
+    },
 
     get loading(){
       return loading;
@@ -384,4 +534,6 @@ export function createElevationService({
       return tiles.size;
     }
   };
+
+  return api;
 }
