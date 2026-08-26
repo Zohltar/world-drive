@@ -105,7 +105,7 @@ const coordinator=createStreamingCoordinator({
 // The old scheduler refused a non-urgent refresh while speed was above calmSpeed.
 // P9.24 must begin the cheap prepared path at ordinary driving speed as soon as
 // the normal hard refresh distance is reached and the short quiet window exists.
-coordinator.state.lastHitchAt=0;
+coordinator.state.lastHitchAt=-Infinity;
 coordinator.markWorldRefresh('recenter');
 assert.equal(coordinator.scheduleWorldRefresh({urgent:false}),true,
   'P9.24 did not schedule preparation while moving');
