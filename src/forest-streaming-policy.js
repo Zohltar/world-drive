@@ -1,15 +1,13 @@
 export const FOREST_STREAMING_POLICY=Object.freeze({
   cellSize:120,
 
-  // P9.11: the 68-triangle proxy now renders at every distance. That removes
-  // almost 90% of the near-tree geometry versus P9.10's 592-triangle fir, so
-  // reinvest the headroom directly into forest volume: 200 candidates per cell,
-  // exactly 2x P9.10. Chunk streaming and distance tiers remain unchanged.
+  // P9.11+ dense low-definition profile. Every visible tree uses the approved
+  // 68-triangle proxy, so 200 deterministic candidates per 120 m cell stays the
+  // visual density baseline while P9.12 focuses on transition smoothness.
   candidatesPerCell:200,
 
-  // LOD distances now control density only; every tier renders the same approved
-  // 68-triangle low-definition conifer. Keeping the existing hysteresis still
-  // prevents density changes from chattering as chunks cross boundaries.
+  // Legacy LOD thresholds remain exported for QA/backward compatibility. P9.12
+  // no longer swaps geometry at these boundaries; density is continuous instead.
   nearDistance:560,
   midDistance:560,
   maxDistance:1750,
@@ -18,12 +16,17 @@ export const FOREST_STREAMING_POLICY=Object.freeze({
   refreshDistance:240,
   pollMs:180,
 
-  // P9.4 roadside anchoring guard. The visible road-terrain transition in
-  // terrain.js extends to terrainCutHalfWidth 16.5 + blendWidth 14.0 = 30.5 m.
-  // Trees inside that ribbon are anchored to the main terrain mesh while the
-  // ribbon itself can sit at a different elevation, which makes trunks appear
-  // buried or floating beside the road. Keep tree roots just outside the full
-  // transition footprint plus a small visual safety margin.
+  // P9.12 continuous density profile. Chunk instance buffers are ordered once by
+  // deterministic density rank, then mesh.count changes gradually with distance.
+  // This removes GPU matrix uploads and abrupt population jumps on the road.
+  densityNearFullDistance:500,
+  densityNearSparseDistance:760,
+  farDensityFraction:.55,
+  edgeDensityFraction:.20,
+  densityBuckets:32,
+
+  // The visible road-terrain transition reaches 30.5 m from route centre. Keep
+  // tree roots outside it so roadside trees cannot intersect the separate ribbon.
   roadClearance:32,
 
   slopeCacheSize:44,
@@ -31,15 +34,19 @@ export const FOREST_STREAMING_POLICY=Object.freeze({
   densityNoiseScale:420,
   cellsPerSlice:30,
 
-  // P9 persistent chunk streaming. Four deterministic 120 m cells per axis
-  // gives 480 m chunks: few enough draw calls for WebGL, but small enough that
-  // only a handful of chunks enter/leave while driving.
+  // Persistent 480 m chunks. P9.12 builds only two 120 m cells per idle slice,
+  // bounding each background CPU burst to at most 400 candidate evaluations.
   chunkCells:4,
   chunkCacheLimit:96,
   chunkBuildsPerSlice:1,
+  cellsPerBuildSlice:2,
   chunkLodHysteresis:80,
   initialReadyDistance:720,
-  heightRefreshDistance:720
+
+  // Only the road-critical inner ring is refreshed after a terrain/road rebuild.
+  // Replacement is double-buffered, so the old forest remains visible until the
+  // corrected chunk is ready.
+  heightRefreshDistance:520
 });
 
 function mix32(value){
