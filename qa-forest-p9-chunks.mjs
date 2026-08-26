@@ -66,7 +66,14 @@ assert.equal(priorityCases[0].key,'0:0','chunk containing the vehicle must have 
 assert.equal(priorityCases[0].d,0,'vehicle chunk priority distance must be zero');
 assert.ok(priorityCases.slice(1).every(item=>item.d>0),'adjacent chunks must follow the vehicle chunk');
 
-console.log('Foret P9.1 chunk QA passed');
+// P9.4: terrain.js renders the roadside transition out to 16.5 + 14.0 = 30.5 m.
+// Forest roots use the main terrain sampler, so they must stay outside that
+// separate visual ribbon or they can appear buried/floating beside the road.
+const roadTransitionOuter=16.5+14.0;
+assert.ok(P.roadClearance>roadTransitionOuter,
+  `forest road clearance ${P.roadClearance} m must exceed ${roadTransitionOuter} m road transition`);
+
+console.log('Foret P9.4 chunk QA passed');
 console.log({
   legacyCells:legacy,
   legacyCandidateWork,
@@ -74,5 +81,7 @@ console.log({
   enteringChunksAfterOneChunkMove:entering,
   incrementalCandidateWork,
   percentOfLegacy:Number((ratio*100).toFixed(1)),
-  firstChunkAtCorner:priorityCases[0]
+  firstChunkAtCorner:priorityCases[0],
+  roadClearance:P.roadClearance,
+  roadTransitionOuter
 });
