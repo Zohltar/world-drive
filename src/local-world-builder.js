@@ -31,20 +31,34 @@ export function createLocalWorldBuilder({
   rebuildHorizon,
   markStaticShadowsDirty,
 }){
+  const now=()=>globalThis.performance?.now?.()??Date.now();
+
   function rebuild(){
+    const totalStarted=now();
+    let phaseStarted=totalStarted;
+    const phases={};
+    const lap=name=>{
+      const current=now();
+      phases[name]=current-phaseStarted;
+      phaseStarted=current;
+    };
+
     resetStreamedWorldOrigins();
     terrainService.resetRoadBedOrigin?.();
     clearGroup(roadGroup);clearGroup(forestGroup);
     clearGroup(infrastructureGroup);clearGroup(signGroup);
     sceneryRenderer.clear();
+    lap('resetClear');
 
     // CRITICAL: bridge deck heights depend on terrain elevation at their approaches.
     // Elevation tiles, floating-origin shifts and asynchronous loads can all change
     // terrainAbs(). Recompute bridge spans BEFORE rebuilding the road every time.
     if(getBridgeFeatureCount()) rebuildBridgeSpans();
+    lap('bridges');
 
     const profile=buildRoadProfile();
     setActiveRoadProfile(profile);
+    lap('roadProfile');
 
     // Cut terrain fragments directly below the road corridor so coarse DEM
     // triangles can never protrude through asphalt or shoulders.
@@ -71,6 +85,7 @@ export function createLocalWorldBuilder({
         blendWidth:22
       }:null
     });
+    lap('terrainRoadBed');
 
     if(profile.length>1){
       const roadVolume=buildRoadVolume(profile);
@@ -122,6 +137,7 @@ export function createLocalWorldBuilder({
         if(em)roadGroup.add(em);
       }
     }
+    lap('roadMeshes');
 
     // Forest ownership is intentionally delegated entirely to sceneryRenderer.
     // The previous cylinder/cone fallback lived here as a second independent
@@ -129,6 +145,7 @@ export function createLocalWorldBuilder({
     // single owner also prevents duplicate instances during streamed rebuilds.
 
     rebuildLocalWater();
+    lap('water');
 
     scheduleVisualJob(
       'scenery',
@@ -138,6 +155,7 @@ export function createLocalWorldBuilder({
 
     addEnhancedBridgeFurniture();
     refreshRoadSignsOnly();
+    lap('furniture');
 
     freezeStaticMatrices(roadGroup);
     freezeStaticMatrices(forestGroup);
@@ -150,6 +168,13 @@ export function createLocalWorldBuilder({
       260
     );
     markStaticShadowsDirty();
+    lap('finalize');
+
+    return {
+      totalMs:now()-totalStarted,
+      profilePoints:profile.length,
+      phases
+    };
   }
 
   return {rebuild};
