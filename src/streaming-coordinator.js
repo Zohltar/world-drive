@@ -1,14 +1,18 @@
-// World Drive P9.21 streaming coordinator entry point.
-// P9.13 owns the proven transition scheduler. P9.17 added adaptive backoff;
-// P9.18 made that governor driving-aware and added per-job telemetry. P9.19
-// accelerated DEM sampling. P9.20 records the synchronous local-world rebuild
-// by phase; P9.21 also exposes the terrain road-bed subphases and buffer reuse.
+// World Drive P9.23 streaming coordinator entry point.
+// P9.13 remains the proven low-level world streamer. P9.17-P9.22 added
+// adaptive backoff, telemetry and CPU optimizations. P9.23 takes ownership of
+// periodic recenter refreshes: near-terrain buffers are prepared in short idle
+// slices while the previous rendered world remains visible, then committed in
+// one small atomic update. Forced startup/route-change rebuilds stay synchronous.
 import {createStreamingCoordinator as createStreamingCoordinatorP913} from './streaming-coordinator-p913.js';
 
 export function createStreamingCoordinator(options){
   let lastLocalWorldPhases=null;
   const localWorldPhaseMax={};
   const originalRebuildLocalWorld=options.rebuildLocalWorld;
+  const prepareLocalWorld=options.prepareLocalWorld;
+  const commitPreparedLocalWorld=options.commitPreparedLocalWorld;
+  const cancelLocalWorldPreparation=options.cancelLocalWorldPreparation;
 
   function captureLocalWorldPhases(result){
     if(!result||typeof result!=='object'||!result.phases)return;
@@ -23,8 +27,10 @@ export function createStreamingCoordinator(options){
     lastLocalWorldPhases={
       totalMs,
       profilePoints:Number(result.profilePoints)||0,
+      terrainProfilePoints:Number(result.terrainProfilePoints)||0,
       phases,
-      terrain:result.terrain||null
+      terrain:result.terrain||null,
+      p923:result.p923||null
     };
   }
 
@@ -37,8 +43,6 @@ export function createStreamingCoordinator(options){
     }
   });
 
-  // Give heavy world refreshes more runway and avoid eager imagery work around
-  // activity. These nested policy objects remain mutable although base is frozen.
   base.policy.quietWindowMs=Math.max(base.policy.quietWindowMs||0,420);
   base.policy.imageryRefreshCooldownMs=Math.max(base.policy.imageryRefreshCooldownMs||0,2200);
   base.policy.imageryCommitGuardMs=Math.max(base.policy.imageryCommitGuardMs||0,850);
@@ -63,10 +67,23 @@ export function createStreamingCoordinator(options){
   let ignoredNonDrivingFrames=0;
   const visualJobStats=new Map();
 
+  let preparedSerial=0;
+  let worldPreparePending=false;
+  let preparedStarts=0;
+  let preparedCommits=0;
+  let preparedDiscards=0;
+  let preparedFailures=0;
+  let lastPrepareWallMs=0;
+  let maxPrepareWallMs=0;
+  let lastPreparedCommitMs=0;
+  let maxPreparedCommitMs=0;
+  let lastPreparedReasons=[];
+
+  const hasPreparedPath=()=>
+    typeof prepareLocalWorld==='function'&&
+    typeof commitPreparedLocalWorld==='function';
+
   function hitchThresholdMs(){
-    // At ~144 Hz the baseline converges near 6.9 ms and the threshold lands
-    // around 11.5-12 ms. At 60 Hz it stays near 27.5 ms, so ordinary 60-FPS
-    // cadence is never treated as a hitch.
     return Math.max(11.5,Math.min(30,frameBaselineMs*1.65));
   }
 
@@ -111,10 +128,6 @@ export function createStreamingCoordinator(options){
 
   function recordFrame(rawFrameMs,now){
     const current=runtimeState();
-
-    // Startup, chooser/menu time and browser suspension are not driving hitches.
-    // A resume still gets a short loading cooldown so queued work cannot all land
-    // on the first active frame, but it does not poison maxFrameMs/hitchCount.
     if(!current.gameStarted||current.menuOpen){
       ignoredNonDrivingFrames++;
       return;
@@ -148,14 +161,222 @@ export function createStreamingCoordinator(options){
     }
   }
 
+  function restoreReasons(reasons){
+    for(const reason of reasons||[])base.state.reasons.add(reason);
+    if(base.state.reasons.size)base.state.pendingWorld=true;
+  }
+
+  function schedulePostPreparedImagery(current){
+    base.cancelVisualJob('post-world-imagery');
+    return base.scheduleVisualJob('post-world-imagery',()=>{
+      if(!options.imageryService?.enabled)return;
+      return Promise.resolve(
+        options.buildImageryMosaic?.(current.absX,current.absZ)
+      ).catch(()=>{});
+    },base.policy.postWorldImageryDelayMs);
+  }
+
+  function finalizePreparedCommit(prepared,reasons){
+    const current=runtimeState();
+    const started=performance.now();
+    const result=commitPreparedLocalWorld(prepared);
+    if(!result)return false;
+    captureLocalWorldPhases(result);
+
+    options.imageryService?.realignToOrigin?.();
+    const recenterOnly=reasons.length===1&&reasons[0]==='recenter';
+    if(!recenterOnly){
+      options.imageryService?.invalidateGeometry?.();
+      options.applyImageryToGround?.();
+    }
+    schedulePostPreparedImagery(current);
+
+    const ms=performance.now()-started;
+    lastPreparedCommitMs=ms;
+    maxPreparedCommitMs=Math.max(maxPreparedCommitMs,ms);
+    base.state.lastBuiltCenter={...(current.worldOffset||{x:0,z:0})};
+    base.state.lastWorldBuildAt=performance.now();
+    base.state.lastWorldBuildMs=ms;
+    base.state.maxWorldBuildMs=Math.max(base.state.maxWorldBuildMs,ms);
+    base.state.worldBuildCount++;
+    base.state.pendingWorld=false;
+    base.state.reasons.clear();
+    preparedCommits++;
+    lastPreparedReasons=[...reasons];
+
+    if(base.policy.perfConsoleLogging||ms>14){
+      console.info(
+        `World refresh ${ms.toFixed(1)} ms · prepared · reasons ${reasons.join(',')||'none'}`
+      );
+    }
+    options.markStaticShadowsDirty?.();
+    return true;
+  }
+
+  function restartPreparedRefresh(reasons){
+    preparedDiscards++;
+    worldPreparePending=false;
+    restoreReasons(reasons);
+    const current=runtimeState();
+    const center=base.state.lastBuiltCenter;
+    const distance=Math.hypot(
+      (current.absX||0)-center.x,
+      (current.absZ||0)-center.z
+    );
+    scheduleWorldRefresh({urgent:distance>=base.policy.urgentWorldRefreshDistance});
+  }
+
+  function beginPreparedRefresh(capturedReasons,serial){
+    const wallStarted=performance.now();
+    preparedStarts++;
+    options.imageryService?.deferCommits?.(base.policy.imageryCommitGuardMs);
+
+    Promise.resolve()
+      .then(()=>prepareLocalWorld())
+      .then(prepared=>{
+        if(serial!==preparedSerial)return;
+        lastPrepareWallMs=performance.now()-wallStarted;
+        maxPrepareWallMs=Math.max(maxPrepareWallMs,lastPrepareWallMs);
+
+        const newlyArrived=[...base.state.reasons];
+        const reasons=[...new Set([...capturedReasons,...newlyArrived])];
+        const current=runtimeState();
+        const preparedOffset=prepared?.offset||prepared?.meta?.preparedOffset;
+        const staleOffset=!preparedOffset||Math.hypot(
+          (current.worldOffset?.x||0)-preparedOffset.x,
+          (current.worldOffset?.z||0)-preparedOffset.z
+        )>.5;
+        const dataChangedDuringPreparation=newlyArrived.some(
+          reason=>reason==='dem'||reason==='hydro'
+        );
+
+        if(!prepared||staleOffset||dataChangedDuringPreparation){
+          restartPreparedRefresh(reasons);
+          return;
+        }
+
+        worldPreparePending=false;
+        base.state.reasons.clear();
+        base.state.pendingWorld=false;
+        if(!finalizePreparedCommit(prepared,reasons)){
+          restoreReasons(reasons);
+          preparedFailures++;
+        }
+      })
+      .catch(error=>{
+        if(serial!==preparedSerial)return;
+        console.warn('P9.23 prepared world refresh failed',error);
+        worldPreparePending=false;
+        preparedFailures++;
+        restoreReasons(capturedReasons);
+      });
+  }
+
+  function scheduleWorldRefresh({urgent=false}={}){
+    if(!hasPreparedPath())return base.scheduleWorldRefresh({urgent});
+    if(worldPreparePending||base.hasVisualJob('world-rebuild'))return false;
+
+    const current=runtimeState();
+    const center=base.state.lastBuiltCenter;
+    const buildDistance=Math.hypot(
+      (current.absX||0)-center.x,
+      (current.absZ||0)-center.z
+    );
+    const now=performance.now();
+    const calm=
+      !current.gameStarted||current.menuOpen||
+      Math.abs(current.speed||0)<=base.policy.calmSpeed;
+    const quiet=now-base.state.lastHitchAt>=base.policy.quietWindowMs;
+    const emergency=buildDistance>=base.policy.emergencyWorldRefreshDistance;
+
+    if(!emergency){
+      if(!calm&&!urgent)return false;
+      if(!quiet)return false;
+    }
+
+    const capturedReasons=[...base.state.reasons];
+    base.state.reasons.clear();
+    base.state.pendingWorld=false;
+    worldPreparePending=true;
+    const serial=++preparedSerial;
+    const timeout=emergency?40:(urgent?180:520);
+    const scheduled=base.scheduleVisualJob(
+      'world-rebuild',
+      ()=>beginPreparedRefresh(capturedReasons,serial),
+      timeout
+    );
+    if(!scheduled){
+      worldPreparePending=false;
+      restoreReasons(capturedReasons);
+      return false;
+    }
+    return true;
+  }
+
+  function recenterIfNeeded(absx,absz,force=false){
+    if(force||!hasPreparedPath()){
+      preparedSerial++;
+      worldPreparePending=false;
+      cancelLocalWorldPreparation?.();
+      return base.recenterIfNeeded(absx,absz,force);
+    }
+
+    const hard=base.policy.hardWorldRefreshDistance;
+    base.policy.hardWorldRefreshDistance=Number.MAX_SAFE_INTEGER;
+    let moved=false;
+    try{
+      moved=base.recenterIfNeeded(absx,absz,false);
+    }finally{
+      base.policy.hardWorldRefreshDistance=hard;
+    }
+    if(!moved)return false;
+
+    const dx=absx-base.state.lastBuiltCenter.x;
+    const dz=absz-base.state.lastBuiltCenter.z;
+    const buildDistance=Math.hypot(dx,dz);
+    if(buildDistance>=hard){
+      base.markWorldRefresh('recenter');
+      scheduleWorldRefresh({
+        urgent:buildDistance>=base.policy.urgentWorldRefreshDistance
+      });
+    }
+    return true;
+  }
+
   function updateFrame(now){
-    // recenterIfNeeded() runs independently, so backing off background jobs does
-    // not affect vehicle/world coordinates or physics.
     if(!backgroundAllowed(now)){
       adaptiveDeferrals++;
       return false;
     }
-    return base.updateFrame(now);
+
+    const current=runtimeState();
+    if(
+      base.state.pendingWorld&&!worldPreparePending&&
+      !base.hasVisualJob('world-rebuild')&&
+      (!current.gameStarted||current.menuOpen||Math.abs(current.speed||0)<=base.policy.calmSpeed)
+    ){
+      scheduleWorldRefresh({urgent:false});
+    }
+
+    const pendingBefore=base.state.pendingWorld;
+    const imageryDistance=base.policy.imageryPriorityRefreshDistance;
+    if(hasPreparedPath()){
+      base.state.pendingWorld=false;
+      if(pendingBefore||worldPreparePending){
+        base.policy.imageryPriorityRefreshDistance=Number.MAX_SAFE_INTEGER;
+      }
+    }
+    let result;
+    try{
+      result=base.updateFrame(now);
+    }finally{
+      if(hasPreparedPath()){
+        const markedDuring=base.state.pendingWorld;
+        base.state.pendingWorld=pendingBefore||markedDuring;
+        base.policy.imageryPriorityRefreshDistance=imageryDistance;
+      }
+    }
+    return result;
   }
 
   function prefetchRouteAhead(){
@@ -167,7 +388,7 @@ export function createStreamingCoordinator(options){
   }
 
   function refreshCurrentImagerySooner(now=performance.now()){
-    if(!backgroundAllowed(now)){
+    if(!backgroundAllowed(now)||worldPreparePending){
       adaptiveDeferrals++;
       return false;
     }
@@ -192,9 +413,21 @@ export function createStreamingCoordinator(options){
     visualJobStats.clear();
     lastLocalWorldPhases=null;
     for(const key of Object.keys(localWorldPhaseMax))delete localWorldPhaseMax[key];
+    preparedStarts=0;
+    preparedCommits=0;
+    preparedDiscards=0;
+    preparedFailures=0;
+    lastPrepareWallMs=0;
+    maxPrepareWallMs=0;
+    lastPreparedCommitMs=0;
+    maxPreparedCommitMs=0;
+    lastPreparedReasons=[];
   }
 
   function reset(){
+    preparedSerial++;
+    worldPreparePending=false;
+    cancelLocalWorldPreparation?.();
     base.reset();
     resetTelemetry();
   }
@@ -208,8 +441,10 @@ export function createStreamingCoordinator(options){
     return {
       totalMs:Number((report.totalMs||0).toFixed(3)),
       profilePoints:report.profilePoints||0,
+      terrainProfilePoints:report.terrainProfilePoints||0,
       phases,
-      terrain:report.terrain||null
+      terrain:report.terrain||null,
+      p923:report.p923||null
     };
   }
 
@@ -230,7 +465,6 @@ export function createStreamingCoordinator(options){
     }
     return {
       ...legacy,
-      // Top-level hitch values are now gameplay-only and ignore tab suspension.
       hitchCount:gameplayHitchCount,
       maxFrameMs:maxGameplayFrameMs,
       suspendedFrames,
@@ -255,6 +489,20 @@ export function createStreamingCoordinator(options){
         adaptiveHitches,
         adaptiveDeferrals,
         backgroundAllowed:backgroundAllowed()
+      },
+      p923:{
+        enabled:hasPreparedPath(),
+        worldPreparePending,
+        preparedStarts,
+        preparedCommits,
+        preparedDiscards,
+        preparedFailures,
+        lastPrepareWallMs:Number(lastPrepareWallMs.toFixed(3)),
+        maxPrepareWallMs:Number(maxPrepareWallMs.toFixed(3)),
+        lastPreparedCommitMs:Number(lastPreparedCommitMs.toFixed(3)),
+        maxPreparedCommitMs:Number(maxPreparedCommitMs.toFixed(3)),
+        lastPreparedReasons,
+        builder:options.localWorldP923Diagnostics?.()||null
       }
     };
   }
@@ -266,6 +514,8 @@ export function createStreamingCoordinator(options){
     updateFrame,
     prefetchRouteAhead,
     refreshCurrentImagerySooner,
+    scheduleWorldRefresh,
+    recenterIfNeeded,
     reset,
     resetTelemetry,
     diagnostics
