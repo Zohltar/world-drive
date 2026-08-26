@@ -1,10 +1,10 @@
+import * as THREE from 'three';
 import {buildAuthoredTreeGeometries,AUTHORED_WATER_STYLE} from './forest-authored-lite.js';
 
 let cached=null;
 
-export function loadForestWaterAssets(THREE){
+export function loadForestWaterAssets(){
   if(cached)return Promise.resolve(cached);
-  if(!THREE)throw new Error('Forest assets require THREE');
 
   cached={
     trees:buildAuthoredTreeGeometries(THREE),
