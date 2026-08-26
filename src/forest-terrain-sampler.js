@@ -93,9 +93,11 @@ export function createForestTerrainSampler({
     const stepX=width/gridX;
     const stepZ=depth/gridZ;
     const fx=(localX+halfW)/stepX;
-    // PlaneGeometry is built top-to-bottom in Y before being baked into XZ;
-    // after rotateX(-PI/2), row zero is +Z.
-    const fz=(halfD-localZ)/stepZ;
+    // Three.js PlaneGeometry emits row zero at local -Z after the geometry is
+    // rotated onto XZ with rotateX(-PI/2). P7.1 accidentally mirrored this
+    // lookup by treating row zero as +Z, which could sample terrain hundreds or
+    // thousands of metres away and bury/float the whole forest on steep relief.
+    const fz=(localZ+halfD)/stepZ;
     const ix=Math.max(0,Math.min(gridX-1,Math.floor(Math.min(gridX-1e-9,fx))));
     const iz=Math.max(0,Math.min(gridZ-1,Math.floor(Math.min(gridZ-1e-9,fz))));
     const row=gridX+1;
