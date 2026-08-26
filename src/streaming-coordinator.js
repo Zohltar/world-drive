@@ -1,6 +1,8 @@
-// World Drive P9.23 streaming coordinator entry point.
+// World Drive P9.24 streaming coordinator entry point.
 // Periodic refreshes use the incremental local-world builder when available;
 // forced boot/route/reset refreshes keep the proven P9.13 synchronous path.
+// P9.24 lets the now frame-budgeted preparation start while driving so it has
+// maximum runway before the near-terrain safety edge.
 import {createStreamingCoordinator as createStreamingCoordinatorP913} from './streaming-coordinator-p913.js';
 
 export function createStreamingCoordinator(options){
@@ -62,6 +64,7 @@ export function createStreamingCoordinator(options){
   const BACKGROUND_COOLDOWN_MS=460;
   const HITCH_IMAGERY_GUARD_MS=650;
   const SUSPENDED_FRAME_MS=250;
+  const PREPARED_START_QUIET_MS=160;
   let lastAdaptiveHitchAt=-Infinity;
   let adaptiveDeferrals=0;
   let adaptiveHitches=0;
@@ -179,7 +182,7 @@ export function createStreamingCoordinator(options){
       if(!finalizePreparedCommit(prepared,reasons)){restoreReasons(reasons);preparedFailures++;}
     }).catch(error=>{
       if(serial!==preparedSerial)return;
-      console.warn('P9.23 prepared world refresh failed',error);
+      console.warn('P9.24 prepared world refresh failed',error);
       worldPreparePending=false;preparedFailures++;restoreReasons(capturedReasons);
     });
   }
@@ -189,14 +192,19 @@ export function createStreamingCoordinator(options){
     const current=runtimeState(),center=base.state.lastBuiltCenter;
     const buildDistance=Math.hypot((current.absX||0)-center.x,(current.absZ||0)-center.z);
     const now=performance.now();
-    const calm=!current.gameStarted||current.menuOpen||Math.abs(current.speed||0)<=base.policy.calmSpeed;
-    const quiet=now-base.state.lastHitchAt>=base.policy.quietWindowMs;
+    const quiet=now-base.state.lastHitchAt>=PREPARED_START_QUIET_MS;
     const emergency=buildDistance>=base.policy.emergencyWorldRefreshDistance;
-    if(!emergency){if(!calm&&!urgent)return false;if(!quiet)return false;}
+
+    // P9.24 preparation is deliberately tiny and frame-spaced, so it is safe
+    // to BEGIN while moving. Waiting for calm speed was wasting almost a km of
+    // useful runway and made a preparation more likely to collide with the next
+    // floating-origin recenter.
+    if(!emergency&&!quiet)return false;
+
     const capturedReasons=[...base.state.reasons];
     base.state.reasons.clear();base.state.pendingWorld=false;worldPreparePending=true;
     const serial=++preparedSerial;
-    const timeout=emergency?40:(urgent?180:520);
+    const timeout=emergency?35:(urgent?90:180);
     const scheduled=base.scheduleVisualJob('world-rebuild',()=>beginPreparedRefresh(capturedReasons,serial),timeout);
     if(!scheduled){worldPreparePending=false;restoreReasons(capturedReasons);return false;}
     return true;
@@ -221,10 +229,14 @@ export function createStreamingCoordinator(options){
   function updateFrame(now){
     if(!backgroundAllowed(now)){adaptiveDeferrals++;return false;}
     const current=runtimeState();
-    if(
-      base.state.pendingWorld&&!worldPreparePending&&!base.hasVisualJob('world-rebuild')&&
-      (!current.gameStarted||current.menuOpen||Math.abs(current.speed||0)<=base.policy.calmSpeed)
-    )scheduleWorldRefresh({urgent:false});
+    if(base.state.pendingWorld&&!worldPreparePending&&!base.hasVisualJob('world-rebuild')){
+      const center=base.state.lastBuiltCenter;
+      const buildDistance=Math.hypot(
+        (current.absX||0)-center.x,
+        (current.absZ||0)-center.z
+      );
+      scheduleWorldRefresh({urgent:buildDistance>=base.policy.urgentWorldRefreshDistance});
+    }
 
     const pendingBefore=base.state.pendingWorld;
     const imageryDistance=base.policy.imageryPriorityRefreshDistance;
@@ -293,7 +305,8 @@ export function createStreamingCoordinator(options){
         enabled:hasPreparedPath(),worldPreparePending,preparedStarts,preparedCommits,preparedDiscards,preparedFailures,
         lastPrepareWallMs:Number(lastPrepareWallMs.toFixed(3)),maxPrepareWallMs:Number(maxPrepareWallMs.toFixed(3)),
         lastPreparedCommitMs:Number(lastPreparedCommitMs.toFixed(3)),maxPreparedCommitMs:Number(maxPreparedCommitMs.toFixed(3)),
-        lastPreparedReasons,builder:p923Builder()?.p923Diagnostics?.()||options.localWorldP923Diagnostics?.()||null
+        lastPreparedReasons,builder:p923Builder()?.p923Diagnostics?.()||options.localWorldP923Diagnostics?.()||null,
+        p924PreparedStartQuietMs:PREPARED_START_QUIET_MS
       }
     };
   }
