@@ -70,9 +70,12 @@ export function loadForestWaterAssets(){
   if(loading)return loading;
 
   loading=(async()=>{
-    // Keep the approved lightweight P8/P9 trees warm in memory as the hidden
-    // comparison baseline. They are not rendered while the HD profile is active.
+    // Keep both approved lightweight LODs in memory. P9.3 renders the complete
+    // PS1 HD tree only in the near field, then hands distant chunks to the
+    // 68-triangle proxy. The 20-triangle proxy stays cached for later tuning.
     const simpleTrees=buildForestProxyAssets(THREE);
+    const simpleMid=simpleTrees.find(tree=>tree.name==='proxy-mid')||simpleTrees[0]||null;
+    const simpleFar=simpleTrees.find(tree=>tree.name==='proxy-far')||simpleMid;
 
     const sources=[
       ['authored',new URL('./assets/forest/forest_pine_authored.glb',import.meta.url).href],
@@ -83,41 +86,60 @@ export function loadForestWaterAssets(){
     const loaded=settled.filter(result=>result.status==='fulfilled').map(result=>result.value);
     const byName=name=>loaded.find(tree=>tree.name===name)||null;
 
-    // P9.2 comparison profile: the current chunk renderer shares one tree mesh
-    // across all LOD states. Use the complete one-mesh PS1 asset first so the
-    // comparison is visually valid. The authored tree has separate trunk and
-    // foliage parts and would otherwise render only one of them in P9.1.
+    // The chunk streamer currently owns two render geometries: its `mid` asset
+    // serves the near tier and its `far` asset serves distant tiers. Alias the
+    // complete PS1 tree to proxy-mid, and the visually approved 68-triangle tree
+    // to proxy-far. This keeps P9.1 streaming untouched while making the GPU LOD
+    // transition explicit and reversible.
     const ps1=byName('ps1');
     const authored=byName('authored');
     const scene=byName('scene');
     const hdTrees=[ps1,authored,scene].filter(Boolean);
+    const activeHd=ps1||hdTrees[0]||null;
 
-    if(hdTrees.length){
+    if(activeHd&&simpleMid){
+      const hdNear={...activeHd,name:'proxy-mid',sourceName:activeHd.name,hd:true};
+      const simpleDistant={...simpleMid,name:'proxy-far',sourceName:simpleMid.name,hd:false};
+      const trees=[hdNear,simpleDistant];
+
       cached={
-        pine:hdTrees[0],
-        trees:hdTrees,
+        pine:activeHd,
+        trees,
         hdTrees,
         simpleTrees,
-        forestProfile:'hd-comparison',
+        forestProfile:'hybrid-hd-near',
         waterStyle:AUTHORED_WATER_STYLE,
-        source:'P9.2 HD comparison using complete PS1 tree; lightweight proxies cached but hidden'
+        source:'P9.3 PS1 HD near + 68-triangle proxy distant'
       };
       console.info(
-        `Forest assets ready: HD comparison · active ${hdTrees[0].name} ${hdTrees[0].triangles} triangles · `+
-        `${simpleTrees.length} lightweight LODs cached`
+        `Forest assets ready: hybrid · near ${activeHd.name} ${activeHd.triangles} triangles · `+
+        `distant ${simpleMid.triangles} triangles · ${simpleFar?.triangles||0} triangle ultra-far cached`
       );
       return cached;
     }
 
-    console.warn('HD forest assets unavailable; reverting to cached lightweight proxy forest.');
+    if(activeHd){
+      cached={
+        pine:activeHd,
+        trees:[{...activeHd,name:'proxy-mid'},{...activeHd,name:'proxy-far'}],
+        hdTrees,
+        simpleTrees,
+        forestProfile:'hd-fallback',
+        waterStyle:AUTHORED_WATER_STYLE,
+        source:'P9.3 HD fallback because lightweight proxy is unavailable'
+      };
+      return cached;
+    }
+
+    console.warn('HD forest assets unavailable; reverting to lightweight proxy forest.');
     cached={
-      pine:simpleTrees[0],
+      pine:simpleMid,
       trees:simpleTrees,
       hdTrees:[],
       simpleTrees,
       forestProfile:'simple-fallback',
       waterStyle:AUTHORED_WATER_STYLE,
-      source:'P9.2 lightweight fallback because HD GLBs are unavailable'
+      source:'P9.3 lightweight fallback because HD GLBs are unavailable'
     };
     return cached;
   })();
