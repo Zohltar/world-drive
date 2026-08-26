@@ -50,5 +50,7 @@ jobs:
         run: node qa-streaming-p924-frame-budget.mjs
       - name: P9.25 scenery and prep QA
         run: node qa-streaming-p925-scenery-and-prep.mjs
+      - name: P9.26 horizon QA
+        run: node qa-streaming-p926-horizon.mjs
       - name: Production build
         run: npm run build
