@@ -1,10 +1,10 @@
 export const FOREST_STREAMING_POLICY=Object.freeze({
   cellSize:120,
 
-  // P9.15: trees remain 2x scale, so reduce population another 15% while
-  // preserving the same strong forest silhouette with less instance work.
-  // 160 -> 136 candidates per 120 m cell.
-  candidatesPerCell:136,
+  // P9.16: trees remain 2x scale, so reduce population another 20% while
+  // preserving the stronger forest silhouette with less instance work.
+  // 136 -> 109 candidates per 120 m cell (~19.9% reduction).
+  candidatesPerCell:109,
 
   // Uniform tree-size multiplier. P9.14+ doubles both height and crown width,
   // preserving the original low-definition tree proportions.
@@ -38,8 +38,8 @@ export const FOREST_STREAMING_POLICY=Object.freeze({
   densityNoiseScale:420,
   cellsPerSlice:30,
 
-  // Persistent 480 m chunks. One 120 m cell is built per idle slice. With P9.15
-  // that caps a background burst at 136 candidate evaluations.
+  // Persistent 480 m chunks. One 120 m cell is built per idle slice. With P9.16
+  // that caps a background burst at 109 candidate evaluations.
   chunkCells:4,
   chunkCacheLimit:96,
   chunkBuildsPerSlice:1,
