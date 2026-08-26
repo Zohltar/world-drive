@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 
 const localWorld=fs.readFileSync(
-  new URL('./src/local-world-builder.js',import.meta.url),'utf8'
+  new URL('./src/local-world-builder-p925.js',import.meta.url),'utf8'
 );
 const coordinator=fs.readFileSync(
   new URL('./src/streaming-coordinator.js',import.meta.url),'utf8'
@@ -35,9 +35,6 @@ assert.match(coordinator,/markWorldRefresh,/,
 assert.match(coordinator,/p925SceneryBypass:true/,
   'P9.25 scenery bypass diagnostics missing');
 
-// Timer cadence smoke test: direct timers should complete quickly instead of
-// accumulating requestIdleCallback timeout latency. Node timing is intentionally
-// generous because CI runners can be noisy.
 const GAP_MS=8;
 const stamps=[];
 await new Promise(resolve=>{
