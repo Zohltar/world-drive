@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import {createStreamingCoordinator} from './src/streaming-coordinator.js';
 
 const localWorld=fs.readFileSync(
-  new URL('./src/local-world-builder.js',import.meta.url),'utf8'
+  new URL('./src/local-world-builder-p925.js',import.meta.url),'utf8'
 );
 const coordinatorSource=fs.readFileSync(
   new URL('./src/streaming-coordinator.js',import.meta.url),'utf8'
@@ -102,9 +102,6 @@ const coordinator=createStreamingCoordinator({
   setWorldOffset:value=>{runtime={...runtime,worldOffset:value};}
 });
 
-// The old scheduler refused a non-urgent refresh while speed was above calmSpeed.
-// P9.24 must begin the cheap prepared path at ordinary driving speed as soon as
-// the normal hard refresh distance is reached and the short quiet window exists.
 coordinator.state.lastHitchAt=-Infinity;
 coordinator.markWorldRefresh('recenter');
 assert.equal(coordinator.scheduleWorldRefresh({urgent:false}),true,
