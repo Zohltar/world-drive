@@ -1,9 +1,6 @@
 export const FOREST_STREAMING_POLICY=Object.freeze({
   cellSize:120,
   candidatesPerCell:30,
-  // P8: keep authored GLBs close enough to matter visually, then hand off to
-  // the 68-triangle proxy. At normal chase-camera FOV the branch detail beyond
-  // ~320 m is sub-pixel but still expensive to shade thousands of times.
   nearDistance:320,
   midDistance:900,
   maxDistance:1750,
@@ -15,7 +12,17 @@ export const FOREST_STREAMING_POLICY=Object.freeze({
   slopeCacheSize:44,
   maxSlope:1.28,
   densityNoiseScale:420,
-  cellsPerSlice:30
+  cellsPerSlice:30,
+
+  // P9 persistent chunk streaming. Four deterministic 120 m cells per axis
+  // gives 480 m chunks: few enough draw calls for WebGL, but small enough that
+  // only a handful of chunks enter/leave while driving.
+  chunkCells:4,
+  chunkCacheLimit:96,
+  chunkBuildsPerSlice:1,
+  chunkLodHysteresis:80,
+  initialReadyDistance:720,
+  heightRefreshDistance:720
 });
 
 function mix32(value){
