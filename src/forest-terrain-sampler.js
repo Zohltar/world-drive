@@ -34,11 +34,8 @@ export function createForestTerrainSampler({
     const width=Number(p.width)||0;
     const height=Number(p.height)||0;
 
-    // World Drive's visible near terrain is the 5.6 km / 448 segment plane.
-    // Do not accidentally latch onto a satellite/imaging PlaneGeometry. P7.1
-    // searched every large plane in the scene; selecting the wrong one can
-    // produce perfectly finite but completely unrelated heights and bury every
-    // tree while the forest still consumes render resources.
+    // Target World Drive's live 5.6 km / 448-segment near terrain only. This
+    // deliberately excludes imagery planes and all road/transition ribbons.
     return width>=5200&&height>=5200&&sx>=400&&sz>=400&&
       !!mesh.geometry.getAttribute?.('position');
   }
@@ -87,9 +84,8 @@ export function createForestTerrainSampler({
     if(!attr||!width||!depth)return null;
     if(attr.count!==(gridX+1)*(gridZ+1))return null;
 
-    // Convert the geographic tree coordinate to current render space, then to
-    // terrain-mesh local X/Z. Floating-origin shifts move the mesh but do not
-    // rebuild it immediately, so using the live world position is essential.
+    // Convert geographic tree coordinates to the live terrain mesh local space.
+    // This remains correct while the floating origin slides between rebuilds.
     const offset=getWorldOffset()||{x:0,z:0};
     ground.getWorldPosition(worldPosition);
     const localX=(x-offset.x)-worldPosition.x;
@@ -101,9 +97,8 @@ export function createForestTerrainSampler({
     const stepZ=depth/gridZ;
     const fx=(localX+halfW)/stepX;
 
-    // Three r179 PlaneGeometry creates row 0 at +Y in its original XY plane.
-    // World Drive bakes rotateX(-PI/2) into the geometry, therefore that first
-    // row becomes local -Z and row indices increase toward +Z.
+    // Three r179 PlaneGeometry row 0 becomes local -Z after World Drive's
+    // baked rotateX(-PI/2); row indices therefore increase toward +Z.
     const fz=(localZ+halfD)/stepZ;
     const ix=Math.max(0,Math.min(gridX-1,Math.floor(Math.min(gridX-1e-9,fx))));
     const iz=Math.max(0,Math.min(gridZ-1,Math.floor(Math.min(gridZ-1e-9,fz))));
@@ -114,8 +109,7 @@ export function createForestTerrainSampler({
     const dIndex=(ix+1)+row*iz;
     const a=vertex(attr,aIndex),b=vertex(attr,bIndex),c=vertex(attr,cIndex),d=vertex(attr,dIndex);
 
-    // Three.js PlaneGeometry indices are (a,b,d) and (b,c,d). Interpolating
-    // those exact triangles guarantees the trunk base sits on the visible mesh.
+    // PlaneGeometry triangles are exactly (a,b,d) and (b,c,d).
     let y=triangleHeight(localX,localZ,a,b,d);
     if(y===null)y=triangleHeight(localX,localZ,b,c,d);
     if(y===null)return null;
@@ -123,24 +117,15 @@ export function createForestTerrainSampler({
   }
 
   function heightAt(x,z){
-    const fallback=fallbackHeight(x,z);
     const visible=sampleGround(x,z);
 
-    if(!Number.isFinite(visible))return fallback;
-    if(!Number.isFinite(fallback))return visible;
-
-    // Safety fuse. Exact triangle interpolation should normally stay close to
-    // the DEM height used to build that same terrain. A large delta means the
-    // sampler has latched onto stale/misaligned geometry during a floating-origin
-    // transition. Never let that transient state hide the forest underground.
-    const delta=visible-fallback;
-    if(Math.abs(delta)>6)return fallback;
-
-    // Even for a valid steep triangle, bound the correction so a single coarse
-    // facet cannot move a trunk several metres in one rebuild. This still fixes
-    // the visible float/bury gap while keeping placement robust.
-    const correction=Math.max(-2.5,Math.min(2.5,delta));
-    return fallback+correction;
+    // P9.5: once the live near-terrain mesh has been identified, its triangle
+    // surface is authoritative. The former +/-2.5 m clamp deliberately pulled
+    // steep-slope trees back toward the raw DEM and could therefore leave a
+    // trunk visibly floating or buried by several metres. Only fall back when
+    // the live mesh cannot be sampled at all.
+    if(Number.isFinite(visible))return visible;
+    return fallbackHeight(x,z);
   }
 
   return {
