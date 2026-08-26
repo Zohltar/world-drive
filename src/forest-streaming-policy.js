@@ -34,12 +34,12 @@ export const FOREST_STREAMING_POLICY=Object.freeze({
   densityNoiseScale:420,
   cellsPerSlice:30,
 
-  // Persistent 480 m chunks. P9.12 builds only two 120 m cells per idle slice,
-  // bounding each background CPU burst to at most 400 candidate evaluations.
+  // Persistent 480 m chunks. P9.12 builds only one 120 m cell per idle slice,
+  // bounding each background CPU burst to at most 200 candidate evaluations.
   chunkCells:4,
   chunkCacheLimit:96,
   chunkBuildsPerSlice:1,
-  cellsPerBuildSlice:2,
+  cellsPerBuildSlice:1,
   chunkLodHysteresis:80,
   initialReadyDistance:720,
 
