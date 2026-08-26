@@ -1,8 +1,14 @@
 export const FOREST_STREAMING_POLICY=Object.freeze({
   cellSize:120,
   candidatesPerCell:30,
-  nearDistance:320,
-  midDistance:900,
+
+  // P9.3 hybrid GPU profile. The complete PS1 tree is kept only while a chunk
+  // is genuinely near the driver. Beyond this band, the streamer swaps to the
+  // approved 68-triangle proxy. nearDistance===midDistance deliberately removes
+  // the old medium HD tier; hysteresis in the chunk streamer makes the switch
+  // occur around ~480 m approaching / ~640 m leaving, avoiding visible chatter.
+  nearDistance:560,
+  midDistance:560,
   maxDistance:1750,
   outerFadeStart:1540,
   sectors:8,
