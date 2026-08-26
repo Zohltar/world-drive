@@ -55,32 +55,45 @@ export function createSceneryRenderer({THREE,statusEl,features,terrainDetailGrou
   function validTreePoint(x,z){
     if(isWaterAt(x,z,9))return null;
     const nr=nearestRoute(x,z);
-    // Keep all geometry in the driver's useful visual corridor. The satellite
-    // terrain handles the distant forest impression beyond this distance.
-    if(!nr||nr.d<20||nr.d>175)return null;
-    if(terrainSlope(x,z)>.68)return null;
+    if(!nr||nr.d<20||nr.d>185)return null;
+    if(terrainSlope(x,z)>.70)return null;
     if(blocksForest(x,z))return null;
     return nr;
   }
 
+  function chooseVariant(random,nr,variantCount){
+    if(variantCount<=1)return 0;
+    const r=random();
+    // Detailed authored trees are deliberately rare and concentrated where the
+    // driver can appreciate them. Lighter silhouettes make up the forest mass.
+    if(nr.d<92&&r<.16)return 0;
+    if(variantCount===2)return r<.62?0:1;
+    if(r<.60)return 1;
+    return 2;
+  }
+
   function addPlacement(list,x,z,random){
     const nr=validTreePoint(x,z);if(!nr)return false;
-    const chance=nr.d<82?.97:nr.d<125?.76:.36;
+    const chance=nr.d<78?.96:nr.d<125?.80:.48;
     if(random()>chance)return false;
+    const variantCount=Math.max(1,forestAssets?.trees?.length||0);
     list.push({
       x,z,y:terrainHeight(x,z),
-      height:8.2+random()*6.8,
-      widthScale:.86+random()*.28,
-      rot:random()*Math.PI*2
+      height:7.5+random()*8.2,
+      widthScale:.80+random()*.34,
+      rot:random()*Math.PI*2,
+      leanX:(random()-.5)*.045,
+      leanZ:(random()-.5)*.045,
+      variant:chooseVariant(random,nr,variantCount)
     });
     return true;
   }
 
   function collectMappedForest(points,id,list){
     const center=featureCentroid(points),random=seededRandom((Number(id)||1)*2654435761);
-    const radius=Math.min(175,Math.max(35,Math.sqrt(points.length)*24));
+    const radius=Math.min(185,Math.max(35,Math.sqrt(points.length)*25));
     let accepted=0;
-    for(let i=0;i<560&&accepted<145;i++){
+    for(let i=0;i<700&&accepted<175;i++){
       const angle=random()*Math.PI*2,r=Math.sqrt(random())*radius,x=center.x+Math.cos(angle)*r,z=center.z+Math.sin(angle)*r;
       if(!pointInPolygon(x,z,points))continue;
       if(addPlacement(list,x,z,random))accepted++;
@@ -90,39 +103,63 @@ export function createSceneryRenderer({THREE,statusEl,features,terrainDetailGrou
   function collectRoadsideForest(list,hasMappedForest){
     const offset=getWorldOffset();
     const qx=Math.round(offset.x/80),qz=Math.round(offset.z/80);
-    const random=seededRandom(((qx*73856093)^(qz*19349663)^0x70696e65)>>>0);
-    const target=hasMappedForest?290:390;
-    let accepted=0;
+    const random=seededRandom(((qx*73856093)^(qz*19349663)^0x666f7265)>>>0);
+    const target=hasMappedForest?360:470;
+    const clusters=[];
 
-    // Generate only around the currently streamed neighbourhood. nearestRoute
-    // then constrains every accepted instance to 20..175 m from the road.
-    for(let i=0;i<target*12&&accepted<target;i++){
+    // Forests rarely read as uniform random noise. Stable local cluster centres
+    // create copses, openings and denser bands while remaining deterministic.
+    for(let i=0;i<24;i++){
       const angle=random()*Math.PI*2;
-      const radius=28+Math.sqrt(random())*360;
-      const x=offset.x+Math.cos(angle)*radius,z=offset.z+Math.sin(angle)*radius;
+      const radius=34+Math.sqrt(random())*340;
+      clusters.push({
+        x:offset.x+Math.cos(angle)*radius,
+        z:offset.z+Math.sin(angle)*radius,
+        spread:16+random()*48
+      });
+    }
+
+    let accepted=0;
+    for(let i=0;i<target*15&&accepted<target;i++){
+      const cluster=clusters[Math.floor(random()*clusters.length)];
+      const angle=random()*Math.PI*2;
+      const radius=Math.sqrt(random())*cluster.spread;
+      const x=cluster.x+Math.cos(angle)*radius;
+      const z=cluster.z+Math.sin(angle)*radius;
       if(addPlacement(list,x,z,random))accepted++;
     }
   }
 
-  function addForestBatch(list){
-    const pine=forestAssets?.pine;
-    if(!pine?.geometry||!pine?.material||!list.length)return 0;
+  function addForestBatches(list){
+    const variants=forestAssets?.trees||[];
+    if(!variants.length||!list.length)return 0;
     const offset=getWorldOffset(),dummy=new THREE.Object3D();
-    const mesh=new THREE.InstancedMesh(pine.geometry,pine.material,list.length);
-    mesh.userData.sharedForestGeometry=true;
-    mesh.castShadow=false;mesh.receiveShadow=false;mesh.frustumCulled=true;
+    let rendered=0;
 
-    list.forEach((p,i)=>{
-      dummy.position.set(p.x-offset.x,p.y+.02,p.z-offset.z);
-      dummy.rotation.set(0,p.rot,0);
-      // The supplied pine geometry is normalized to 1 m high. Preserve a
-      // natural variation in height and crown width without distorting it.
-      dummy.scale.set(p.height*p.widthScale,p.height,p.height*p.widthScale);
-      dummy.updateMatrix();mesh.setMatrixAt(i,dummy.matrix);
-    });
-    mesh.instanceMatrix.needsUpdate=true;
-    forestGroup.add(mesh);
-    return list.length;
+    for(let variantIndex=0;variantIndex<variants.length;variantIndex++){
+      const variant=variants[variantIndex];
+      const placements=list.filter(p=>Math.min(p.variant,variants.length-1)===variantIndex);
+      if(!placements.length||!variant?.parts?.length)continue;
+      rendered+=placements.length;
+
+      for(const part of variant.parts){
+        if(!part?.geometry||!part?.material)continue;
+        const mesh=new THREE.InstancedMesh(part.geometry,part.material,placements.length);
+        mesh.userData.sharedForestGeometry=true;
+        mesh.userData.forestVariant=variant.name||String(variantIndex);
+        mesh.castShadow=false;mesh.receiveShadow=false;mesh.frustumCulled=true;
+        placements.forEach((p,i)=>{
+          dummy.position.set(p.x-offset.x,p.y+.02,p.z-offset.z);
+          dummy.rotation.set(p.leanX,p.rot,p.leanZ);
+          dummy.scale.set(p.height*p.widthScale,p.height,p.height*p.widthScale);
+          dummy.updateMatrix();
+          mesh.setMatrixAt(i,dummy.matrix);
+        });
+        mesh.instanceMatrix.needsUpdate=true;
+        forestGroup.add(mesh);
+      }
+    }
+    return rendered;
   }
 
   function makeBuildingLOD(points,tags,dist){
@@ -144,15 +181,15 @@ export function createSceneryRenderer({THREE,statusEl,features,terrainDetailGrou
       else if(tags.barrier==='guard_rail')infrastructureGroup.add(addGuardRail(feature.points));
       else if(tags.natural==='bare_rock'||tags.natural==='scree'||tags.natural==='cliff'){object=addLandPatch(feature.points,rockMat,.04);if(object)terrainDetailGroup.add(object);}
       else if(tags.natural==='scrub'||tags.landuse==='meadow'){object=addLandPatch(feature.points,scrubMat,.035);if(object)terrainDetailGroup.add(object);}
-      else if((tags.natural==='wood'||tags.landuse==='forest')&&dist<620){collectMappedForest(feature.points,feature.id,placements);mappedForestCount++;}
+      else if((tags.natural==='wood'||tags.landuse==='forest')&&dist<680){collectMappedForest(feature.points,feature.id,placements);mappedForestCount++;}
       shown++;
     }
 
-    if(forestAssets?.pine){
+    if(forestAssets?.trees?.length){
       collectRoadsideForest(placements,mappedForestCount>0);
-      const treeCount=addForestBatch(placements);
-      if(statusEl)statusEl.textContent=`${shown} objets · ${treeCount} pins 3D proches`;
-    }else if(statusEl)statusEl.textContent=`${shown} objets · pins en chargement`;
+      const treeCount=addForestBatches(placements);
+      if(statusEl)statusEl.textContent=`${shown} objets · ${treeCount} arbres · ${forestAssets.trees.length} variantes`;
+    }else if(statusEl)statusEl.textContent=`${shown} objets · forêt en chargement`;
     return shown;
   }
 
@@ -160,7 +197,7 @@ export function createSceneryRenderer({THREE,statusEl,features,terrainDetailGrou
 
   loadForestWaterAssets().then(asset=>{
     forestAssets=asset;
-    if(asset?.pine&&!rebuildingFromAsset){rebuildingFromAsset=true;try{rebuild();}finally{rebuildingFromAsset=false;}}
+    if(asset?.trees?.length&&!rebuildingFromAsset){rebuildingFromAsset=true;try{rebuild();}finally{rebuildingFromAsset=false;}}
   });
   return {rebuild,clear,removeTreesOverWater};
 }
