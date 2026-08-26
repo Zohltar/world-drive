@@ -10,6 +10,9 @@ import {createImageryService as createImageryServiceP913} from './imagery-p913.j
 export function createImageryService(options){
   const originalTerrainSample=options?.sampleTerrainHeight;
   let groundMesh=null;
+  let cachedPositionAttribute=null;
+  let cachedCols=0;
+  let cachedSegments=0;
   let fastGroundSamples=0;
   let fallbackGroundSamples=0;
 
@@ -27,14 +30,36 @@ export function createImageryService(options){
     return groundMesh;
   }
 
+  function refreshGridMetadata(positions){
+    if(positions===cachedPositionAttribute)return;
+    cachedPositionAttribute=positions;
+    const count=positions?.count||0;
+    const cols=Math.round(Math.sqrt(count));
+    if(cols>1&&cols*cols===count){
+      cachedCols=cols;
+      cachedSegments=cols-1;
+    }else{
+      cachedCols=0;
+      cachedSegments=0;
+    }
+  }
+
   function fastRenderedGroundHeight(absx,absz){
     const mesh=resolveGroundMesh();
     const positions=mesh?.geometry?.attributes?.position;
-    const count=positions?.count||0;
-    const cols=Math.round(Math.sqrt(count));
-    const segments=cols-1;
+    refreshGridMetadata(positions);
+
     const size=Number(options?.groundSize)||0;
-    const center=options?.getGroundCenter?.();
+    const worldOffset=options?.getWorldOffset?.();
+    let centerX=NaN,centerZ=NaN;
+    if(worldOffset&&Number.isFinite(worldOffset.x)&&Number.isFinite(worldOffset.z)){
+      centerX=worldOffset.x+(Number(mesh?.position?.x)||0);
+      centerZ=worldOffset.z+(Number(mesh?.position?.z)||0);
+    }else{
+      const center=options?.getGroundCenter?.();
+      centerX=center?.x;
+      centerZ=center?.z;
+    }
 
     // Before the first real terrain rebuild, main.js still owns an unrotated
     // PlaneGeometry through mesh.rotation.x=-PI/2. Its position.y values are
@@ -44,26 +69,26 @@ export function createImageryService(options){
 
     if(
       !positions||
-      segments<1||
-      cols*cols!==count||
+      cachedSegments<1||
       !(size>0)||
       meshStillRotated||
-      !center||
-      !Number.isFinite(center.x)||
-      !Number.isFinite(center.z)
+      !Number.isFinite(centerX)||
+      !Number.isFinite(centerZ)
     ){
       fallbackGroundSamples++;
       return originalTerrainSample?.(absx,absz)??0;
     }
 
     const half=size*.5;
-    const lx=absx-center.x;
-    const lz=absz-center.z;
+    const lx=absx-centerX;
+    const lz=absz-centerZ;
     if(lx<-half||lx>half||lz<-half||lz>half){
       fallbackGroundSamples++;
       return originalTerrainSample?.(absx,absz)??0;
     }
 
+    const segments=cachedSegments;
+    const cols=cachedCols;
     const gx=(lx+half)/size*segments;
     const gz=(lz+half)/size*segments;
     const ix=Math.max(0,Math.min(segments-1,Math.floor(gx)));
@@ -72,12 +97,15 @@ export function createImageryService(options){
     const fz=Math.max(0,Math.min(1,gz-iz));
     const array=positions.array;
     const stride=positions.itemSize||3;
-    const yAt=(row,col)=>array[(row*cols+col)*stride+1];
 
-    const h00=yAt(iz,ix);
-    const h10=yAt(iz,ix+1);
-    const h01=yAt(iz+1,ix);
-    const h11=yAt(iz+1,ix+1);
+    const i00=(iz*cols+ix)*stride+1;
+    const i10=(iz*cols+ix+1)*stride+1;
+    const i01=((iz+1)*cols+ix)*stride+1;
+    const i11=((iz+1)*cols+ix+1)*stride+1;
+    const h00=array[i00];
+    const h10=array[i10];
+    const h01=array[i01];
+    const h11=array[i11];
     fastGroundSamples++;
 
     // THREE.PlaneGeometry triangulates each cell across the diagonal joining
@@ -98,7 +126,8 @@ export function createImageryService(options){
 
   let prefetchBusy=false;
   let lastPrefetchAt=-Infinity;
-  let lastPrefetchCenter={x:Infinity,z:Infinity};
+  let lastPrefetchX=Infinity;
+  let lastPrefetchZ=Infinity;
   let prefetchStarted=0;
   let prefetchSkipped=0;
 
@@ -108,8 +137,8 @@ export function createImageryService(options){
   service.prefetchAt=async(absx,absz)=>{
     const now=performance.now();
     const nearPrevious=Math.hypot(
-      absx-lastPrefetchCenter.x,
-      absz-lastPrefetchCenter.z
+      absx-lastPrefetchX,
+      absz-lastPrefetchZ
     )<PREFETCH_NEAR_DUPLICATE_M;
 
     if(
@@ -123,7 +152,8 @@ export function createImageryService(options){
 
     prefetchBusy=true;
     lastPrefetchAt=now;
-    lastPrefetchCenter={x:absx,z:absz};
+    lastPrefetchX=absx;
+    lastPrefetchZ=absz;
     prefetchStarted++;
 
     try{
