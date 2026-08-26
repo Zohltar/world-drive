@@ -43,6 +43,7 @@ export function createMinimapSystem({
       #mapbox{
         display:flex!important;
         flex-direction:column!important;
+        width:340px!important;
         height:min(560px,calc(100vh - 28px))!important;
         min-height:420px;
         background:rgba(4,10,18,.80)!important;
@@ -52,12 +53,12 @@ export function createMinimapSystem({
       #routeMapInfo{
         flex:0 0 auto;
         display:grid;
-        grid-template-columns:repeat(4,minmax(0,1fr));
+        grid-template-columns:repeat(4,minmax(72px,1fr));
         gap:6px;
         margin:4px 0 7px;
       }
       .routeMapMetric{
-        min-width:0;
+        min-width:72px;
         padding:6px 7px;
         border:1px solid rgba(255,255,255,.07);
         border-radius:8px;
@@ -68,11 +69,11 @@ export function createMinimapSystem({
         font-size:8px;
         line-height:1.15;
         text-transform:uppercase;
-        letter-spacing:.055em;
+        letter-spacing:.045em;
         color:#8fa6bf;
         white-space:nowrap;
-        overflow:hidden;
-        text-overflow:ellipsis;
+        overflow:visible;
+        text-overflow:clip;
       }
       .routeMapMetricValue{
         display:block;
@@ -122,10 +123,11 @@ export function createMinimapSystem({
       #mapbox.collapsed #routeMapCanvasZone,
       #mapbox.collapsed #routeMapOpacity,
       #mapbox.collapsed .routeSubsection{display:none!important}
-      #mapbox.collapsed{height:48px!important;min-height:48px!important}
+      #mapbox.collapsed{height:48px!important;min-height:48px!important;width:170px!important}
       @media(max-width:900px){
-        #mapbox{height:min(500px,calc(100vh - 28px))!important}
+        #mapbox{width:300px!important;height:min(500px,calc(100vh - 28px))!important}
         #routeMapInfo{grid-template-columns:1fr 1fr}
+        .routeMapMetric{min-width:0}
       }
     `;
     document.head.appendChild(style);
@@ -135,15 +137,15 @@ export function createMinimapSystem({
     info.setAttribute('aria-label','Informations du trajet');
     info.innerHTML=`
       <div class="routeMapMetric">
-        <span class="routeMapMetricLabel">Longueur trajet</span>
+        <span class="routeMapMetricLabel">Total</span>
         <strong class="routeMapMetricValue" id="routeMapLength">— km</strong>
       </div>
       <button class="routeMapMetric" id="routeMapDoneToggle" type="button" title="Cliquer pour afficher km ou %">
-        <span class="routeMapMetricLabel">Distance parcourue</span>
+        <span class="routeMapMetricLabel">Parcourue</span>
         <strong class="routeMapMetricValue" id="routeMapDone">— km</strong>
       </button>
       <button class="routeMapMetric" id="routeMapRemainToggle" type="button" title="Cliquer pour afficher km ou %">
-        <span class="routeMapMetricLabel">Distance à faire</span>
+        <span class="routeMapMetricLabel">Restant</span>
         <strong class="routeMapMetricValue" id="routeMapRemain">— km</strong>
       </button>
       <div class="routeMapMetric">
@@ -176,14 +178,13 @@ export function createMinimapSystem({
 
     const applyOpacity=pct=>{
       const safe=Math.max(25,Math.min(100,Number(pct)||80));
-      // Apply opacity to the complete map widget, including the canvas itself,
-      // not only its translucent panel background/border.
       mapbox.style.opacity=(safe/100).toFixed(2);
       const value=$('routeMapOpacityValue');
       if(value)value.textContent=`${safe} %`;
     };
-    applyOpacity(80);
+
     $('routeMapOpacitySlider')?.addEventListener('input',event=>applyOpacity(event.target.value));
+    applyOpacity(80);
   }
 
   let lastDrawCum=0;
