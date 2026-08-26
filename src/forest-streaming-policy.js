@@ -1,16 +1,15 @@
 export const FOREST_STREAMING_POLICY=Object.freeze({
   cellSize:120,
 
-  // P9.10: P9.9 still holds 144 FPS once loaded with the optimized 592-triangle
-  // fir, so spend more of that headroom on actual forest volume. 100 candidates
-  // per 120 m cell is +43% over P9.9 while keeping the same chunk/LOD system.
-  candidatesPerCell:100,
+  // P9.11: the 68-triangle proxy now renders at every distance. That removes
+  // almost 90% of the near-tree geometry versus P9.10's 592-triangle fir, so
+  // reinvest the headroom directly into forest volume: 200 candidates per cell,
+  // exactly 2x P9.10. Chunk streaming and distance tiers remain unchanged.
+  candidatesPerCell:200,
 
-  // P9.3 hybrid GPU profile. The detailed tree is kept only while a chunk is
-  // genuinely near the driver. Beyond this band, the streamer swaps to the
-  // approved 68-triangle proxy. nearDistance===midDistance deliberately removes
-  // the old medium HD tier; hysteresis in the chunk streamer makes the switch
-  // occur around ~480 m approaching / ~640 m leaving, avoiding visible chatter.
+  // LOD distances now control density only; every tier renders the same approved
+  // 68-triangle low-definition conifer. Keeping the existing hysteresis still
+  // prevents density changes from chattering as chunks cross boundaries.
   nearDistance:560,
   midDistance:560,
   maxDistance:1750,
