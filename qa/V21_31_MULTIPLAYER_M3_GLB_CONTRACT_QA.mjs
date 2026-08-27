@@ -54,6 +54,7 @@ for(const spec of listMultiplayerVehicleSpecs().filter(spec=>spec.hd.enabled)){
   for(const selector of contract.headlightPaths||[])if(!includesPath(asset,selector))missing.push(`headlightPath:${selector}`);
   for(const selector of contract.leftSignalPaths||[])if(!includesPath(asset,selector))missing.push(`leftSignalPath:${selector}`);
   for(const selector of contract.rightSignalPaths||[])if(!includesPath(asset,selector))missing.push(`rightSignalPath:${selector}`);
+  for(const selector of contract.sharedRearSignalPaths||[])if(!includesPath(asset,selector))missing.push(`sharedRearSignalPath:${selector}`);
   for(const name of contract.exactNodes||[])if(!asset.nodeNames.has(String(name).toLowerCase()))missing.push(`node:${name}`);
   for(const name of contract.materials||[])if(!asset.materialNames.has(String(name).toLowerCase()))missing.push(`material:${name}`);
 
@@ -72,6 +73,8 @@ for(const spec of listMultiplayerVehicleSpecs().filter(spec=>spec.hd.enabled)){
     assert(reverseNode>=0,'WRX reverse mesh node must resolve below the authored reverse group');
     const reverseMaterials=materialsForNode(asset,reverseNode);
     assert(reverseMaterials.includes('eblems'),'WRX audit regression: reverse mesh deliberately has misleading Eblems material; ancestry/path binding is required');
+    const sharedRear=meshNodeByPath(asset,'fh_signal_r_material_19');
+    assert(sharedRear>=0,'WRX shared rear signal lens must resolve to authored mesh geometry');
   }
   if(spec.id==='sonata'){
     const rearInner=asset.nodeNames.has('object_46'),rearOuter=asset.nodeNames.has('object_33'),front=asset.nodeNames.has('object_7');
