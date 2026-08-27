@@ -39,14 +39,20 @@ assert(procedural.includes('child.userData?.vehicleId===vehicleId'),'remote body
 assert(procedural.includes('sourceWheel.vehicleId!==vehicleId'),'remote wheel selection must be vehicle-specific');
 assert(visuals.includes('pivot.visible=false'),'HD layer must hide support wheels without removing them');
 
-const stateFields=[
-  'lat','lon','heading','speed','steer','braking','onRoad','skidFront','skidRear',
+const directStateFields=[
+  'lat','lon','heading','speed','steer','onRoad','skidFront','skidRear',
   'bodyPitch','bodyYaw','bodyRoll','bodyY','wheelPitch','wheelRoll'
 ];
-for(const field of stateFields){
+for(const field of directStateFields){
   assert(mp.includes(`${field}:state.${field}`),`local state must send ${field}`);
 }
 
+// M2.4 folds brake state into the unified lighting snapshot, but braking remains
+// sourced from the exact local state and remains a required network field.
+assert(mp.includes('braking:!!state.braking'),'M2.4 lighting state must source local braking');
+assert(mp.includes('braking:lighting.braking'),'local multiplayer state must send braking');
+
+const stateFields=[...directStateFields,'braking'];
 const knownFleet=[...vehicles.matchAll(/\bid\s*:\s*['"]([^'"]+)['"]/g)].map(m=>m[1]);
 const fallbackSpecs=[...mp.matchAll(/^\s{4}([a-zA-Z0-9_]+):\{color:/gm)].map(m=>m[1]);
 const missingFallback=[...new Set(knownFleet.filter(id=>!fallbackSpecs.includes(id)))];
