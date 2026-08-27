@@ -1,4 +1,4 @@
-// World Drive V19.1 - curvature-aware buffered N-player LAN interpolation.
+// World Drive V19.2 - curvature-aware buffered N-player LAN interpolation at 30 Hz.
 // No remote physics/collisions: each peer only broadcasts presentation state.
 
 const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
@@ -87,6 +87,8 @@ function motionVector(snapshot){
 const INTERPOLATION_DELAY_MS=110;
 const MAX_EXTRAPOLATION_MS=105;
 const SNAPSHOT_HISTORY_MS=900;
+const NETWORK_STATE_HZ=30;
+const NETWORK_STATE_INTERVAL_MS=1000/NETWORK_STATE_HZ;
 
 function finiteOr(value,fallback=0){
   return Number.isFinite(value)
@@ -697,7 +699,6 @@ export function createMultiplayerClient({
         // V19.1 interpolation history.
         snapshots:[],
         lastSeq:0,
-
         bodyPitch:Number(message.bodyPitch)||0,
         targetBodyPitch:Number(message.bodyPitch)||0,
         bodyYaw:Number(message.bodyYaw)||0,
@@ -1010,7 +1011,7 @@ export function createMultiplayerClient({
     const now=performance.now();
 
     if(socket?.readyState===WebSocket.OPEN&&now>=nextSendAt){
-      nextSendAt=now+50; // 20 Hz state stream; rendering remains local frame-rate.
+      nextSendAt=now+NETWORK_STATE_INTERVAL_MS; // 30 Hz state stream; rendering remains local frame-rate.
       sendLocalState();
     }
 
