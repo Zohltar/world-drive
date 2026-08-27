@@ -38,6 +38,19 @@ assert(fallback.includes('baseX:x'),'support fallback must preserve wheel X supp
 assert(fallback.includes('baseZ:z'),'support fallback must preserve wheel Z support geometry');
 assert(visuals.includes('pivot.visible=false'),'HD swap must hide rather than destroy support pivots');
 
+// Remote grade-following architecture: the fallback/HD body must have the same
+// sprung-body separation as the local vehicle. Pitch/roll apply to bodyGroup,
+// while support wheels stay directly under root and retain stable contact X/Z.
+assert(fallback.includes('const bodyGroup=new THREE.Group()'),'fallback must expose a sprung bodyGroup');
+assert(fallback.includes("bodyGroup.rotation.order='XYZ'"),'fallback bodyGroup must use stable local Euler order');
+assert(fallback.includes('root.add(bodyGroup)'),'sprung bodyGroup must be attached to remote root');
+assert(fallback.includes('bodyGroup.add(body)'),'fallback body must live on sprung bodyGroup');
+assert(fallback.includes('bodyGroup.add(cabin)'),'fallback cabin must live on sprung bodyGroup');
+assert(fallback.includes('bodyGroup.add(lamp)'),'fallback rear lamps must follow sprung body attitude');
+assert(fallback.includes('for(const entry of wheels)root.add(entry.pivot)'),'support wheels must remain outside sprung bodyGroup');
+assert(fallback.includes('bodyGroup,'),'fallback must return bodyGroup to multiplayer pose solver');
+assert(!fallback.includes('bodyGroup:null'),'fallback must not use root-level sign-inverted pitch path');
+
 assert(hd.includes("import('three/addons/loaders/GLTFLoader.js')"),'remote GLB loader must be dynamic');
 assert(hd.includes("import('three/addons/utils/SkeletonUtils.js')"),'remote skeleton clone helper must be dynamic');
 assert(hd.includes('templatePromises=new Map()'),'remote model load promises must be cached');
@@ -75,6 +88,8 @@ console.log('V21.31 MULTIPLAYER / GUARANTEED LAZY HD QA: PASS',{
   remoteVisualSource:'lazy authored GLB + guaranteed support fallback',
   localGlbRuntimeDependency:false,
   guaranteedUpgradeAfterExactFailure:true,
+  slopeFollowingBodyGroup:true,
+  supportWheelsRemainRootSpace:true,
   templateCache:true,
   supportedRemoteHd:Object.keys(requiredAssets)
 });
