@@ -40,5 +40,7 @@ jobs:
         run: node qa/V21_31_MULTIPLAYER_M24_LIGHTING_QA.mjs
       - name: Multiplayer M2.5 authored GLB lighting QA
         run: node qa/V21_31_MULTIPLAYER_M25_AUTHORED_LIGHTING_QA.mjs
+      - name: Multiplayer GLB structure audit
+        run: node qa/V21_31_MULTIPLAYER_GLB_STRUCTURE_AUDIT.mjs
       - name: Production build
         run: npm run build
