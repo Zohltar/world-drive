@@ -143,10 +143,23 @@ function createRelayService({port=8081,host='0.0.0.0'}={}){
       lon:clamp(finite(message.lon),-180,180),
       y:clamp(finite(message.y),-500,10000),
       heading:finite(message.heading),
+
+      // Keep the packaged Electron relay on the exact same M2/M2.4 state
+      // contract as server/multiplayer-server.mjs.
+      velocityHeading:finite(message.velocityHeading,message.heading),
+      longitudinalAccel:clamp(finite(message.longitudinalAccel),-20,15),
+
       speed:clamp(finite(message.speed),-100,150),
       vehicleId:String(message.vehicleId||client.vehicleId||'wrx').slice(0,32),
       steer:clamp(finite(message.steer),-1.2,1.2),
       braking:!!message.braking,
+      reversing:!!message.reversing,
+      nightLevel:clamp(finite(message.nightLevel),0,1),
+      signalLeft:!!message.signalLeft,
+      signalRight:!!message.signalRight,
+      signalBlink:!!message.signalBlink,
+      lightingProtocol:message.lightingProtocol==='m2.4'?'m2.4':null,
+
       onRoad:!!message.onRoad,
       skidFront:clamp(finite(message.skidFront),0,1),
       skidRear:clamp(finite(message.skidRear),0,1),
