@@ -1,7 +1,7 @@
 import {createVehicleSystem} from './vehicle-system.js';
 import {getAuthoredVehicleDescriptor,loadAuthoredVehicleFactory} from './vehicle-authored-registry.js';
 
-// Multiplayer M4.2 adapter.
+// Multiplayer M4.3 adapter.
 //
 // The network/runtime sees one normalized vehicle contract. The visual side then
 // delegates to the exact controller used by the local player. Vehicle-specific
@@ -162,6 +162,40 @@ export function createRemoteVehicleAdapter({
     return Number.isFinite(n)?n:null;
   }
 
+  function rgbOf(value){
+    if(!value)return null;
+    const r=Number(value.r??value.x),g=Number(value.g??value.y),b=Number(value.b??value.z);
+    return Number.isFinite(r)&&Number.isFinite(g)&&Number.isFinite(b)?{r,g,b}:null;
+  }
+
+  // Diagnostic only: verify whether the exact local controller actually produced
+  // visible white reverse-light output after receiving the normalized state.
+  // This never changes materials or presentation.
+  function reverseVisualEvidence(){
+    let whiteEmissive=0,whiteShader=0,brightVisible=0;
+    system?.host?.traverse?.(obj=>{
+      if(obj?.visible===false)return;
+      for(const mat of (Array.isArray(obj?.material)?obj.material:[obj?.material])){
+        if(!mat)continue;
+        const emissive=rgbOf(mat.emissive);
+        const emissiveIntensity=Number(mat.emissiveIntensity)||0;
+        if(emissive&&emissiveIntensity>.35&&emissive.r>.55&&emissive.g>.55&&emissive.b>.55){
+          whiteEmissive++;
+        }
+        const opacity=Number(mat.uniforms?.uOpacity?.value)||0;
+        const tint=rgbOf(mat.uniforms?.uTint?.value);
+        if(opacity>.04&&tint&&tint.r>.70&&tint.g>.70&&tint.b>.70){
+          whiteShader++;
+        }
+        if((Number(mat.opacity)||0)>.25){
+          const color=rgbOf(mat.color);
+          if(color&&color.r>.72&&color.g>.72&&color.b>.72)brightVisible++;
+        }
+      }
+    });
+    return {active:whiteEmissive+whiteShader,whiteEmissive,whiteShader,brightVisible};
+  }
+
   function diagnostics(){
     return {
       vehicleId,
@@ -178,7 +212,8 @@ export function createRemoteVehicleAdapter({
       gear:lastState.gear,
       reversing:lastState.reversing,
       reverseMaterialCount:optionalCount(system?.reverseMaterialCount),
-      wheelControllerCount:optionalCount(system?.wheelControllerCount)
+      wheelControllerCount:optionalCount(system?.wheelControllerCount),
+      reverseVisualEvidence:reverseVisualEvidence()
     };
   }
 
