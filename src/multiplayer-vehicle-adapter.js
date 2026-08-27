@@ -1,19 +1,26 @@
 import {createVehicleSystem} from './vehicle-system.js';
 import {getAuthoredVehicleDescriptor,loadAuthoredVehicleFactory} from './vehicle-authored-registry.js';
 
-// Multiplayer M4 adapter.
+// Multiplayer M4.1 adapter.
 //
 // The network/runtime sees one normalized vehicle contract. The visual side then
 // delegates to the exact controller used by the local player. Vehicle-specific
 // GLB hierarchy, material, wheel, lamp and trailer logic therefore lives in one
-// place only: the local authored controller.
+// place only: the local authored controller. Explicit transmission gear is the
+// source of truth for reverse when present.
 
 const clamp=(value,min,max)=>Math.max(min,Math.min(max,Number(value)||0));
 const finite=(value,fallback=0)=>Number.isFinite(Number(value))?Number(value):fallback;
+function normalizeGear(value){
+  const n=Number(value);
+  if(!Number.isFinite(n))return null;
+  return n<0?-1:n===0?0:Math.max(1,Math.floor(n));
+}
 
 export function normalizeMultiplayerVehicleState(input={},vehicleSpec=null){
   const maxSteer=Math.max(.05,finite(vehicleSpec?.physics?.maxSteerLow,.45));
   const steerAngle=finite(input.steerAngle,input.steer);
+  const gear=normalizeGear(input.gear);
   return Object.freeze({
     absX:finite(input.absX,0),
     absZ:finite(input.absZ,0),
@@ -25,8 +32,9 @@ export function normalizeMultiplayerVehicleState(input={},vehicleSpec=null){
     steerInput:Number.isFinite(Number(input.steerInput))
       ?clamp(input.steerInput,-1,1)
       :clamp(steerAngle/maxSteer,-1,1),
+    gear,
     braking:!!input.braking,
-    reversing:!!input.reversing,
+    reversing:gear!==null?gear<0:!!input.reversing,
     nightLevel:clamp(input.nightLevel,0,1),
     signalLeft:!!input.signalLeft,
     signalRight:!!input.signalRight,
@@ -165,7 +173,9 @@ export function createRemoteVehicleAdapter({
       loading:!!loading,
       loadError:loadError?String(loadError?.message||loadError):null,
       visible,
-      updates
+      updates,
+      gear:lastState.gear,
+      reversing:lastState.reversing
     };
   }
 
