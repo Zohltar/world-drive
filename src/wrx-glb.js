@@ -114,14 +114,7 @@ export function createWrxGlbSystem({
         tuned.add(mat);
         const name=String(mat.name||'').toLowerCase();
 
-        // V21.24.28: the WRX colour is primarily texture-driven. Multiplying
-        // material.color alone barely changed the result, so provide a small
-        // texture-preserving emissive fill. This acts like ambient daylight on
-        // the car only, without changing World Drive's global sun/exposure.
         if(name.includes('fh_paint')){
-          // Preserve the authored blue paint: use a cool blue emissive tint
-          // instead of white, and keep the texture as the emissive map so the
-          // daytime lift follows the real body details without bleaching them.
           if(mat.color)mat.color.multiplyScalar(1.08);
           if(!mat.emissive)mat.emissive=new THREE.Color(0x4a7dff);
           else mat.emissive.setHex(0x4a7dff);
@@ -164,6 +157,27 @@ export function createWrxGlbSystem({
       cursor=cursor.parent;
     }
     return names.join(' ');
+  }
+
+  // M4.2: classify authored parts in root-local space without ever taking a
+  // world-axis-aligned Box3. The former setFromObject()->worldToLocal path could
+  // shift the apparent centre when a remote peer was already rotated/scaled
+  // while its GLB finished loading. Brake bindings used semantic names and were
+  // unaffected; the WRX reverse lens used this positional classification.
+  function rootLocalGeometryCenter(obj,out=new THREE.Vector3()){
+    const geometry=obj?.geometry;
+    if(geometry){
+      geometry.computeBoundingBox?.();
+      if(geometry.boundingBox){
+        geometry.boundingBox.getCenter(out);
+        obj.localToWorld(out);
+        root?.worldToLocal(out);
+        return out;
+      }
+    }
+    obj?.getWorldPosition?.(out);
+    root?.worldToLocal(out);
+    return out;
   }
 
   function cloneDynamicMaterials(mesh,target,color){
@@ -238,38 +252,29 @@ export function createWrxGlbSystem({
     brakeMaterials.length=0;
     runningTailMaterials.length=0;
     reverseMaterials.length=0;
+    root?.updateMatrixWorld(true);
     root?.traverse(obj=>{
       if(!obj?.isMesh&&!obj?.isSkinnedMesh)return;
       const path=semanticPath(obj);
       const materialNames=(Array.isArray(obj.material)?obj.material:[obj.material])
         .map(mat=>String(mat?.name||'').toLowerCase());
-      const localBox=new THREE.Box3().setFromObject(obj);
-      const localCenter=new THREE.Vector3();
-      localBox.getCenter(localCenter);
-      root.worldToLocal(localCenter);
+      const localCenter=rootLocalGeometryCenter(obj);
       const isRearCluster=localCenter.z<-1.7 && localCenter.y>.65;
 
-      // Main outer rear red lens (left/right): upper half = low-intensity
-      // night running light, lower half = high-intensity brake light.
       if(path.includes('fh_light_glass_red_material')){
         if(splitRearRedLens(obj))return;
       }
 
-      // This authored red piece sits physically in the lower/main part of the
-      // rear lamp. It must NOT be on during normal night driving; it joins the
-      // brake illumination only.
       if(path.includes('fh_taillight_new_material')){
         cloneDynamicMaterials(obj,brakeMaterials,0xff1018);
         return;
       }
 
-      // High-mounted centre stop lamp remains brake-only.
       if(path.includes('fh_chmsl_new_material')){
         cloneDynamicMaterials(obj,brakeMaterials,0xff1018);
         return;
       }
 
-      // White reverse section in the inner rear lamp cluster.
       if(
         isRearCluster &&
         materialNames.some(name=>name.includes('fh_light_glass'))
@@ -277,19 +282,20 @@ export function createWrxGlbSystem({
         cloneDynamicMaterials(obj,reverseMaterials,0xffffff);
       }
     });
+    if(!reverseMaterials.length){
+      console.warn('WRX authored reverse-lamp binding found no rear white lens.');
+    }
   }
 
   function bindAuthoredHeadlights(){
     headlightMaterials.length=0;
+    root?.updateMatrixWorld(true);
     root?.traverse(obj=>{
       if(!obj?.isMesh&&!obj?.isSkinnedMesh)return;
       const path=semanticPath(obj);
       const names=(Array.isArray(obj.material)?obj.material:[obj.material])
         .map(mat=>String(mat?.name||'').toLowerCase());
-      const localBox=new THREE.Box3().setFromObject(obj);
-      const localCenter=new THREE.Vector3();
-      localBox.getCenter(localCenter);
-      root.worldToLocal(localCenter);
+      const localCenter=rootLocalGeometryCenter(obj);
       const isFrontCluster=localCenter.z>1.45 && localCenter.y>.45;
       if(
         isFrontCluster &&
@@ -360,9 +366,6 @@ export function createWrxGlbSystem({
 
   function setRearLights(braking=false,reversing=false,nightLevel=0){
     const night=clamp(Number(nightLevel)||0,0,1);
-
-    // Normal night driving: only the outer left/right red rear lights.
-    // Visible at night, but still much dimmer than braking.
     const runningIntensity=night>.06 ? (.55+night*3.25) : .02;
     for(const mat of runningTailMaterials){
       mat.emissive?.setHex(0xff2028);
@@ -370,15 +373,12 @@ export function createWrxGlbSystem({
       mat.needsUpdate=true;
     }
 
-    // Braking: illuminate the lower half plus the authored lower/main red piece
-    // and the centre high-mounted stop lamp. The upper running light remains on.
     for(const mat of brakeMaterials){
       mat.emissive?.setHex(0xff1018);
       mat.emissiveIntensity=braking?5.0:.015;
       mat.needsUpdate=true;
     }
 
-    // Reverse stays completely independent.
     for(const mat of reverseMaterials){
       mat.emissive?.setHex(0xffffff);
       mat.emissiveIntensity=reversing?5.2:.01;
@@ -399,10 +399,6 @@ export function createWrxGlbSystem({
     if(!obj?.isMesh&&!obj?.isSkinnedMesh)return false;
     const materials=Array.isArray(obj.material)?obj.material:[obj.material];
     const names=materials.map(mat=>String(mat?.name||'').toLowerCase());
-
-    // In this WRX asset each wheel is split into tire, centre emblem, rim,
-    // brake disc and one irregular caliper mesh. The caliper materials are the
-    // four generic names below; the disc uses Material.006/.007/.010/.011.
     return names.some(name=>
       name==='material'||
       name==='n.001'||
@@ -427,10 +423,6 @@ export function createWrxGlbSystem({
 
     const front=tmpLocal.z>0;
     const side=tmpLocal.x<0?-1:1;
-
-    // The carrier node itself is authored at the real wheel centre and contains
-    // tire, rim, brake disc and hub meshes. Wrap that exact node instead of the
-    // higher empty Sketchfab wheel group used in the previous candidates.
     const parent=carrier.parent;
     const originalPosition=carrier.position.clone();
     const originalQuaternion=carrier.quaternion.clone();
@@ -452,9 +444,6 @@ export function createWrxGlbSystem({
     carrier.scale.copy(originalScale);
     spinPivot.add(carrier);
 
-    // Keep the authored caliper stationary relative to the hub/upright. It
-    // follows front-wheel steering through steerPivot, but is deliberately not
-    // parented to spinPivot. Tire + rim + brake disc continue to roll normally.
     root.updateMatrixWorld(true);
     for(const caliper of calipers){
       if(!caliper?.parent)continue;
@@ -473,8 +462,6 @@ export function createWrxGlbSystem({
       if(name.includes('fh6_wrx_wheel'))wheelRoots.push(obj);
     });
 
-    // GLTFLoader sanitizes punctuation in node names, therefore this detection
-    // intentionally avoids exact Sketchfab node-name matching.
     const unique=[];
     for(const wheelRoot of wheelRoots){
       if(unique.some(existing=>wheelRoot.parent===existing||existing.parent===wheelRoot))continue;
@@ -486,7 +473,6 @@ export function createWrxGlbSystem({
       if(controller)wheelControllers.push(controller);
     }
 
-    // Keep only four physical wheel assemblies if a loader exposes extra aliases.
     wheelControllers.sort((a,b)=>Number(b.front)-Number(a.front)||a.side-b.side);
     if(wheelControllers.length>4)wheelControllers.length=4;
   }
@@ -502,8 +488,6 @@ export function createWrxGlbSystem({
       centerAngle:Number(steerAngle)||0
     });
 
-    // +Z is forward, therefore positive rotation around +X gives the correct
-    // rolling direction for a wheel whose axle lies along local X.
     wheelSpin+=Number(speed||0)*safeDt/wheelRadius;
     if(Math.abs(wheelSpin)>Math.PI*2048)wheelSpin%=Math.PI*2;
 
@@ -592,6 +576,7 @@ export function createWrxGlbSystem({
     get loadError(){return loadError;},
     get active(){return requestedActive&&ready;},
     get wheelControllerCount(){return wheelControllers.length;},
+    get reverseMaterialCount(){return reverseMaterials.length;},
     host
   };
 }
