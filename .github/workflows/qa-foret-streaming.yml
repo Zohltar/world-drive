@@ -66,5 +66,7 @@ jobs:
         run: node qa-forest-p933-startup-gate.mjs
       - name: P9.35 forward-majority startup QA
         run: node qa-forest-p935-front-startup.mjs
+      - name: P9.36 rolling forest prefetch QA
+        run: node qa-forest-p936-rolling-prefetch.mjs
       - name: Production build
         run: npm run build
