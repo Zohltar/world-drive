@@ -1,4 +1,4 @@
-import {createRemoteAuthoredLighting} from './multiplayer-authored-lighting.js';
+import {createRemoteAuthoredLighting} from './multiplayer-authored-lighting-m251.js';
 
 // World Drive multiplayer HD vehicle cache.
 // Remote peers reuse cached authored GLB templates, with peer-local presentation
