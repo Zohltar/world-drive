@@ -1,9 +1,9 @@
 import {readTransmissionRuntimeState} from './transmission-runtime-bridge.js';
 import {getMultiplayerVehicleSpec} from './multiplayer-vehicle-registry.js';
 
-// Multiplayer M3 client: presentation-only N-player LAN replication at 30 Hz.
-// Vehicle metrics come from the central registry; remote physics stays local to
-// the sender and never participates in receiver collision/authority.
+// Multiplayer M4 client: presentation-only N-player LAN replication at 30 Hz.
+// Network state is normalized once, then the remote visual adapter feeds the
+// exact same authored controller used by a local vehicle.
 
 const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
 const lerp=(a,b,t)=>a+(b-a)*t;
@@ -117,11 +117,21 @@ export function createMultiplayerClient({
   function resetSignals(){localSignalLeft=false;localSignalRight=false;localSignalTimer=0;localSignalLastAt=performance.now();}
   function localLightingState(state,now){
     const runtime=readTransmissionRuntimeState?.()||{};
-    // Prefer authoritative local channels when provided; otherwise use the same
-    // transmission bridge that drives the local GLB systems.
-    const braking=typeof state.braking==='boolean'?state.braking:(Number(runtime.serviceBrake)||0)>.04;
-    const reversing=typeof state.reversing==='boolean'?state.reversing:(Number(runtime.selectorGear)===-1||finite(state.speed,0)<-.08);
+    // Brake and reverse now come first from the same authoritative transmission
+    // bridge that drives the local authored vehicle controllers. A smoothed lamp
+    // material must never become the network source of truth.
+    const braking=Number.isFinite(Number(runtime.serviceBrake))
+      ?(Number(runtime.serviceBrake)||0)>.04
+      :!!state.braking;
+    const reversing=Number.isFinite(Number(runtime.selectorGear))
+      ?Number(runtime.selectorGear)===-1
+      :boolOr(state.reversing,finite(state.speed,0)<-.08);
     const nightLevel=Number.isFinite(Number(state.nightLevel))?clamp(Number(state.nightLevel),0,1):clamp(Number(getHeadlightLevel?.())||0,0,1);
+
+    if(typeof state.signalLeft==='boolean'&&typeof state.signalRight==='boolean'&&typeof state.signalBlink==='boolean'){
+      return {braking,reversing,nightLevel,signalLeft:state.signalLeft,signalRight:state.signalRight,signalBlink:state.signalBlink,lightingProtocol:'m2.4'};
+    }
+
     const dt=Math.max(.001,Math.min(.05,(now-localSignalLastAt)/1000));localSignalLastAt=now;
     const steer=finite(state.steer,0),abs=Math.abs(steer),stopped=Math.abs(finite(state.speed,0))<.35;
     if(abs<=TURN_SIGNAL_NEUTRAL_RAD){localSignalLeft=false;localSignalRight=false;localSignalTimer=0;}
@@ -207,16 +217,21 @@ export function createMultiplayerClient({
     for(const peer of peers.values()){
       const sampled=samplePeer(peer,renderAt);if(sampled)Object.assign(peer,sampled);
       if(!peer.visual?.root)continue;
+      const peerAbs=latLonToWorld(peer.lat,peer.lon);
       let rx,rz,relativeD2;
       if(localState&&localRender&&Number.isFinite(Number(localState.lat))&&Number.isFinite(Number(localState.lon))&&Number.isFinite(Number(localRender.x))&&Number.isFinite(Number(localRender.z))){
         const delta=geographicOffsetMeters(localState.lat,localState.lon,peer.lat,peer.lon);rx=localRender.x+delta.x;rz=localRender.z+delta.z;relativeD2=delta.x*delta.x+delta.z*delta.z;
       }else{
-        const abs=latLonToWorld(peer.lat,peer.lon);rx=abs.x-(offset?.x||0);rz=abs.z-(offset?.z||0);
+        rx=peerAbs.x-(offset?.x||0);rz=peerAbs.z-(offset?.z||0);
         const localAbs=localState&&Number.isFinite(Number(localState.lat))&&Number.isFinite(Number(localState.lon))?latLonToWorld(localState.lat,localState.lon):{x:0,z:0};
-        const dx=abs.x-localAbs.x,dz=abs.z-localAbs.z;relativeD2=dx*dx+dz*dz;
+        const dx=peerAbs.x-localAbs.x,dz=peerAbs.z-localAbs.z;relativeD2=dx*dx+dz*dz;
       }
       const visible=relativeD2<3200*3200;peer.visual.root.visible=visible;
-      if(!visible){peer.visual.setLighting?.({braking:false,reversing:false,nightLevel:0,signalLeft:false,signalRight:false,signalBlink:false,distance:Infinity});onRemoteSkidFrame?.({id:peer.id,onRoad:false,skidFront:0,skidRear:0,contacts:[],distance:Infinity});continue;}
+      if(!visible){
+        peer.visual.setRemoteVisible?.(false,{absX:peerAbs.x,absZ:peerAbs.z,heading:peer.heading,renderX:rx,renderZ:rz});
+        peer.visual.setLighting?.({braking:false,reversing:false,nightLevel:0,signalLeft:false,signalRight:false,signalBlink:false,distance:Infinity});
+        onRemoteSkidFrame?.({id:peer.id,onRoad:false,skidFront:0,skidRear:0,contacts:[],distance:Infinity});continue;
+      }
 
       const support=solveRemoteSupport?.({lat:peer.lat,lon:peer.lon,heading:peer.heading,visual:peer.visual})||null;
       const supportY=Number.isFinite(support?.rootY)?support.rootY:peer.y;
@@ -238,7 +253,18 @@ export function createMultiplayerClient({
       }
 
       const distance=Math.sqrt(relativeD2),night=Number.isFinite(peer.nightLevel)?clamp(peer.nightLevel,0,1):clamp(Number(getHeadlightLevel?.())||0,0,1);
-      peer.visual.setLighting?.({braking:!!peer.braking,reversing:!!peer.reversing,nightLevel:night,signalLeft:!!peer.signalLeft,signalRight:!!peer.signalRight,signalBlink:!!peer.signalBlink,distance});
+      const correctionX=Number(peer.visual.presentationCorrectionX)||0,correctionZ=Number(peer.visual.presentationCorrectionZ)||0;
+      const remoteState={
+        absX:peerAbs.x,absZ:peerAbs.z,
+        renderX:rx+correctionX,renderZ:rz+correctionZ,
+        heading:peer.heading,speed:peer.speed,steerAngle:peer.steer,
+        braking:!!peer.braking,reversing:!!peer.reversing,nightLevel:night,
+        signalLeft:!!peer.signalLeft,signalRight:!!peer.signalRight,signalBlink:!!peer.signalBlink,
+        distance
+      };
+      peer.visual.setRemoteVisible?.(true,remoteState);
+      peer.visual.setLighting?.(remoteState);
+      peer.visual.updateRemoteVehicle?.(dt,remoteState);
       onRemoteSkidFrame?.({id:peer.id,onRoad:peer.onRoad,skidFront:peer.skidFront,skidRear:peer.skidRear,contacts:support?.wheelContacts||[],distance});
     }
   }
@@ -250,4 +276,4 @@ export function createMultiplayerClient({
   return {connect,disconnect,toggle,update,getPeers,isConnected:()=>socket?.readyState===WebSocket.OPEN};
 }
 
-export const MULTIPLAYER_M3_DIAGNOSTICS=Object.freeze({networkHz:NETWORK_STATE_HZ,interpolationDelayMs:INTERPOLATION_DELAY_MS,maxExtrapolationMs:MAX_EXTRAPOLATION_MS,metrics:'multiplayer-vehicle-registry'});
+export const MULTIPLAYER_M3_DIAGNOSTICS=Object.freeze({networkHz:NETWORK_STATE_HZ,interpolationDelayMs:INTERPOLATION_DELAY_MS,maxExtrapolationMs:MAX_EXTRAPOLATION_MS,metrics:'multiplayer-vehicle-registry',visuals:'local-controller-adapter'});
