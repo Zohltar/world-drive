@@ -1,33 +1,75 @@
-import {createLocalWorldBuilder as createLocalWorldBuilderP925} from './local-world-builder-p925.js';
+import {createLocalWorldBuilder as createLocalWorldBuilderP926} from './local-world-builder-p926.js';
 
 export function createLocalWorldBuilder(options={}){
   const terrainService=options.terrainService;
-  const originalReset=options.resetStreamedWorldOrigins;
-  const originalSchedule=options.scheduleVisualJob;
+  const scheduleVisualJob=options.scheduleVisualJob;
+  let incrementalInstall=false;
 
-  const base=createLocalWorldBuilderP925({
-    ...options,
-    resetStreamedWorldOrigins:(...args)=>{
-      const horizonOrigin=terrainService?.captureHorizonOrigin?.();
-      const result=originalReset?.(...args);
-      terrainService?.restoreHorizonOrigin?.(horizonOrigin);
-      return result;
-    },
-    scheduleVisualJob:(key,job,timeout)=>{
-      if(key==='horizon'&&Number(timeout)>=500&&typeof terrainService?.rebuildHorizonIncremental==='function'){
-        terrainService.cancelHorizonPreparation?.();
-        return originalSchedule?.(key,()=>terrainService.rebuildHorizonIncremental(),timeout);
+  const terrainProxy=terrainService?Object.create(terrainService):terrainService;
+  if(terrainProxy){
+    terrainProxy.setRoadBed=(...args)=>{
+      if(incrementalInstall&&typeof terrainService?.setRoadBedStateOnly==='function'){
+        return terrainService.setRoadBedStateOnly(...args);
       }
-      return originalSchedule?.(key,job,timeout);
-    }
+      return terrainService?.setRoadBed?.(...args);
+    };
+  }
+
+  const base=createLocalWorldBuilderP926({
+    ...options,
+    terrainService:terrainProxy
   });
+
+  function rebuild(...args){
+    terrainService?.cancelRoadTransitionPreparation?.();
+    return base.rebuild?.(...args);
+  }
+
+  function prepareIncremental(...args){
+    incrementalInstall=true;
+    try{
+      // Async functions execute synchronously until their first await. P9.25's
+      // road-state install happens before that await, so this narrow flag swaps
+      // only that call to the P9.27 state-only terrain path. All forced/sync
+      // rebuilds continue to use the proven full setRoadBed implementation.
+      return base.prepareIncremental?.(...args);
+    }finally{
+      incrementalInstall=false;
+    }
+  }
+
+  function commitPrepared(prepared){
+    const result=base.commitPrepared?.(prepared);
+    if(result&&typeof terrainService?.rebuildRoadTransitionIncremental==='function'){
+      terrainService.cancelRoadTransitionPreparation?.();
+      scheduleVisualJob?.(
+        'road-transition',
+        ()=>terrainService.rebuildRoadTransitionIncremental(),
+        360
+      );
+    }
+    return result;
+  }
+
+  function cancelPreparation(...args){
+    terrainService?.cancelRoadTransitionPreparation?.();
+    return base.cancelPreparation?.(...args);
+  }
+
+  function p923Diagnostics(){
+    return {
+      ...(base.p923Diagnostics?.()||{}),
+      p927RoadTransition:terrainService?.p927Diagnostics?.()||null
+    };
+  }
 
   const api={
     ...base,
-    p923Diagnostics:()=>({
-      ...(base.p923Diagnostics?.()||{}),
-      p926Horizon:terrainService?.p926Diagnostics?.()||null
-    })
+    rebuild,
+    prepareIncremental,
+    commitPrepared,
+    cancelPreparation,
+    p923Diagnostics
   };
   try{globalThis.__WORLD_DRIVE_P923_LOCAL_WORLD__=api;}catch{}
   return api;
