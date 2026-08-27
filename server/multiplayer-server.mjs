@@ -75,6 +75,7 @@ function finite(value,fallback=0){
 }
 
 function normalizeGear(value){
+  if(value===null||value===undefined||value==='')return null;
   const n=Number(value);
   if(!Number.isFinite(n))return null;
   return n<0?-1:n===0?0:Math.max(1,Math.floor(n));
@@ -102,11 +103,11 @@ function safeState(client,message){
     vehicleId:String(message.vehicleId||client.vehicleId||'wrx').slice(0,32),
     steer:clamp(finite(message.steer),-1.2,1.2),
 
-    // M4.1 explicit transmission state. Gear is authoritative for reverse on
-    // compatible clients; reversing remains for backward compatibility only.
+    // M4.9 numeric transmission contract: -1 reverse, 0 neutral, 1..N forward.
+    // Missing information remains null and is never silently converted to N.
     gear,
     braking:!!message.braking,
-    reversing:gear!==null?gear<0:!!message.reversing,
+    reversing:gear!==null?gear===-1:!!message.reversing,
 
     // M2.4 presentation-only lighting state. The relay never decides when a
     // lamp should be on; it only normalizes and forwards the driver's state.
