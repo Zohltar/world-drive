@@ -62,14 +62,19 @@ for(const descriptor of descriptors){
   const spec=getMultiplayerVehicleSpec(descriptor.id);
   const normalized=normalizeMultiplayerVehicleState({
     absX:'123.5',absZ:'-88.25',renderX:'12.5',renderZ:'-7.5',heading:'1.2',speed:'-4.5',steerAngle:'9',
-    braking:1,reversing:true,nightLevel:4,signalLeft:true,signalRight:false,signalBlink:true,distance:'55'
+    gear:-1,braking:1,reversing:false,nightLevel:4,signalLeft:true,signalRight:false,signalBlink:true,distance:'55'
   },vehicleSystem.active);
   assert.equal(normalized.absX,123.5,`${descriptor.id}: absX normalization failed`);
   assert.equal(normalized.absZ,-88.25,`${descriptor.id}: absZ normalization failed`);
   assert(Number.isFinite(normalized.steerAngle),`${descriptor.id}: steer angle must normalize finite`);
   assert(normalized.steerInput>=-1&&normalized.steerInput<=1,`${descriptor.id}: steerInput must clamp to normalized contract`);
   assert.equal(normalized.nightLevel,1,`${descriptor.id}: night level must clamp`);
-  assert.equal(normalized.reversing,true,`${descriptor.id}: reverse state must survive conversion`);
+  assert.equal(normalized.gear,-1,`${descriptor.id}: reverse gear must survive conversion`);
+  assert.equal(normalized.reversing,true,`${descriptor.id}: gear R must force reverse lights even if legacy bool is false`);
+
+  const forward=normalizeMultiplayerVehicleState({gear:1,reversing:true},vehicleSystem.active);
+  assert.equal(forward.gear,1,`${descriptor.id}: forward gear normalization failed`);
+  assert.equal(forward.reversing,false,`${descriptor.id}: forward gear must override stale legacy reversing=true`);
 
   controller.setActive(false);
   scene.traverse(obj=>{obj.geometry?.dispose?.();for(const mat of (Array.isArray(obj.material)?obj.material:[obj.material]))mat?.dispose?.();});
@@ -90,21 +95,24 @@ assert(adapter.includes('loadAuthoredVehicleFactory(vehicleId)'),'remote adapter
 assert(adapter.includes('createVehicleSystem({initialId:vehicleId})'),'every peer must own an isolated vehicleSystem');
 assert(adapter.includes("descriptor?.kind==='articulated-truck'"),'adapter must convert articulated truck through the same contract');
 assert(adapter.includes('absX-state.renderX')&&adapter.includes('absZ-state.renderZ'),'truck adapter must infer floating world origin from normalized coordinates');
+assert(adapter.includes('reversing:gear!==null?gear<0:!!input.reversing'),'adapter must make explicit gear authoritative for reverse');
 assert(visuals.includes("from './multiplayer-vehicle-adapter.js'"),'multiplayer visuals must route through M4 adapter');
 assert(!visuals.includes('multiplayer-hd-vehicles-m3')&&!visuals.includes('multiplayer-hd-vehicles-m31'),'M4 runtime must not use the retired multiplayer-only GLB cache');
 assert(!visuals.includes('multiplayer-authored-lighting'),'M4 runtime must not use a second multiplayer-only lighting implementation');
 assert(visuals.includes('same-local-authored-controller'),'M4 visual source must be explicit');
 assert(client.includes('peer.visual.updateRemoteVehicle?.(dt,remoteState)'),'client must feed normalized peer state into M4 adapter each frame');
 assert(client.includes('peer.visual.setRemoteVisible?.(true,remoteState)'),'client must keep external trailer/controller visibility aligned');
+assert(client.includes('gear:peer.gear'),'client must forward network gear into normalized remote state');
 assert(id4.includes('for(const [obj,visible] of hiddenWheelState)obj.visible=visible'),'ID.4 local controller wheel visibility restoration regression');
 assert(!id4.includes('hiddenWheelState)pivot.visible=visible'),'ID.4 invalid pivot visibility reference must not return');
 
-console.log('V21.31 MULTIPLAYER M4 ADAPTER QA: PASS',{
+console.log('V21.31 MULTIPLAYER M4.1 ADAPTER QA: PASS',{
   vehicles:reports,
   sameControllerForLocalAndRemote:true,
   isolatedPeerVehicleSystems:true,
   capabilitiesDerivedFromLocalSource:true,
-  normalizedContract:['pose','motion','steering','brake','reverse','night','signals','distance'],
+  normalizedContract:['pose','motion','steering','gear','brake','reverse','night','signals','distance'],
+  gearAuthoritativeReverse:true,
   articulatedTruckConverted:true,
   duplicateRemoteGlbLightingRuntime:false
 });
