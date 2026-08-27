@@ -1,4 +1,4 @@
-// World Drive V18J - dependency-free N-player LAN WebSocket relay.
+// World Drive V18K - dependency-free N-player LAN WebSocket relay.
 // This server intentionally does NOT simulate vehicles or collisions.
 
 import http from 'node:http';
@@ -85,6 +85,12 @@ function safeState(client,message){
     lon:clamp(finite(message.lon),-180,180),
     y:clamp(finite(message.y),-500,10000),
     heading:finite(message.heading),
+
+    // M2 presentation prediction fields. They remain data only; the relay does
+    // not integrate or author any remote physics.
+    velocityHeading:finite(message.velocityHeading,message.heading),
+    longitudinalAccel:clamp(finite(message.longitudinalAccel),-20,15),
+
     speed:clamp(finite(message.speed),-100,150),
     vehicleId:String(message.vehicleId||client.vehicleId||'wrx').slice(0,32),
     steer:clamp(finite(message.steer),-1.2,1.2),
@@ -281,7 +287,7 @@ server.on('upgrade',(req,socket)=>{
 });
 
 server.listen(PORT,HOST,()=>{
-  console.log('World Drive V18J multiplayer');
+  console.log('World Drive V18K multiplayer');
   console.log(`WebSocket: ws://0.0.0.0:${PORT}`);
   console.log('LAN only by default; no accounts and no collision simulation.');
 });
