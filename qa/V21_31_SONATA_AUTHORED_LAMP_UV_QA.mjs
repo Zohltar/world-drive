@@ -79,7 +79,7 @@ function uvStats(json,bin,nodeName){
     const uvs=readAccessor(json,bin,uvAccessor);
     let minU=Infinity,minV=Infinity,maxU=-Infinity,maxV=-Infinity;
     for(const [u,v] of uvs){minU=Math.min(minU,u);minV=Math.min(minV,v);maxU=Math.max(maxU,u);maxV=Math.max(maxV,v);}
-    rows.push({primitive:p,accessor:uvAccessor,count:uvs.length,minU,minV,maxU,maxV,uvs});
+    rows.push({primitive:p,accessor:uvAccessor,count:uvs.length,minU,minV,maxU,maxV,uvs,material:primitive.material});
   }
   assert(rows.length>0,`${nodeName}: no TEXCOORD_0 accessor`);
   return rows;
@@ -96,28 +96,50 @@ function countRegion(rows,{min,max}){
   return {inside,total,ratio:total?inside/total:0};
 }
 
+function textureInfo(json,rows){
+  const materialIndex=rows.find(row=>Number.isInteger(row.material))?.material;
+  const material=json.materials?.[materialIndex];
+  const textureIndex=material?.pbrMetallicRoughness?.baseColorTexture?.index;
+  const texture=json.textures?.[textureIndex];
+  const sourceIndex=texture?.source;
+  const image=json.images?.[sourceIndex];
+  return {
+    materialIndex:materialIndex??null,
+    materialName:material?.name||null,
+    textureIndex:textureIndex??null,
+    sourceIndex:sourceIndex??null,
+    mimeType:image?.mimeType||null,
+    imageBufferView:image?.bufferView??null
+  };
+}
+
 const {json,bin}=parseGlb(GLB);
 const object46=uvStats(json,bin,'Object_46');
 const object33=uvStats(json,bin,'Object_33');
 
 const reverseRegion={min:[0.04,0.00],max:[0.54,0.842]};
-const innerRedRegion={min:[0.04,0.842],max:[0.54,1.00]};
-const outerRedRegion={min:[0.44,0.842],max:[0.96,1.00]};
+const retiredInnerRedRegion={min:[0.04,0.842],max:[0.54,1.00]};
+const retiredOuterRedRegion={min:[0.44,0.842],max:[0.96,1.00]};
 const reverseCoverage=countRegion(object46,reverseRegion);
-const innerRedCoverage=countRegion(object46,innerRedRegion);
-const outerRedCoverage=countRegion(object33,outerRedRegion);
+const innerRedCoverage=countRegion(object46,retiredInnerRedRegion);
+const outerRedCoverage=countRegion(object33,retiredOuterRedRegion);
 
-const compact=rows=>rows.map(({primitive,accessor,count,minU,minV,maxU,maxV})=>({primitive,accessor,count,minU:+minU.toFixed(5),minV:+minV.toFixed(5),maxU:+maxU.toFixed(5),maxV:+maxV.toFixed(5)}));
-
-assert(reverseCoverage.inside>0,'Sonata Object_46 reverse UV region contains zero authored vertices');
-assert(innerRedCoverage.inside>0,'Sonata Object_46 red UV region contains zero authored vertices');
-assert(outerRedCoverage.inside>0,'Sonata Object_33 red UV region contains zero authored vertices');
-
-console.log('V21.31 SONATA AUTHORED LAMP UV QA: PASS',{
+const compact=rows=>rows.map(({primitive,accessor,count,minU,minV,maxU,maxV,material})=>({primitive,accessor,count,material,minU:+minU.toFixed(5),minV:+minV.toFixed(5),maxU:+maxU.toFixed(5),maxV:+maxV.toFixed(5)}));
+const report={
   object46:compact(object46),
   object33:compact(object33),
+  object46Texture:textureInfo(json,object46),
   reverseRegion,
   reverseCoverage,
-  innerRedCoverage,
-  outerRedCoverage
-});
+  retiredInnerRedCoverage:innerRedCoverage,
+  retiredOuterRedCoverage:outerRedCoverage
+};
+console.log('SONATA AUTHORED LAMP UV REPORT',JSON.stringify(report,null,2));
+
+// M4.10 intentionally removed the old red UV clipping because the actual atlas
+// does not place the brake geometry in those assumed ranges. Reverse still uses
+// a UV region, so only that region is a hard contract here.
+assert(reverseCoverage.inside>0,'Sonata Object_46 reverse UV region contains zero authored vertices');
+assert(reverseCoverage.ratio>.05,'Sonata Object_46 reverse UV region covers too little authored geometry to be reliable');
+
+console.log('V21.31 SONATA AUTHORED LAMP UV QA: PASS',report);
