@@ -3,12 +3,19 @@ import {createForestChunkStreamer as createForestChunkStreamerP929} from './fore
 const MATCH_BEFORE_MS=70;
 const MATCH_AFTER_MS=12;
 const INSTALL_RETRY_MS=120;
+const STARTUP_DIRECTION_SEED_M=180;
 
 function finite(value,fallback=0){return Number.isFinite(value)?value:fallback;}
 function round3(value){return Number(finite(value).toFixed(3));}
 
 export function createForestChunkStreamer(options){
   const userOnStats=options?.onStats;
+  const realGetWorldOffset=options?.getWorldOffset;
+  const nearestRoute=options?.nearestRoute;
+  let offsetOverride=null;
+  let startupDirectionSeeded=false;
+  let startupSeedDir={x:0,z:0};
+  let startupSeedAngle=null;
   let visible={trees:0,near:0,mid:0,far:0,edge:0,chunks:0,cached:0,queued:0};
   let base=null;
   const correlation={
@@ -20,8 +27,30 @@ export function createForestChunkStreamer(options){
     lastUnmatchedHitch:null
   };
 
+  const readRealOffset=()=>{
+    const value=realGetWorldOffset?.()||{x:0,z:0};
+    return {x:finite(value.x),z:finite(value.z)};
+  };
+
+  function routeDirectionAt(center){
+    try{
+      const nr=nearestRoute?.(center.x,center.z);
+      if(!nr||!Number.isFinite(nr.angle))return null;
+      // routing.js uses angle=atan2(dx,dz), therefore the route-forward unit
+      // vector is sin(angle), cos(angle) in world X/Z.
+      return {
+        angle:nr.angle,
+        x:Math.sin(nr.angle),
+        z:Math.cos(nr.angle)
+      };
+    }catch{
+      return null;
+    }
+  }
+
   base=createForestChunkStreamerP929({
     ...options,
+    getWorldOffset:()=>offsetOverride||readRealOffset(),
     onStats:stats=>{
       visible={
         trees:finite(stats?.trees),near:finite(stats?.near),mid:finite(stats?.mid),
@@ -31,6 +60,32 @@ export function createForestChunkStreamer(options){
       userOnStats?.(stats);
     }
   });
+
+  function seedStartupRouteDirection(nextAssets){
+    const center=readRealOffset();
+    const dir=routeDirectionAt(center);
+    if(!dir)return false;
+
+    // P9.29/P9.31 learns travel direction from consecutive world centres. At
+    // startup there has been no recenter yet, so prime it with one synthetic
+    // centre 180 m BEHIND the route start, immediately followed by the real
+    // centre. Idle callbacks have not run yet, therefore no chunk is committed
+    // at the synthetic position; only queue priority learns the correct heading.
+    offsetOverride={
+      x:center.x-dir.x*STARTUP_DIRECTION_SEED_M,
+      z:center.z-dir.z*STARTUP_DIRECTION_SEED_M
+    };
+    try{
+      base.setAssets(nextAssets);
+    }finally{
+      offsetOverride=null;
+    }
+    base.requestUpdate(true);
+    startupDirectionSeeded=true;
+    startupSeedDir={x:dir.x,z:dir.z};
+    startupSeedAngle=dir.angle;
+    return true;
+  }
 
   function nearestActivity(raw,hitchAt){
     const candidates=[];
@@ -78,12 +133,19 @@ export function createForestChunkStreamer(options){
     const raw=base.stats?.()||{};
     return {
       enabled:true,
-      observerMode:'p931-ahead-priority',
+      observerMode:'p934-startup-route-seed',
       legacyObserverMode:'p929-direct-last-slice',
       trees:visible.trees,near:visible.near,mid:visible.mid,far:visible.far,edge:visible.edge,
       activeChunks:finite(raw.activeChunks),cachedChunks:finite(raw.cachedChunks),queuedChunks:finite(raw.queuedChunks),
       chunksBuilt:finite(raw.chunksBuilt),chunksReplaced:finite(raw.chunksReplaced),
       matrixUploads:finite(raw.matrixUploads),densityCountUpdates:finite(raw.densityCountUpdates),
+      startupDirection:{
+        seeded:startupDirectionSeeded,
+        seedDistanceM:STARTUP_DIRECTION_SEED_M,
+        angle:Number.isFinite(startupSeedAngle)?round3(startupSeedAngle):null,
+        dirX:round3(startupSeedDir.x),
+        dirZ:round3(startupSeedDir.z)
+      },
       aheadPriority:{
         enabled:raw.aheadPriority===true,
         nearPriorityDistance:round3(raw.nearPriorityDistance),
@@ -117,6 +179,7 @@ export function createForestChunkStreamer(options){
     globalThis.__WORLD_DRIVE_P928_RECORD_HITCH__=recordHitch;
     globalThis.__WORLD_DRIVE_P929_FOREST__=snapshot;
     globalThis.__WORLD_DRIVE_P931_FOREST__=snapshot;
+    globalThis.__WORLD_DRIVE_P934_FOREST__=snapshot;
     if(typeof globalThis.setTimeout!=='function')return;
     const attempt=()=>{
       const current=globalThis.WorldDriveFramePacing;
@@ -124,11 +187,12 @@ export function createForestChunkStreamer(options){
         globalThis.setTimeout(attempt,INSTALL_RETRY_MS);
         return;
       }
-      if(current.__worldDriveP931Forest)return;
+      if(current.__worldDriveP934Forest)return;
       const original=current.__worldDriveP928Original||current;
       const wrapped=()=>({...((original?.()||{})),forest:snapshot()});
       wrapped.__worldDriveP929Forest=true;
       wrapped.__worldDriveP931Forest=true;
+      wrapped.__worldDriveP934Forest=true;
       wrapped.__worldDriveP928Original=original;
       globalThis.WorldDriveFramePacing=wrapped;
     };
@@ -138,11 +202,25 @@ export function createForestChunkStreamer(options){
   installDiagnostics();
 
   return Object.freeze({
-    setAssets:(...args)=>base.setAssets(...args),
+    setAssets:(nextAssets,...args)=>{
+      if(!nextAssets?.trees?.length){
+        startupDirectionSeeded=false;
+        startupSeedDir={x:0,z:0};
+        startupSeedAngle=null;
+        return base.setAssets(nextAssets,...args);
+      }
+      if(!startupDirectionSeeded&&seedStartupRouteDirection(nextAssets))return true;
+      return base.setAssets(nextAssets,...args);
+    },
     requestUpdate:(...args)=>base.requestUpdate(...args),
     refreshVisibleHeights:(...args)=>base.refreshVisibleHeights(...args),
-    clearAll:(...args)=>base.clearAll(...args),
+    clearAll:(...args)=>{
+      startupDirectionSeeded=false;
+      startupSeedDir={x:0,z:0};
+      startupSeedAngle=null;
+      return base.clearAll(...args);
+    },
     whenInitialReady:(...args)=>base.whenInitialReady(...args),
-    stats:()=>({...base.stats(),p931:snapshot()})
+    stats:()=>({...base.stats(),p934:snapshot()})
   });
 }
