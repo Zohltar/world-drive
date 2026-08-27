@@ -1,15 +1,16 @@
 import {createSceneryRenderer as createSceneryRendererP9} from './scenery-renderer-p9.js';
 import {FOREST_STREAMING_POLICY as FOREST} from './forest-streaming-policy.js';
 
-// Foret P9.34 — route-aware startup forest readiness gate.
+// Foret P9.35 — route-aware startup forest readiness gate.
 //
 // P9.33 waited for a raw number of active chunks, which could be satisfied by
-// chunks behind the spawn. P9.34 measures the initial route heading and requires
-// useful forward coverage before gameplay begins. P9.34 pairs with the streamer
-// wrapper that seeds P9.31/P9.32 ahead-priority from that same route heading.
+// chunks behind the spawn. P9.34 added forward coverage. P9.35 makes the exit
+// condition directional as well: startup is only considered ready when the
+// forward half has a clear majority over the rear half.
 
 const DEFAULT_INITIAL_CHUNKS=14;
-const DEFAULT_FRONT_CHUNKS=7;
+const DEFAULT_FRONT_CHUNKS=8;
+const DEFAULT_FRONT_LEAD=2;
 const DEFAULT_TIMEOUT_MS=5500;
 const DEFAULT_POLL_MS=35;
 
@@ -73,6 +74,7 @@ export function createSceneryRenderer(options){
   function whenInitialForestReady({
     minChunks=DEFAULT_INITIAL_CHUNKS,
     minFrontChunks=DEFAULT_FRONT_CHUNKS,
+    minFrontLead=DEFAULT_FRONT_LEAD,
     timeoutMs=DEFAULT_TIMEOUT_MS,
     pollMs=DEFAULT_POLL_MS
   }={}){
@@ -80,6 +82,7 @@ export function createSceneryRenderer(options){
     const started=performance.now();
     const target=Math.max(8,Math.floor(finite(minChunks,DEFAULT_INITIAL_CHUNKS)));
     const frontTarget=Math.max(4,Math.floor(finite(minFrontChunks,DEFAULT_FRONT_CHUNKS)));
+    const frontLead=Math.max(1,Math.floor(finite(minFrontLead,DEFAULT_FRONT_LEAD)));
     const timeout=Math.max(600,finite(timeoutMs,DEFAULT_TIMEOUT_MS));
     const poll=Math.max(15,finite(pollMs,DEFAULT_POLL_MS));
 
@@ -89,7 +92,10 @@ export function createSceneryRenderer(options){
         const stats=base.forestStats?.()||{};
         const active=Math.max(0,finite(stats.activeChunks));
         const coverage=directionalCoverage();
-        const forwardReady=!coverage.directionKnown||coverage.front>=frontTarget;
+        const forwardReady=!coverage.directionKnown||(
+          coverage.front>=frontTarget&&
+          coverage.front>=coverage.rear+frontLead
+        );
         if(active>=target&&forwardReady){
           resolve(true);
           return;
@@ -114,11 +120,13 @@ export function createSceneryRenderer(options){
       frontChunks:coverage.front,
       rearChunks:coverage.rear,
       lateralChunks:coverage.lateral,
+      frontLead:coverage.front-coverage.rear,
       directionKnown:coverage.directionKnown,
       dirX:finite(coverage.dirX),
       dirZ:finite(coverage.dirZ),
       targetChunks:DEFAULT_INITIAL_CHUNKS,
       targetFrontChunks:DEFAULT_FRONT_CHUNKS,
+      targetFrontLead:DEFAULT_FRONT_LEAD,
       timeoutMs:DEFAULT_TIMEOUT_MS
     };
   }
@@ -127,6 +135,8 @@ export function createSceneryRenderer(options){
   globalThis.__WORLD_DRIVE_P933_FOREST_STATUS__=startupForestStatus;
   globalThis.__WORLD_DRIVE_P934_FOREST_READY__=whenInitialForestReady;
   globalThis.__WORLD_DRIVE_P934_FOREST_STATUS__=startupForestStatus;
+  globalThis.__WORLD_DRIVE_P935_FOREST_READY__=whenInitialForestReady;
+  globalThis.__WORLD_DRIVE_P935_FOREST_STATUS__=startupForestStatus;
 
   return Object.freeze({
     ...base,
