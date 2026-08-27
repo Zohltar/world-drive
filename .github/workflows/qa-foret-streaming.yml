@@ -68,5 +68,7 @@ jobs:
         run: node qa-forest-p935-front-startup.mjs
       - name: P9.36 rolling forest prefetch QA
         run: node qa-forest-p936-rolling-prefetch.mjs
+      - name: P9.37 combined frame-pacing QA
+        run: node qa-p937-combined-frame-pacing.mjs
       - name: Production build
         run: npm run build
