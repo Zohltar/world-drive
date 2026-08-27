@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import {execFileSync} from 'node:child_process';
 import {
+  mergeExactTransmissionGear,
   mergeLocalAuthoredMultiplayerState,
   upgradeLegacyMultiplayerState,
   upgradeLegacyMultiplayerPayload
@@ -19,6 +20,7 @@ for(const file of [
   'src/multiplayer-visuals-m3.js',
   'src/multiplayer-vehicle-adapter.js',
   'src/deferred-glb-system.js',
+  'src/transmission-network-state.js',
   'src/vehicle-authored-registry.js',
   'src/vehicle-glb-entries.js',
   'src/multiplayer-vehicle-registry.js',
@@ -31,12 +33,13 @@ const visualEntry=fs.readFileSync('src/multiplayer-visuals.js','utf8');
 const visuals=fs.readFileSync('src/multiplayer-visuals-m3.js','utf8');
 const adapter=fs.readFileSync('src/multiplayer-vehicle-adapter.js','utf8');
 const deferred=fs.readFileSync('src/deferred-glb-system.js','utf8');
+const transmissionNetwork=fs.readFileSync('src/transmission-network-state.js','utf8');
 const authoredRegistry=fs.readFileSync('src/vehicle-authored-registry.js','utf8');
 const localEntries=fs.readFileSync('src/vehicle-glb-entries.js','utf8');
 const main=fs.readFileSync('src/main.js','utf8');
 
 assert(entry.includes("from './multiplayer-client-m3.js'"),'public multiplayer client must route through maintained client');
-assert(entry.includes("from './deferred-glb-system.js'"),'public multiplayer client must consume exact local authored presentation state');
+assert(entry.includes("from './transmission-network-state.js'"),'M4.8 must read exact numeric transmission gear');
 assert(visualEntry.includes("from './multiplayer-visuals-m3.js'"),'public multiplayer visuals must route through maintained visual entrypoint');
 assert(client.includes("from './multiplayer-vehicle-registry.js'"),'client must consume central metric registry');
 assert(!client.includes('VEHICLE_WHEELBASE'),'client must not duplicate wheelbases');
@@ -51,9 +54,25 @@ assert(client.includes('peer.visual.updateRemoteVehicle?.(dt,remoteState)'),'sam
 assert(client.includes('solveRemoteSupport?.({lat:peer.lat,lon:peer.lon,heading:peer.heading,visual:peer.visual})'),'receiver-local support must remain after interpolation');
 assert(client.includes("return {connect,disconnect,toggle,update,getPeers,isConnected:"),'public client API drift');
 
-// M4.7: reproduce the actual local authored path. An inactive local facade must
-// not publish; once active, the exact state passed to update() becomes the
-// multiplayer presentation authority even before its async GLB factory loads.
+// M4.8 canonical numeric wire contract: -1=R, 0=N, positive integers are
+// forward gears. The numeric gear itself is authoritative for reversing.
+for(const [input,expectedGear,expectedReverse] of [
+  [-1,-1,true],
+  [0,0,false],
+  [1,1,false],
+  [2,2,false],
+  [6,6,false]
+]){
+  const merged=mergeExactTransmissionGear({type:'state',gear:99,reversing:!expectedReverse},input);
+  assert.equal(merged.gear,expectedGear,`wire gear ${input} normalization drift`);
+  assert.equal(merged.reversing,expectedReverse,`wire reversing must derive only from gear ${input}`);
+}
+const flooredForward=mergeExactTransmissionGear({type:'state'},3.9);
+assert.equal(flooredForward.gear,3,'forward wire gear must normalize to integer');
+assert.equal(flooredForward.reversing,false,'positive wire gear cannot request reverse');
+
+// The authored facade remains the source for brake/night presentation parity,
+// but it no longer owns or invents transmission gear.
 resetLocalAuthoredPresentationState();
 const fakeFacade=createDeferredGlbSystem({
   label:'QA Sonata',
@@ -67,26 +86,21 @@ fakeFacade.update(.016,{braking:true,reversing:true,nightLevel:.4});
 const captured=readLocalAuthoredPresentationState();
 assert.equal(captured.source,'QA Sonata','active authored source label drift');
 assert.equal(captured.braking,true,'exact local authored brake request was not captured');
-assert.equal(captured.reversing,true,'exact local authored reverse request was not captured');
+assert.equal(captured.reversing,true,'local authored reverse diagnostic capture drift');
 assert.equal(captured.nightLevel,.4,'exact local authored night request was not captured');
 
-const mergedReverse=mergeLocalAuthoredMultiplayerState(
-  {type:'state',vehicleId:'sonata',braking:false,reversing:false,gear:1},
+const authoredMerged=mergeLocalAuthoredMultiplayerState(
+  {type:'state',vehicleId:'sonata',braking:false,reversing:false,gear:2},
   captured
 );
-assert.equal(mergedReverse.braking,true,'network state must copy exact local authored brake request');
-assert.equal(mergedReverse.reversing,true,'network state must copy exact local authored reverse request');
-assert.equal(mergedReverse.gear,-1,'local authored reversing=true must force explicit network R regardless of stale gear');
-assert.equal(mergedReverse.nightLevel,.4,'network state must copy exact local authored night level');
+assert.equal(authoredMerged.braking,true,'network state must copy exact local authored brake request');
+assert.equal(authoredMerged.nightLevel,.4,'network state must copy exact local authored night level');
+assert.equal(authoredMerged.gear,2,'authored presentation must not rewrite numeric transmission gear');
+assert.equal(authoredMerged.reversing,false,'authored presentation must not own reversing wire state');
 
-fakeFacade.update(.016,{braking:false,reversing:false,nightLevel:.2});
-const capturedForward=readLocalAuthoredPresentationState();
-const mergedForward=mergeLocalAuthoredMultiplayerState(
-  {type:'state',vehicleId:'sonata',gear:-1,reversing:true},
-  capturedForward
-);
-assert.equal(mergedForward.reversing,false,'local authored reverse-off must override stale network reverse');
-assert.equal(Object.hasOwn(mergedForward,'gear'),false,'stale explicit R must be removed when local authored reverse is off');
+const exactReverse=mergeExactTransmissionGear(authoredMerged,-1);
+assert.equal(exactReverse.gear,-1,'exact transmission R must reach wire state');
+assert.equal(exactReverse.reversing,true,'exact transmission R must force wire reverse');
 fakeFacade.setActive(false);
 assert.equal(readLocalAuthoredPresentationState().source,null,'deactivating authored facade must clear its published state');
 
@@ -98,7 +112,7 @@ assert.equal(legacyReverse.gear,-1,'legacy reversing=true must synthesize gear R
 const legacyForward=upgradeLegacyMultiplayerState({type:'state',reversing:false});
 assert.equal(Object.hasOwn(legacyForward,'gear'),false,'legacy reversing=false must not invent a forward gear');
 const currentPacket=upgradeLegacyMultiplayerState({type:'state',gear:3,reversing:false});
-assert.equal(currentPacket.gear,3,'explicit M4.1+ gear must never be rewritten');
+assert.equal(currentPacket.gear,3,'explicit numeric gear must never be rewritten');
 const upgradedSnapshot=JSON.parse(upgradeLegacyMultiplayerPayload(JSON.stringify({type:'snapshot',states:[
   {id:'p1',reversing:true},
   {id:'p2',reversing:false},
@@ -106,10 +120,12 @@ const upgradedSnapshot=JSON.parse(upgradeLegacyMultiplayerPayload(JSON.stringify
 ]})));
 assert.deepEqual(upgradedSnapshot.states.map(state=>state.gear??null),[-1,null,-1],'legacy snapshot gear upgrade drift');
 
-assert(deferred.includes("method==='update'&&requestedActive"),'active local authored update must publish exact presentation state');
-assert(deferred.includes('publishLocalAuthoredPresentationState(label,args[1]||{})'),'local authored state capture must occur at facade boundary');
-assert(entry.includes('mergeLocalAuthoredMultiplayerState'),'multiplayer entrypoint must merge exact local authored state');
-assert(entry.includes('merged.gear=-1'),'authored reverse request must force network R');
+assert(transmissionNetwork.includes('let gear=1'),'numeric transmission network state must have an explicit gear');
+assert(transmissionNetwork.includes('return n<0?-1:n===0?0:Math.max(1,Math.floor(n))'),'numeric transmission gear normalization contract drift');
+assert(entry.includes('readTransmissionNetworkGear()'),'multiplayer entrypoint must consume exact transmission-network gear');
+assert(entry.includes('reversing:exactGear===-1'),'wire reverse must derive directly from numeric gear -1');
+assert(!entry.includes('merged.gear=-1'),'authored visual state must no longer manufacture network gear');
+assert(deferred.includes("method==='update'&&requestedActive"),'active local authored update must keep presentation diagnostics');
 
 assert(visuals.includes("from './multiplayer-vehicle-adapter.js'"),'remote visuals must use M4 adapter');
 assert(visuals.includes('exact LOCAL authored controller'),'M4 local-controller parity documentation missing');
@@ -127,13 +143,14 @@ assert(main.includes("import { createMultiplayerVisualSystem } from './multiplay
 assert(main.includes('createRemoteVisual:multiplayerVisuals.createRemoteVehicleVisual'),'main must inject remote visuals');
 assert(main.includes('solveRemoteSupport:multiplayerVisuals.solveRemoteVehicleSupport'),'main must inject receiver-local support');
 
-console.log('V21.31 MULTIPLAYER M4.7 CLIENT QA: PASS',{
+console.log('V21.31 MULTIPLAYER M4.8 CLIENT QA: PASS',{
   publicClient:'multiplayer-client-m3',
   publicVisuals:'multiplayer-visuals-m3',
   networkHz:30,
-  localAuthoredPresentationAuthority:true,
-  exactReverseReplication:true,
-  staleGearCannotOverrideLocalReverse:true,
+  numericGearContract:{reverse:-1,neutral:0,forward:'1..N'},
+  exactTransmissionNetworkGear:true,
+  reverseDerivedFromGearOnly:true,
+  authoredBrakeNightParity:true,
   legacyRelayReverseCompatibility:true,
   visualSource:'same local authored controller',
   duplicateRemoteVisualImplementation:false
