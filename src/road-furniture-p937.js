@@ -71,9 +71,12 @@ export function createRoadFurnitureSystem(options={}){
   }
 
   function diagnostics(){
+    const baseDiag=base.diagnostics?.()||{};
     return {
-      ...(base.diagnostics?.()||{}),
+      ...baseDiag,
+      enabled:true,
       mode:'p937-idle-sign-collection',
+      pending:scheduled||baseDiag.pending===true,
       p937:{
         scheduled,
         requests:perf.requests,
