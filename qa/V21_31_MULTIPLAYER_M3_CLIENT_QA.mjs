@@ -1,6 +1,10 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import {execFileSync} from 'node:child_process';
+import {
+  upgradeLegacyMultiplayerState,
+  upgradeLegacyMultiplayerPayload
+} from '../src/multiplayer.js';
 
 for(const file of [
   'src/multiplayer.js',
@@ -38,6 +42,23 @@ assert(client.includes('peer.visual.updateRemoteVehicle?.(dt,remoteState)'),'sam
 assert(client.includes('solveRemoteSupport?.({lat:peer.lat,lon:peer.lon,heading:peer.heading,visual:peer.visual})'),'receiver-local support must remain after interpolation');
 assert(client.includes("return {connect,disconnect,toggle,update,getPeers,isConnected:"),'public client API drift');
 
+// M4.4 regression: old relay processes do not know the new `gear` field.
+// Their explicit reversing boolean must be upgraded before the maintained client
+// can accidentally coerce a missing/null gear to Neutral via Number(null) === 0.
+const legacyReverse=upgradeLegacyMultiplayerState({type:'state',reversing:true});
+assert.equal(legacyReverse.gear,-1,'legacy reversing=true must synthesize gear R');
+const legacyForward=upgradeLegacyMultiplayerState({type:'state',reversing:false});
+assert.equal(legacyForward.gear,1,'legacy reversing=false must synthesize a forward gear');
+const currentPacket=upgradeLegacyMultiplayerState({type:'state',gear:3,reversing:false});
+assert.equal(currentPacket.gear,3,'explicit M4.1+ gear must never be rewritten');
+const upgradedSnapshot=JSON.parse(upgradeLegacyMultiplayerPayload(JSON.stringify({type:'snapshot',states:[
+  {id:'p1',reversing:true},
+  {id:'p2',reversing:false},
+  {id:'p3',gear:-1,reversing:true}
+]})));
+assert.deepEqual(upgradedSnapshot.states.map(state=>state.gear),[-1,1,-1],'legacy snapshot gear upgrade drift');
+assert(entry.includes('state.gear=state.reversing===true?-1:1'),'legacy relay compatibility must remain explicit');
+
 assert(visuals.includes("from './multiplayer-vehicle-adapter.js'"),'remote visuals must use M4 adapter');
 assert(visuals.includes('exact LOCAL authored controller'),'M4 local-controller parity documentation missing');
 assert(!visuals.includes('createRemoteHdVehicle'),'M4 must not maintain a second remote GLB loader');
@@ -54,12 +75,13 @@ assert(main.includes("import { createMultiplayerVisualSystem } from './multiplay
 assert(main.includes('createRemoteVisual:multiplayerVisuals.createRemoteVehicleVisual'),'main must inject remote visuals');
 assert(main.includes('solveRemoteSupport:multiplayerVisuals.solveRemoteVehicleSupport'),'main must inject receiver-local support');
 
-console.log('V21.31 MULTIPLAYER M4 CLIENT QA: PASS',{
+console.log('V21.31 MULTIPLAYER M4.4 CLIENT QA: PASS',{
   publicClient:'multiplayer-client-m3',
   publicVisuals:'multiplayer-visuals-m3',
   networkHz:30,
   registryPrediction:true,
   isolatedPeerVehicleSystems:true,
   visualSource:'same local authored controller',
+  legacyRelayGearUpgrade:true,
   duplicateRemoteVisualImplementation:false
 });
