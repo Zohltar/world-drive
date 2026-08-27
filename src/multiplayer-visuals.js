@@ -1,4 +1,5 @@
 import {createMultiplayerVisualSystem as createProceduralMultiplayerVisualSystem} from './multiplayer-visuals-v18.js';
+import {createRemoteSupportFallback} from './multiplayer-fallback-visual.js';
 import {
   createRemoteHdVehicle,
   supportsRemoteHdVehicle,
@@ -7,11 +8,12 @@ import {
 
 // Multiplayer HD presentation wrapper.
 //
-// V18's procedural remote vehicle remains the authoritative network/support
-// skeleton and the immediate fallback. When an authored passenger GLB becomes
-// available, only its visible body/wheels replace the procedural meshes. The
-// hidden procedural wheel pivots continue solving receiver-local terrain,
-// suspension, steering and skid contacts exactly as before.
+// The legacy exact-procedural clone remains preferred because it preserves all
+// established receiver-local suspension/contact presentation. If that clone is
+// unavailable for a peer, a guaranteed lightweight four-wheel support visual is
+// created here instead. Crucially, BOTH paths continue into the same lazy HD
+// upgrade, so multiplayer.js can never bypass the authored GLB request by
+// falling back to its older internal low-poly renderer.
 
 function materialList(object){
   if(!object?.material)return [];
@@ -24,18 +26,23 @@ function collectProceduralPresentation(visual){
       .map(entry=>entry?.material)
       .filter(Boolean)
   );
-  const bodyMeshes=[];
+  if(visual?.brakeMat)brakeMaterials.add(visual.brakeMat);
 
-  for(const child of visual?.bodyGroup?.children||[]){
-    // The remote projector/glow rig is already lightweight and functional. Keep
-    // it visible over the authored GLB until authored multiplayer lights receive
-    // their own dedicated animation pass.
-    if(String(child?.name||'').startsWith('remote-headlights-'))continue;
-    child.traverse?.(object=>{
-      if(!object?.isMesh&&!object?.isSkinnedMesh)return;
-      const isBrakeLayer=materialList(object).some(material=>brakeMaterials.has(material));
-      if(!isBrakeLayer)bodyMeshes.push(object);
-    });
+  const bodyMeshes=[];
+  const presentationRoot=visual?.bodyGroup||visual?.root||null;
+
+  if(presentationRoot){
+    for(const child of presentationRoot.children||[]){
+      // Keep the exact-remote projector/glow rig and player label. The HD model
+      // replaces only geometry presentation; networking/labels remain unchanged.
+      if(String(child?.name||'').startsWith('remote-headlights-'))continue;
+      if(child?.isSprite)continue;
+      child.traverse?.(object=>{
+        if(!object?.isMesh&&!object?.isSkinnedMesh)return;
+        const isBrakeLayer=materialList(object).some(material=>brakeMaterials.has(material));
+        if(!isBrakeLayer)bodyMeshes.push(object);
+      });
+    }
   }
 
   const wheelPivots=(visual?.wheels||[])
@@ -50,6 +57,8 @@ export function createMultiplayerVisualSystem(options={}){
   const THREE=options.THREE;
   const perf={
     visualsCreated:0,
+    exactProcedural:0,
+    supportFallbacks:0,
     hdRequested:0,
     hdAttached:0,
     hdFallbacks:0,
@@ -57,7 +66,17 @@ export function createMultiplayerVisualSystem(options={}){
   };
 
   function createRemoteVehicleVisual(vehicleId,name){
-    const visual=base.createRemoteVehicleVisual(vehicleId,name);
+    let visual=base.createRemoteVehicleVisual(vehicleId,name);
+
+    if(visual){
+      perf.exactProcedural++;
+    }else if(THREE){
+      // Do not return null here. Returning null lets multiplayer.js create its
+      // private legacy fallback, which cannot be upgraded by this wrapper.
+      visual=createRemoteSupportFallback(THREE,vehicleId,name);
+      perf.supportFallbacks++;
+    }
+
     if(!visual)return visual;
 
     perf.visualsCreated++;
@@ -71,6 +90,7 @@ export function createMultiplayerVisualSystem(options={}){
     }
 
     const procedural=collectProceduralPresentation(visual);
+    const attachParent=visual.bodyGroup||visual.root;
     const originalDispose=visual.dispose?.bind(visual)||(()=>{});
     let disposed=false;
     let hdInstance=null;
@@ -88,17 +108,17 @@ export function createMultiplayerVisualSystem(options={}){
           }
           return;
         }
-        if(!instance?.root){
+        if(!instance?.root||!attachParent){
           perf.hdFallbacks++;
           return;
         }
 
         hdInstance=instance;
-        visual.bodyGroup?.add?.(instance.root);
+        attachParent.add(instance.root);
 
-        // Hide presentation only. Do not remove/dispose the procedural source:
-        // multiplayer.js still updates its wheel pivots every frame and the
-        // receiver-local support solver reads their stable X/Z geometry.
+        // Hide presentation only. Keep the four support pivots alive in the
+        // scene graph because multiplayer.js still updates them every frame and
+        // solveRemoteVehicleSupport() reads their stable X/Z geometry.
         for(const mesh of procedural.bodyMeshes)mesh.visible=false;
         for(const pivot of procedural.wheelPivots)pivot.visible=false;
 
@@ -127,7 +147,7 @@ export function createMultiplayerVisualSystem(options={}){
   function diagnostics(){
     return {
       enabled:true,
-      mode:'multiplayer-hd-overlay-v1',
+      mode:'multiplayer-hd-overlay-v2-guaranteed-upgrade',
       ...perf,
       cache:remoteHdDiagnostics()
     };
