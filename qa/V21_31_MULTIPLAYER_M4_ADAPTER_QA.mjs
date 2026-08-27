@@ -106,8 +106,8 @@ assert(adapter.includes("descriptor?.kind==='articulated-truck'"),'adapter must 
 assert(adapter.includes('absX-state.renderX')&&adapter.includes('absZ-state.renderZ'),'truck adapter must infer floating world origin from normalized coordinates');
 assert(adapter.includes("if(value===null||value===undefined||value==='')return null"),'adapter must preserve missing gear as null');
 assert(adapter.includes('reversing:gear!==null?gear<0:!!input.reversing'),'adapter must make explicit gear authoritative for reverse');
-assert(adapter.includes('reverseRequested:optionalBoolean(system?.reverseRequested)'),'adapter diagnostics must expose authored reverse command receipt');
-assert(adapter.includes('reverseMaterialCount:optionalCount(system?.reverseMaterialCount)'),'adapter diagnostics must expose authored reverse binding count');
+assert(adapter.includes('reverseRequested:optionalBoolean(system?.reverseRequested)'),'adapter diagnostics must expose authored reverse command receipt when controller supports it');
+assert(adapter.includes('reverseMaterialCount:optionalCount(system?.reverseMaterialCount)'),'adapter diagnostics must expose authored reverse binding count when controller supports it');
 assert(adapter.includes('reverseGlowOpacity:optionalCount(system?.reverseGlowOpacity)'),'adapter diagnostics must expose authored shader output when available');
 assert(visuals.includes("from './multiplayer-vehicle-adapter.js'"),'multiplayer visuals must route through M4 adapter');
 assert(visuals.includes("from './vehicle-render-contract.js'"),'remote visuals must consume shared local render transform contract');
@@ -121,30 +121,30 @@ assert(client.includes('peer.visual.updateRemoteVehicle?.(dt,remoteState)'),'cli
 assert(client.includes('peer.visual.setRemoteVisible?.(true,remoteState)'),'client must keep external trailer/controller visibility aligned');
 assert(client.includes('gear:peer.gear'),'client must forward network gear into normalized remote state');
 
-// M4.6 WRX: use the asset's explicit authored reverse branch, not a generic
-// clear-lens material or positional guess. The source material is named Eblems.
-assert(wrx.includes("if(path.includes('fh_reverse_material'))"),'WRX must bind the explicit authored fh_reverse_material branch');
-assert(wrx.includes("console.warn('WRX authored reverse-lamp binding found no fh_reverse_material mesh.')"),'WRX missing exact reverse node must be diagnosable');
-assert(!wrx.includes("materialNames.some(name=>name.includes('fh_light_glass'))"),'WRX reverse must not regress to generic clear-lens material heuristics');
-assert(wrx.includes('get reverseRequested(){return lastReverseRequested;}'),'WRX controller must expose exact reverse command diagnostics');
-assert(wrx.includes('get reverseMaterialCount(){return reverseMaterials.length;}'),'WRX must expose authored reverse binding count');
+// M4.12 WRX: restore the exact local-proven reverse selector that preceded the
+// multiplayer experiments. The real visible rear clear lens is Object_27 with
+// material fh_light_glass. The misleading fh_reverse_material/Object_37 branch
+// actually carries material Eblems in this GLB and must not own reverse output.
+assert(wrx.includes('const isRearCluster=localCenter.z<-1.7 && localCenter.y>.65'),'WRX reverse must classify the physical rear cluster in root-local space');
+assert(wrx.includes("materialNames.some(name=>name.includes('fh_light_glass'))"),'WRX reverse must bind the proven authored fh_light_glass rear lens');
+assert(wrx.includes("console.warn('WRX authored reverse-lamp binding found no rear white lens.')"),'WRX missing proven reverse lens must be diagnosable');
+assert(!wrx.includes("if(path.includes('fh_reverse_material'))"),'WRX reverse must not regress to misleading fh_reverse_material/Eblems branch');
 
-// M4.6 Sonata: Object_46 is the audited authored rear-inner lens. Every shader
-// uniform referenced in GLSL must exist, and reverse uses a deterministic lower
-// UV region rather than relying only on a fragile white-pixel threshold.
+// Sonata: Object_46 is the audited authored rear-inner lens. Every shader
+// uniform referenced in GLSL must exist. M4.10 keeps brake red texture-driven,
+// while reverse remains on the authored white layer.
 assert(sonata.includes("const rearInnerLens=root.getObjectByName('Object_46')"),'Sonata reverse must originate from audited Object_46 authored lens');
 for(const uniform of ['uTintMix','uUseUvRegion','uUvMin','uUvMax','uUvFeather']){
   assert(sonata.includes(`${uniform}:{value:`),`Sonata shader missing initialized ${uniform}`);
 }
 assert(sonata.includes("filter:'white',side:0,tint:0xf8fbff"),'Sonata Object_46 must own an authored white reverse glow layer');
-assert(sonata.includes("max:[0.54,0.842]"),'Sonata reverse must use deterministic lower Object_46 UV region');
 assert(sonata.includes('get reverseGlowOpacity(){return lastReverseGlowOpacity;}'),'Sonata must expose applied authored reverse glow opacity');
 assert(sonata.includes("get reverseMaterialCount(){return authoredRearGlowLayers.filter(layer=>layer.filter==='white').length;}"),'Sonata must expose authored reverse layer count');
 
 assert(id4.includes('for(const [obj,visible] of hiddenWheelState)obj.visible=visible'),'ID.4 local controller wheel visibility restoration regression');
 assert(!id4.includes('hiddenWheelState)pivot.visible=visible'),'ID.4 invalid pivot visibility reference must not return');
 
-console.log('V21.31 MULTIPLAYER M4.6 ADAPTER QA: PASS',{
+console.log('V21.31 MULTIPLAYER M4.12 ADAPTER QA: PASS',{
   vehicles:reports,
   renderRootScale:VEHICLE_RENDER_ROOT_SCALE,
   sameControllerForLocalAndRemote:true,
@@ -153,9 +153,8 @@ console.log('V21.31 MULTIPLAYER M4.6 ADAPTER QA: PASS',{
   normalizedContract:['pose','motion','steering','gear','brake','reverse','night','signals','distance'],
   missingGearPreserved:true,
   gearAuthoritativeReverse:true,
-  wrxReverseBinding:'fh_reverse_material',
-  sonataReverseBinding:'Object_46 deterministic UV shader',
-  authoredReverseDiagnostics:true,
+  wrxReverseBinding:'rear fh_light_glass authored lens',
+  sonataReverseBinding:'Object_46 authored white shader',
   articulatedTruckConverted:true,
   duplicateRemoteGlbLightingRuntime:false
 });
