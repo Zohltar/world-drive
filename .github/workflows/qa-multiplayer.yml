@@ -30,5 +30,7 @@ jobs:
         run: node qa/V21_31_MULTIPLAYER_COMPAT_QA.mjs
       - name: Multiplayer lazy HD isolation QA
         run: node qa/V21_31_MULTIPLAYER_GLB_ISOLATION_QA.mjs
+      - name: Multiplayer M2 motion realism QA
+        run: node qa/V21_31_MULTIPLAYER_MOTION_QA.mjs
       - name: Production build
         run: npm run build
