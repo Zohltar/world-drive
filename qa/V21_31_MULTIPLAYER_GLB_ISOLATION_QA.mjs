@@ -8,7 +8,6 @@ const fallback=fs.readFileSync('src/multiplayer-fallback-visual.js','utf8');
 const hd=fs.readFileSync('src/multiplayer-hd-vehicles.js','utf8');
 const main=fs.readFileSync('src/main.js','utf8');
 
-// Remote HD must remain independent from the LOCAL authored runtime systems.
 for(const path of [
   './civic-glb.js','./countach-glb.js','./f1-glb.js','./i3-glb.js',
   './id4-glb.js','./sonata-glb.js','./wrx-glb.js'
@@ -18,9 +17,6 @@ for(const path of [
   assert(!hd.includes(path),`multiplayer HD cache unexpectedly depends on ${path}`);
 }
 
-// V18 exact-procedural presentation remains preferred, but its failure must NOT
-// bypass the HD request. The wrapper owns a guaranteed four-wheel fallback and
-// therefore always returns an upgradeable visual for known multiplayer peers.
 assert(visuals.includes("from './multiplayer-visuals-v18.js'"),'HD wrapper must preserve V18 exact fallback');
 assert(visuals.includes("from './multiplayer-fallback-visual.js'"),'HD wrapper must own guaranteed support fallback');
 assert(procedural.includes('bodyGroup.children.filter'),'procedural baseline must still select body sources');
@@ -29,14 +25,19 @@ assert(procedural.includes('sourceWheel.vehicleId!==vehicleId'),'procedural whee
 assert(visuals.includes('visual=createRemoteSupportFallback(THREE,vehicleId,name)'),'failed exact clone must create upgradeable fallback');
 assert(visuals.includes('supportFallbacks'),'fallback usage must be observable');
 assert(visuals.includes('attachParent=visual.bodyGroup||visual.root'),'HD attach must support both exact and lightweight fallbacks');
-assert(!visuals.includes('if(!visual)return visual;\n\n    perf.visualsCreated'), 'wrapper must not return before guaranteed fallback');
-assert(fallback.includes('wheels=['),'support fallback must expose four wheel pivots');
+
+const fallbackIndex=visuals.indexOf('visual=createRemoteSupportFallback(THREE,vehicleId,name)');
+const safetyReturnIndex=visuals.indexOf('if(!visual)return visual;',fallbackIndex);
+const hdRequestIndex=visuals.indexOf('createRemoteHdVehicle(THREE,vehicleId)');
+assert(fallbackIndex>=0,'missing guaranteed fallback creation');
+assert(safetyReturnIndex>fallbackIndex,'safety return must occur only after guaranteed fallback attempt');
+assert(hdRequestIndex>safetyReturnIndex,'HD request must occur after fallback-safe visual exists');
+
+assert(fallback.includes('const wheels=['),'support fallback must expose four wheel pivots');
 assert(fallback.includes('baseX:x'),'support fallback must preserve wheel X support geometry');
 assert(fallback.includes('baseZ:z'),'support fallback must preserve wheel Z support geometry');
 assert(visuals.includes('pivot.visible=false'),'HD swap must hide rather than destroy support pivots');
 
-// HD loading is lazy: no GLTFLoader in the multiplayer client/wrapper startup
-// modules. Templates are shared and cloned only when a supported remote asks.
 assert(hd.includes("import('three/addons/loaders/GLTFLoader.js')"),'remote GLB loader must be dynamic');
 assert(hd.includes("import('three/addons/utils/SkeletonUtils.js')"),'remote skeleton clone helper must be dynamic');
 assert(hd.includes('templatePromises=new Map()'),'remote model load promises must be cached');
@@ -46,7 +47,6 @@ assert(visuals.includes('createRemoteHdVehicle(THREE,vehicleId)'),'every upgrade
 assert(visuals.includes('if(!instance?.root||!attachParent)'),'failed HD request must retain fallback');
 assert(visuals.includes('lateLoadsIgnored'),'disposed peers must ignore late async loads');
 
-// Client still replaces the whole peer presentation cleanly on vehicle/name change.
 assert(multiplayer.includes('function replacePeerVisual(peer,vehicleId)'), 'missing remote visual replacement path');
 assert(multiplayer.includes('if(vehicleId!==peer.vehicleId||name!==peer.name)'), 'remote vehicle changes must trigger replacement');
 assert(multiplayer.includes('peer.visual.dispose();'), 'old remote visual must be disposed on replacement');
