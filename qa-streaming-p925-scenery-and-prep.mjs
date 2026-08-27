@@ -14,9 +14,14 @@ assert.match(localWorld,/const P924_PREP_GAP_MS=8/,
   'P9.25 must preserve the 8 ms inter-slice gap');
 assert.match(localWorld,/const dispatch=\(\)=>callback\(\{didTimeout:true,timeRemaining:\(\)=>0\}\)/,
   'P9.25 direct timer dispatch missing');
+const prepScheduler=localWorld.slice(
+  localWorld.indexOf('function schedulePreparationSlice'),
+  localWorld.indexOf('export function createLocalWorldBuilder')
+);
+const prepSchedulerCode=prepScheduler.replace(/\/\/.*$/gm,'');
 assert.doesNotMatch(
-  localWorld.slice(localWorld.indexOf('function schedulePreparationSlice'),localWorld.indexOf('export function createLocalWorldBuilder')),
-  /requestIdleCallback/,
+  prepSchedulerCode,
+  /requestIdleCallback\s*\(/,
   'P9.25 preparation slices must not wait on requestIdleCallback'
 );
 assert.match(localWorld,/function refreshSceneryOnly\(\)/,
