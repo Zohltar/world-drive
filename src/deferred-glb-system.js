@@ -2,6 +2,65 @@
 // The heavy per-vehicle module is imported only when that vehicle is selected.
 // Until then the existing procedural visual remains authoritative.
 
+// M4.7 presentation bridge. Only the ACTIVE local deferred controller writes
+// here. Remote multiplayer adapters instantiate authored factories directly and
+// therefore cannot overwrite this state. The network can consequently consume
+// the exact brake/reverse/night values that local authored rendering received.
+const localAuthoredPresentationState={
+  sequence:0,
+  source:null,
+  braking:false,
+  reversing:false,
+  nightLevel:null
+};
+
+function finiteNight(value){
+  if(value===null||value===undefined||value==='')return null;
+  const n=Number(value);
+  return Number.isFinite(n)?Math.max(0,Math.min(1,n)):null;
+}
+
+export function publishLocalAuthoredPresentationState(source,input={}){
+  localAuthoredPresentationState.source=String(source||'authored');
+  localAuthoredPresentationState.braking=!!input.braking;
+  localAuthoredPresentationState.reversing=!!input.reversing;
+  localAuthoredPresentationState.nightLevel=finiteNight(input.nightLevel);
+  localAuthoredPresentationState.sequence++;
+  return localAuthoredPresentationState.sequence;
+}
+
+export function clearLocalAuthoredPresentationState(source=null){
+  if(source!==null&&localAuthoredPresentationState.source!==String(source))return false;
+  localAuthoredPresentationState.source=null;
+  localAuthoredPresentationState.braking=false;
+  localAuthoredPresentationState.reversing=false;
+  localAuthoredPresentationState.nightLevel=null;
+  localAuthoredPresentationState.sequence++;
+  return true;
+}
+
+export function resetLocalAuthoredPresentationState(){
+  localAuthoredPresentationState.sequence=0;
+  localAuthoredPresentationState.source=null;
+  localAuthoredPresentationState.braking=false;
+  localAuthoredPresentationState.reversing=false;
+  localAuthoredPresentationState.nightLevel=null;
+}
+
+export function readLocalAuthoredPresentationState(){
+  return {
+    sequence:localAuthoredPresentationState.sequence,
+    source:localAuthoredPresentationState.source,
+    braking:localAuthoredPresentationState.braking,
+    reversing:localAuthoredPresentationState.reversing,
+    nightLevel:localAuthoredPresentationState.nightLevel
+  };
+}
+
+try{
+  globalThis.__WORLD_DRIVE_LOCAL_AUTHORED_PRESENTATION__=readLocalAuthoredPresentationState;
+}catch{}
+
 function driverCameraModeFallback(modeLabel=''){
   const label=String(modeLabel||'').toLowerCase();
   return label.includes('capot')||
@@ -50,8 +109,15 @@ export function createDeferredGlbSystem({
   function invoke(method,args){
     if(method==='setActive'){
       requestedActive=!!args[0];
+      if(!requestedActive)clearLocalAuthoredPresentationState(label);
       if(requestedActive&&!implementation)ensureImplementation();
       return implementation?.setActive?.(...args);
+    }
+
+    // Capture BEFORE dispatch and even during the short async load window. This
+    // is exactly the state main.js intended to give the active authored model.
+    if(method==='update'&&requestedActive){
+      publishLocalAuthoredPresentationState(label,args[1]||{});
     }
 
     if(implementation){
