@@ -85,14 +85,20 @@ export function createStartupUi({
     $('v21StartButton')?.addEventListener('click',async()=>{
       if(!selectedVehicle)return;
       const startButton=$('v21StartButton');
-      if(startButton){startButton.disabled=true;startButton.textContent='PRÉPARATION DE LA FORÊT…';}
+      if(startButton){startButton.disabled=true;startButton.textContent='PRÉPARATION DE LA FORÊT DEVANT…';}
       try{
-        const waitForForest=globalThis.__WORLD_DRIVE_P933_FOREST_READY__;
+        const waitForForest=
+          globalThis.__WORLD_DRIVE_P934_FOREST_READY__||
+          globalThis.__WORLD_DRIVE_P933_FOREST_READY__;
         if(typeof waitForForest==='function'){
-          // P9.33: keep the startup overlay visible until a useful near/mid
-          // forest ring exists. The readiness helper has its own bounded
-          // timeout, so a missing forest asset can never block gameplay.
-          await waitForForest({minChunks:14,timeoutMs:5500,pollMs:35});
+          // P9.34: total chunk count alone can be satisfied behind the spawn.
+          // Require a useful forward half-plane as well before exposing gameplay.
+          await waitForForest({
+            minChunks:14,
+            minFrontChunks:7,
+            timeoutMs:5500,
+            pollMs:35
+          });
         }
         if(startButton)startButton.textContent='DÉMARRAGE…';
         const started=await onStartVehicle(selectedVehicle);
