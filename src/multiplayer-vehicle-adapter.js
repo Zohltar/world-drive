@@ -1,7 +1,7 @@
 import {createVehicleSystem} from './vehicle-system.js';
 import {getAuthoredVehicleDescriptor,loadAuthoredVehicleFactory} from './vehicle-authored-registry.js';
 
-// Multiplayer M4.1 adapter.
+// Multiplayer M4.2 adapter.
 //
 // The network/runtime sees one normalized vehicle contract. The visual side then
 // delegates to the exact controller used by the local player. Vehicle-specific
@@ -88,10 +88,6 @@ export function createRemoteVehicleAdapter({
   let ownedSceneRoots=[];
   let updates=0;
 
-  // The truck controller positions its articulated trailer in render space from
-  // absolute world coordinates. Infer the receiver's current floating origin
-  // from the already-resolved remote render position, keeping it aligned with
-  // the same presentation smoothing as the tractor.
   let inferredWorldOffset={x:0,z:0};
   const getInferredWorldOffset=()=>inferredWorldOffset;
 
@@ -161,6 +157,11 @@ export function createRemoteVehicleAdapter({
     return descriptor?.kind==='articulated-truck'?!!system.glbReady:!!system.ready;
   }
 
+  function optionalCount(value){
+    const n=Number(value);
+    return Number.isFinite(n)?n:null;
+  }
+
   function diagnostics(){
     return {
       vehicleId,
@@ -175,7 +176,9 @@ export function createRemoteVehicleAdapter({
       visible,
       updates,
       gear:lastState.gear,
-      reversing:lastState.reversing
+      reversing:lastState.reversing,
+      reverseMaterialCount:optionalCount(system?.reverseMaterialCount),
+      wheelControllerCount:optionalCount(system?.wheelControllerCount)
     };
   }
 
