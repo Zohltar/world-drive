@@ -79,6 +79,7 @@ export function createForestChunkStreamer(options){
     return {
       enabled:true,
       observerMode:'p931-ahead-priority',
+      legacyObserverMode:'p929-direct-last-slice',
       trees:visible.trees,near:visible.near,mid:visible.mid,far:visible.far,edge:visible.edge,
       activeChunks:finite(raw.activeChunks),cachedChunks:finite(raw.cachedChunks),queuedChunks:finite(raw.queuedChunks),
       chunksBuilt:finite(raw.chunksBuilt),chunksReplaced:finite(raw.chunksReplaced),
