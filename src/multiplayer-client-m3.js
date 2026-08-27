@@ -1,7 +1,7 @@
 import {readTransmissionRuntimeState} from './transmission-runtime-bridge.js';
 import {getMultiplayerVehicleSpec} from './multiplayer-vehicle-registry.js';
 
-// Multiplayer M4.1 client: presentation-only N-player LAN replication at 30 Hz.
+// Multiplayer M4.11 client: presentation-only N-player LAN replication at 30 Hz.
 // Network state is normalized once, then the remote visual adapter feeds the
 // exact same authored controller used by a local vehicle. Transmission gear is
 // explicit protocol data; reverse lamps derive from gear < 0 on the receiver.
@@ -24,16 +24,23 @@ function finite(value,fallback=0){return Number.isFinite(Number(value))?Number(v
 function boolOr(value,fallback=false){return typeof value==='boolean'?value:!!fallback;}
 function angleDelta(a,b){return Math.atan2(Math.sin((Number(a)||0)-(Number(b)||0)),Math.cos((Number(a)||0)-(Number(b)||0)));}
 function angleLerp(a,b,t){return (Number(a)||0)+angleDelta(b,a)*t;}
-function normalizeGear(value,fallback=null){
-  const n=Number(value);
-  if(Number.isFinite(n))return n<0?-1:n===0?0:Math.max(1,Math.floor(n));
-  const f=Number(fallback);
-  if(Number.isFinite(f))return f<0?-1:f===0?0:Math.max(1,Math.floor(f));
+export function normalizeMultiplayerGear(value,fallback=null){
+  const present=input=>input!==null&&input!==undefined&&input!=='';
+  if(present(value)){
+    const n=Number(value);
+    if(Number.isFinite(n))return n<0?-1:n===0?0:Math.max(1,Math.floor(n));
+  }
+  if(present(fallback)){
+    const f=Number(fallback);
+    if(Number.isFinite(f))return f<0?-1:f===0?0:Math.max(1,Math.floor(f));
+  }
   return null;
 }
-function reverseFromGear(gear,fallback=false){
-  return gear!==null&&Number.isFinite(Number(gear))?Number(gear)<0:!!fallback;
+export function reverseFromMultiplayerGear(gear,fallback=false){
+  return gear!==null&&gear!==undefined&&gear!==''&&Number.isFinite(Number(gear))?Number(gear)<0:!!fallback;
 }
+const normalizeGear=normalizeMultiplayerGear;
+const reverseFromGear=reverseFromMultiplayerGear;
 
 function geographicOffsetMeters(fromLat,fromLon,toLat,toLon){
   const dLat=(toLat-fromLat)*DEG_TO_RAD;
@@ -130,8 +137,8 @@ export function createMultiplayerClient({
   function resetSignals(){localSignalLeft=false;localSignalRight=false;localSignalTimer=0;localSignalLastAt=performance.now();}
   function localLightingState(state,now){
     const runtime=readTransmissionRuntimeState?.()||{};
-    // M4.1: gear is explicit protocol state. Prefer a future caller-provided
-    // full gear number, otherwise use the authoritative local D/N/R selector.
+    // M4.11: explicit numeric gear wins. Missing data falls back to the last
+    // authoritative selector and can no longer become Neutral via Number(null).
     const gear=normalizeGear(state.gear,runtime.selectorGear);
     const braking=Number.isFinite(Number(runtime.serviceBrake))
       ?(Number(runtime.serviceBrake)||0)>.04
