@@ -38,23 +38,32 @@ export const FOREST_STREAMING_POLICY=Object.freeze({
   densityNoiseScale:420,
   cellsPerSlice:30,
 
-  // P9.29 frame budget. Keep the proven low hitch cost while P9.31/P9.32 alter
-  // only WHICH queued chunk receives that budget.
+  // P9.29 frame budget. P9.36 keeps the normal budget unchanged, but when the
+  // browser reports genuine idle headroom and the queue is falling behind it may
+  // use a slightly larger catch-up slice. This raises throughput without putting
+  // the old 10-50 ms forest bursts back on gameplay frames.
   forestSliceBudgetMs:.95,
   candidatesPerBuildSlice:12,
   forestReportIntervalMs:140,
+  forestCatchupQueueThreshold:10,
+  forestCatchupSliceBudgetMs:1.55,
+  forestCatchupCandidatesPerSlice:20,
+  forestCatchupMinIdleMs:3.2,
 
-  // P9.32: hide forest creation by moving the P9.31 predicted work centre much
-  // farther down the direction of travel. At ordinary recenter distances this
-  // makes new chunks appear roughly 1.3–1.5 km ahead, where fog/distance masks
-  // the commit, while the protected near ring still prevents local holes.
+  // P9.32: hide visible creation by prioritizing work down the direction of
+  // travel. P9.36 additionally prebuilds a detached/cache-only lobe farther
+  // ahead so chunks are already complete before crossing maxDistance.
   forestAheadLeadMin:1280,
   forestAheadLeadMax:1520,
+  forestPrefetchLeadM:2500,
+  forestPrefetchRadiusM:1250,
+  forestPrefetchMinForwardM:1050,
 
-  // Persistent 480 m chunks. Candidate work is resumable in P9.29+; these
-  // legacy fields remain for QA/backward compatibility.
+  // Persistent 480 m chunks. Candidate work is resumable in P9.29+; P9.36
+  // raises cache capacity so the rolling forward reserve can coexist with the
+  // ~45-55 visible chunks without immediately evicting its own prefetch work.
   chunkCells:4,
-  chunkCacheLimit:96,
+  chunkCacheLimit:128,
   chunkBuildsPerSlice:1,
   cellsPerBuildSlice:1,
   chunkLodHysteresis:80,
