@@ -1,16 +1,13 @@
 import {createMultiplayerClient as createMaintainedMultiplayerClient} from './multiplayer-client-m3.js';
+import {readLocalAuthoredPresentationState} from './deferred-glb-system.js';
 
-// Multiplayer M4.4 public entrypoint.
+// Multiplayer M4.7 public entrypoint.
 //
-// M4.1 introduced explicit transmission gear. A relay process that was already
-// running before that release legitimately forwards the older `reversing`
-// boolean but drops the unknown `gear` field. The maintained client used to
-// interpret the resulting missing value through Number(null) === 0, silently
-// turning "unknown gear" into Neutral and suppressing reverse lamps.
-//
-// Keep the wire protocol backward compatible at the boundary: before the
-// maintained client sees an incoming state, synthesize an explicit D/R gear
-// only when an older packet did not carry one. New packets are never modified.
+// Local authored passenger controllers already receive the final presentation
+// state (brake/reverse/night) that produces the visible local car. M4.7 copies
+// that exact state into the network snapshot instead of reconstructing reverse
+// from a second transmission bridge. Remote and local authored controllers thus
+// consume the same reverse request.
 
 function hasExplicitGear(state){
   return !!state&&
@@ -20,12 +17,42 @@ function hasExplicitGear(state){
     Number.isFinite(Number(state.gear));
 }
 
+export function mergeLocalAuthoredMultiplayerState(base,presentation=readLocalAuthoredPresentationState()){
+  if(!base||!presentation?.source||!(Number(presentation.sequence)>0))return base;
+
+  const reversing=!!presentation.reversing;
+  const merged={
+    ...base,
+    braking:!!presentation.braking,
+    reversing
+  };
+
+  const night=Number(presentation.nightLevel);
+  if(presentation.nightLevel!==null&&presentation.nightLevel!==undefined&&Number.isFinite(night)){
+    merged.nightLevel=Math.max(0,Math.min(1,night));
+  }
+
+  // Reverse presentation state is authoritative because it is the exact flag
+  // that already lights the local authored car. A true request must survive any
+  // stale selector/gear bridge and become explicit R on the wire.
+  if(reversing){
+    merged.gear=-1;
+  }else if(Number(merged.gear)<0){
+    // Never let a stale explicit R override the local authored controller saying
+    // reverse is off. With no explicit gear, the maintained client can use its
+    // normal forward/neutral transmission fallback.
+    delete merged.gear;
+  }
+
+  return merged;
+}
+
+// Compatibility for a relay process that predates explicit `gear`. It still
+// forwards the already-authoritative reversing boolean, so synthesize R only
+// when that boolean is true. Current packets carrying gear are never modified.
 export function upgradeLegacyMultiplayerState(state){
   if(!state||typeof state!=='object'||hasExplicitGear(state))return state;
-
-  // Legacy M2.4 relays always transport `reversing`. We only need D/R here;
-  // exact forward gear numbers remain the responsibility of M4.1+ packets.
-  state.gear=state.reversing===true?-1:1;
+  if(state.reversing===true)state.gear=-1;
   return state;
 }
 
@@ -83,5 +110,14 @@ function installLegacyGearWebSocketCompatibility(){
 
 export function createMultiplayerClient(options={}){
   installLegacyGearWebSocketCompatibility();
-  return createMaintainedMultiplayerClient(options);
+  const baseGetLocalState=options.getLocalState;
+  if(typeof baseGetLocalState!=='function')return createMaintainedMultiplayerClient(options);
+
+  return createMaintainedMultiplayerClient({
+    ...options,
+    getLocalState:()=>mergeLocalAuthoredMultiplayerState(
+      baseGetLocalState(),
+      readLocalAuthoredPresentationState()
+    )
+  });
 }
