@@ -38,8 +38,21 @@ export const FOREST_STREAMING_POLICY=Object.freeze({
   densityNoiseScale:420,
   cellsPerSlice:30,
 
-  // Persistent 480 m chunks. One 120 m cell is built per idle slice. With P9.16
-  // that caps a background burst at 109 candidate evaluations.
+  // P9.29 frame budget. Keep the proven low hitch cost while P9.31/P9.32 alter
+  // only WHICH queued chunk receives that budget.
+  forestSliceBudgetMs:.95,
+  candidatesPerBuildSlice:12,
+  forestReportIntervalMs:140,
+
+  // P9.32: hide forest creation by moving the P9.31 predicted work centre much
+  // farther down the direction of travel. At ordinary recenter distances this
+  // makes new chunks appear roughly 1.3–1.5 km ahead, where fog/distance masks
+  // the commit, while the protected near ring still prevents local holes.
+  forestAheadLeadMin:1280,
+  forestAheadLeadMax:1520,
+
+  // Persistent 480 m chunks. Candidate work is resumable in P9.29+; these
+  // legacy fields remain for QA/backward compatibility.
   chunkCells:4,
   chunkCacheLimit:96,
   chunkBuildsPerSlice:1,
