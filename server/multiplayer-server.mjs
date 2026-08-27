@@ -96,6 +96,15 @@ function safeState(client,message){
     steer:clamp(finite(message.steer),-1.2,1.2),
     braking:!!message.braking,
 
+    // M2.4 presentation-only lighting state. The relay never decides when a
+    // lamp should be on; it only normalizes and forwards the driver's state.
+    reversing:!!message.reversing,
+    nightLevel:clamp(finite(message.nightLevel),0,1),
+    signalLeft:!!message.signalLeft,
+    signalRight:!!message.signalRight,
+    signalBlink:!!message.signalBlink,
+    lightingProtocol:message.lightingProtocol==='m2.4'?'m2.4':null,
+
     // Skid geometry is never networked: just normalized visual slip state.
     onRoad:!!message.onRoad,
     skidFront:clamp(finite(message.skidFront),0,1),
