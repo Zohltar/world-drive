@@ -174,8 +174,18 @@ function bindWrx(THREE,root,s){
   // its material is generically named "Eblems".
   for(const mesh of findMeshes(root,['fh_reverse_material']))replaceMaterials(THREE,mesh,s.reverse,0xffffff,'remote-wrx-reverse',s.ownedMaterials);
   for(const mesh of findMeshes(root,['fh_lowhighbeam_material']))replaceMaterials(THREE,mesh,s.headlight,0xf8fbff,'remote-wrx-headlight',s.ownedMaterials);
-  for(const mesh of findMeshes(root,['fh_front_indicator_orange_l_material','fh_signal_l_material']))replaceMaterials(THREE,mesh,s.signalLeft,0xffb21c,'remote-wrx-left-signal',s.ownedMaterials);
-  for(const mesh of findMeshes(root,['fh_front_indicator_orange_r_material','fh_signal_r_material']))replaceMaterials(THREE,mesh,s.signalRight,0xffb21c,'remote-wrx-right-signal',s.ownedMaterials);
+
+  // The authored front indicators are cleanly separated by side.
+  for(const mesh of findMeshes(root,['fh_front_indicator_orange_l_material']))replaceMaterials(THREE,mesh,s.signalLeft,0xffb21c,'remote-wrx-left-front-signal',s.ownedMaterials);
+  for(const mesh of findMeshes(root,['fh_front_indicator_orange_r_material']))replaceMaterials(THREE,mesh,s.signalRight,0xffb21c,'remote-wrx-right-front-signal',s.ownedMaterials);
+
+  // Binary audit: the rear indicators share one geometry branch named
+  // fh_signal_R_material_19. WRX authored coordinates use +X for vehicle-left,
+  // so split that exact lens by X rather than inventing a missing L node.
+  for(const mesh of findMeshes(root,['fh_signal_r_material_19'])){
+    addLensOverlay(THREE,mesh,s.signalLeftOverlays,{color:0xffb21c,side:1,role:'wrx-left-rear-signal'},s.ownedObjects,s.ownedMaterials);
+    addLensOverlay(THREE,mesh,s.signalRightOverlays,{color:0xffb21c,side:-1,role:'wrx-right-rear-signal'},s.ownedObjects,s.ownedMaterials);
+  }
   s.beams.push(...makeProjectors(THREE,root,{x:.98,y:.68,z:2.12,targetX:.50,targetY:.10,targetZ:36,distance:82},s.ownedObjects));
 }
 
