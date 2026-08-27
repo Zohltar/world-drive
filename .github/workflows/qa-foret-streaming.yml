@@ -64,5 +64,7 @@ jobs:
         run: node qa-forest-p932-hidden-generation.mjs
       - name: P9.33 startup forest gate QA
         run: node qa-forest-p933-startup-gate.mjs
+      - name: P9.35 forward-majority startup QA
+        run: node qa-forest-p935-front-startup.mjs
       - name: Production build
         run: npm run build
