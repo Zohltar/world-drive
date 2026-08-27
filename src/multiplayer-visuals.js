@@ -1,5 +1,6 @@
 import {createMultiplayerVisualSystem as createProceduralMultiplayerVisualSystem} from './multiplayer-visuals-v18.js';
 import {createRemoteSupportFallback} from './multiplayer-fallback-visual.js';
+import {createRemoteLightingRig} from './multiplayer-lighting.js';
 import {
   createRemoteHdVehicle,
   supportsRemoteHdVehicle,
@@ -20,6 +21,10 @@ import {
 // is actually rendered. Vertical support is no longer smoothed a second time by
 // the presentation wrapper. This prevents the body plane and rendered position
 // from disagreeing on slopes/camber, which caused subtle remote-car trembling.
+//
+// M2.4 adds per-peer replicated lighting. The lighting rig lives outside the
+// cached GLB resources, so every peer may independently brake, reverse, run
+// night lamps and blink left/right without mutating another driver's materials.
 
 const SMOOTH_POSITION_RATE=30;
 const SMOOTH_YAW_RATE=26;
@@ -28,11 +33,6 @@ const SMOOTH_TELEPORT_YAW=1.45;
 const SMOOTH_DT_MAX=.05;
 const GEO_EARTH=6378137;
 const DEG_TO_RAD=Math.PI/180;
-
-function materialList(object){
-  if(!object?.material)return [];
-  return Array.isArray(object.material)?object.material:[object.material];
-}
 
 function angleDelta(target,current){
   let d=(Number(target)||0)-(Number(current)||0);
@@ -49,26 +49,18 @@ function offsetLatLonMeters(lat,lon,x,z){
 }
 
 function collectProceduralPresentation(visual){
-  const brakeMaterials=new Set(
-    (visual?.brakeEntries||[])
-      .map(entry=>entry?.material)
-      .filter(Boolean)
-  );
-  if(visual?.brakeMat)brakeMaterials.add(visual.brakeMat);
-
   const bodyMeshes=[];
   const presentationRoot=visual?.bodyGroup||visual?.root||null;
 
   if(presentationRoot){
     for(const child of presentationRoot.children||[]){
-      // Keep the exact-remote projector/glow rig and player label. The HD model
-      // replaces only geometry presentation; networking/labels remain unchanged.
+      // Keep projector/glow rigs and player labels. Every procedural body/lamp
+      // mesh is hidden once the authored HD vehicle is ready; the M2.4 light rig
+      // is created only after this list is collected, so it remains visible.
       if(String(child?.name||'').startsWith('remote-headlights-'))continue;
       if(child?.isSprite)continue;
       child.traverse?.(object=>{
-        if(!object?.isMesh&&!object?.isSkinnedMesh)return;
-        const isBrakeLayer=materialList(object).some(material=>brakeMaterials.has(material));
-        if(!isBrakeLayer)bodyMeshes.push(object);
+        if(object?.isMesh||object?.isSkinnedMesh)bodyMeshes.push(object);
       });
     }
   }
@@ -213,7 +205,9 @@ export function createMultiplayerVisualSystem(options={}){
     smoothingFrames:0,
     smoothingSnaps:0,
     smoothingMaxCorrectionM:0,
-    supportPresentationAdjustments:0
+    supportPresentationAdjustments:0,
+    lightingVisuals:0,
+    lightingUpdates:0
   };
 
   function createRemoteVehicleVisual(vehicleId,name){
@@ -235,6 +229,37 @@ export function createMultiplayerVisualSystem(options={}){
     visual.hdPending=false;
     visual.hdVehicleId=vehicleId;
 
+    // Capture fallback geometry before the M2.4 lighting rig is added. When the
+    // GLB becomes ready we hide the old body/lamp geometry but never the network
+    // lighting rig itself.
+    const procedural=collectProceduralPresentation(visual);
+    const lightingParent=visual.bodyGroup||visual.root;
+    const lightingRig=createRemoteLightingRig(THREE,vehicleId,lightingParent);
+    const fallbackSetBraking=visual.setBraking?.bind(visual)||null;
+    const fallbackSetHeadlights=visual.setHeadlights?.bind(visual)||null;
+    const fallbackDispose=visual.dispose?.bind(visual)||(()=>{});
+    let lightingDisposed=false;
+
+    if(lightingRig)perf.lightingVisuals++;
+
+    visual.setLighting=(state={})=>{
+      const braking=!!state.braking;
+      const nightLevel=Math.max(0,Math.min(1,Number(state.nightLevel)||0));
+      const distance=Math.max(0,Number(state.distance)||0);
+      fallbackSetBraking?.(braking?1:0);
+      fallbackSetHeadlights?.(nightLevel,distance);
+      lightingRig?.setState({...state,braking,nightLevel,distance});
+      perf.lightingUpdates++;
+    };
+
+    visual.dispose=()=>{
+      if(lightingDisposed)return;
+      lightingDisposed=true;
+      lightingRig?.dispose?.();
+      if(lightingRig)perf.lightingVisuals=Math.max(0,perf.lightingVisuals-1);
+      fallbackDispose();
+    };
+
     const smoothedVisual=installPresentationSmoothing(THREE,visual,perf);
 
     if(!THREE||!supportsRemoteHdVehicle(vehicleId)){
@@ -242,7 +267,6 @@ export function createMultiplayerVisualSystem(options={}){
       return smoothedVisual;
     }
 
-    const procedural=collectProceduralPresentation(visual);
     const attachParent=visual.bodyGroup||visual.root;
     const smoothedDispose=smoothedVisual.dispose?.bind(smoothedVisual)||(()=>{});
     let disposed=false;
@@ -332,7 +356,7 @@ export function createMultiplayerVisualSystem(options={}){
   function diagnostics(){
     return {
       enabled:true,
-      mode:'multiplayer-hd-overlay-v4-support-aligned-smoothing',
+      mode:'multiplayer-hd-overlay-v5-replicated-lighting',
       ...perf,
       smoothing:{
         positionRate:SMOOTH_POSITION_RATE,
@@ -341,6 +365,10 @@ export function createMultiplayerVisualSystem(options={}){
         teleportYawRad:SMOOTH_TELEPORT_YAW,
         verticalDoubleSmoothing:false,
         receiverSupportAligned:true
+      },
+      lighting:{
+        perPeer:true,
+        families:['night','brake','reverse','signal-left','signal-right']
       },
       cache:remoteHdDiagnostics()
     };
