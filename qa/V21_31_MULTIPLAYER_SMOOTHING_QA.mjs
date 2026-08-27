@@ -16,7 +16,7 @@ for(const marker of [
   'distance>SMOOTH_TELEPORT_DISTANCE||yawError>SMOOTH_TELEPORT_YAW',
   'smoothedPosition.y=targetPosition.y;',
   'presentationRoot:contentRoot',
-  "mode:'multiplayer-hd-overlay-v4-support-aligned-smoothing'"
+  'receiverSupportAligned:true'
 ]){
   assert(visuals.includes(marker),`missing multiplayer M2.3 smoothing marker: ${marker}`);
 }
@@ -26,6 +26,7 @@ assert(visuals.includes('cancelAnimationFrame?.(rafId)'),'smoothing RAF must be 
 assert(visuals.includes('contentRoot.position.set('),'smoothed world correction must be applied to presentation root');
 assert(visuals.includes('contentRoot.rotation.y=yawCorrection;'),'yaw correction must use the support-aligned presentation yaw');
 assert(!visuals.includes('correction.copy(smoothedPosition).sub(targetPosition);'),'M2.3 must not restore legacy 3D/double-Y smoothing');
+assert(visuals.includes("mode:'multiplayer-hd-overlay-v5-replicated-lighting'"),'M2.4 diagnostics must preserve the support-aligned smoothing wrapper');
 
 // Smoothing must remain presentation-only. Network cadence and M2 trajectory
 // reconstruction stay authoritative and unchanged.
@@ -40,5 +41,6 @@ console.log('V21.31 MULTIPLAYER M2.3 PRESENTATION SMOOTHING QA: PASS',{
   teleportSnapMeters:12,
   supportAligned:true,
   verticalDoubleSmoothing:false,
+  m24LightingOverlay:true,
   networkAuthorityPreserved:true
 });
