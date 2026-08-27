@@ -1,15 +1,15 @@
 import {createForestChunkStreamer as createForestChunkStreamerP912} from './forest-chunk-streamer-p912.js';
 
-// Foret P9.28 — diagnostics-only wrapper around the proven P9.12 streamer.
+// Foret P9.28.1 — diagnostics-only wrapper around the proven P9.12 streamer.
 //
-// This module deliberately does NOT change density, LOD, chunk sizing, queue
-// ordering, idle scheduling, terrain sampling or GPU upload behaviour. It only
-// observes the existing streamer and exposes enough telemetry to correlate a
-// gameplay hitch with forest activity that happened immediately beforehand.
+// IMPORTANT: this module must remain observational. It does NOT change density,
+// LOD, chunk sizing, queue ordering, idle scheduling, terrain sampling or GPU
+// upload behaviour. P9.28.1 also removes the original 80 ms diagnostics poll:
+// frame correlation is now fed only when the existing frame-pacing coordinator
+// has already detected a real >20 ms gameplay hitch.
 
 const P928_MATCH_BEFORE_MS=70;
 const P928_MATCH_AFTER_MS=12;
-const P928_CORRELATION_POLL_MS=80;
 const P928_EVENT_LIMIT=96;
 const P928_INSTALL_RETRY_MS=120;
 
@@ -73,7 +73,6 @@ export function createForestChunkStreamer(options){
       hitchesObserved:0,
       hitchesCorrelated:0,
       hitchesUnmatched:0,
-      ambiguousHitches:0,
       lastHitchAt:0,
       lastMatchedHitch:null,
       lastUnmatchedHitch:null
@@ -125,9 +124,6 @@ export function createForestChunkStreamer(options){
     if(replacedDelta>0)telemetry.replacementEvents+=replacedDelta;
     if(densityDelta>0)telemetry.densityUpdatesObserved+=densityDelta;
 
-    // Every onStats report marks real forest-streaming activity. In the P9.12
-    // implementation it is emitted after a queue slice or a substantial stream
-    // update, never from the cheap <120 m polling early-return path.
     const now=performance.now();
     pushEvent({
       at:round3(now),
@@ -196,6 +192,7 @@ export function createForestChunkStreamer(options){
       stats.lastMs=ms;
       stats.maxMs=Math.max(stats.maxMs,ms);
       if(ms>=.15){
+        const raw=base.stats?.()||{};
         pushEvent({
           at:round3(performance.now()),
           reason:`api:${name}`,
@@ -204,9 +201,9 @@ export function createForestChunkStreamer(options){
           chunksReplacedDelta:0,
           matrixUploadsDelta:0,
           densityUpdatesDelta:0,
-          activeChunks:finite(base.stats?.()?.activeChunks),
-          cachedChunks:finite(base.stats?.()?.cachedChunks),
-          queuedChunks:finite(base.stats?.()?.queuedChunks)
+          activeChunks:finite(raw.activeChunks),
+          cachedChunks:finite(raw.cachedChunks),
+          queuedChunks:finite(raw.queuedChunks)
         });
       }
       if(resetAfter)resetRouteTelemetry({preserveClearCall:true});
@@ -240,7 +237,6 @@ export function createForestChunkStreamer(options){
     telemetry.correlation.hitchesObserved=0;
     telemetry.correlation.hitchesCorrelated=0;
     telemetry.correlation.hitchesUnmatched=0;
-    telemetry.correlation.ambiguousHitches=0;
     telemetry.correlation.lastHitchAt=0;
     telemetry.correlation.lastMatchedHitch=null;
     telemetry.correlation.lastUnmatchedHitch=null;
@@ -263,54 +259,44 @@ export function createForestChunkStreamer(options){
     return best?{event,bestDistance}:null;
   }
 
-  function observeFrameDiagnostics(diagnostics){
+  function recordHitch({hitchCount=0,hitchAt=0,frameMs=0}={}){
     const correlation=telemetry.correlation;
-    const hitchCount=finite(diagnostics?.hitchCount);
-    const hitchAt=finite(diagnostics?.lastHitchAt);
-    const previous=finite(observeFrameDiagnostics.lastHitchCount);
+    if(!Number.isFinite(hitchAt)||hitchAt<=0)return false;
     correlation.samples++;
-
-    if(!observeFrameDiagnostics.initialized||hitchCount<previous){
-      observeFrameDiagnostics.initialized=true;
-      observeFrameDiagnostics.lastHitchCount=hitchCount;
-      return;
-    }
-
-    const delta=hitchCount-previous;
-    observeFrameDiagnostics.lastHitchCount=hitchCount;
-    if(delta<=0)return;
-
-    correlation.hitchesObserved+=delta;
+    correlation.hitchesObserved++;
     correlation.lastHitchAt=hitchAt;
-    if(delta>1)correlation.ambiguousHitches+=delta-1;
 
     const match=findForestEventForHitch(hitchAt);
     if(match){
       correlation.hitchesCorrelated++;
-      correlation.hitchesUnmatched+=Math.max(0,delta-1);
       correlation.lastMatchedHitch={
+        hitchCount:finite(hitchCount),
         hitchAt:round3(hitchAt),
+        frameMs:round3(frameMs),
         forestEventAt:match.event.at,
         deltaMs:round3(hitchAt-match.event.at),
         event:{...match.event}
       };
-    }else{
-      correlation.hitchesUnmatched+=delta;
-      correlation.lastUnmatchedHitch={
-        hitchAt:round3(hitchAt),
-        nearestForestActivityAgeMs:telemetry.lastActivityAt
-          ?round3(hitchAt-telemetry.lastActivityAt)
-          :null
-      };
+      return true;
     }
+
+    correlation.hitchesUnmatched++;
+    correlation.lastUnmatchedHitch={
+      hitchCount:finite(hitchCount),
+      hitchAt:round3(hitchAt),
+      frameMs:round3(frameMs),
+      nearestForestActivityAgeMs:telemetry.lastActivityAt
+        ?round3(hitchAt-telemetry.lastActivityAt)
+        :null
+    };
+    return false;
   }
-  observeFrameDiagnostics.initialized=false;
-  observeFrameDiagnostics.lastHitchCount=0;
 
   function snapshot(){
     const raw=base.stats?.()||{};
     return {
       enabled:true,
+      observerMode:'direct-hitch-hook',
       note:'P9.28 correlation is temporal evidence, not proof of causation',
       trees:lastVisible.trees,
       near:lastVisible.near,
@@ -356,36 +342,31 @@ export function createForestChunkStreamer(options){
         clearAll:snapshotCallStats(telemetry.publicCalls.clearAll)
       },
       hitchCorrelation:{
-        samples:telemetry.correlation.samples,
-        hitchesObserved:telemetry.correlation.hitchesObserved,
-        hitchesCorrelated:telemetry.correlation.hitchesCorrelated,
-        hitchesUnmatched:telemetry.correlation.hitchesUnmatched,
-        ambiguousHitches:telemetry.correlation.ambiguousHitches,
+        samples:correlation.samples,
+        hitchesObserved:correlation.hitchesObserved,
+        hitchesCorrelated:correlation.hitchesCorrelated,
+        hitchesUnmatched:correlation.hitchesUnmatched,
         matchBeforeMs:P928_MATCH_BEFORE_MS,
         matchAfterMs:P928_MATCH_AFTER_MS,
-        lastHitchAt:round3(telemetry.correlation.lastHitchAt),
-        lastMatchedHitch:telemetry.correlation.lastMatchedHitch
-          ?{...telemetry.correlation.lastMatchedHitch}
-          :null,
-        lastUnmatchedHitch:telemetry.correlation.lastUnmatchedHitch
-          ?{...telemetry.correlation.lastUnmatchedHitch}
-          :null
+        lastHitchAt:round3(correlation.lastHitchAt),
+        lastMatchedHitch:correlation.lastMatchedHitch?{...correlation.lastMatchedHitch}:null,
+        lastUnmatchedHitch:correlation.lastUnmatchedHitch?{...correlation.lastUnmatchedHitch}:null
       }
     };
   }
 
   function installFramePacingBridge(){
+    globalThis.__WORLD_DRIVE_P928_RECORD_HITCH__=recordHitch;
+    globalThis.__WORLD_DRIVE_P928_FOREST__=snapshot;
     if(typeof globalThis.setTimeout!=='function')return;
+
     const attempt=()=>{
       const current=globalThis.WorldDriveFramePacing;
       if(typeof current!=='function'){
         globalThis.setTimeout(attempt,P928_INSTALL_RETRY_MS);
         return;
       }
-      if(current.__worldDriveP928Forest){
-        globalThis.__WORLD_DRIVE_P928_FOREST__=snapshot;
-        return;
-      }
+      if(current.__worldDriveP928Forest)return;
 
       const original=current;
       const wrapped=()=>{
@@ -395,20 +376,6 @@ export function createForestChunkStreamer(options){
       wrapped.__worldDriveP928Forest=true;
       wrapped.__worldDriveP928Original=original;
       globalThis.WorldDriveFramePacing=wrapped;
-      globalThis.__WORLD_DRIVE_P928_FOREST__=snapshot;
-
-      let lastSeenHitchCount=null;
-      globalThis.setInterval(()=>{
-        try{
-          const diagnostics=original()||{};
-          const hitchCount=finite(diagnostics.hitchCount);
-          if(lastSeenHitchCount!==null&&hitchCount<lastSeenHitchCount){
-            observeFrameDiagnostics.initialized=false;
-          }
-          lastSeenHitchCount=hitchCount;
-          observeFrameDiagnostics(diagnostics);
-        }catch{}
-      },P928_CORRELATION_POLL_MS);
     };
     globalThis.setTimeout(attempt,0);
   }
@@ -425,7 +392,6 @@ export function createForestChunkStreamer(options){
     })
   });
 
-  globalThis.__WORLD_DRIVE_P928_FOREST__=snapshot;
   installFramePacingBridge();
   return api;
 }
