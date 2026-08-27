@@ -1,6 +1,6 @@
 import {createMultiplayerVisualSystem as createSupportSystem} from './multiplayer-visuals-v18.js';
 import {createRemoteLightingRig} from './multiplayer-lighting.js';
-import {createRemoteHdVehicle,supportsRemoteHdVehicle,remoteHdDiagnostics} from './multiplayer-hd-vehicles-m3.js';
+import {createRemoteHdVehicle,supportsRemoteHdVehicle,remoteHdDiagnostics} from './multiplayer-hd-vehicles-m31.js';
 
 // Multiplayer M3 presentation pipeline:
 // registry support chassis -> optional HD GLB -> contract-validated GLB lighting.
