@@ -60,5 +60,7 @@ jobs:
         run: node qa-road-signs-p930-runtime.mjs
       - name: P9.31 forest ahead-priority QA
         run: node qa-forest-p931-ahead-priority.mjs
+      - name: P9.32 hidden-generation QA
+        run: node qa-forest-p932-hidden-generation.mjs
       - name: Production build
         run: npm run build
