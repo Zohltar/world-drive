@@ -1,13 +1,15 @@
 import {createMultiplayerClient as createMaintainedMultiplayerClient} from './multiplayer-client-m3.js';
 import {readLocalAuthoredPresentationState} from './deferred-glb-system.js';
+import {readTransmissionNetworkGear} from './transmission-network-state.js';
 
-// Multiplayer M4.7 public entrypoint.
+// Multiplayer M4.8 public entrypoint.
 //
-// Local authored passenger controllers already receive the final presentation
-// state (brake/reverse/night) that produces the visible local car. M4.7 copies
-// that exact state into the network snapshot instead of reconstructing reverse
-// from a second transmission bridge. Remote and local authored controllers thus
-// consume the same reverse request.
+// Wire gear is now one canonical numeric value:
+//   -1 = reverse, 0 = neutral, 1..N = forward gears.
+// The transmission controller already publishes the exact transmissionGear used
+// by the local instrument cluster into transmission-network-state.js. M4.8 reads
+// that value directly here, before the maintained client builds its packet.
+// No D/N/R selector bridge or speed inference owns network gear anymore.
 
 function hasExplicitGear(state){
   return !!state&&
@@ -17,14 +19,30 @@ function hasExplicitGear(state){
     Number.isFinite(Number(state.gear));
 }
 
+function normalizeWireGear(value){
+  if(value===null||value===undefined||value==='')return null;
+  const n=Number(value);
+  if(!Number.isFinite(n))return null;
+  return n<0?-1:n===0?0:Math.max(1,Math.floor(n));
+}
+
+export function mergeExactTransmissionGear(base,gear=readTransmissionNetworkGear()){
+  if(!base)return base;
+  const exactGear=normalizeWireGear(gear);
+  if(exactGear===null)return base;
+  return {
+    ...base,
+    gear:exactGear,
+    reversing:exactGear===-1
+  };
+}
+
 export function mergeLocalAuthoredMultiplayerState(base,presentation=readLocalAuthoredPresentationState()){
   if(!base||!presentation?.source||!(Number(presentation.sequence)>0))return base;
 
-  const reversing=!!presentation.reversing;
   const merged={
     ...base,
-    braking:!!presentation.braking,
-    reversing
+    braking:!!presentation.braking
   };
 
   const night=Number(presentation.nightLevel);
@@ -32,24 +50,16 @@ export function mergeLocalAuthoredMultiplayerState(base,presentation=readLocalAu
     merged.nightLevel=Math.max(0,Math.min(1,night));
   }
 
-  // Reverse presentation state is authoritative because it is the exact flag
-  // that already lights the local authored car. A true request must survive any
-  // stale selector/gear bridge and become explicit R on the wire.
-  if(reversing){
-    merged.gear=-1;
-  }else if(Number(merged.gear)<0){
-    // Never let a stale explicit R override the local authored controller saying
-    // reverse is off. With no explicit gear, the maintained client can use its
-    // normal forward/neutral transmission fallback.
-    delete merged.gear;
-  }
-
+  // M4.8 deliberately does NOT let the authored presentation bridge invent or
+  // override gear. Numeric transmission gear is owned solely by
+  // transmission-network-state.js. The presentation bridge remains useful for
+  // brake/night parity only.
   return merged;
 }
 
 // Compatibility for a relay process that predates explicit `gear`. It still
-// forwards the already-authoritative reversing boolean, so synthesize R only
-// when that boolean is true. Current packets carrying gear are never modified.
+// forwards the authoritative reversing boolean, so synthesize R only when that
+// boolean is true. Current packets carrying numeric gear are never modified.
 export function upgradeLegacyMultiplayerState(state){
   if(!state||typeof state!=='object'||hasExplicitGear(state))return state;
   if(state.reversing===true)state.gear=-1;
@@ -108,6 +118,13 @@ function installLegacyGearWebSocketCompatibility(){
   websocketCompatInstalled=true;
 }
 
+try{
+  globalThis.__WORLD_DRIVE_MULTIPLAYER_LOCAL_GEAR__=()=>({
+    gear:normalizeWireGear(readTransmissionNetworkGear()),
+    reversing:normalizeWireGear(readTransmissionNetworkGear())===-1
+  });
+}catch{}
+
 export function createMultiplayerClient(options={}){
   installLegacyGearWebSocketCompatibility();
   const baseGetLocalState=options.getLocalState;
@@ -115,9 +132,12 @@ export function createMultiplayerClient(options={}){
 
   return createMaintainedMultiplayerClient({
     ...options,
-    getLocalState:()=>mergeLocalAuthoredMultiplayerState(
-      baseGetLocalState(),
-      readLocalAuthoredPresentationState()
+    getLocalState:()=>mergeExactTransmissionGear(
+      mergeLocalAuthoredMultiplayerState(
+        baseGetLocalState(),
+        readLocalAuthoredPresentationState()
+      ),
+      readTransmissionNetworkGear()
     )
   });
 }
