@@ -78,6 +78,10 @@ for(const descriptor of descriptors){
   assert.equal(forward.gear,1,`${descriptor.id}: forward gear normalization failed`);
   assert.equal(forward.reversing,false,`${descriptor.id}: forward gear must override stale legacy reversing=true`);
 
+  const missingGear=normalizeMultiplayerVehicleState({gear:null,reversing:true},vehicleSystem.active);
+  assert.equal(missingGear.gear,null,`${descriptor.id}: missing gear must remain null, never become Neutral`);
+  assert.equal(missingGear.reversing,true,`${descriptor.id}: legacy reverse bool must survive when gear is missing`);
+
   controller.setActive(false);
   scene.traverse(obj=>{obj.geometry?.dispose?.();for(const mat of (Array.isArray(obj.material)?obj.material:[obj.material]))mat?.dispose?.();});
   scene.clear();
@@ -90,6 +94,7 @@ const visuals=fs.readFileSync('src/multiplayer-visuals-m3.js','utf8');
 const client=fs.readFileSync('src/multiplayer-client-m3.js','utf8');
 const localVisuals=fs.readFileSync('src/vehicle-visuals.js','utf8');
 const wrx=fs.readFileSync('src/wrx-glb.js','utf8');
+const sonata=fs.readFileSync('src/sonata-glb.js','utf8');
 const id4=fs.readFileSync('src/id4-glb.js','utf8');
 
 assert(entries.includes("from './vehicle-authored-registry.js'"),'local GLB entrypoint must use canonical authored registry');
@@ -99,8 +104,11 @@ assert(adapter.includes('loadAuthoredVehicleFactory(vehicleId)'),'remote adapter
 assert(adapter.includes('createVehicleSystem({initialId:vehicleId})'),'every peer must own an isolated vehicleSystem');
 assert(adapter.includes("descriptor?.kind==='articulated-truck'"),'adapter must convert articulated truck through the same contract');
 assert(adapter.includes('absX-state.renderX')&&adapter.includes('absZ-state.renderZ'),'truck adapter must infer floating world origin from normalized coordinates');
+assert(adapter.includes("if(value===null||value===undefined||value==='')return null"),'adapter must preserve missing gear as null');
 assert(adapter.includes('reversing:gear!==null?gear<0:!!input.reversing'),'adapter must make explicit gear authoritative for reverse');
-assert(adapter.includes('reverseMaterialCount:optionalCount(system?.reverseMaterialCount)'),'adapter diagnostics must expose authored reverse binding when controller supports it');
+assert(adapter.includes('reverseRequested:optionalBoolean(system?.reverseRequested)'),'adapter diagnostics must expose authored reverse command receipt');
+assert(adapter.includes('reverseMaterialCount:optionalCount(system?.reverseMaterialCount)'),'adapter diagnostics must expose authored reverse binding count');
+assert(adapter.includes('reverseGlowOpacity:optionalCount(system?.reverseGlowOpacity)'),'adapter diagnostics must expose authored shader output when available');
 assert(visuals.includes("from './multiplayer-vehicle-adapter.js'"),'multiplayer visuals must route through M4 adapter');
 assert(visuals.includes("from './vehicle-render-contract.js'"),'remote visuals must consume shared local render transform contract');
 assert(visuals.includes('support.root.scale.set(VEHICLE_RENDER_ROOT_SCALE'),'remote authored root must use exact local car scale');
@@ -112,21 +120,42 @@ assert(visuals.includes('same-local-authored-controller'),'M4 visual source must
 assert(client.includes('peer.visual.updateRemoteVehicle?.(dt,remoteState)'),'client must feed normalized peer state into M4 adapter each frame');
 assert(client.includes('peer.visual.setRemoteVisible?.(true,remoteState)'),'client must keep external trailer/controller visibility aligned');
 assert(client.includes('gear:peer.gear'),'client must forward network gear into normalized remote state');
-assert(wrx.includes('function rootLocalGeometryCenter'),'WRX lamp classifier must be transform-invariant');
-assert(!wrx.includes('new THREE.Box3().setFromObject(obj)'),'WRX per-lamp classifier must not depend on a world AABB');
-assert(wrx.includes('get reverseMaterialCount(){return reverseMaterials.length;}'),'WRX must expose reverse binding diagnostics');
+
+// M4.6 WRX: use the asset's explicit authored reverse branch, not a generic
+// clear-lens material or positional guess. The source material is named Eblems.
+assert(wrx.includes("if(path.includes('fh_reverse_material'))"),'WRX must bind the explicit authored fh_reverse_material branch');
+assert(wrx.includes("console.warn('WRX authored reverse-lamp binding found no fh_reverse_material mesh.')"),'WRX missing exact reverse node must be diagnosable');
+assert(!wrx.includes("materialNames.some(name=>name.includes('fh_light_glass'))"),'WRX reverse must not regress to generic clear-lens material heuristics');
+assert(wrx.includes('get reverseRequested(){return lastReverseRequested;}'),'WRX controller must expose exact reverse command diagnostics');
+assert(wrx.includes('get reverseMaterialCount(){return reverseMaterials.length;}'),'WRX must expose authored reverse binding count');
+
+// M4.6 Sonata: Object_46 is the audited authored rear-inner lens. Every shader
+// uniform referenced in GLSL must exist, and reverse uses a deterministic lower
+// UV region rather than relying only on a fragile white-pixel threshold.
+assert(sonata.includes("const rearInnerLens=root.getObjectByName('Object_46')"),'Sonata reverse must originate from audited Object_46 authored lens');
+for(const uniform of ['uTintMix','uUseUvRegion','uUvMin','uUvMax','uUvFeather']){
+  assert(sonata.includes(`${uniform}:{value:`),`Sonata shader missing initialized ${uniform}`);
+}
+assert(sonata.includes("filter:'white',side:0,tint:0xf8fbff"),'Sonata Object_46 must own an authored white reverse glow layer');
+assert(sonata.includes("max:[0.54,0.842]"),'Sonata reverse must use deterministic lower Object_46 UV region');
+assert(sonata.includes('get reverseGlowOpacity(){return lastReverseGlowOpacity;}'),'Sonata must expose applied authored reverse glow opacity');
+assert(sonata.includes("get reverseMaterialCount(){return authoredRearGlowLayers.filter(layer=>layer.filter==='white').length;}"),'Sonata must expose authored reverse layer count');
+
 assert(id4.includes('for(const [obj,visible] of hiddenWheelState)obj.visible=visible'),'ID.4 local controller wheel visibility restoration regression');
 assert(!id4.includes('hiddenWheelState)pivot.visible=visible'),'ID.4 invalid pivot visibility reference must not return');
 
-console.log('V21.31 MULTIPLAYER M4.2 ADAPTER QA: PASS',{
+console.log('V21.31 MULTIPLAYER M4.6 ADAPTER QA: PASS',{
   vehicles:reports,
   renderRootScale:VEHICLE_RENDER_ROOT_SCALE,
   sameControllerForLocalAndRemote:true,
   isolatedPeerVehicleSystems:true,
   capabilitiesDerivedFromLocalSource:true,
   normalizedContract:['pose','motion','steering','gear','brake','reverse','night','signals','distance'],
+  missingGearPreserved:true,
   gearAuthoritativeReverse:true,
-  wrxTransformInvariantLampBinding:true,
+  wrxReverseBinding:'fh_reverse_material',
+  sonataReverseBinding:'Object_46 deterministic UV shader',
+  authoredReverseDiagnostics:true,
   articulatedTruckConverted:true,
   duplicateRemoteGlbLightingRuntime:false
 });
