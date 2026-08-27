@@ -36,8 +36,6 @@ export function createForestChunkStreamer(options){
     try{
       const nr=nearestRoute?.(center.x,center.z);
       if(!nr||!Number.isFinite(nr.angle))return null;
-      // routing.js uses angle=atan2(dx,dz), therefore the route-forward unit
-      // vector is sin(angle), cos(angle) in world X/Z.
       return {
         angle:nr.angle,
         x:Math.sin(nr.angle),
@@ -66,11 +64,6 @@ export function createForestChunkStreamer(options){
     const dir=routeDirectionAt(center);
     if(!dir)return false;
 
-    // P9.29/P9.31 learns travel direction from consecutive world centres. At
-    // startup there has been no recenter yet, so prime it with one synthetic
-    // centre 180 m BEHIND the route start, immediately followed by the real
-    // centre. Idle callbacks have not run yet, therefore no chunk is committed
-    // at the synthetic position; only queue priority learns the correct heading.
     offsetOverride={
       x:center.x-dir.x*STARTUP_DIRECTION_SEED_M,
       z:center.z-dir.z*STARTUP_DIRECTION_SEED_M
@@ -133,7 +126,8 @@ export function createForestChunkStreamer(options){
     const raw=base.stats?.()||{};
     return {
       enabled:true,
-      observerMode:'p934-startup-route-seed',
+      observerMode:'p931-ahead-priority',
+      startupMode:'p934-startup-route-seed',
       legacyObserverMode:'p929-direct-last-slice',
       trees:visible.trees,near:visible.near,mid:visible.mid,far:visible.far,edge:visible.edge,
       activeChunks:finite(raw.activeChunks),cachedChunks:finite(raw.cachedChunks),queuedChunks:finite(raw.queuedChunks),
