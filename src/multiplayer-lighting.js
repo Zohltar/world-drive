@@ -127,11 +127,11 @@ export function createRemoteLightingRig(THREE,vehicleId,parent){
     const distance=Math.max(0,Number(lastState.distance)||0);
     const fade=1-clamp01((distance-1500)/1500);
     const running=(night>.035?(.15+night*.22):0)*fade;
-    const braking=(lastState.braking?.95:0)*fade;
-    const reverseLevel=(lastState.reversing?.95:0)*fade;
+    const braking=(lastState.braking ? .95 : 0)*fade;
+    const reverseLevel=(lastState.reversing ? .95 : 0)*fade;
     const blink=!!lastState.signalBlink;
-    const left=(lastState.signalLeft&&blink?.94:0)*fade;
-    const right=(lastState.signalRight&&blink?.94:0)*fade;
+    const left=(lastState.signalLeft&&blink ? .94 : 0)*fade;
+    const right=(lastState.signalRight&&blink ? .94 : 0)*fade;
     const head=(night>.035?(.24+night*.58):0)*fade;
 
     for(const entry of tail)setGlow(entry,Math.max(running,braking));
