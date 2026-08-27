@@ -13,7 +13,7 @@ const SMOOTH_DT_MAX=.05;
 const GEO_EARTH=6378137;
 const DEG_TO_RAD=Math.PI/180;
 
-function angleDelta(target,current){return Math.atan2(Math.sin((Number(target)||0)-(Number(current)||0)),Math.cos((Number(target)||0)-(Number(current)||0));}
+function angleDelta(target,current){return Math.atan2(Math.sin((Number(target)||0)-(Number(current)||0)),Math.cos((Number(target)||0)-(Number(current)||0)));}
 function offsetLatLonMeters(lat,lon,x,z){
   const cosLat=Math.max(.15,Math.cos((Number(lat)||0)*DEG_TO_RAD));
   return {lat:(Number(lat)||0)-(Number(z)||0)/GEO_EARTH/DEG_TO_RAD,lon:(Number(lon)||0)+(Number(x)||0)/(GEO_EARTH*cosLat)/DEG_TO_RAD};
