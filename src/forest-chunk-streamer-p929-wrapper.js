@@ -16,7 +16,10 @@ export function createForestChunkStreamer(options){
   let startupDirectionSeeded=false;
   let startupSeedDir={x:0,z:0};
   let startupSeedAngle=null;
-  let visible={trees:0,near:0,mid:0,far:0,edge:0,chunks:0,cached:0,queued:0};
+  let visible={
+    trees:0,near:0,mid:0,far:0,edge:0,chunks:0,cached:0,queued:0,
+    visibleWanted:0,prefetchWanted:0,prefetchedReady:0,prefetchQueued:0
+  };
   let base=null;
   const correlation={
     hitchesObserved:0,
@@ -53,7 +56,9 @@ export function createForestChunkStreamer(options){
       visible={
         trees:finite(stats?.trees),near:finite(stats?.near),mid:finite(stats?.mid),
         far:finite(stats?.far),edge:finite(stats?.edge),chunks:finite(stats?.chunks),
-        cached:finite(stats?.cached),queued:finite(stats?.queued)
+        cached:finite(stats?.cached),queued:finite(stats?.queued),
+        visibleWanted:finite(stats?.visibleWanted),prefetchWanted:finite(stats?.prefetchWanted),
+        prefetchedReady:finite(stats?.prefetchedReady),prefetchQueued:finite(stats?.prefetchQueued)
       };
       userOnStats?.(stats);
     }
@@ -128,6 +133,7 @@ export function createForestChunkStreamer(options){
       enabled:true,
       observerMode:'p931-ahead-priority',
       startupMode:'p934-startup-route-seed',
+      streamingMode:'p936-rolling-prefetch',
       legacyObserverMode:'p929-direct-last-slice',
       trees:visible.trees,near:visible.near,mid:visible.mid,far:visible.far,edge:visible.edge,
       activeChunks:finite(raw.activeChunks),cachedChunks:finite(raw.cachedChunks),queuedChunks:finite(raw.queuedChunks),
@@ -147,6 +153,23 @@ export function createForestChunkStreamer(options){
         confidence:round3(raw.travelConfidence),
         dirX:round3(raw.travelDirX),
         dirZ:round3(raw.travelDirZ)
+      },
+      prefetch:{
+        enabled:raw.rollingPrefetch===true,
+        leadM:round3(raw.prefetchLeadM),
+        radiusM:round3(raw.prefetchRadiusM),
+        minForwardM:round3(raw.prefetchMinForwardM),
+        wanted:finite(raw.prefetchWantedChunks),
+        ready:finite(raw.prefetchedReadyChunks),
+        queued:finite(raw.prefetchQueuedChunks),
+        meshPrepares:finite(raw.prefetchMeshPrepares),
+        hits:finite(raw.prefetchHits)
+      },
+      catchup:{
+        threshold:finite(raw.catchupQueueThreshold),
+        sliceBudgetMs:round3(raw.catchupSliceBudgetMs),
+        candidateBatchSize:finite(raw.catchupCandidateBatchSize),
+        slices:finite(raw.catchupSlices)
       },
       slice:{
         lastMs:round3(raw.lastSliceMs),maxMs:round3(raw.maxSliceMs),lastAt:round3(raw.lastSliceAt),
@@ -174,6 +197,7 @@ export function createForestChunkStreamer(options){
     globalThis.__WORLD_DRIVE_P929_FOREST__=snapshot;
     globalThis.__WORLD_DRIVE_P931_FOREST__=snapshot;
     globalThis.__WORLD_DRIVE_P934_FOREST__=snapshot;
+    globalThis.__WORLD_DRIVE_P936_FOREST__=snapshot;
     if(typeof globalThis.setTimeout!=='function')return;
     const attempt=()=>{
       const current=globalThis.WorldDriveFramePacing;
@@ -181,12 +205,13 @@ export function createForestChunkStreamer(options){
         globalThis.setTimeout(attempt,INSTALL_RETRY_MS);
         return;
       }
-      if(current.__worldDriveP934Forest)return;
+      if(current.__worldDriveP936Forest)return;
       const original=current.__worldDriveP928Original||current;
       const wrapped=()=>({...((original?.()||{})),forest:snapshot()});
       wrapped.__worldDriveP929Forest=true;
       wrapped.__worldDriveP931Forest=true;
       wrapped.__worldDriveP934Forest=true;
+      wrapped.__worldDriveP936Forest=true;
       wrapped.__worldDriveP928Original=original;
       globalThis.WorldDriveFramePacing=wrapped;
     };
@@ -215,6 +240,6 @@ export function createForestChunkStreamer(options){
       return base.clearAll(...args);
     },
     whenInitialReady:(...args)=>base.whenInitialReady(...args),
-    stats:()=>({...base.stats(),p934:snapshot()})
+    stats:()=>({...base.stats(),p934:snapshot(),p936:snapshot()})
   });
 }
