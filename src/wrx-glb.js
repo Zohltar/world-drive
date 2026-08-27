@@ -26,7 +26,6 @@ export function createWrxGlbSystem({
   let loadStarted=false;
   let root=null;
   let wheelSpin=0;
-  let lastReverseRequested=false;
 
   const wheelControllers=[];
   const brakeMaterials=[];
@@ -161,8 +160,10 @@ export function createWrxGlbSystem({
   }
 
   // M4.2: classify authored parts in root-local space without ever taking a
-  // world-axis-aligned Box3. Used only for front-light classification now;
-  // M4.6 reverse uses the asset's explicit fh_reverse_material node.
+  // world-axis-aligned Box3. The former setFromObject()->worldToLocal path could
+  // shift the apparent centre when a remote peer was already rotated/scaled
+  // while its GLB finished loading. Brake bindings used semantic names and were
+  // unaffected; the WRX reverse lens used this positional classification.
   function rootLocalGeometryCenter(obj,out=new THREE.Vector3()){
     const geometry=obj?.geometry;
     if(geometry){
@@ -255,6 +256,10 @@ export function createWrxGlbSystem({
     root?.traverse(obj=>{
       if(!obj?.isMesh&&!obj?.isSkinnedMesh)return;
       const path=semanticPath(obj);
+      const materialNames=(Array.isArray(obj.material)?obj.material:[obj.material])
+        .map(mat=>String(mat?.name||'').toLowerCase());
+      const localCenter=rootLocalGeometryCenter(obj);
+      const isRearCluster=localCenter.z<-1.7 && localCenter.y>.65;
 
       if(path.includes('fh_light_glass_red_material')){
         if(splitRearRedLens(obj))return;
@@ -270,17 +275,15 @@ export function createWrxGlbSystem({
         return;
       }
 
-      // M4.6: the GLB audit identifies this exact authored branch as the WRX
-      // reverse lamp: fh_reverse_material_15/Object_37. Its source material is
-      // misleadingly named "Eblems", so material-name heuristics are invalid.
-      // Bind by semantic node path and nothing else.
-      if(path.includes('fh_reverse_material')){
+      if(
+        isRearCluster &&
+        materialNames.some(name=>name.includes('fh_light_glass'))
+      ){
         cloneDynamicMaterials(obj,reverseMaterials,0xffffff);
-        return;
       }
     });
     if(!reverseMaterials.length){
-      console.warn('WRX authored reverse-lamp binding found no fh_reverse_material mesh.');
+      console.warn('WRX authored reverse-lamp binding found no rear white lens.');
     }
   }
 
@@ -363,7 +366,6 @@ export function createWrxGlbSystem({
 
   function setRearLights(braking=false,reversing=false,nightLevel=0){
     const night=clamp(Number(nightLevel)||0,0,1);
-    lastReverseRequested=!!reversing;
     const runningIntensity=night>.06 ? (.55+night*3.25) : .02;
     for(const mat of runningTailMaterials){
       mat.emissive?.setHex(0xff2028);
@@ -379,7 +381,7 @@ export function createWrxGlbSystem({
 
     for(const mat of reverseMaterials){
       mat.emissive?.setHex(0xffffff);
-      mat.emissiveIntensity=reversing?8.0:.01;
+      mat.emissiveIntensity=reversing?5.2:.01;
       mat.needsUpdate=true;
     }
   }
@@ -575,7 +577,6 @@ export function createWrxGlbSystem({
     get active(){return requestedActive&&ready;},
     get wheelControllerCount(){return wheelControllers.length;},
     get reverseMaterialCount(){return reverseMaterials.length;},
-    get reverseRequested(){return lastReverseRequested;},
     host
   };
 }
