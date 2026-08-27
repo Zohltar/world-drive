@@ -1,354 +1,438 @@
-import {createTerrainService as createTerrainServiceP925} from './terrain-p925.js';
+import {createTerrainService as createTerrainServiceP926} from './terrain-p926.js';
 
-const P926_HORIZON_BUDGET_MS=1.15;
-const P926_HORIZON_GAP_MS=8;
+const P927_TRANSITION_BUDGET_MS=1.15;
+const P927_TRANSITION_GAP_MS=8;
+const P927_CELL_SIZE=48;
 
 function nowMs(){return globalThis.performance?.now?.()??Date.now();}
 function clamp01(v){return Math.max(0,Math.min(1,v));}
 function lerp(a,b,t){return a+(b-a)*t;}
+function scheduleTransitionSlice(callback){
+  if(typeof globalThis.setTimeout==='function')globalThis.setTimeout(callback,P927_TRANSITION_GAP_MS);
+  else callback();
+}
 
-function scheduleHorizonSlice(callback){
-  if(typeof globalThis.setTimeout==='function'){
-    globalThis.setTimeout(callback,P926_HORIZON_GAP_MS);
-  }else{
-    callback();
-  }
+function disposeObject(object){
+  if(!object)return;
+  object.parent?.remove?.(object);
+  object.traverse?.(child=>{
+    child.geometry?.dispose?.();
+    const material=child.material;
+    if(Array.isArray(material))material.forEach(item=>item?.dispose?.());
+    else material?.dispose?.();
+  });
+}
+
+function deepCloneTransition(object){
+  if(!object?.clone)return null;
+  const clone=object.clone(true);
+  clone.traverse?.(child=>{
+    if(child.geometry?.clone)child.geometry=child.geometry.clone();
+    if(Array.isArray(child.material))child.material=child.material.map(item=>item?.clone?.()||item);
+    else if(child.material?.clone)child.material=child.material.clone();
+  });
+  return clone;
+}
+
+function segmentUnitNormal(a,b){
+  let tx=b.x-a.x,tz=b.z-a.z;
+  const len=Math.hypot(tx,tz)||1;
+  tx/=len;tz/=len;
+  return {x:-tz,z:tx};
+}
+
+function profileOffsetVector(profile,index,lateralOffset){
+  const point=profile[Math.max(0,Math.min(profile.length-1,index))];
+  const prev=profile[Math.max(0,index-1)];
+  const next=profile[Math.min(profile.length-1,index+1)];
+  if(index<=0){const n=segmentUnitNormal(point,next);return{x:n.x*lateralOffset,z:n.z*lateralOffset};}
+  if(index>=profile.length-1){const n=segmentUnitNormal(prev,point);return{x:n.x*lateralOffset,z:n.z*lateralOffset};}
+  const n0=segmentUnitNormal(prev,point),n1=segmentUnitNormal(point,next);
+  let mx=n0.x+n1.x,mz=n0.z+n1.z;
+  const mlen=Math.hypot(mx,mz);
+  if(mlen<.18)return{x:n1.x*lateralOffset,z:n1.z*lateralOffset};
+  mx/=mlen;mz/=mlen;
+  const denom=mx*n1.x+mz*n1.z;
+  if(denom<.28)return{x:n1.x*lateralOffset,z:n1.z*lateralOffset};
+  let length=lateralOffset/denom;
+  const maxLength=Math.abs(lateralOffset)*1.45;
+  length=Math.max(-maxLength,Math.min(maxLength,length));
+  return{x:mx*length,z:mz*length};
+}
+
+function startPadHeight(options,x,z,naturalY){
+  const pad=options?.startPad;
+  if(!pad||!Number.isFinite(pad.x)||!Number.isFinite(pad.z)||!Number.isFinite(pad.y))return naturalY;
+  const angle=Number.isFinite(pad.angle)?pad.angle:0;
+  const forwardOffset=Number.isFinite(pad.forwardOffset)?pad.forwardOffset:0;
+  const halfLength=Math.max(4,Number(pad.halfLength)||20);
+  const halfWidth=Math.max(4,Number(pad.halfWidth)||10);
+  const blendWidth=Math.max(2,Number(pad.blendWidth)||22);
+  const tx=Math.sin(angle),tz=Math.cos(angle),nx=-tz,nz=tx;
+  const cx=pad.x+tx*forwardOffset,cz=pad.z+tz*forwardOffset;
+  const dx=x-cx,dz=z-cz;
+  const along=dx*tx+dz*tz,lateral=dx*nx+dz*nz;
+  const qx=Math.abs(along)-halfLength,qz=Math.abs(lateral)-halfWidth;
+  const outside=Math.hypot(Math.max(0,qx),Math.max(0,qz));
+  if(qx<=0&&qz<=0)return pad.y;
+  if(outside>=blendWidth)return naturalY;
+  const t=clamp01(outside/blendWidth),smooth=t*t*(3-2*t);
+  return pad.y*(1-smooth)+naturalY*smooth;
 }
 
 export function createTerrainService(options={}){
-  const base=createTerrainServiceP925(options);
-  const {
-    THREE,
-    horizonGroup,
-    getWorldOffset,
-    groundSize=2000,
-    groundSegments=88
-  }=options;
+  const originalGetWorldOffset=options.getWorldOffset;
+  let forcedOffset=null;
+  const getOffset=()=>forcedOffset||originalGetWorldOffset?.()||{x:0,z:0};
+  const base=createTerrainServiceP926({...options,getWorldOffset:getOffset});
+  const {THREE,ground,groundSize=2000}=options;
+  if(!THREE||!ground||typeof originalGetWorldOffset!=='function')return base;
 
-  if(!THREE||!horizonGroup||typeof getWorldOffset!=='function')return base;
-
-  const sideSegments=Math.max(groundSegments,180);
-  const nearHalf=groundSize/2;
-  const halfExtents=[
-    nearHalf,
-    nearHalf+60,
-    nearHalf+125,
-    nearHalf+195,
-    nearHalf+270,
-    nearHalf+350,
-    nearHalf+435,
-    nearHalf+525,
-    nearHalf+620,
-    nearHalf+720,
-    nearHalf+825,
-    nearHalf+935,
-    nearHalf+1050,
-    nearHalf+1170,
-    nearHalf+1295,
-    nearHalf+1425,
-    nearHalf+1560,
-    nearHalf+1700,
-    nearHalf+1845,
-    nearHalf+1995,
-    nearHalf+2150,
-    nearHalf+2310,
-    nearHalf+2475,
-    nearHalf+2645,
-    nearHalf+2820,
-    nearHalf+3000,
-    nearHalf+3190,
-    nearHalf+3390,
-    nearHalf+3600,
-    nearHalf+3820,
-    nearHalf+4050,
-    nearHalf+4260
-  ];
-  const perimeterCount=sideSegments*4;
-  const rowCount=halfExtents.length;
-  const vertexCount=perimeterCount*rowCount;
-  const indexCount=(rowCount-1)*perimeterCount*6;
-  const localXZ=new Float32Array(vertexCount*2);
-  const indices=new Uint32Array(indexCount);
-
-  function perimeterPoint(side,index,half){
-    const t=index/sideSegments;
-    if(side===0)return {x:-half+2*half*t,z:-half};
-    if(side===1)return {x:half,z:-half+2*half*t};
-    if(side===2)return {x:half-2*half*t,z:half};
-    return {x:-half,z:half-2*half*t};
-  }
-
-  let vertex=0;
-  for(let row=0;row<rowCount;row++){
-    const half=halfExtents[row];
-    for(let side=0;side<4;side++)for(let i=0;i<sideSegments;i++){
-      const p=perimeterPoint(side,i,half);
-      localXZ[vertex*2]=p.x;
-      localXZ[vertex*2+1]=p.z;
-      vertex++;
-    }
-  }
-  let indexCursor=0;
-  for(let row=0;row<rowCount-1;row++){
-    const base0=row*perimeterCount;
-    const base1=(row+1)*perimeterCount;
-    for(let i=0;i<perimeterCount;i++){
-      const next=(i+1)%perimeterCount;
-      const a=base0+i,b=base0+next,c=base1+i,d=base1+next;
-      indices[indexCursor++]=a;
-      indices[indexCursor++]=c;
-      indices[indexCursor++]=b;
-      indices[indexCursor++]=b;
-      indices[indexCursor++]=c;
-      indices[indexCursor++]=d;
-    }
-  }
-
-  let horizonSerial=0;
-  let horizonPromise=null;
+  let transitionProfile=[];
+  let transitionOptions={roadHalfWidth:5.4,terrainCutHalfWidth:16.5,blendWidth:14,surfaceOffset:.20,startPad:null};
+  let transitionSerial=0;
+  let transitionPromise=null;
+  let externalTransition=null;
+  let heldTransition=null;
   const perf={
-    preparations:0,
-    commits:0,
-    discards:0,
+    stateOnlyInstalls:0,
+    transitionPreparations:0,
+    transitionCommits:0,
+    transitionDiscards:0,
+    maxStateOnlyMs:0,
     maxSliceMs:0,
     maxCommitMs:0,
     last:null
   };
 
-  function distantHeight(wx,wz,distance){
-    const rendered=base.renderHeightAt(wx,wz);
-    if(distance<=nearHalf+120)return rendered;
-
-    const natural=base.heightAt(wx,wz)-.15;
-    if(Math.abs(rendered-natural)>.02)return rendered;
-
-    const t=clamp01((distance-(nearHalf+120))/3300);
-    const radius=8+t*34;
-    const hL=base.heightAt(wx-radius,wz)-.15;
-    const hR=base.heightAt(wx+radius,wz)-.15;
-    const hD=base.heightAt(wx,wz-radius)-.15;
-    const hU=base.heightAt(wx,wz+radius)-.15;
-    const average=(natural*4+hL+hR+hD+hU)/8;
-    const blend=.055+t*.235;
-    return rendered+(average-natural)*blend;
+  function normalizeOptions(value={}){
+    return {
+      roadHalfWidth:Number(value.roadHalfWidth)||5.4,
+      terrainCutHalfWidth:Number(value.terrainCutHalfWidth)||16.5,
+      blendWidth:Number(value.blendWidth)||14,
+      surfaceOffset:Number.isFinite(value.surfaceOffset)?value.surfaceOffset:.20,
+      startPad:value.startPad&&typeof value.startPad==='object'?{...value.startPad}:null
+    };
   }
 
-  function disposeHorizonObject(object){
-    object?.traverse?.(child=>{
-      child.geometry?.dispose?.();
-      const material=child.material;
-      if(Array.isArray(material))material.forEach(item=>item?.dispose?.());
-      else material?.dispose?.();
-    });
+  function transitionParent(){return ground.parent||null;}
+  function findBaseTransition(){
+    return transitionParent()?.children?.find?.(child=>
+      child?.name==='road-terrain-transition'&&
+      child!==externalTransition&&child!==heldTransition&&
+      !child?.userData?.p927External
+    )||null;
   }
 
-  function clearLiveHorizon(){
-    while(horizonGroup.children.length){
-      const child=horizonGroup.children.pop();
-      disposeHorizonObject(child);
+  function preserveVisibleTransition(){
+    if(externalTransition||heldTransition)return;
+    const current=findBaseTransition();
+    if(!current)return;
+    heldTransition=deepCloneTransition(current);
+    if(heldTransition){
+      heldTransition.name='road-terrain-transition-p927-hold';
+      heldTransition.userData={...(heldTransition.userData||{}),p927Hold:true};
     }
   }
 
-  function prepareHorizonIncremental(){
-    const serial=++horizonSerial;
+  function restoreHeldTransition(){
+    const parent=transitionParent();
+    if(heldTransition&&parent&&!heldTransition.parent)parent.add(heldTransition);
+  }
+
+  function cancelRoadTransitionPreparation(){transitionSerial++;}
+
+  function setRoadBedStateOnly(profile,value={}){
+    cancelRoadTransitionPreparation();
+    preserveVisibleTransition();
+    transitionProfile=Array.isArray(profile)?profile.slice():[];
+    transitionOptions=normalizeOptions(value);
+    const real=originalGetWorldOffset()||{x:0,z:0};
+    const started=nowMs();
+    forcedOffset={x:(real.x||0)+10000000,z:(real.z||0)+10000000};
+    let result;
+    try{
+      result=base.setRoadBed(transitionProfile,transitionOptions);
+    }finally{
+      forcedOffset=null;
+      restoreHeldTransition();
+    }
+    const ms=nowMs()-started;
+    perf.stateOnlyInstalls++;
+    perf.maxStateOnlyMs=Math.max(perf.maxStateOnlyMs,ms);
+    return result;
+  }
+
+  function clearExternalTransitions(){
+    disposeObject(externalTransition);externalTransition=null;
+    disposeObject(heldTransition);heldTransition=null;
+  }
+
+  function setRoadBed(profile,value={}){
+    cancelRoadTransitionPreparation();
+    clearExternalTransitions();
+    transitionProfile=Array.isArray(profile)?profile.slice():[];
+    transitionOptions=normalizeOptions(value);
+    forcedOffset=null;
+    return base.setRoadBed(transitionProfile,transitionOptions);
+  }
+
+  function buildRoadIndex(profile,opts){
+    const map=new Map();
+    const margin=Math.max(opts.roadHalfWidth,opts.terrainCutHalfWidth)+opts.blendWidth+4;
+    const key=(cx,cz)=>`${cx},${cz}`;
+    for(let i=0;i<profile.length-1;i++){
+      const a=profile[i],b=profile[i+1];
+      const vx=b.x-a.x,vz=b.z-a.z,len2=vx*vx+vz*vz;
+      if(len2<1e-6)continue;
+      const segment={ax:a.x,az:a.z,bx:b.x,bz:b.z,vx,vz,len2};
+      const minCx=Math.floor((Math.min(a.x,b.x)-margin)/P927_CELL_SIZE);
+      const maxCx=Math.floor((Math.max(a.x,b.x)+margin)/P927_CELL_SIZE);
+      const minCz=Math.floor((Math.min(a.z,b.z)-margin)/P927_CELL_SIZE);
+      const maxCz=Math.floor((Math.max(a.z,b.z)+margin)/P927_CELL_SIZE);
+      for(let cx=minCx;cx<=maxCx;cx++)for(let cz=minCz;cz<=maxCz;cz++){
+        const k=key(cx,cz);let bucket=map.get(k);if(!bucket){bucket=[];map.set(k,bucket);}bucket.push(segment);
+      }
+    }
+    return {map,key};
+  }
+
+  function prepareRoadTransitionIncremental(){
+    const serial=++transitionSerial;
     const wallStarted=nowMs();
-    perf.preparations++;
-    const offset={...(getWorldOffset()||{x:0,z:0})};
-    const positions=new Float32Array(vertexCount*3);
-    const normals=new Float32Array(vertexCount*3);
-    const colors=new Float32Array(vertexCount*3);
-    const stats={heightCpuMs:0,normalCpuMs:0,colorCpuMs:0,slices:0,maxSliceMs:0,minY:Infinity,maxY:-Infinity};
+    perf.transitionPreparations++;
+    const profile=transitionProfile.slice();
+    const opts={...transitionOptions,startPad:transitionOptions.startPad?{...transitionOptions.startPad}:null};
+    const offset={...(originalGetWorldOffset()||{x:0,z:0})};
+    if(profile.length<2)return Promise.resolve(null);
 
-    function recordSlice(started){
-      const elapsed=nowMs()-started;
-      stats.slices++;
-      stats.maxSliceMs=Math.max(stats.maxSliceMs,elapsed);
-      perf.maxSliceMs=Math.max(perf.maxSliceMs,elapsed);
-      return elapsed;
+    const roadIndex=buildRoadIndex(profile,opts);
+    const protectedRadius=Math.max(5.05,opts.roadHalfWidth-.28);
+    const protected2=protectedRadius*protectedRadius;
+    const nearestDistance2=(x,z)=>{
+      const bucket=roadIndex.map.get(roadIndex.key(Math.floor(x/P927_CELL_SIZE),Math.floor(z/P927_CELL_SIZE)));
+      if(!bucket?.length)return Infinity;
+      let best=Infinity;
+      for(const segment of bucket){
+        let t=((x-segment.ax)*segment.vx+(z-segment.az)*segment.vz)/segment.len2;
+        t=Math.max(0,Math.min(1,t));
+        const dx=x-(segment.ax+segment.vx*t),dz=z-(segment.az+segment.vz*t);
+        const d2=dx*dx+dz*dz;if(d2<best)best=d2;
+      }
+      return best;
+    };
+
+    const visualInner=Math.max(opts.roadHalfWidth-.15,5.20);
+    const visualOuter=Math.max(visualInner+1,opts.terrainCutHalfWidth+opts.blendWidth);
+    const fractions=[0,.12,.28,.50,.74,1];
+    const lateralMagnitudes=fractions.map(f=>visualInner+(visualOuter-visualInner)*f);
+    const cols=lateralMagnitudes.length;
+    const half=groundSize/2+80;
+    const usable=[];
+    for(let i=0;i<profile.length;i++){
+      const p=profile[i],lx=p.x-offset.x,lz=p.z-offset.z;
+      if(lx<-half||lx>half||lz<-half||lz>half)continue;
+      usable.push({point:p,sourceIndex:i});
+    }
+    if(usable.length<2)return Promise.resolve(null);
+
+    const sideVertexCount=usable.length*cols;
+    const sides=[-1,1].map(side=>({
+      side,
+      positions:new Float32Array(sideVertexCount*3),
+      uvs:new Float32Array(sideVertexCount*2),
+      rawHeights:new Float32Array(sideVertexCount),
+      normals:new Float32Array(sideVertexCount*3),
+      colors:new Float32Array(sideVertexCount*3),
+      indices:[],
+      singleClear:new Uint8Array(sideVertexCount),
+      pairClear:new Map()
+    }));
+    const stats={setupMs:nowMs()-wallStarted,vertexCpuMs:0,indexCpuMs:0,normalCpuMs:0,colorCpuMs:0,slices:0,maxSliceMs:0};
+    const recordSlice=started=>{
+      const elapsed=nowMs()-started;stats.slices++;stats.maxSliceMs=Math.max(stats.maxSliceMs,elapsed);perf.maxSliceMs=Math.max(perf.maxSliceMs,elapsed);return elapsed;
+    };
+    const runSliced=(count,minBatch,fn,cpuKey)=>new Promise(resolve=>{
+      let index=0;
+      const step=()=>{
+        if(serial!==transitionSerial){resolve(false);return;}
+        const started=nowMs();let processed=0;
+        while(index<count){fn(index++);processed++;if(processed>=minBatch&&nowMs()-started>=P927_TRANSITION_BUDGET_MS)break;}
+        stats[cpuKey]+=recordSlice(started);
+        if(index<count){scheduleTransitionSlice(step);return;}resolve(true);
+      };
+      scheduleTransitionSlice(step);
+    });
+
+    const buildVertices=()=>runSliced(sideVertexCount*2,24,globalIndex=>{
+      const sideIndex=globalIndex>=sideVertexCount?1:0;
+      const localIndex=globalIndex-sideIndex*sideVertexCount;
+      const data=sides[sideIndex],row=Math.floor(localIndex/cols),col=localIndex-row*cols;
+      const {point,sourceIndex}=usable[row];
+      const magnitude=lateralMagnitudes[col],lateralOffset=magnitude*data.side;
+      const shift=profileOffsetVector(profile,sourceIndex,lateralOffset);
+      const wx=point.x+shift.x,wz=point.z+shift.z;
+      const rawNatural=base.heightAt(wx,wz);
+      const natural=startPadHeight(opts,wx,wz,rawNatural);
+      const roadY=Number.isFinite(point.y)?point.y:base.heightAt(point.x,point.z);
+      const rollSlope=Math.tan(Number.isFinite(point.roll)?point.roll:0);
+      const support=roadY+rollSlope*lateralOffset-opts.surfaceOffset;
+      const t=(magnitude-visualInner)/Math.max(.001,visualOuter-visualInner);
+      const rise=1-Math.pow(1-clamp01(t),2.35);
+      const j=localIndex*3,u=localIndex*2;
+      data.positions[j]=wx-offset.x;data.positions[j+1]=Math.min(natural,support*(1-rise)+natural*rise);data.positions[j+2]=wz-offset.z;
+      data.uvs[u]=(wx-offset.x+groundSize/2)/groundSize;data.uvs[u+1]=1-(wz-offset.z+groundSize/2)/groundSize;
+      data.rawHeights[localIndex]=rawNatural;
+    },'vertexCpuMs');
+
+    function clearFunctions(data){
+      const pointClear1=i=>{
+        const cached=data.singleClear[i];if(cached)return cached===2;
+        const j=i*3,ok=nearestDistance2(data.positions[j]+offset.x,data.positions[j+2]+offset.z)>protected2;
+        data.singleClear[i]=ok?2:1;return ok;
+      };
+      const pointClear2=(a,b)=>{
+        const lo=Math.min(a,b),hi=Math.max(a,b),key=lo*sideVertexCount+hi;
+        if(data.pairClear.has(key))return data.pairClear.get(key);
+        const ax=data.positions[a*3],az=data.positions[a*3+2],bx=data.positions[b*3],bz=data.positions[b*3+2];
+        const ok=nearestDistance2((ax+bx)/2+offset.x,(az+bz)/2+offset.z)>protected2;data.pairClear.set(key,ok);return ok;
+      };
+      const pointClear3=(a,b,c)=>{
+        const x=(data.positions[a*3]+data.positions[b*3]+data.positions[c*3])/3+offset.x;
+        const z=(data.positions[a*3+2]+data.positions[b*3+2]+data.positions[c*3+2])/3+offset.z;
+        return nearestDistance2(x,z)>protected2;
+      };
+      return (a,b,c)=>pointClear1(a)&&pointClear1(b)&&pointClear1(c)&&pointClear2(a,b)&&pointClear2(b,c)&&pointClear2(c,a)&&pointClear3(a,b,c);
     }
 
-    function runHeights(){
-      return new Promise(resolve=>{
-        let i=0;
-        const step=()=>{
-          if(serial!==horizonSerial){resolve(false);return;}
-          const started=nowMs();
-          let processed=0;
-          while(i<vertexCount){
-            const x=localXZ[i*2];
-            const z=localXZ[i*2+1];
-            const row=Math.floor(i/perimeterCount);
-            const y=distantHeight(offset.x+x,offset.z+z,halfExtents[row]);
-            const j=i*3;
-            positions[j]=x;positions[j+1]=y;positions[j+2]=z;
-            if(y<stats.minY)stats.minY=y;
-            if(y>stats.maxY)stats.maxY=y;
-            i++;processed++;
-            if(processed>=48&&nowMs()-started>=P926_HORIZON_BUDGET_MS)break;
-          }
-          stats.heightCpuMs+=recordSlice(started);
-          if(i<vertexCount){scheduleHorizonSlice(step);return;}
-          resolve(true);
-        };
-        scheduleHorizonSlice(step);
-      });
-    }
+    const cellCount=Math.max(0,(usable.length-1)*(cols-1));
+    const buildIndices=()=>runSliced(cellCount*2,5,globalCell=>{
+      const sideIndex=globalCell>=cellCount?1:0,cell=globalCell-sideIndex*cellCount;
+      const data=sides[sideIndex],row=Math.floor(cell/(cols-1)),col=cell-row*(cols-1);
+      if(usable[row+1].sourceIndex!==usable[row].sourceIndex+1)return;
+      const p0=usable[row].point,p1=usable[row+1].point;
+      const centerStep=Math.hypot(p1.x-p0.x,p1.z-p0.z);if(centerStep>9)return;
+      const a=row*cols+col,b=a+1,c=a+cols,d=c+1;
+      const p=data.positions;
+      const maxEdge=Math.max(
+        Math.hypot(p[c*3]-p[a*3],p[c*3+2]-p[a*3+2]),
+        Math.hypot(p[d*3]-p[b*3],p[d*3+2]-p[b*3+2]),
+        Math.hypot(p[b*3]-p[a*3],p[b*3+2]-p[a*3+2]),
+        Math.hypot(p[d*3]-p[c*3],p[d*3+2]-p[c*3+2])
+      );
+      const expected=Math.max(10,centerStep*3,(lateralMagnitudes[col+1]-lateralMagnitudes[col])*3);if(maxEdge>expected)return;
+      if(!data._triangleClear)data._triangleClear=clearFunctions(data);
+      if(data._triangleClear(a,c,b))data.indices.push(a,c,b);
+      if(data._triangleClear(b,c,d))data.indices.push(b,c,d);
+    },'indexCpuMs');
 
-    function runTriangleNormals(){
-      return new Promise(resolve=>{
-        let k=0;
-        const step=()=>{
-          if(serial!==horizonSerial){resolve(false);return;}
-          const started=nowMs();
-          let processed=0;
-          while(k<indices.length){
-            const ia=indices[k++]*3,ib=indices[k++]*3,ic=indices[k++]*3;
-            const abx=positions[ib]-positions[ia];
-            const aby=positions[ib+1]-positions[ia+1];
-            const abz=positions[ib+2]-positions[ia+2];
-            const acx=positions[ic]-positions[ia];
-            const acy=positions[ic+1]-positions[ia+1];
-            const acz=positions[ic+2]-positions[ia+2];
-            const nx=aby*acz-abz*acy;
-            const ny=abz*acx-abx*acz;
-            const nz=abx*acy-aby*acx;
-            normals[ia]+=nx;normals[ia+1]+=ny;normals[ia+2]+=nz;
-            normals[ib]+=nx;normals[ib+1]+=ny;normals[ib+2]+=nz;
-            normals[ic]+=nx;normals[ic+1]+=ny;normals[ic+2]+=nz;
-            processed++;
-            if(processed>=96&&nowMs()-started>=P926_HORIZON_BUDGET_MS)break;
-          }
-          stats.normalCpuMs+=recordSlice(started);
-          if(k<indices.length){scheduleHorizonSlice(step);return;}
-          resolve(true);
-        };
-        scheduleHorizonSlice(step);
-      });
-    }
+    const accumulateNormals=async()=>{
+      for(const data of sides){
+        const triCount=Math.floor(data.indices.length/3);
+        if(!await runSliced(triCount,24,tri=>{
+          const ia=data.indices[tri*3]*3,ib=data.indices[tri*3+1]*3,ic=data.indices[tri*3+2]*3,p=data.positions,n=data.normals;
+          const abx=p[ib]-p[ia],aby=p[ib+1]-p[ia+1],abz=p[ib+2]-p[ia+2];
+          const acx=p[ic]-p[ia],acy=p[ic+1]-p[ia+1],acz=p[ic+2]-p[ia+2];
+          const nx=aby*acz-abz*acy,ny=abz*acx-abx*acz,nz=abx*acy-aby*acx;
+          n[ia]+=nx;n[ia+1]+=ny;n[ia+2]+=nz;n[ib]+=nx;n[ib+1]+=ny;n[ib+2]+=nz;n[ic]+=nx;n[ic+1]+=ny;n[ic+2]+=nz;
+        },'normalCpuMs'))return false;
+      }
+      return runSliced(sideVertexCount*2,96,globalIndex=>{
+        const sideIndex=globalIndex>=sideVertexCount?1:0,i=globalIndex-sideIndex*sideVertexCount,n=sides[sideIndex].normals,j=i*3;
+        let nx=n[j],ny=n[j+1],nz=n[j+2];const inv=1/(Math.hypot(nx,ny,nz)||1);n[j]=nx*inv;n[j+1]=ny*inv;n[j+2]=nz*inv;
+      },'normalCpuMs');
+    };
 
-    function runNormalizeAndColors(){
-      return new Promise(resolve=>{
-        let i=0;
-        const minY=Number.isFinite(stats.minY)?stats.minY:0;
-        const maxY=Number.isFinite(stats.maxY)?stats.maxY:minY+1;
-        const heightSpan=Math.max(1,maxY-minY);
-        const farHalf=halfExtents[rowCount-1];
-        const hazeStart=nearHalf+900;
-        const hazeSpan=Math.max(1200,farHalf-hazeStart);
-        const valley=[0x53/255,0x6b/255,0x49/255];
-        const low=[0x65/255,0x76/255,0x57/255];
-        const mid=[0x74/255,0x75/255,0x5d/255];
-        const high=[0x85/255,0x84/255,0x7a/255];
-        const rock=[0x77/255,0x76/255,0x6f/255];
-        const neutral=[0x77/255,0x7c/255,0x78/255];
-        const step=()=>{
-          if(serial!==horizonSerial){resolve(false);return;}
-          const started=nowMs();
-          let processed=0;
-          while(i<vertexCount){
-            const j=i*3;
-            let nx=normals[j],ny=normals[j+1],nz=normals[j+2];
-            const inv=1/(Math.hypot(nx,ny,nz)||1);
-            nx*=inv;ny*=inv;nz*=inv;
-            normals[j]=nx;normals[j+1]=ny;normals[j+2]=nz;
+    const groundPosition=ground.geometry?.getAttribute?.('position')?.array;
+    let rangeMin=Infinity,rangeMax=-Infinity;
+    const scanGroundRange=()=>{
+      if(!groundPosition)return Promise.resolve(true);
+      const count=Math.floor(groundPosition.length/3);
+      return runSliced(count,512,i=>{const y=groundPosition[i*3+1];if(y<rangeMin)rangeMin=y;if(y>rangeMax)rangeMax=y;},'colorCpuMs');
+    };
 
-            const x=positions[j],z=positions[j+2],y=positions[j+1];
-            const wx=offset.x+x,wz=offset.z+z;
-            const distance=Math.max(Math.abs(x),Math.abs(z));
-            const altitude=clamp01((y-minY)/heightSpan);
-            let r,g,b;
-            if(altitude<.34){
-              const t=altitude/.34;r=lerp(valley[0],low[0],t);g=lerp(valley[1],low[1],t);b=lerp(valley[2],low[2],t);
-            }else if(altitude<.72){
-              const t=(altitude-.34)/.38;r=lerp(low[0],mid[0],t);g=lerp(low[1],mid[1],t);b=lerp(low[2],mid[2],t);
-            }else{
-              const t=(altitude-.72)/.28;r=lerp(mid[0],high[0],t);g=lerp(mid[1],high[1],t);b=lerp(mid[2],high[2],t);
-            }
-            const slope=clamp01((1-Math.abs(ny))/.42);
-            const rockBlend=clamp01((slope-.16)/.62)*(.34+.66*altitude)*.62;
-            r=lerp(r,rock[0],rockBlend);g=lerp(g,rock[1],rockBlend);b=lerp(b,rock[2],rockBlend);
-            const macro=(Math.sin(wx*.00137+Math.cos(wz*.00073)*1.9)+Math.cos(wz*.00111-Math.sin(wx*.00091)*1.6)+Math.sin((wx+wz)*.00047))/3;
-            const macroShade=.965+macro*.055;
-            r*=macroShade;g*=macroShade;b*=macroShade;
-            const haze=clamp01((distance-hazeStart)/hazeSpan)*.18;
-            colors[j]=clamp01(lerp(r,neutral[0],haze));
-            colors[j+1]=clamp01(lerp(g,neutral[1],haze));
-            colors[j+2]=clamp01(lerp(b,neutral[2],haze));
-            i++;processed++;
-            if(processed>=96&&nowMs()-started>=P926_HORIZON_BUDGET_MS)break;
-          }
-          stats.colorCpuMs+=recordSlice(started);
-          if(i<vertexCount){scheduleHorizonSlice(step);return;}
-          resolve(true);
-        };
-        scheduleHorizonSlice(step);
-      });
-    }
+    const buildColors=()=>{
+      if(!Number.isFinite(rangeMin)||!Number.isFinite(rangeMax)||rangeMax<=rangeMin){rangeMin=0;rangeMax=1;}
+      const span=Math.max(1,rangeMax-rangeMin),eps=7;
+      const low=[0x4f/255,0x6e/255,0x3e/255],mid=[0x6f/255,0x81/255,0x50/255],high=[0x8b/255,0x8d/255,0x69/255];
+      const lightX=-.58,lightY=.64,lightZ=-.50;
+      return runSliced(sideVertexCount*2,16,globalIndex=>{
+        const sideIndex=globalIndex>=sideVertexCount?1:0,i=globalIndex-sideIndex*sideVertexCount,data=sides[sideIndex],j=i*3;
+        const wx=data.positions[j]+offset.x,wz=data.positions[j+2]+offset.z;
+        const y=data.rawHeights[i]-.15;
+        const hL=base.heightAt(wx-eps,wz)-.15,hR=base.heightAt(wx+eps,wz)-.15,hD=base.heightAt(wx,wz-eps)-.15,hU=base.heightAt(wx,wz+eps)-.15;
+        const gx=(hR-hL)/(2*eps),gz=(hU-hD)/(2*eps);let nx=-gx,ny=1,nz=-gz;const inv=1/(Math.hypot(nx,ny,nz)||1);nx*=inv;ny*=inv;nz*=inv;
+        const directional=nx*lightX+ny*lightY+nz*lightZ,slope=clamp01(1-Math.abs(ny)),altitude=clamp01((y-rangeMin)/span);
+        let r,g,b;if(altitude<.58){const t=altitude/.58;r=lerp(low[0],mid[0],t);g=lerp(low[1],mid[1],t);b=lerp(low[2],mid[2],t);}else{const t=(altitude-.58)/.42;r=lerp(mid[0],high[0],t);g=lerp(mid[1],high[1],t);b=lerp(mid[2],high[2],t);}
+        const shade=Math.max(.34,Math.min(1.36,.72+directional*.46-slope*.10));data.colors[j]=Math.min(1,r*shade);data.colors[j+1]=Math.min(1,g*shade);data.colors[j+2]=Math.min(1,b*shade);
+      },'colorCpuMs');
+    };
 
     const promise=(async()=>{
-      if(!await runHeights())return null;
-      if(!await runTriangleNormals())return null;
-      if(!await runNormalizeAndColors())return null;
-      if(serial!==horizonSerial)return null;
-
-      const geometry=new THREE.BufferGeometry();
-      geometry.setAttribute('position',new THREE.BufferAttribute(positions,3));
-      geometry.setAttribute('normal',new THREE.BufferAttribute(normals,3));
-      geometry.setAttribute('color',new THREE.BufferAttribute(colors,3));
-      geometry.setIndex(new THREE.BufferAttribute(indices,1));
-
-      const material=new THREE.MeshStandardMaterial({color:0xffffff,vertexColors:true,roughness:1,metalness:0,side:THREE.DoubleSide,transparent:false,depthWrite:true,dithering:true,fog:true,stencilWrite:true,stencilRef:2,stencilFunc:THREE.NotEqualStencilFunc,stencilFail:THREE.KeepStencilOp,stencilZFail:THREE.KeepStencilOp,stencilZPass:THREE.KeepStencilOp});
-      const mesh=new THREE.Mesh(geometry,material);
-      mesh.name='distant-terrain-seamless-square-lod';
-      mesh.receiveShadow=false;
-      mesh.castShadow=false;
-      mesh.renderOrder=-3;
-      mesh.matrixAutoUpdate=false;
-      mesh.updateMatrix();
-
-      const meta={serial,preparedOffset:{...offset},vertices:vertexCount,triangles:indices.length/3,prepareWallMs:nowMs()-wallStarted,prepareCpuMs:stats.heightCpuMs+stats.normalCpuMs+stats.colorCpuMs,slices:stats.slices,maxSliceMs:stats.maxSliceMs,p926SliceBudgetMs:P926_HORIZON_BUDGET_MS,p926SliceGapMs:P926_HORIZON_GAP_MS};
+      if(!await buildVertices())return null;
+      if(!await buildIndices())return null;
+      if(!await accumulateNormals())return null;
+      if(!await scanGroundRange())return null;
+      if(!await buildColors())return null;
+      if(serial!==transitionSerial)return null;
+      const group=new THREE.Group();group.name='road-terrain-transition';group.userData.p927External=true;
+      let triangles=0;
+      for(const data of sides){
+        if(!data.indices.length)continue;
+        triangles+=data.indices.length/3;
+        const geometry=new THREE.BufferGeometry();
+        geometry.setAttribute('position',new THREE.BufferAttribute(data.positions,3));
+        geometry.setAttribute('uv',new THREE.BufferAttribute(data.uvs,2));
+        geometry.setAttribute('normal',new THREE.BufferAttribute(data.normals,3));
+        geometry.setAttribute('color',new THREE.BufferAttribute(data.colors,3));
+        geometry.setIndex(new THREE.BufferAttribute(new Uint32Array(data.indices),1));
+        const material=ground.material.clone();material.alphaMap=null;material.alphaTest=0;material.transparent=false;material.side=THREE.DoubleSide;material.polygonOffset=true;material.polygonOffsetFactor=1;material.polygonOffsetUnits=1;
+        const mesh=new THREE.Mesh(geometry,material);mesh.receiveShadow=true;mesh.castShadow=false;mesh.renderOrder=-1;group.add(mesh);
+      }
+      const meta={serial,preparedOffset:{...offset},profilePoints:profile.length,usablePoints:usable.length,vertices:sideVertexCount*2,triangles,prepareWallMs:nowMs()-wallStarted,prepareCpuMs:stats.vertexCpuMs+stats.indexCpuMs+stats.normalCpuMs+stats.colorCpuMs,slices:stats.slices,maxSliceMs:stats.maxSliceMs,p927SliceBudgetMs:P927_TRANSITION_BUDGET_MS,p927SliceGapMs:P927_TRANSITION_GAP_MS};
       perf.last=meta;
-      return {serial,offset,mesh,meta};
+      return {serial,offset,group,meta};
     })();
-    horizonPromise=promise;
-    return promise.finally(()=>{if(horizonPromise===promise)horizonPromise=null;});
+    transitionPromise=promise;
+    return promise.finally(()=>{if(transitionPromise===promise)transitionPromise=null;});
   }
 
-  function commitPreparedHorizon(prepared){
-    if(!prepared||prepared.serial!==horizonSerial){perf.discards++;return false;}
-    const current=getWorldOffset()||{x:0,z:0};
-    if(Math.hypot((current.x||0)-prepared.offset.x,(current.z||0)-prepared.offset.z)>.5){
-      perf.discards++;disposeHorizonObject(prepared.mesh);return false;
-    }
+  function commitPreparedRoadTransition(prepared){
+    if(!prepared||prepared.serial!==transitionSerial){perf.transitionDiscards++;disposeObject(prepared?.group);return false;}
+    const current=originalGetWorldOffset()||{x:0,z:0};
+    if(Math.hypot((current.x||0)-prepared.offset.x,(current.z||0)-prepared.offset.z)>.5){perf.transitionDiscards++;disposeObject(prepared.group);return false;}
     const started=nowMs();
-    clearLiveHorizon();
-    horizonGroup.position.set(0,0,0);
-    horizonGroup.updateMatrix?.();
-    horizonGroup.add(prepared.mesh);
-    const ms=nowMs()-started;
-    perf.commits++;
-    perf.maxCommitMs=Math.max(perf.maxCommitMs,ms);
-    perf.last={...(prepared.meta||{}),commitMs:ms};
-    return true;
+    disposeObject(externalTransition);externalTransition=null;
+    disposeObject(heldTransition);heldTransition=null;
+    for(const child of [...(transitionParent()?.children||[])]){
+      if(child?.name==='road-terrain-transition'&&!child?.userData?.p927External)disposeObject(child);
+    }
+    transitionParent()?.add?.(prepared.group);externalTransition=prepared.group;
+    externalTransition.position.set(0,0,0);externalTransition.updateMatrix?.();
+    const ms=nowMs()-started;perf.transitionCommits++;perf.maxCommitMs=Math.max(perf.maxCommitMs,ms);perf.last={...(prepared.meta||{}),commitMs:ms};return true;
   }
 
-  async function rebuildHorizonIncremental(){
-    const prepared=await prepareHorizonIncremental();
+  async function rebuildRoadTransitionIncremental(){
+    const prepared=await prepareRoadTransitionIncremental();
     if(!prepared)return false;
-    return commitPreparedHorizon(prepared);
+    return commitPreparedRoadTransition(prepared);
   }
 
-  function cancelHorizonPreparation(){horizonSerial++;}
-  function clearHorizon(){cancelHorizonPreparation();return base.clearHorizon();}
-  function rebuildHorizon(){cancelHorizonPreparation();return base.rebuildHorizon();}
-  function captureHorizonOrigin(){return {x:horizonGroup.position.x||0,y:horizonGroup.position.y||0,z:horizonGroup.position.z||0};}
-  function restoreHorizonOrigin(snapshot){
-    if(!snapshot||!horizonGroup.children.length)return;
-    horizonGroup.position.set(snapshot.x||0,snapshot.y||0,snapshot.z||0);
-    horizonGroup.updateMatrix?.();
+  function shiftRoadBedOrigin(shiftX,shiftZ){
+    base.shiftRoadBedOrigin?.(shiftX,shiftZ);
+    for(const group of [externalTransition,heldTransition])if(group){group.position.x-=shiftX;group.position.z-=shiftZ;group.updateMatrix?.();}
   }
-  function p926Diagnostics(){return {enabled:true,pending:!!horizonPromise,preparations:perf.preparations,commits:perf.commits,discards:perf.discards,maxSliceMs:Number(perf.maxSliceMs.toFixed(3)),maxCommitMs:Number(perf.maxCommitMs.toFixed(3)),vertices:vertexCount,triangles:indices.length/3,p926SliceBudgetMs:P926_HORIZON_BUDGET_MS,p926SliceGapMs:P926_HORIZON_GAP_MS,last:perf.last};}
-  function diagnostics(){return {...(base.diagnostics?.()||{}),p926:p926Diagnostics()};}
+  function resetRoadBedOrigin(){
+    base.resetRoadBedOrigin?.();
+    for(const group of [externalTransition,heldTransition])if(group){group.position.set(0,0,0);group.updateMatrix?.();}
+  }
+  function clearRoadBed(){
+    cancelRoadTransitionPreparation();clearExternalTransitions();transitionProfile=[];return base.clearRoadBed?.();
+  }
+  function p927Diagnostics(){
+    return {enabled:true,pending:!!transitionPromise,stateOnlyInstalls:perf.stateOnlyInstalls,transitionPreparations:perf.transitionPreparations,transitionCommits:perf.transitionCommits,transitionDiscards:perf.transitionDiscards,maxStateOnlyMs:Number(perf.maxStateOnlyMs.toFixed(3)),maxSliceMs:Number(perf.maxSliceMs.toFixed(3)),maxCommitMs:Number(perf.maxCommitMs.toFixed(3)),p927SliceBudgetMs:P927_TRANSITION_BUDGET_MS,p927SliceGapMs:P927_TRANSITION_GAP_MS,last:perf.last};
+  }
+  function diagnostics(){return {...(base.diagnostics?.()||{}),p927:p927Diagnostics()};}
 
-  return {...base,rebuildHorizon,clearHorizon,prepareHorizonIncremental,commitPreparedHorizon,rebuildHorizonIncremental,cancelHorizonPreparation,captureHorizonOrigin,restoreHorizonOrigin,p926Diagnostics,diagnostics};
+  return {...base,setRoadBed,setRoadBedStateOnly,prepareRoadTransitionIncremental,commitPreparedRoadTransition,rebuildRoadTransitionIncremental,cancelRoadTransitionPreparation,shiftRoadBedOrigin,resetRoadBedOrigin,clearRoadBed,p927Diagnostics,diagnostics};
 }
