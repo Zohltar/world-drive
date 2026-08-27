@@ -1,4 +1,6 @@
-// World Drive V19.2 - curvature-aware buffered N-player LAN interpolation at 30 Hz.
+import {readTransmissionRuntimeState} from './transmission-runtime-bridge.js';
+
+// World Drive V19.3 - curvature-aware buffered N-player LAN interpolation at 30 Hz.
 // No remote physics/collisions: each peer only broadcasts presentation state.
 
 const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
@@ -89,11 +91,19 @@ const MAX_EXTRAPOLATION_MS=105;
 const SNAPSHOT_HISTORY_MS=900;
 const NETWORK_STATE_HZ=30;
 const NETWORK_STATE_INTERVAL_MS=1000/NETWORK_STATE_HZ;
+const TURN_SIGNAL_ACTIVATION_RAD=.318;
+const TURN_SIGNAL_NEUTRAL_RAD=.045;
+const TURN_SIGNAL_PERIOD_SEC=1.05;
+const TURN_SIGNAL_ON_SEC=.58;
 
 function finiteOr(value,fallback=0){
   return Number.isFinite(value)
     ?value
     :fallback;
+}
+
+function boolOr(value,fallback=false){
+  return typeof value==='boolean'?value:!!fallback;
 }
 
 function snapshotFromMessage(message,peer,receivedAt){
@@ -113,6 +123,18 @@ function snapshotFromMessage(message,peer,receivedAt){
     longitudinalAccel:finiteOr(message.longitudinalAccel,peer.longitudinalAccel),
 
     braking:!!message.braking,
+    reversing:boolOr(message.reversing,peer.reversing),
+    nightLevel:Number.isFinite(message.nightLevel)
+      ?clamp(Number(message.nightLevel),0,1)
+      :peer.nightLevel,
+    signalLeft:boolOr(message.signalLeft,peer.signalLeft),
+    signalRight:boolOr(message.signalRight,peer.signalRight),
+    signalBlink:boolOr(message.signalBlink,peer.signalBlink),
+    lightingProtocol:
+      message.lightingProtocol==='m2.4'
+        ?'m2.4'
+        :peer.lightingProtocol,
+
     onRoad:
       typeof message.onRoad==='boolean'
         ?message.onRoad
@@ -199,6 +221,16 @@ function interpolateSnapshot(a,b,t,spanMs){
     vehicleId:b.vehicleId||a.vehicleId,
 
     braking:t<.5?a.braking:b.braking,
+    reversing:t<.5?a.reversing:b.reversing,
+    nightLevel:lerp(
+      finiteOr(a.nightLevel,0),
+      finiteOr(b.nightLevel,0),
+      poseT
+    ),
+    signalLeft:t<.5?a.signalLeft:b.signalLeft,
+    signalRight:t<.5?a.signalRight:b.signalRight,
+    signalBlink:t<.5?a.signalBlink:b.signalBlink,
+    lightingProtocol:b.lightingProtocol||a.lightingProtocol,
     onRoad:t<.5?a.onRoad:b.onRoad,
 
     skidFront:lerp(a.skidFront,b.skidFront,poseT),
@@ -599,6 +631,10 @@ export function createMultiplayerClient({
   let cachedName='Conducteur';
   let localSequence=0;
   let lastLocalMotion=null;
+  let localSignalLeft=false;
+  let localSignalRight=false;
+  let localSignalTimer=0;
+  let localSignalLastAt=performance.now();
   const peers=new Map();
 
   const defaultUrl=()=>{
@@ -638,6 +674,57 @@ export function createMultiplayerClient({
     if(nameInput)nameInput.value=cachedName;
     localStorage.setItem('worlddrive_multiplayer_name',cachedName);
     return cachedName;
+  }
+
+  function resetLocalSignalState(){
+    localSignalLeft=false;
+    localSignalRight=false;
+    localSignalTimer=0;
+    localSignalLastAt=performance.now();
+  }
+
+  function localLightingState(state,now){
+    const runtime=readTransmissionRuntimeState?.()||{};
+    const reversing=Number(runtime.selectorGear)===-1||Number(state.speed)<-.08;
+    const nightLevel=clamp(Number(getHeadlightLevel?.())||0,0,1);
+    const dt=Math.max(.001,Math.min(.05,(now-localSignalLastAt)/1000));
+    localSignalLastAt=now;
+    const steer=Number(state.steer)||0;
+    const absSteer=Math.abs(steer);
+    const stopped=Math.abs(Number(state.speed)||0)<.35;
+
+    if(absSteer<=TURN_SIGNAL_NEUTRAL_RAD){
+      localSignalLeft=false;
+      localSignalRight=false;
+      localSignalTimer=0;
+    }else if(
+      !localSignalLeft&&
+      !localSignalRight&&
+      stopped&&
+      absSteer>=TURN_SIGNAL_ACTIVATION_RAD
+    ){
+      localSignalLeft=steer<0;
+      localSignalRight=steer>0;
+      localSignalTimer=0;
+    }
+
+    if(localSignalLeft||localSignalRight){
+      localSignalTimer+=dt;
+    }
+
+    const signalBlink=
+      (localSignalLeft||localSignalRight)&&
+      ((localSignalTimer%TURN_SIGNAL_PERIOD_SEC)<TURN_SIGNAL_ON_SEC);
+
+    return {
+      braking:!!state.braking,
+      reversing,
+      nightLevel,
+      signalLeft:localSignalLeft,
+      signalRight:localSignalRight,
+      signalBlink,
+      lightingProtocol:'m2.4'
+    };
   }
 
   function replacePeerVisual(peer,vehicleId){
@@ -690,6 +777,12 @@ export function createMultiplayerClient({
         speed:initialSpeed,
         longitudinalAccel:Number(message.longitudinalAccel)||0,
         braking:!!message.braking,
+        reversing:typeof message.reversing==='boolean'?message.reversing:initialSpeed<-.08,
+        nightLevel:Number.isFinite(message.nightLevel)?clamp(Number(message.nightLevel),0,1):NaN,
+        signalLeft:!!message.signalLeft,
+        signalRight:!!message.signalRight,
+        signalBlink:!!message.signalBlink,
+        lightingProtocol:message.lightingProtocol==='m2.4'?'m2.4':null,
         onRoad:!!message.onRoad,
         skidFront:Number(message.skidFront)||0,
         targetSkidFront:Number(message.skidFront)||0,
@@ -776,6 +869,13 @@ export function createMultiplayerClient({
     if(Number.isFinite(message.steer))peer.targetSteer=message.steer;
     if(Number.isFinite(message.speed))peer.speed=message.speed;
     if(Number.isFinite(message.longitudinalAccel))peer.longitudinalAccel=message.longitudinalAccel;
+
+    if(typeof message.reversing==='boolean')peer.reversing=message.reversing;
+    if(Number.isFinite(message.nightLevel))peer.nightLevel=clamp(Number(message.nightLevel),0,1);
+    if(typeof message.signalLeft==='boolean')peer.signalLeft=message.signalLeft;
+    if(typeof message.signalRight==='boolean')peer.signalRight=message.signalRight;
+    if(typeof message.signalBlink==='boolean')peer.signalBlink=message.signalBlink;
+    if(message.lightingProtocol==='m2.4')peer.lightingProtocol='m2.4';
 
     if(Number.isFinite(message.skidFront)){
       peer.targetSkidFront=Math.max(0,Math.min(1,message.skidFront));
@@ -891,6 +991,7 @@ export function createMultiplayerClient({
     if(!state)return;
     const now=performance.now();
     const motion=estimateLocalMotion(state,now);
+    const lighting=localLightingState(state,now);
 
     send({
       type:'state',
@@ -905,7 +1006,13 @@ export function createMultiplayerClient({
       longitudinalAccel:motion.longitudinalAccel,
       vehicleId:state.vehicleId,
       steer:state.steer,
-      braking:state.braking,
+      braking:lighting.braking,
+      reversing:lighting.reversing,
+      nightLevel:lighting.nightLevel,
+      signalLeft:lighting.signalLeft,
+      signalRight:lighting.signalRight,
+      signalBlink:lighting.signalBlink,
+      lightingProtocol:lighting.lightingProtocol,
       onRoad:state.onRoad,
       skidFront:state.skidFront,
       skidRear:state.skidRear,
@@ -927,6 +1034,7 @@ export function createMultiplayerClient({
     manuallyClosed=false;
     localSequence=0;
     lastLocalMotion=null;
+    resetLocalSignalState();
     const url=defaultUrl();
     setStatus('Connexion…','connecting');
 
@@ -980,6 +1088,7 @@ export function createMultiplayerClient({
       socket=null;
       ownId=null;
       lastLocalMotion=null;
+      resetLocalSignalState();
       clearPeers();
       setStatus(manuallyClosed?'Déconnecté':'Serveur perdu',manuallyClosed?'off':'error');
       if(!manuallyClosed)toast('Connexion multijoueur perdue');
@@ -993,6 +1102,7 @@ export function createMultiplayerClient({
   function disconnect(){
     manuallyClosed=true;
     lastLocalMotion=null;
+    resetLocalSignalState();
     if(socket){
       try{socket.close(1000,'client disconnect')}catch{}
     }
@@ -1041,6 +1151,12 @@ export function createMultiplayerClient({
         peer.speed=sampled.speed;
         peer.longitudinalAccel=sampled.longitudinalAccel;
         peer.braking=sampled.braking;
+        peer.reversing=sampled.reversing;
+        peer.nightLevel=sampled.nightLevel;
+        peer.signalLeft=sampled.signalLeft;
+        peer.signalRight=sampled.signalRight;
+        peer.signalBlink=sampled.signalBlink;
+        peer.lightingProtocol=sampled.lightingProtocol;
         peer.onRoad=sampled.onRoad;
         peer.skidFront=sampled.skidFront;
         peer.skidRear=sampled.skidRear;
@@ -1097,10 +1213,19 @@ export function createMultiplayerClient({
       peer.visual.root.visible=visible;
 
       if(!visible){
-        peer.visual.setHeadlights?.(
-          0,
-          Infinity
-        );
+        if(peer.visual.setLighting){
+          peer.visual.setLighting({
+            braking:false,
+            reversing:false,
+            nightLevel:0,
+            signalLeft:false,
+            signalRight:false,
+            signalBlink:false,
+            distance:Infinity
+          });
+        }else{
+          peer.visual.setHeadlights?.(0,Infinity);
+        }
 
         onRemoteSkidFrame?.({
           id:peer.id,
@@ -1251,22 +1376,32 @@ export function createMultiplayerClient({
           -localWheelRoll;
       }
 
-      const brake=peer.braking?1:0;
-
-      if(peer.visual.setBraking){
-        peer.visual.setBraking(brake);
-      }else{
-        peer.visual.brakeMat.color
-          .copy(peer.visual.brakeBase)
-          .lerp(peer.visual.brakeHot,brake);
-      }
-
       const peerDistance=Math.sqrt(relativeD2);
+      const remoteNight=Number.isFinite(peer.nightLevel)
+        ?clamp(peer.nightLevel,0,1)
+        :clamp(Number(getHeadlightLevel?.())||0,0,1);
 
-      peer.visual.setHeadlights?.(
-        getHeadlightLevel(),
-        peerDistance
-      );
+      if(peer.visual.setLighting){
+        peer.visual.setLighting({
+          braking:!!peer.braking,
+          reversing:!!peer.reversing,
+          nightLevel:remoteNight,
+          signalLeft:!!peer.signalLeft,
+          signalRight:!!peer.signalRight,
+          signalBlink:!!peer.signalBlink,
+          distance:peerDistance
+        });
+      }else{
+        const brake=peer.braking?1:0;
+        if(peer.visual.setBraking){
+          peer.visual.setBraking(brake);
+        }else{
+          peer.visual.brakeMat.color
+            .copy(peer.visual.brakeBase)
+            .lerp(peer.visual.brakeHot,brake);
+        }
+        peer.visual.setHeadlights?.(remoteNight,peerDistance);
+      }
 
       onRemoteSkidFrame?.({
         id:peer.id,
@@ -1288,7 +1423,14 @@ export function createMultiplayerClient({
       vehicleId:peer.vehicleId,
       speed:peer.speed,
       velocityHeading:peer.velocityHeading,
-      longitudinalAccel:peer.longitudinalAccel
+      longitudinalAccel:peer.longitudinalAccel,
+      braking:peer.braking,
+      reversing:peer.reversing,
+      nightLevel:peer.nightLevel,
+      signalLeft:peer.signalLeft,
+      signalRight:peer.signalRight,
+      signalBlink:peer.signalBlink,
+      lightingProtocol:peer.lightingProtocol
     }));
   }
 
