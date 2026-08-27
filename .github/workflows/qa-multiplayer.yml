@@ -1,4 +1,4 @@
-name: Multiplayer HD QA
+name: Multiplayer M3 QA
 
 on:
   push:
@@ -26,21 +26,21 @@ jobs:
           cache: npm
       - name: Install
         run: npm ci
+      - name: M3 vehicle registry QA
+        run: node qa/V21_31_MULTIPLAYER_M3_REGISTRY_QA.mjs
+      - name: M3 multi-axle support QA
+        run: node qa/V21_31_MULTIPLAYER_M3_SUPPORT_QA.mjs
+      - name: M3 client and entrypoint QA
+        run: node qa/V21_31_MULTIPLAYER_M3_CLIENT_QA.mjs
+      - name: M3 protocol parity QA
+        run: node qa/V21_31_MULTIPLAYER_M3_PROTOCOL_QA.mjs
+      - name: M3 lighting state matrix QA
+        run: node qa/V21_31_MULTIPLAYER_M3_LIGHTING_MATRIX_QA.mjs
+      - name: M3 real GLB lighting contract QA
+        run: node qa/V21_31_MULTIPLAYER_M3_GLB_CONTRACT_QA.mjs
       - name: Multiplayer GLB structure audit
         run: node qa/V21_31_MULTIPLAYER_GLB_STRUCTURE_AUDIT.mjs
-      - name: Multiplayer compatibility QA
-        run: node qa/V21_31_MULTIPLAYER_COMPAT_QA.mjs
-      - name: Multiplayer lazy HD isolation QA
-        run: node qa/V21_31_MULTIPLAYER_GLB_ISOLATION_QA.mjs
-      - name: Multiplayer M2 motion realism QA
-        run: node qa/V21_31_MULTIPLAYER_MOTION_QA.mjs
-      - name: Multiplayer M2.2 presentation smoothing QA
-        run: node qa/V21_31_MULTIPLAYER_SMOOTHING_QA.mjs
-      - name: Multiplayer M2.3 stability and lighting QA
-        run: node qa/V21_31_MULTIPLAYER_M23_STABILITY_LIGHTING_QA.mjs
-      - name: Multiplayer M2.4 replicated lighting QA
-        run: node qa/V21_31_MULTIPLAYER_M24_LIGHTING_QA.mjs
-      - name: Multiplayer M2.5 authored GLB lighting QA
-        run: node qa/V21_31_MULTIPLAYER_M25_AUTHORED_LIGHTING_QA.mjs
+      - name: All-car physics regression QA
+        run: node qa/V21_28_ALL_CARS_PHYSICS_QA.mjs
       - name: Production build
         run: npm run build
