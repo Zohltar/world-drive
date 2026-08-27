@@ -294,6 +294,7 @@ export function createForestChunkStreamer(options){
 
   function snapshot(){
     const raw=base.stats?.()||{};
+    const correlation=telemetry.correlation;
     return {
       enabled:true,
       observerMode:'direct-hitch-hook',
