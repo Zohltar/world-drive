@@ -36,6 +36,10 @@ function materialsForNode(asset,nodeIndex){
     .map(primitive=>Number.isInteger(primitive.material)?String(asset.materials[primitive.material]?.name||'').toLowerCase():'')
     .filter(Boolean);
 }
+function meshNodeByPath(asset,selector){
+  const term=String(selector).toLowerCase();
+  return asset.nodes.findIndex((node,index)=>Number.isInteger(node.mesh)&&asset.paths[index].includes(term));
+}
 
 const reports=[];
 for(const spec of listMultiplayerVehicleSpecs().filter(spec=>spec.hd.enabled)){
@@ -64,10 +68,10 @@ for(const spec of listMultiplayerVehicleSpecs().filter(spec=>spec.hd.enabled)){
   // High-value regression checks discovered by the binary audit.
   if(spec.id==='wrx'){
     assert(includesPath(asset,'fh_reverse_material'),'WRX real reverse node path must exist');
-    const reverseNode=asset.nodes.findIndex((_,i)=>asset.paths[i].includes('fh_reverse_material'));
-    assert(reverseNode>=0,'WRX reverse node index must resolve');
+    const reverseNode=meshNodeByPath(asset,'fh_reverse_material');
+    assert(reverseNode>=0,'WRX reverse mesh node must resolve below the authored reverse group');
     const reverseMaterials=materialsForNode(asset,reverseNode);
-    assert(reverseMaterials.includes('eblems'),'WRX audit regression: reverse node deliberately has misleading Eblems material; path binding is required');
+    assert(reverseMaterials.includes('eblems'),'WRX audit regression: reverse mesh deliberately has misleading Eblems material; ancestry/path binding is required');
   }
   if(spec.id==='sonata'){
     const rearInner=asset.nodeNames.has('object_46'),rearOuter=asset.nodeNames.has('object_33'),front=asset.nodeNames.has('object_7');
