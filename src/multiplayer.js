@@ -1,4 +1,4 @@
-// World Drive V19.0 - buffered N-player LAN interpolation + remote skid state.
+// World Drive V19.1 - curvature-aware buffered N-player LAN interpolation.
 // No remote physics/collisions: each peer only broadcasts presentation state.
 
 const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
@@ -11,11 +11,28 @@ function angleLerp(a,b,t){
   return a+d*t;
 }
 
+function angleDeltaLocal(a,b){
+  let d=(a-b)%(Math.PI*2);
+  if(d>Math.PI)d-=Math.PI*2;
+  if(d<-Math.PI)d+=Math.PI*2;
+  return d;
+}
 
 // Route-origin-independent local tangent plane, in real metres.
 // Multiplayer visuals are only drawn within ~3.2 km, where this is precise
 // and avoids any dependence on each client's current route origin.
 const GEO_EARTH=6378137;
+const DEG_TO_RAD=Math.PI/180;
+const VEHICLE_WHEELBASE=Object.freeze({
+  id4:2.77,
+  wrx:2.65,
+  civic:2.70,
+  sonata:2.80,
+  i3_2017:2.57,
+  f1_2010:3.15,
+  countach_80:2.45,
+  semi_6x4:4.10
+});
 
 function geographicOffsetMeters(
   fromLat,
@@ -23,14 +40,13 @@ function geographicOffsetMeters(
   toLat,
   toLon
 ){
-  const rad=Math.PI/180;
-  const dLat=(toLat-fromLat)*rad;
+  const dLat=(toLat-fromLat)*DEG_TO_RAD;
 
-  let dLon=(toLon-fromLon)*rad;
+  let dLon=(toLon-fromLon)*DEG_TO_RAD;
   if(dLon>Math.PI)dLon-=Math.PI*2;
   else if(dLon<-Math.PI)dLon+=Math.PI*2;
 
-  const midLat=(fromLat+toLat)*.5*rad;
+  const midLat=(fromLat+toLat)*.5*DEG_TO_RAD;
 
   return {
     x:dLon*GEO_EARTH*Math.cos(midLat),
@@ -38,11 +54,38 @@ function geographicOffsetMeters(
   };
 }
 
+function offsetLatLonMeters(lat,lon,x,z){
+  const cosLat=Math.max(.15,Math.cos(lat*DEG_TO_RAD));
+  return {
+    lat:lat-(z/GEO_EARTH)/DEG_TO_RAD,
+    lon:lon+(x/(GEO_EARTH*cosLat))/DEG_TO_RAD
+  };
+}
+
+function motionHeading(snapshot){
+  if(Number.isFinite(snapshot?.velocityHeading))return snapshot.velocityHeading;
+  const heading=Number(snapshot?.heading)||0;
+  return Number(snapshot?.speed)<0?heading+Math.PI:heading;
+}
+
+function motionSpeed(snapshot){
+  return Math.abs(Number(snapshot?.speed)||0);
+}
+
+function motionVector(snapshot){
+  const heading=motionHeading(snapshot);
+  const speed=motionSpeed(snapshot);
+  return {
+    x:Math.sin(heading)*speed,
+    z:Math.cos(heading)*speed
+  };
+}
+
 // Render remote cars slightly in the past so two real network snapshots are
 // normally available to interpolate between. This absorbs LAN packet jitter
 // instead of making the car chase the newest packet.
 const INTERPOLATION_DELAY_MS=110;
-const MAX_EXTRAPOLATION_MS=90;
+const MAX_EXTRAPOLATION_MS=105;
 const SNAPSHOT_HISTORY_MS=900;
 
 function finiteOr(value,fallback=0){
@@ -55,14 +98,17 @@ function snapshotFromMessage(message,peer,receivedAt){
   return {
     receivedAt,
     seq:Number(message.seq)||0,
+    vehicleId:message.vehicleId||peer.vehicleId||'wrx',
 
     lat:finiteOr(message.lat,peer.lat),
     lon:finiteOr(message.lon,peer.lon),
     y:finiteOr(message.y,peer.y),
 
     heading:finiteOr(message.heading,peer.heading),
+    velocityHeading:finiteOr(message.velocityHeading,peer.velocityHeading),
     steer:finiteOr(message.steer,peer.steer),
     speed:finiteOr(message.speed,peer.speed),
+    longitudinalAccel:finiteOr(message.longitudinalAccel,peer.longitudinalAccel),
 
     braking:!!message.braking,
     onRoad:
@@ -91,28 +137,77 @@ function snapshotFromMessage(message,peer,receivedAt){
   };
 }
 
-function interpolateSnapshot(a,b,t){
+function interpolateGeographic(a,b,t,spanMs){
+  const spanSec=Math.max(.001,Math.min(.25,spanMs/1000));
+  const delta=geographicOffsetMeters(a.lat,a.lon,b.lat,b.lon);
+  const directDistance=Math.hypot(delta.x,delta.z);
+  const va=motionVector(a);
+  const vb=motionVector(b);
+
+  // A packet after a teleport/reset should never create a giant Hermite arc.
+  const expected=(motionSpeed(a)+motionSpeed(b))*.5*spanSec;
+  const continuityLimit=Math.max(10,expected*3.5+4);
+  if(directDistance>continuityLimit){
+    return {
+      lat:lerp(a.lat,b.lat,t),
+      lon:lerp(a.lon,b.lon,t)
+    };
+  }
+
+  const t2=t*t;
+  const t3=t2*t;
+  const h10=t3-2*t2+t;
+  const h01=-2*t3+3*t2;
+  const h11=t3-t2;
+
+  const x=
+    h10*va.x*spanSec+
+    h01*delta.x+
+    h11*vb.x*spanSec;
+
+  const z=
+    h10*va.z*spanSec+
+    h01*delta.z+
+    h11*vb.z*spanSec;
+
+  return offsetLatLonMeters(a.lat,a.lon,x,z);
+}
+
+function interpolateSnapshot(a,b,t,spanMs){
+  const poseT=t*t*(3-2*t);
+  const geo=interpolateGeographic(a,b,t,spanMs);
   return {
-    lat:lerp(a.lat,b.lat,t),
-    lon:lerp(a.lon,b.lon,t),
-    y:lerp(a.y,b.y,t),
+    lat:geo.lat,
+    lon:geo.lon,
+    y:lerp(a.y,b.y,poseT),
 
     heading:angleLerp(a.heading,b.heading,t),
-    steer:lerp(a.steer,b.steer,t),
+    velocityHeading:angleLerp(
+      motionHeading(a),
+      motionHeading(b),
+      t
+    ),
+    steer:lerp(a.steer,b.steer,poseT),
     speed:lerp(a.speed,b.speed,t),
+    longitudinalAccel:lerp(
+      finiteOr(a.longitudinalAccel,0),
+      finiteOr(b.longitudinalAccel,0),
+      poseT
+    ),
+    vehicleId:b.vehicleId||a.vehicleId,
 
     braking:t<.5?a.braking:b.braking,
     onRoad:t<.5?a.onRoad:b.onRoad,
 
-    skidFront:lerp(a.skidFront,b.skidFront,t),
-    skidRear:lerp(a.skidRear,b.skidRear,t),
+    skidFront:lerp(a.skidFront,b.skidFront,poseT),
+    skidRear:lerp(a.skidRear,b.skidRear,poseT),
 
-    bodyPitch:lerp(a.bodyPitch,b.bodyPitch,t),
-    bodyYaw:angleLerp(a.bodyYaw,b.bodyYaw,t),
-    bodyRoll:lerp(a.bodyRoll,b.bodyRoll,t),
-    bodyY:lerp(a.bodyY,b.bodyY,t),
-    wheelPitch:lerp(a.wheelPitch,b.wheelPitch,t),
-    wheelRoll:lerp(a.wheelRoll,b.wheelRoll,t)
+    bodyPitch:lerp(a.bodyPitch,b.bodyPitch,poseT),
+    bodyYaw:angleLerp(a.bodyYaw,b.bodyYaw,poseT),
+    bodyRoll:lerp(a.bodyRoll,b.bodyRoll,poseT),
+    bodyY:lerp(a.bodyY,b.bodyY,poseT),
+    wheelPitch:lerp(a.wheelPitch,b.wheelPitch,poseT),
+    wheelRoll:lerp(a.wheelRoll,b.wheelRoll,poseT)
   };
 }
 
@@ -131,45 +226,49 @@ function extrapolateSnapshot(snapshot,aheadMs){
     return snapshot;
   }
 
-  // Network heading uses the same World Drive axes:
-  // +X east, +Z south, heading 0 = +Z.
-  const dx=
-    Math.sin(snapshot.heading)*
-    snapshot.speed*
-    dt;
+  const speed0=motionSpeed(snapshot);
+  const accel=clamp(
+    finiteOr(snapshot.longitudinalAccel,0),
+    -12,
+    8
+  );
+  const distance=Math.max(0,speed0*dt+.5*accel*dt*dt);
 
-  const dz=
-    Math.cos(snapshot.heading)*
-    snapshot.speed*
-    dt;
+  // Continue turning through a short packet gap instead of extrapolating every
+  // car dead-straight. A bicycle-model yaw estimate is deliberately clamped;
+  // this is prediction only and never remote physics authority.
+  const wheelbase=
+    VEHICLE_WHEELBASE[snapshot.vehicleId]||2.70;
+  const steer=clamp(finiteOr(snapshot.steer,0),-.62,.62);
+  const yawRate=clamp(
+    speed0/wheelbase*Math.tan(steer),
+    -2.6,
+    2.6
+  );
 
-  const rad=Math.PI/180;
-  const cosLat=
-    Math.max(
-      .15,
-      Math.cos(snapshot.lat*rad)
-    );
+  const startTravel=motionHeading(snapshot);
+  const slip=Math.abs(
+    angleDeltaLocal(
+      startTravel,
+      finiteOr(snapshot.heading,0)
+    )
+  );
+  const travelYawFactor=clamp(1-slip/1.10,.28,1);
+  const travelMid=startTravel+yawRate*dt*travelYawFactor*.5;
+
+  const dx=Math.sin(travelMid)*distance;
+  const dz=Math.cos(travelMid)*distance;
+  const geo=offsetLatLonMeters(snapshot.lat,snapshot.lon,dx,dz);
 
   return {
     ...snapshot,
-    lat:
-      snapshot.lat-
-      (
-        dz/
-        GEO_EARTH
-      )/
-      rad,
-
-    lon:
-      snapshot.lon+
-      (
-        dx/
-        (
-          GEO_EARTH*
-          cosLat
-        )
-      )/
-      rad
+    lat:geo.lat,
+    lon:geo.lon,
+    heading:finiteOr(snapshot.heading,0)+yawRate*dt,
+    velocityHeading:startTravel+yawRate*dt*travelYawFactor,
+    speed:
+      Math.sign(Number(snapshot.speed)||1)*
+      Math.max(0,speed0+accel*dt)
   };
 }
 
@@ -214,7 +313,8 @@ function samplePeerSnapshot(peer,renderAt){
           span,
           0,
           1
-        )
+        ),
+        span
       );
     }
   }
@@ -224,8 +324,6 @@ function samplePeerSnapshot(peer,renderAt){
       snapshots.length-1
     ];
 
-  // A short packet gap is predicted from speed + heading instead of snapping
-  // or freezing. The cap prevents runaway extrapolation if a client stalls.
   return extrapolateSnapshot(
     latest,
     renderAt-latest.receivedAt
@@ -498,6 +596,7 @@ export function createMultiplayerClient({
   let manuallyClosed=false;
   let cachedName='Conducteur';
   let localSequence=0;
+  let lastLocalMotion=null;
   const peers=new Map();
 
   const defaultUrl=()=>{
@@ -564,6 +663,8 @@ export function createMultiplayerClient({
     if(!message.id||message.id===ownId)return null;
     let peer=peers.get(message.id);
     if(!peer){
+      const initialSpeed=Number(message.speed)||0;
+      const initialHeading=Number(message.heading)||0;
       peer={
         id:message.id,
         name:(message.name||'Conducteur').slice(0,24),
@@ -577,11 +678,15 @@ export function createMultiplayerClient({
         targetY:Number(message.y)||0,
         renderY:null,
 
-        heading:Number(message.heading)||0,
-        targetHeading:Number(message.heading)||0,
+        heading:initialHeading,
+        targetHeading:initialHeading,
+        velocityHeading:Number.isFinite(message.velocityHeading)
+          ?message.velocityHeading
+          :(initialSpeed<0?initialHeading+Math.PI:initialHeading),
         steer:Number(message.steer)||0,
         targetSteer:Number(message.steer)||0,
-        speed:Number(message.speed)||0,
+        speed:initialSpeed,
+        longitudinalAccel:Number(message.longitudinalAccel)||0,
         braking:!!message.braking,
         onRoad:!!message.onRoad,
         skidFront:Number(message.skidFront)||0,
@@ -589,7 +694,7 @@ export function createMultiplayerClient({
         skidRear:Number(message.skidRear)||0,
         targetSkidRear:Number(message.skidRear)||0,
 
-        // V19.0 interpolation history.
+        // V19.1 interpolation history.
         snapshots:[],
         lastSeq:0,
 
@@ -666,8 +771,10 @@ export function createMultiplayerClient({
     if(Number.isFinite(message.lon))peer.targetLon=message.lon;
     if(Number.isFinite(message.y))peer.targetY=message.y;
     if(Number.isFinite(message.heading))peer.targetHeading=message.heading;
+    if(Number.isFinite(message.velocityHeading))peer.velocityHeading=message.velocityHeading;
     if(Number.isFinite(message.steer))peer.targetSteer=message.steer;
     if(Number.isFinite(message.speed))peer.speed=message.speed;
+    if(Number.isFinite(message.longitudinalAccel))peer.longitudinalAccel=message.longitudinalAccel;
 
     if(Number.isFinite(message.skidFront)){
       peer.targetSkidFront=Math.max(0,Math.min(1,message.skidFront));
@@ -729,9 +836,60 @@ export function createMultiplayerClient({
     }
   }
 
+  function estimateLocalMotion(state,now){
+    const fallbackHeading=
+      Number(state.speed)<0
+        ?finiteOr(state.heading,0)+Math.PI
+        :finiteOr(state.heading,0);
+
+    let velocityHeading=fallbackHeading;
+    let longitudinalAccel=0;
+
+    if(
+      lastLocalMotion&&
+      Number.isFinite(state.lat)&&
+      Number.isFinite(state.lon)
+    ){
+      const dt=Math.max(.015,Math.min(.20,(now-lastLocalMotion.at)/1000));
+      const delta=geographicOffsetMeters(
+        lastLocalMotion.lat,
+        lastLocalMotion.lon,
+        state.lat,
+        state.lon
+      );
+      const travelled=Math.hypot(delta.x,delta.z);
+      if(travelled>.035){
+        velocityHeading=Math.atan2(delta.x,delta.z);
+      }else if(Number.isFinite(lastLocalMotion.velocityHeading)){
+        velocityHeading=lastLocalMotion.velocityHeading;
+      }
+
+      longitudinalAccel=clamp(
+        (
+          Math.abs(Number(state.speed)||0)-
+          Math.abs(lastLocalMotion.speed)
+        )/dt,
+        -12,
+        8
+      );
+    }
+
+    lastLocalMotion={
+      at:now,
+      lat:state.lat,
+      lon:state.lon,
+      speed:Number(state.speed)||0,
+      velocityHeading
+    };
+
+    return {velocityHeading,longitudinalAccel};
+  }
+
   function sendLocalState(){
     const state=getLocalState?.();
     if(!state)return;
+    const now=performance.now();
+    const motion=estimateLocalMotion(state,now);
 
     send({
       type:'state',
@@ -741,7 +899,9 @@ export function createMultiplayerClient({
       lon:state.lon,
       y:state.y,
       heading:state.heading,
+      velocityHeading:motion.velocityHeading,
       speed:state.speed,
+      longitudinalAccel:motion.longitudinalAccel,
       vehicleId:state.vehicleId,
       steer:state.steer,
       braking:state.braking,
@@ -765,6 +925,7 @@ export function createMultiplayerClient({
 
     manuallyClosed=false;
     localSequence=0;
+    lastLocalMotion=null;
     const url=defaultUrl();
     setStatus('Connexion…','connecting');
 
@@ -817,6 +978,7 @@ export function createMultiplayerClient({
     socket.addEventListener('close',()=>{
       socket=null;
       ownId=null;
+      lastLocalMotion=null;
       clearPeers();
       setStatus(manuallyClosed?'Déconnecté':'Serveur perdu',manuallyClosed?'off':'error');
       if(!manuallyClosed)toast('Connexion multijoueur perdue');
@@ -829,6 +991,7 @@ export function createMultiplayerClient({
 
   function disconnect(){
     manuallyClosed=true;
+    lastLocalMotion=null;
     if(socket){
       try{socket.close(1000,'client disconnect')}catch{}
     }
@@ -872,8 +1035,10 @@ export function createMultiplayerClient({
         peer.lon=sampled.lon;
         peer.y=sampled.y;
         peer.heading=sampled.heading;
+        peer.velocityHeading=sampled.velocityHeading;
         peer.steer=sampled.steer;
         peer.speed=sampled.speed;
+        peer.longitudinalAccel=sampled.longitudinalAccel;
         peer.braking=sampled.braking;
         peer.onRoad=sampled.onRoad;
         peer.skidFront=sampled.skidFront;
@@ -948,9 +1113,8 @@ export function createMultiplayerClient({
         continue;
       }
 
-      // V18C.1:
-      // X/Z/heading are network state.
-      // Y/contact plane are solved against the RECEIVER'S own road/terrain.
+      // X/Z/heading are reconstructed network state. Y/contact plane are solved
+      // against the RECEIVER'S own road/terrain.
       const localSupport=
         solveRemoteSupport?.({
           lat:peer.lat,
@@ -965,8 +1129,6 @@ export function createMultiplayerClient({
           ?localSupport.rootY
           :peer.y;
 
-      // Initialize instantly so a late join never rises/falls through the road
-      // from an unrelated sender-side vertical origin.
       if(!Number.isFinite(peer.renderY)){
         peer.renderY=supportY;
       }else{
@@ -1006,9 +1168,6 @@ export function createMultiplayerClient({
         peer.visual.bodyGroup.position.y=
           peer.bodyY;
 
-        // Preserve remote driver's visual suspension/cornering character, but
-        // replace the static road-support component with the receiver's local
-        // support plane. This keeps the car aligned with the visible road.
         const pitchDelta=
           localWheelPitch-
           peer.wheelPitch;
@@ -1126,7 +1285,9 @@ export function createMultiplayerClient({
       lat:peer.lat,
       lon:peer.lon,
       vehicleId:peer.vehicleId,
-      speed:peer.speed
+      speed:peer.speed,
+      velocityHeading:peer.velocityHeading,
+      longitudinalAccel:peer.longitudinalAccel
     }));
   }
 
