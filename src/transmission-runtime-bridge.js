@@ -1,6 +1,8 @@
 // V21.29 — narrow runtime/transmission bridge.
 // Carries body-relative speed plus independent engine/brake/clutch channels.
 
+import {readTransmissionNetworkGear} from './transmission-network-state.js';
+
 const state={
   bodyLongitudinalSpeed:NaN,
   clutchHeld:false,
@@ -47,7 +49,15 @@ export function consumeClutchShockMultiplier(){
   return value;
 }
 
-export function readTransmissionRuntimeState(){return state;}
+export function readTransmissionRuntimeState(){
+  // M4.5: the exact gear published by transmission-controller is the same
+  // state written to the instrument cluster. Keep the legacy selectorGear field
+  // synchronized so existing lighting/network consumers see that authoritative
+  // value without maintaining another copy of D/N/R state.
+  const gear=Number(readTransmissionNetworkGear());
+  if(Number.isFinite(gear))state.selectorGear=gear<0?-1:gear===0?0:Math.max(1,Math.floor(gear));
+  return state;
+}
 
 export function resetTransmissionRuntimeState(){
   state.bodyLongitudinalSpeed=NaN;
