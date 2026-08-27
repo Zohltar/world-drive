@@ -1,54 +1,23 @@
 import {createDeferredGlbSystem} from './deferred-glb-system.js';
+import {getAuthoredVehicleDescriptor,loadAuthoredVehicleFactory} from './vehicle-authored-registry.js';
 
-function deferred(label,importer,exportName){
+// Local gameplay and multiplayer resolve their authored controllers from the
+// same registry. The local path keeps its deferred facade so heavy modules are
+// still imported only when selected.
+function deferredFor(vehicleId){
+  const descriptor=getAuthoredVehicleDescriptor(vehicleId);
+  if(!descriptor||descriptor.kind!=='passenger')throw new Error(`Invalid passenger authored descriptor: ${vehicleId}`);
   return options=>createDeferredGlbSystem({
-    label,
+    label:descriptor.label,
     options,
-    loadFactory:async()=>{
-      const module=await importer();
-      return module?.[exportName];
-    }
+    loadFactory:()=>loadAuthoredVehicleFactory(vehicleId)
   });
 }
 
-export const createCountachGlbSystem=deferred(
-  'Countach',
-  ()=>import('./countach-glb.js'),
-  'createCountachGlbSystem'
-);
-
-export const createId4GlbSystem=deferred(
-  'ID.4',
-  ()=>import('./id4-glb.js'),
-  'createId4GlbSystem'
-);
-
-export const createWrxGlbSystem=deferred(
-  'WRX',
-  ()=>import('./wrx-glb.js'),
-  'createWrxGlbSystem'
-);
-
-export const createCivicGlbSystem=deferred(
-  'Civic',
-  ()=>import('./civic-glb.js'),
-  'createCivicGlbSystem'
-);
-
-export const createSonataGlbSystem=deferred(
-  'Sonata',
-  ()=>import('./sonata-glb.js'),
-  'createSonataGlbSystem'
-);
-
-export const createF1GlbSystem=deferred(
-  'F1',
-  ()=>import('./f1-glb.js'),
-  'createF1GlbSystem'
-);
-
-export const createI3GlbSystem=deferred(
-  'BMW i3',
-  ()=>import('./i3-glb.js'),
-  'createI3GlbSystem'
-);
+export const createCountachGlbSystem=deferredFor('countach_80');
+export const createId4GlbSystem=deferredFor('id4');
+export const createWrxGlbSystem=deferredFor('wrx');
+export const createCivicGlbSystem=deferredFor('civic');
+export const createSonataGlbSystem=deferredFor('sonata');
+export const createF1GlbSystem=deferredFor('f1_2010');
+export const createI3GlbSystem=deferredFor('i3_2017');
