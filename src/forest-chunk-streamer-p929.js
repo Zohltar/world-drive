@@ -5,14 +5,13 @@ import {
   forestDensityNoise
 } from './forest-streaming-policy.js';
 
-// Foret P9.35 — frame-budgeted dense forest streamer with travel-ahead priority.
+// Foret P9.36 — frame-budgeted dense forest streamer with rolling prefetch.
 //
-// P9.29 remains the frame-budget baseline: candidate evaluation is resumable
-// inside a cell, chunk commit gets its own idle slice, status reporting is
-// throttled, and InstancedMesh bounds are conservative. P9.31/P9.32 keep those
-// CPU limits unchanged and prioritize travel ahead. P9.35 fixes startup bias:
-// once a route direction is known, the protected near ring still wins as a
-// whole, but its forward chunks are built before lateral/rear chunks.
+// P9.29 remains the frame-budget baseline and P9.35 keeps startup forward-biased.
+// P9.36 fixes the remaining long-drive pop-in: visible chunks still live inside
+// maxDistance, but a detached/cache-only lobe is fully built farther ahead. When
+// those chunks later enter the visible radius, only a cheap group attach/count
+// update remains; candidate generation and matrix upload already happened idle.
 export function createForestChunkStreamer({
   THREE,
   forestGroup,
@@ -31,7 +30,7 @@ export function createForestChunkStreamer({
   const totalCells=chunkCells*chunkCells;
   const halfChunkDiagonal=chunkSize*Math.SQRT2*.5;
   const cellHalfDiagonal=FOREST.cellSize*Math.SQRT2*.5;
-  const cacheLimit=Math.max(32,FOREST.chunkCacheLimit||96);
+  const cacheLimit=Math.max(32,FOREST.chunkCacheLimit||128);
   const densityBuckets=Math.max(8,FOREST.densityBuckets||32);
   const candidateBatchSize=Math.max(1,FOREST.candidatesPerBuildSlice||12);
   const sliceBudgetMs=Math.max(.45,FOREST.forestSliceBudgetMs||.95);
@@ -39,6 +38,13 @@ export function createForestChunkStreamer({
   const nearPriorityDistance=Math.max(560,(FOREST.densityNearFullDistance||500)+80);
   const minAheadLead=Math.max(620,FOREST.forestAheadLeadMin||720);
   const maxAheadLead=Math.max(minAheadLead,FOREST.forestAheadLeadMax||980);
+  const prefetchLeadM=Math.max(FOREST.maxDistance+250,FOREST.forestPrefetchLeadM||2500);
+  const prefetchRadiusM=Math.max(chunkSize*1.5,FOREST.forestPrefetchRadiusM||1250);
+  const prefetchMinForwardM=Math.max(chunkSize,FOREST.forestPrefetchMinForwardM||1050);
+  const catchupQueueThreshold=Math.max(4,FOREST.forestCatchupQueueThreshold||10);
+  const catchupSliceBudgetMs=Math.max(sliceBudgetMs,FOREST.forestCatchupSliceBudgetMs||1.55);
+  const catchupCandidateBatchSize=Math.max(candidateBatchSize,FOREST.forestCatchupCandidatesPerSlice||20);
+  const catchupMinIdleMs=Math.max(1.5,FOREST.forestCatchupMinIdleMs||3.2);
 
   let assets=null;
   let active=new Map();
@@ -49,6 +55,8 @@ export function createForestChunkStreamer({
   let pollTimer=null;
   let serial=0;
   let lastCenter={x:NaN,z:NaN};
+  let visibleKeys=new Set();
+  let prefetchKeys=new Set();
   let wantedKeys=new Set();
   let slopeCache=new Map();
   let initialResolved=false;
@@ -85,7 +93,17 @@ export function createForestChunkStreamer({
     priorityLeadM:0,
     travelConfidence:0,
     travelDirX:0,
-    travelDirZ:0
+    travelDirZ:0,
+    rollingPrefetch:true,
+    prefetchLeadM,
+    prefetchRadiusM,
+    prefetchMinForwardM,
+    prefetchMeshPrepares:0,
+    prefetchHits:0,
+    catchupQueueThreshold,
+    catchupSliceBudgetMs,
+    catchupCandidateBatchSize,
+    catchupSlices:0
   };
 
   const forestTerrain=createForestTerrainSamplerP912({
@@ -163,6 +181,14 @@ export function createForestChunkStreamer({
     };
   }
 
+  function prefetchPriorityCenter(center){
+    if(travelConfidence<.25)return center;
+    return {
+      x:center.x+travelDir.x*prefetchLeadM,
+      z:center.z+travelDir.z*prefetchLeadM
+    };
+  }
+
   function signedForwardDistance(chunk,center){
     if(travelConfidence<.25)return 0;
     const dx=chunk.centerX-center.x,dz=chunk.centerZ-center.z;
@@ -173,10 +199,18 @@ export function createForestChunkStreamer({
     const nearDistance=chunkPriorityDistance(chunk,center);
     const forward=signedForwardDistance(chunk,center);
 
-    // P9.35: the old protected near ring was purely radial, so startup could
-    // spend most of its first chunks behind the vehicle even though P9.31 knew
-    // the route direction. Keep the entire near ring ahead of distant work, but
-    // strongly sort FORWARD chunks first inside that protected ring.
+    // P9.36 prefetch work must never displace genuinely visible work. Once the
+    // visible set is healthy, detached future chunks use the remaining idle time.
+    if(!visibleKeys.has(chunk.key)){
+      const pc=prefetchPriorityCenter(center);
+      return {
+        band:2,
+        score:chunkPriorityDistance(chunk,pc)+Math.max(0,prefetchMinForwardM-forward)*2,
+        nearDistance,
+        forward
+      };
+    }
+
     if(nearDistance<=nearPriorityDistance){
       let score=nearDistance;
       if(travelConfidence>=.25){
@@ -232,6 +266,28 @@ export function createForestChunkStreamer({
     return out;
   }
 
+  function prefetchChunks(center){
+    if(travelConfidence<.25)return [];
+    const pc=prefetchPriorityCenter(center);
+    const minX=Math.floor((pc.x-prefetchRadiusM)/chunkSize)-1;
+    const maxX=Math.floor((pc.x+prefetchRadiusM)/chunkSize)+1;
+    const minZ=Math.floor((pc.z-prefetchRadiusM)/chunkSize)-1;
+    const maxZ=Math.floor((pc.z+prefetchRadiusM)/chunkSize)+1;
+    const out=[];
+    for(let cx=minX;cx<=maxX;cx++)for(let cz=minZ;cz<=maxZ;cz++){
+      const chunk=chunkDescriptor(cx,cz);
+      const d=chunkCenterDistance(chunk,pc);
+      if(d>prefetchRadiusM+halfChunkDiagonal)continue;
+      const forward=signedForwardDistance(chunk,center);
+      if(forward<prefetchMinForwardM)continue;
+      chunk.prefetchOnly=true;
+      chunk.prefetchDistance=d;
+      out.push(chunk);
+    }
+    out.sort((a,b)=>a.prefetchDistance-b.prefetchDistance);
+    return out;
+  }
+
   function smooth01(t){
     const x=Math.max(0,Math.min(1,t));
     return x*x*(3-2*x);
@@ -255,14 +311,15 @@ export function createForestChunkStreamer({
       const t=smooth01((distance-outerStart)/Math.max(1,outerEnd-outerStart));
       return farFraction-(farFraction-edgeFraction)*t;
     }
-    return edgeFraction;
+    return distance<=outerEnd+halfChunkDiagonal?edgeFraction:0;
   }
 
   function densityBand(distance){
     if(distance<=(FOREST.densityNearFullDistance||500))return 'near';
     if(distance<(FOREST.densityNearSparseDistance||760))return 'mid';
     if(distance<(FOREST.outerFadeStart||1540))return 'far';
-    return 'edge';
+    if(distance<=(FOREST.maxDistance||1750)+halfChunkDiagonal)return 'edge';
+    return 'prefetch';
   }
 
   function cellNearRoad(x,z){
@@ -404,7 +461,8 @@ export function createForestChunkStreamer({
       mesh:null,
       group:null,
       visibleCount:0,
-      state:null
+      state:null,
+      prefetched:false
     };
   }
 
@@ -486,11 +544,27 @@ export function createForestChunkStreamer({
   }
 
   function attach(data,center){
+    const wasPrefetched=data?.prefetched===true;
     if(!ensureMesh(data,center))return false;
     if(data.group.parent!==forestGroup)forestGroup.add(data.group);
     active.set(data.key,data);
     cache.set(data.key,data);
     data.lastUsed=performance.now();
+    if(wasPrefetched){
+      perf.prefetchHits++;
+      data.prefetched=false;
+    }
+    return true;
+  }
+
+  function preparePrefetchMesh(data,center){
+    if(!ensureMesh(data,center))return false;
+    data.mesh.count=0;
+    data.visibleCount=0;
+    data.state='prefetch';
+    data.prefetched=true;
+    detach(data);
+    perf.prefetchMeshPrepares++;
     return true;
   }
 
@@ -508,7 +582,11 @@ export function createForestChunkStreamer({
   function trimCache(){
     if(cache.size<=cacheLimit)return;
     const inactive=[...cache.values()].filter(data=>!active.has(data.key));
-    inactive.sort((a,b)=>a.lastUsed-b.lastUsed);
+    inactive.sort((a,b)=>{
+      const aw=wantedKeys.has(a.key)?1:0,bw=wantedKeys.has(b.key)?1:0;
+      if(aw!==bw)return aw-bw;
+      return a.lastUsed-b.lastUsed;
+    });
     let disposed=0;
     while(cache.size>cacheLimit&&inactive.length&&disposed<4){
       const data=inactive.shift();
@@ -516,6 +594,18 @@ export function createForestChunkStreamer({
       disposeChunk(data);
       disposed++;
     }
+  }
+
+  function prefetchReadyCount(){
+    let count=0;
+    for(const key of prefetchKeys){if(cache.has(key))count++;}
+    return count;
+  }
+
+  function prefetchQueuedCount(){
+    let count=0;
+    for(const job of queue){if(prefetchKeys.has(job.key))count++;}
+    return count;
   }
 
   function report(force=false){
@@ -534,6 +624,10 @@ export function createForestChunkStreamer({
     onStats?.({
       trees,near,mid,far,edge,
       chunks:active.size,cached:cache.size,queued:queue.length,
+      visibleWanted:visibleKeys.size,
+      prefetchWanted:prefetchKeys.size,
+      prefetchedReady:prefetchReadyCount(),
+      prefetchQueued:prefetchQueuedCount(),
       maxForestSliceMs:perf.maxSliceMs
     });
     return true;
@@ -572,24 +666,27 @@ export function createForestChunkStreamer({
   function finishJob(job,data){
     const old=cache.get(job.key)||active.get(job.key)||null;
     const wanted=wantedKeys.has(job.key);
+    const visible=visibleKeys.has(job.key);
 
     if(job.replace){
-      if(wanted&&active.has(job.key)){
+      if(visible&&active.has(job.key)){
         replaceActive(active.get(job.key),data,lastCenter);
       }else{
         if(old&&old!==data)disposeChunk(old);
         cache.set(job.key,data);
-        if(wanted)attach(data,lastCenter);
+        if(visible)attach(data,lastCenter);
+        else if(wanted)preparePrefetchMesh(data,lastCenter);
       }
-    }else if(wanted){
+    }else if(visible){
       attach(data,lastCenter);
     }else{
       cache.set(job.key,data);
+      if(wanted)preparePrefetchMesh(data,lastCenter);
     }
     perf.chunksBuilt++;
   }
 
-  function recordSlice(sliceStart,candidates=0){
+  function recordSlice(sliceStart,candidates=0,catchup=false){
     const ended=performance.now();
     const elapsed=ended-sliceStart;
     perf.lastSliceMs=elapsed;
@@ -598,6 +695,7 @@ export function createForestChunkStreamer({
     perf.sliceCount++;
     perf.lastCandidates=candidates;
     perf.maxCandidates=Math.max(perf.maxCandidates,candidates);
+    if(catchup)perf.catchupSlices++;
   }
 
   function runQueue(){
@@ -610,6 +708,14 @@ export function createForestChunkStreamer({
       sortQueueByPriority(lastCenter);
       const job=queue[0];
       let candidates=0;
+      const idleRemaining=!deadline.didTimeout&&typeof deadline.timeRemaining==='function'
+        ?deadline.timeRemaining()
+        :0;
+      const catchup=
+        queue.length>=catchupQueueThreshold&&
+        idleRemaining>=catchupMinIdleMs;
+      const activeBudgetMs=catchup?catchupSliceBudgetMs:sliceBudgetMs;
+      const activeCandidateCap=catchup?catchupCandidateBatchSize:candidateBatchSize;
 
       if(!wantedKeys.has(job.key)&&!job.replace){
         queue.shift();queued.delete(job.key);
@@ -617,7 +723,7 @@ export function createForestChunkStreamer({
         queue.shift();queued.delete(job.key);
       }else if(!job.replace&&cache.has(job.key)){
         queue.shift();queued.delete(job.key);
-        if(wantedKeys.has(job.key))attach(cache.get(job.key),lastCenter);
+        if(visibleKeys.has(job.key))attach(cache.get(job.key),lastCenter);
       }else if(job.readyToCommit){
         const commitStarted=performance.now();
         const data=finalizeBuilder(job.builder);
@@ -634,8 +740,8 @@ export function createForestChunkStreamer({
           job.readyToCommit=false;
         }
 
-        const stopAt=sliceStart+sliceBudgetMs;
-        while(job.builder.cellIndex<totalCells&&candidates<candidateBatchSize){
+        const stopAt=sliceStart+activeBudgetMs;
+        while(job.builder.cellIndex<totalCells&&candidates<activeCandidateCap){
           if(candidates>0){
             if(performance.now()>=stopAt)break;
             if(!deadline.didTimeout&&deadline.timeRemaining()<.35)break;
@@ -651,7 +757,7 @@ export function createForestChunkStreamer({
       trimCache();
       report(false);
       maybeResolveInitial(lastCenter);
-      recordSlice(sliceStart,candidates);
+      recordSlice(sliceStart,candidates,catchup);
 
       if(queue.length){scheduleIdle(step);return;}
       queueRunning=false;
@@ -679,11 +785,18 @@ export function createForestChunkStreamer({
     updateTravelDirection(lastCenter,center);
     lastCenter=center;
 
-    const required=requiredChunks(center);
-    wantedKeys=new Set(required.map(chunk=>chunk.key));
+    const visible=requiredChunks(center);
+    visibleKeys=new Set(visible.map(chunk=>chunk.key));
+    const prefetched=prefetchChunks(center).filter(chunk=>!visibleKeys.has(chunk.key));
+    prefetchKeys=new Set(prefetched.map(chunk=>chunk.key));
+    const wantedMap=new Map();
+    for(const desc of visible)wantedMap.set(desc.key,desc);
+    for(const desc of prefetched)if(!wantedMap.has(desc.key))wantedMap.set(desc.key,desc);
+    const wanted=[...wantedMap.values()];
+    wantedKeys=new Set(wantedMap.keys());
 
     for(const [key,data] of active){
-      if(wantedKeys.has(key))continue;
+      if(visibleKeys.has(key))continue;
       detach(data);
       active.delete(key);
       data.lastUsed=performance.now();
@@ -695,15 +808,22 @@ export function createForestChunkStreamer({
       return false;
     });
 
-    for(const desc of required){
+    for(const desc of wanted){
+      const isVisible=visibleKeys.has(desc.key);
       const existing=active.get(desc.key);
       if(existing){
-        positionChunkGroup(existing);
-        updateChunkDensity(existing,center,false);
+        if(isVisible){
+          positionChunkGroup(existing);
+          updateChunkDensity(existing,center,false);
+        }
         continue;
       }
       const cached=cache.get(desc.key);
-      if(cached){attach(cached,center);continue;}
+      if(cached){
+        cached.lastUsed=performance.now();
+        if(isVisible)attach(cached,center);
+        continue;
+      }
       queueJob(desc);
     }
 
@@ -745,6 +865,8 @@ export function createForestChunkStreamer({
     queue=[];
     queued.clear();
     queueRunning=false;
+    visibleKeys.clear();
+    prefetchKeys.clear();
     wantedKeys.clear();
     for(const data of cache.values())disposeChunk(data);
     active.clear();
@@ -780,6 +902,10 @@ export function createForestChunkStreamer({
       activeChunks:active.size,
       cachedChunks:cache.size,
       queuedChunks:queue.length,
+      visibleWantedChunks:visibleKeys.size,
+      prefetchWantedChunks:prefetchKeys.size,
+      prefetchedReadyChunks:prefetchReadyCount(),
+      prefetchQueuedChunks:prefetchQueuedCount(),
       ...perf
     })
   });
