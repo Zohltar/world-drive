@@ -1,7 +1,7 @@
 import {createVehicleSystem} from './vehicle-system.js';
 import {getAuthoredVehicleDescriptor,loadAuthoredVehicleFactory} from './vehicle-authored-registry.js';
 
-// Multiplayer M4.3 adapter.
+// Multiplayer M4.6 adapter.
 //
 // The network/runtime sees one normalized vehicle contract. The visual side then
 // delegates to the exact controller used by the local player. Vehicle-specific
@@ -12,6 +12,9 @@ import {getAuthoredVehicleDescriptor,loadAuthoredVehicleFactory} from './vehicle
 const clamp=(value,min,max)=>Math.max(min,Math.min(max,Number(value)||0));
 const finite=(value,fallback=0)=>Number.isFinite(Number(value))?Number(value):fallback;
 function normalizeGear(value){
+  // Missing protocol data must stay missing. Number(null) === 0 would otherwise
+  // turn an absent gear into Neutral and suppress the legacy reversing boolean.
+  if(value===null||value===undefined||value==='')return null;
   const n=Number(value);
   if(!Number.isFinite(n))return null;
   return n<0?-1:n===0?0:Math.max(1,Math.floor(n));
@@ -162,15 +165,18 @@ export function createRemoteVehicleAdapter({
     return Number.isFinite(n)?n:null;
   }
 
+  function optionalBoolean(value){
+    return typeof value==='boolean'?value:null;
+  }
+
   function rgbOf(value){
     if(!value)return null;
     const r=Number(value.r??value.x),g=Number(value.g??value.y),b=Number(value.b??value.z);
     return Number.isFinite(r)&&Number.isFinite(g)&&Number.isFinite(b)?{r,g,b}:null;
   }
 
-  // Diagnostic only: verify whether the exact local controller actually produced
-  // visible white reverse-light output after receiving the normalized state.
-  // This never changes materials or presentation.
+  // Supplemental scene-level evidence. M4.6 also exposes the exact authored
+  // controller's own reverseRequested/material-count/glow values below.
   function reverseVisualEvidence(){
     let whiteEmissive=0,whiteShader=0,brightVisible=0;
     system?.host?.traverse?.(obj=>{
@@ -211,7 +217,9 @@ export function createRemoteVehicleAdapter({
       updates,
       gear:lastState.gear,
       reversing:lastState.reversing,
+      reverseRequested:optionalBoolean(system?.reverseRequested),
       reverseMaterialCount:optionalCount(system?.reverseMaterialCount),
+      reverseGlowOpacity:optionalCount(system?.reverseGlowOpacity),
       wheelControllerCount:optionalCount(system?.wheelControllerCount),
       reverseVisualEvidence:reverseVisualEvidence()
     };
