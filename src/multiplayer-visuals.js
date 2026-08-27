@@ -207,7 +207,8 @@ export function createMultiplayerVisualSystem(options={}){
     smoothingMaxCorrectionM:0,
     supportPresentationAdjustments:0,
     lightingVisuals:0,
-    lightingUpdates:0
+    lightingUpdates:0,
+    lightingCompatibilityFrames:0
   };
 
   function createRemoteVehicleVisual(vehicleId,name){
@@ -239,10 +240,87 @@ export function createMultiplayerVisualSystem(options={}){
     const fallbackSetHeadlights=visual.setHeadlights?.bind(visual)||null;
     const fallbackDispose=visual.dispose?.bind(visual)||(()=>{});
     let lightingDisposed=false;
+    let explicitLightingSeen=false;
+    let lastLightingAt=performance.now();
+    let lastWheelSpin=null;
+    const compatibilityState={
+      braking:false,
+      reversing:false,
+      nightLevel:0,
+      signalLeft:false,
+      signalRight:false,
+      signalBlink:false,
+      signalTimer:0,
+      distance:0
+    };
 
     if(lightingRig)perf.lightingVisuals++;
 
+    function inferCompatibilityLighting(){
+      const now=performance.now();
+      const dt=Math.max(.001,Math.min(.05,(now-lastLightingAt)/1000));
+      lastLightingAt=now;
+
+      const front=(visual.wheels||[]).filter(wheel=>wheel?.front);
+      const steer=front.length
+        ?front.reduce((sum,wheel)=>sum+(Number(wheel.pivot?.rotation?.y)||0),0)/front.length
+        :0;
+      const probe=(visual.wheels||[]).find(wheel=>wheel?.tire)||null;
+      const spin=Number(probe?.tire?.rotation?.x);
+      let stopped=true;
+      if(Number.isFinite(spin)&&Number.isFinite(lastWheelSpin)){
+        const delta=spin-lastWheelSpin;
+        stopped=Math.abs(delta)<.006;
+        if(Math.abs(delta)>.002)compatibilityState.reversing=delta>0;
+      }
+      if(Number.isFinite(spin))lastWheelSpin=spin;
+
+      const absSteer=Math.abs(steer);
+      if(absSteer<=.045){
+        compatibilityState.signalLeft=false;
+        compatibilityState.signalRight=false;
+        compatibilityState.signalTimer=0;
+      }else if(
+        !compatibilityState.signalLeft&&
+        !compatibilityState.signalRight&&
+        stopped&&
+        absSteer>=.318
+      ){
+        compatibilityState.signalLeft=steer<0;
+        compatibilityState.signalRight=steer>0;
+        compatibilityState.signalTimer=0;
+      }
+
+      if(compatibilityState.signalLeft||compatibilityState.signalRight){
+        compatibilityState.signalTimer+=dt;
+      }
+      compatibilityState.signalBlink=
+        (compatibilityState.signalLeft||compatibilityState.signalRight)&&
+        ((compatibilityState.signalTimer%1.05)<.58);
+    }
+
+    function flushCompatibilityLighting(){
+      inferCompatibilityLighting();
+      lightingRig?.setState(compatibilityState);
+      perf.lightingUpdates++;
+      perf.lightingCompatibilityFrames++;
+    }
+
+    visual.setBraking=level=>{
+      fallbackSetBraking?.(level);
+      compatibilityState.braking=Number(level)>.18;
+      if(!explicitLightingSeen)flushCompatibilityLighting();
+    };
+
+    visual.setHeadlights=(level,distance)=>{
+      fallbackSetHeadlights?.(level,distance);
+      compatibilityState.nightLevel=Math.max(0,Math.min(1,Number(level)||0));
+      compatibilityState.distance=Math.max(0,Number(distance)||0);
+      if(!explicitLightingSeen)flushCompatibilityLighting();
+    };
+
     visual.setLighting=(state={})=>{
+      explicitLightingSeen=true;
       const braking=!!state.braking;
       const nightLevel=Math.max(0,Math.min(1,Number(state.nightLevel)||0));
       const distance=Math.max(0,Number(state.distance)||0);
@@ -368,6 +446,8 @@ export function createMultiplayerVisualSystem(options={}){
       },
       lighting:{
         perPeer:true,
+        explicitProtocol:true,
+        compatibilityFallback:true,
         families:['night','brake','reverse','signal-left','signal-right']
       },
       cache:remoteHdDiagnostics()
