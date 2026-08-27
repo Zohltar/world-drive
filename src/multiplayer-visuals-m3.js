@@ -1,9 +1,9 @@
 import {createMultiplayerVisualSystem as createSupportSystem} from './multiplayer-visuals-v18.js';
-import {createRemoteLightingRig} from './multiplayer-lighting.js';
-import {createRemoteHdVehicle,supportsRemoteHdVehicle,remoteHdDiagnostics} from './multiplayer-hd-vehicles-m31.js';
+import {createRemoteVehicleAdapter} from './multiplayer-vehicle-adapter.js';
 
-// Multiplayer M3 presentation pipeline:
-// registry support chassis -> optional HD GLB -> contract-validated GLB lighting.
+// Multiplayer M4 presentation pipeline:
+// normalized support chassis -> isolated adapter -> exact LOCAL authored controller.
+// There is no second multiplayer GLB/material/lamp implementation anymore.
 
 const SMOOTH_POSITION_RATE=30;
 const SMOOTH_YAW_RATE=26;
@@ -22,7 +22,7 @@ function offsetLatLonMeters(lat,lon,x,z){
 function installPresentationSmoothing(THREE,visual,perf){
   if(!THREE||!visual?.root||typeof requestAnimationFrame!=='function')return visual;
   const contentRoot=visual.root;
-  const networkRoot=new THREE.Group();networkRoot.name=`${contentRoot.name||'remote'}-m3-network-anchor`;networkRoot.rotation.order='YXZ';networkRoot.add(contentRoot);
+  const networkRoot=new THREE.Group();networkRoot.name=`${contentRoot.name||'remote'}-m4-network-anchor`;networkRoot.rotation.order='YXZ';networkRoot.add(contentRoot);
   const smoothedPosition=new THREE.Vector3(),correction=new THREE.Vector3();
   let smoothedYaw=0,yawCorrection=0,initialized=false,disposed=false,lastAt=performance.now(),rafId=0;
   perf.smoothingVisuals++;
@@ -54,71 +54,61 @@ function installPresentationSmoothing(THREE,visual,perf){
   };
 }
 
-function collectSupportPresentation(visual){
-  const bodyMeshes=[];
-  const body=visual?.bodyGroup||null;
-  body?.traverse?.(obj=>{if(obj!==body&&(obj?.isMesh||obj?.isSkinnedMesh))bodyMeshes.push(obj);});
-  const wheelPivots=(visual?.wheels||[]).map(w=>w?.pivot).filter(Boolean);
-  return {bodyMeshes,wheelPivots};
-}
-
 export function createMultiplayerVisualSystem(options={}){
-  const base=createSupportSystem(options);const THREE=options.THREE;
-  const perf={visualsCreated:0,hdRequested:0,hdAttached:0,hdFallbacks:0,lateLoadsIgnored:0,lightingFallbacks:0,authoredLightingActive:0,authoredLightingSwaps:0,lightingUpdates:0,smoothingVisuals:0,smoothingFrames:0,smoothingSnaps:0,smoothingMaxCorrectionM:0,supportPresentationAdjustments:0};
+  const base=createSupportSystem(options),THREE=options.THREE;
+  const sceneRoot=options.scene||options.car?.parent||null;
+  const perf={visualsCreated:0,adapterCreated:0,adapterReadyFrames:0,adapterFallbackFrames:0,adapterErrors:0,lightingUpdates:0,motionUpdates:0,smoothingVisuals:0,smoothingFrames:0,smoothingSnaps:0,smoothingMaxCorrectionM:0,supportPresentationAdjustments:0};
+  const adapters=new Set();
 
   function createRemoteVehicleVisual(vehicleId,name){
     const support=base.createRemoteVehicleVisual(vehicleId,name);if(!support)return null;
     perf.visualsCreated++;
-    const hidden=collectSupportPresentation(support);
-    const lightingParent=support.bodyGroup||support.root;
-    const fallbackLighting=createRemoteLightingRig(THREE,vehicleId,lightingParent);
+    const adapter=createRemoteVehicleAdapter({
+      THREE,
+      vehicleId,
+      car:support.root,
+      bodyGroup:support.bodyGroup,
+      existingWheels:support.wheels,
+      scene:sceneRoot,
+      groundHeightForWheel:options.groundHeightForWheel
+    });
+    adapters.add(adapter);perf.adapterCreated++;
+    let disposed=false;
     let lastLighting={braking:false,reversing:false,nightLevel:0,signalLeft:false,signalRight:false,signalBlink:false,distance:0};
-    let hdInstance=null,hdAttached=false,hdLightingReady=false,disposed=false;
 
     support.setLighting=state=>{
       lastLighting={...lastLighting,...state};perf.lightingUpdates++;
-      if(hdAttached&&hdLightingReady&&hdInstance?.setLighting){
-        if(fallbackLighting?.rig)fallbackLighting.rig.visible=false;
-        hdInstance.setLighting(lastLighting);
-      }else{
-        if(fallbackLighting?.rig)fallbackLighting.rig.visible=true;
-        fallbackLighting?.setState(lastLighting);
-      }
+      // During the authored controller load window only, retain the minimal
+      // support brake indication. Once ready, the local controller owns every
+      // visible lamp exactly as it does for the local player.
+      if(!adapter.ready)support.setBraking?.(lastLighting.braking?1:0);
     };
-    support.setBraking=level=>support.setLighting({...lastLighting,braking:Number(level)>.18});
-    support.setHeadlights=(level,distance)=>support.setLighting({...lastLighting,nightLevel:Math.max(0,Math.min(1,Number(level)||0)),distance});
+    support.updateRemoteVehicle=(dt,state={})=>{
+      perf.motionUpdates++;
+      const combined={
+        ...lastLighting,
+        ...state,
+        braking:typeof state.braking==='boolean'?state.braking:lastLighting.braking,
+        reversing:typeof state.reversing==='boolean'?state.reversing:lastLighting.reversing,
+        nightLevel:Number.isFinite(Number(state.nightLevel))?state.nightLevel:lastLighting.nightLevel,
+        signalLeft:typeof state.signalLeft==='boolean'?state.signalLeft:lastLighting.signalLeft,
+        signalRight:typeof state.signalRight==='boolean'?state.signalRight:lastLighting.signalRight,
+        signalBlink:typeof state.signalBlink==='boolean'?state.signalBlink:lastLighting.signalBlink
+      };
+      adapter.update(dt,combined);
+      if(adapter.ready)perf.adapterReadyFrames++;else perf.adapterFallbackFrames++;
+      if(adapter.loadError)perf.adapterErrors++;
+    };
+    support.setRemoteVisible=(visible,state={})=>adapter.setVisible(visible,{...lastLighting,...state});
 
     const originalDispose=support.dispose?.bind(support)||(()=>{});
     support.dispose=()=>{
       if(disposed)return;disposed=true;
-      fallbackLighting?.dispose?.();
-      if(hdLightingReady)perf.authoredLightingActive=Math.max(0,perf.authoredLightingActive-1);
-      hdInstance?.dispose?.();hdInstance=null;originalDispose();
+      adapters.delete(adapter);adapter.dispose();originalDispose();
     };
 
     const visual=installPresentationSmoothing(THREE,support,perf);
-    visual.hdReady=false;visual.hdPending=false;visual.hdVehicleId=vehicleId;
-
-    if(!supportsRemoteHdVehicle(vehicleId)){perf.hdFallbacks++;perf.lightingFallbacks++;return visual;}
-    visual.hdPending=true;perf.hdRequested++;
-    createRemoteHdVehicle(THREE,vehicleId).then(instance=>{
-      visual.hdPending=false;
-      if(disposed){if(instance){perf.lateLoadsIgnored++;instance.dispose?.();}return;}
-      if(!instance?.root||!lightingParent){perf.hdFallbacks++;return;}
-      hdInstance=instance;lightingParent.add(instance.root);hdAttached=true;
-      for(const mesh of hidden.bodyMeshes)mesh.visible=false;
-      for(const pivot of hidden.wheelPivots)pivot.visible=false;
-      hdLightingReady=!!instance.lightingReady&&instance.lightingMode==='authored-glb-lamps-v2';
-      if(hdLightingReady){
-        if(fallbackLighting?.rig)fallbackLighting.rig.visible=false;
-        instance.setLighting(lastLighting);perf.authoredLightingActive++;perf.authoredLightingSwaps++;
-      }else{
-        perf.lightingFallbacks++;
-        console.warn(`Remote ${vehicleId} HD lighting contract incomplete; keeping loading fallback.`,instance.lightingDiagnostics?.());
-      }
-      visual.hdReady=true;perf.hdAttached++;
-    }).catch(error=>{visual.hdPending=false;perf.hdFallbacks++;console.warn(`Remote HD visual failed for ${vehicleId}; support fallback kept.`,error);});
-
+    visual.vehicleAdapter=adapter;
     return visual;
   }
 
@@ -131,7 +121,14 @@ export function createMultiplayerVisualSystem(options={}){
   }
 
   function diagnostics(){
-    return {enabled:true,mode:'multiplayer-m3-registry-hd-pipeline',...perf,smoothing:{positionRate:SMOOTH_POSITION_RATE,yawRate:SMOOTH_YAW_RATE,receiverSupportAligned:true,verticalDoubleSmoothing:false},lighting:{protocol:'m2.4',hdSource:'authored-glb-lamps-v2',fallbackScope:'loading-or-contract-failure'},cache:remoteHdDiagnostics()};
+    return {
+      enabled:true,
+      mode:'multiplayer-m4-local-controller-parity',
+      ...perf,
+      smoothing:{positionRate:SMOOTH_POSITION_RATE,yawRate:SMOOTH_YAW_RATE,receiverSupportAligned:true,verticalDoubleSmoothing:false},
+      visualSource:'same-local-authored-controller',
+      adapters:[...adapters].map(adapter=>adapter.diagnostics())
+    };
   }
   try{globalThis.__WORLD_DRIVE_MULTIPLAYER_HD_VISUALS__=diagnostics;}catch{}
   return {...base,createRemoteVehicleVisual,solveRemoteVehicleSupport,diagnostics};
