@@ -15,17 +15,19 @@ import {
 // upgrade, so multiplayer.js can never bypass the authored GLB request by
 // falling back to its older internal low-poly renderer.
 //
-// M2.2 adds a receiver-side presentation filter around the whole remote visual.
-// Network/terrain state stays authoritative; only the rendered transform eases
-// toward that state over a very short time constant. This removes small browser
-// / LAN timing corrections without increasing network traffic or changing the
-// 30 Hz simulation-state stream.
+// M2.3 keeps the short receiver-side presentation filter introduced by M2.2,
+// but makes receiver-local road support sample the SAME smoothed X/Z/yaw that
+// is actually rendered. Vertical support is no longer smoothed a second time by
+// the presentation wrapper. This prevents the body plane and rendered position
+// from disagreeing on slopes/camber, which caused subtle remote-car trembling.
 
 const SMOOTH_POSITION_RATE=30;
 const SMOOTH_YAW_RATE=26;
 const SMOOTH_TELEPORT_DISTANCE=12;
 const SMOOTH_TELEPORT_YAW=1.45;
 const SMOOTH_DT_MAX=.05;
+const GEO_EARTH=6378137;
+const DEG_TO_RAD=Math.PI/180;
 
 function materialList(object){
   if(!object?.material)return [];
@@ -36,6 +38,14 @@ function angleDelta(target,current){
   let d=(Number(target)||0)-(Number(current)||0);
   d=Math.atan2(Math.sin(d),Math.cos(d));
   return d;
+}
+
+function offsetLatLonMeters(lat,lon,x,z){
+  const cosLat=Math.max(.15,Math.cos((Number(lat)||0)*DEG_TO_RAD));
+  return {
+    lat:(Number(lat)||0)-(Number(z)||0)/GEO_EARTH/DEG_TO_RAD,
+    lon:(Number(lon)||0)+(Number(x)||0)/(GEO_EARTH*cosLat)/DEG_TO_RAD
+  };
 }
 
 function collectProceduralPresentation(visual){
@@ -79,11 +89,12 @@ function installPresentationSmoothing(THREE,visual,perf){
   networkRoot.rotation.order='YXZ';
   networkRoot.add(contentRoot);
 
-  // multiplayer.js owns networkRoot. contentRoot is a local visual offset that
-  // cancels tiny instantaneous target corrections and decays them smoothly.
+  // multiplayer.js owns networkRoot. contentRoot carries only an X/Z + yaw
+  // presentation correction. Y remains receiver-local support authority.
   const smoothedPosition=new THREE.Vector3();
   const correction=new THREE.Vector3();
   let smoothedYaw=0;
+  let yawCorrection=0;
   let initialized=false;
   let disposed=false;
   let lastAt=performance.now();
@@ -105,31 +116,45 @@ function installPresentationSmoothing(THREE,visual,perf){
       smoothedYaw=targetYaw;
       initialized=true;
     }else{
-      const distance=smoothedPosition.distanceTo(targetPosition);
+      const dx=smoothedPosition.x-targetPosition.x;
+      const dz=smoothedPosition.z-targetPosition.z;
+      const distance=Math.hypot(dx,dz);
       const yawError=Math.abs(angleDelta(targetYaw,smoothedYaw));
 
       if(distance>SMOOTH_TELEPORT_DISTANCE||yawError>SMOOTH_TELEPORT_YAW){
-        smoothedPosition.copy(targetPosition);
+        smoothedPosition.x=targetPosition.x;
+        smoothedPosition.z=targetPosition.z;
         smoothedYaw=targetYaw;
         perf.smoothingSnaps++;
       }else{
         const positionAlpha=1-Math.exp(-dt*SMOOTH_POSITION_RATE);
         const yawAlpha=1-Math.exp(-dt*SMOOTH_YAW_RATE);
-        smoothedPosition.lerp(targetPosition,positionAlpha);
+        smoothedPosition.x+=(targetPosition.x-smoothedPosition.x)*positionAlpha;
+        smoothedPosition.z+=(targetPosition.z-smoothedPosition.z)*positionAlpha;
         smoothedYaw+=angleDelta(targetYaw,smoothedYaw)*yawAlpha;
 
-        const correctionMeters=smoothedPosition.distanceTo(targetPosition);
+        const correctionMeters=Math.hypot(
+          smoothedPosition.x-targetPosition.x,
+          smoothedPosition.z-targetPosition.z
+        );
         if(correctionMeters>perf.smoothingMaxCorrectionM){
           perf.smoothingMaxCorrectionM=correctionMeters;
         }
       }
     }
 
-    correction.copy(smoothedPosition).sub(targetPosition);
+    // Vertical support is already smoothed by multiplayer.js and, more
+    // importantly, is derived from receiver-local terrain. Do not lag it again.
+    smoothedPosition.y=targetPosition.y;
+    correction.set(
+      smoothedPosition.x-targetPosition.x,
+      0,
+      smoothedPosition.z-targetPosition.z
+    );
 
     // Convert the desired world-space correction into the network anchor's
-    // local frame. networkRoot carries the authoritative yaw; contentRoot gets
-    // only the short-lived visual compensation.
+    // local frame. networkRoot carries authoritative yaw; contentRoot gets only
+    // the short-lived presentation compensation.
     const c=Math.cos(targetYaw);
     const s=Math.sin(targetYaw);
     const dx=correction.x;
@@ -137,10 +162,11 @@ function installPresentationSmoothing(THREE,visual,perf){
 
     contentRoot.position.set(
       c*dx-s*dz,
-      correction.y,
+      0,
       s*dx+c*dz
     );
-    contentRoot.rotation.y=angleDelta(smoothedYaw,targetYaw);
+    yawCorrection=angleDelta(smoothedYaw,targetYaw);
+    contentRoot.rotation.y=yawCorrection;
 
     perf.smoothingFrames++;
     rafId=requestAnimationFrame(tick);
@@ -156,6 +182,9 @@ function installPresentationSmoothing(THREE,visual,perf){
     root:networkRoot,
     presentationRoot:contentRoot,
     smoothing:true,
+    get presentationCorrectionX(){return correction.x;},
+    get presentationCorrectionZ(){return correction.z;},
+    get presentationYawCorrection(){return yawCorrection;},
     dispose(){
       if(originalDisposed)return;
       originalDisposed=true;
@@ -183,7 +212,8 @@ export function createMultiplayerVisualSystem(options={}){
     smoothingVisuals:0,
     smoothingFrames:0,
     smoothingSnaps:0,
-    smoothingMaxCorrectionM:0
+    smoothingMaxCorrectionM:0,
+    supportPresentationAdjustments:0
   };
 
   function createRemoteVehicleVisual(vehicleId,name){
@@ -267,16 +297,50 @@ export function createMultiplayerVisualSystem(options={}){
     return smoothedVisual;
   }
 
+  function solveRemoteVehicleSupport(input={}){
+    if(typeof base.solveRemoteVehicleSupport!=='function')return null;
+
+    const visual=input.visual;
+    const correctionX=Number(visual?.presentationCorrectionX)||0;
+    const correctionZ=Number(visual?.presentationCorrectionZ)||0;
+    const yawCorrection=Number(visual?.presentationYawCorrection)||0;
+
+    if(
+      Math.abs(correctionX)<1e-6&&
+      Math.abs(correctionZ)<1e-6&&
+      Math.abs(yawCorrection)<1e-7
+    ){
+      return base.solveRemoteVehicleSupport(input);
+    }
+
+    const presentationGeo=offsetLatLonMeters(
+      input.lat,
+      input.lon,
+      correctionX,
+      correctionZ
+    );
+    perf.supportPresentationAdjustments++;
+
+    return base.solveRemoteVehicleSupport({
+      ...input,
+      lat:presentationGeo.lat,
+      lon:presentationGeo.lon,
+      heading:(Number(input.heading)||0)+yawCorrection
+    });
+  }
+
   function diagnostics(){
     return {
       enabled:true,
-      mode:'multiplayer-hd-overlay-v3-smoothed-presentation',
+      mode:'multiplayer-hd-overlay-v4-support-aligned-smoothing',
       ...perf,
       smoothing:{
         positionRate:SMOOTH_POSITION_RATE,
         yawRate:SMOOTH_YAW_RATE,
         teleportDistanceM:SMOOTH_TELEPORT_DISTANCE,
-        teleportYawRad:SMOOTH_TELEPORT_YAW
+        teleportYawRad:SMOOTH_TELEPORT_YAW,
+        verticalDoubleSmoothing:false,
+        receiverSupportAligned:true
       },
       cache:remoteHdDiagnostics()
     };
@@ -287,6 +351,7 @@ export function createMultiplayerVisualSystem(options={}){
   return {
     ...base,
     createRemoteVehicleVisual,
+    solveRemoteVehicleSupport,
     diagnostics
   };
 }
