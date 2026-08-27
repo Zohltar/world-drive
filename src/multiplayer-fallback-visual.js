@@ -47,6 +47,15 @@ export function createRemoteSupportFallback(THREE,vehicleId,name){
   root.name=`remote-support-fallback-${vehicleId}-${name}`;
   root.rotation.order='YXZ';
 
+  // Match the local vehicle architecture: yaw/world placement belongs to root,
+  // while road-grade pitch/roll and sender suspension motion belong to a sprung
+  // body group. The hidden support-wheel pivots stay directly under root so
+  // terrain sampling is never distorted by body attitude.
+  const bodyGroup=new THREE.Group();
+  bodyGroup.name=`remote-support-body-${vehicleId}-${name}`;
+  bodyGroup.rotation.order='XYZ';
+  root.add(bodyGroup);
+
   const specs={
     id4:{color:0x3b6e91,w:1.82,l:4.58,h:.63,wheelbase:2.76,r:.36},
     wrx:{color:0x2766a5,w:1.80,l:4.48,h:.48,wheelbase:2.64,r:.35},
@@ -63,12 +72,12 @@ export function createRemoteSupportFallback(THREE,vehicleId,name){
   const body=new THREE.Mesh(new THREE.BoxGeometry(s.w,s.h,s.l),bodyMat);
   body.position.y=.58+s.h*.25;
   body.castShadow=true;
-  root.add(body);
+  bodyGroup.add(body);
 
   if(vehicleId!=='f1_2010'){
     const cabin=new THREE.Mesh(new THREE.BoxGeometry(s.w*.76,.48,Math.min(2.15,s.l*.48)),glassMat);
     cabin.position.set(0,1.02,-.12);
-    root.add(cabin);
+    bodyGroup.add(cabin);
   }
 
   const brakeBase=new THREE.Color(0x721018);
@@ -78,7 +87,7 @@ export function createRemoteSupportFallback(THREE,vehicleId,name){
   for(const x of [-s.w*.30,s.w*.30]){
     const lamp=new THREE.Mesh(rearLampGeom,brakeMat);
     lamp.position.set(x,.74,-s.l*.505);
-    root.add(lamp);
+    bodyGroup.add(lamp);
   }
 
   const halfWB=s.wheelbase*.5;
@@ -91,6 +100,8 @@ export function createRemoteSupportFallback(THREE,vehicleId,name){
   ];
   for(const entry of wheels)root.add(entry.pivot);
 
+  // Keep the name tag upright in world/root space instead of pitching it with
+  // the vehicle body on steep grades.
   const tagMaterial=new THREE.SpriteMaterial({
     map:labelTexture(THREE,name),transparent:true,depthTest:false,depthWrite:false
   });
@@ -100,7 +111,7 @@ export function createRemoteSupportFallback(THREE,vehicleId,name){
 
   return {
     root,
-    bodyGroup:null,
+    bodyGroup,
     wheels,
     brakeMat,
     brakeBase,
