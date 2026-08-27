@@ -21,7 +21,7 @@ const TURN_SIGNAL_ON_SEC=.58;
 
 function finite(value,fallback=0){return Number.isFinite(Number(value))?Number(value):fallback;}
 function boolOr(value,fallback=false){return typeof value==='boolean'?value:!!fallback;}
-function angleDelta(a,b){return Math.atan2(Math.sin((Number(a)||0)-(Number(b)||0)),Math.cos((Number(a)||0)-(Number(b)||0));}
+function angleDelta(a,b){return Math.atan2(Math.sin((Number(a)||0)-(Number(b)||0)),Math.cos((Number(a)||0)-(Number(b)||0)));}
 function angleLerp(a,b,t){return (Number(a)||0)+angleDelta(b,a)*t;}
 
 function geographicOffsetMeters(fromLat,fromLon,toLat,toLon){
