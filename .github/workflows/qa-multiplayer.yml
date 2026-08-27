@@ -36,6 +36,8 @@ jobs:
         run: node qa/V21_31_MULTIPLAYER_M3_PROTOCOL_QA.mjs
       - name: M3 lighting state matrix QA
         run: node qa/V21_31_MULTIPLAYER_M3_LIGHTING_MATRIX_QA.mjs
+      - name: M3.1 local light parity QA
+        run: node qa/V21_31_MULTIPLAYER_M31_LIGHT_PARITY_QA.mjs
       - name: M3 real GLB lighting contract QA
         run: node qa/V21_31_MULTIPLAYER_M3_GLB_CONTRACT_QA.mjs
       - name: Multiplayer GLB structure audit
