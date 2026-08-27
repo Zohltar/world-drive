@@ -36,7 +36,8 @@ for(const marker of [
   'seedStartupRouteDirection',
   'Math.sin(nr.angle)',
   'Math.cos(nr.angle)',
-  "observerMode:'p934-startup-route-seed'",
+  "startupMode:'p934-startup-route-seed'",
+  "observerMode:'p931-ahead-priority'",
   '__WORLD_DRIVE_P934_FOREST__'
 ])expect(streamer.includes(marker),`P9.34 route seed marker missing: ${marker}`);
 
@@ -49,4 +50,4 @@ expect(streamer.includes("legacyObserverMode:'p929-direct-last-slice'"),'P9.34 m
 console.log('PASS P9.33/P9.34 startup forest gate QA');
 console.log('  - startup route heading seeds ahead priority before movement');
 console.log('  - startup waits for 14 active chunks including 7 forward chunks');
-console.log('  - gate retains a 5.5 s safety timeout and route invalidation');
+console.log('  - P9.31/P9.29 diagnostics compatibility remains intact');
