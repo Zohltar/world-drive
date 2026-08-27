@@ -5,12 +5,14 @@ import {
   forestDensityNoise
 } from './forest-streaming-policy.js';
 
-// Foret P9.29 — frame-budgeted dense forest streamer.
+// Foret P9.31 — frame-budgeted dense forest streamer with travel-ahead priority.
 //
-// P9.12 remains the visual/placement baseline. P9.29 changes only scheduling:
-// candidate evaluation is resumable inside a cell, chunk commit gets its own
-// idle slice, status reporting is throttled, and InstancedMesh bounds are set
-// conservatively without scanning every instance at commit time.
+// P9.29 remains the frame-budget baseline: candidate evaluation is resumable
+// inside a cell, chunk commit gets its own idle slice, status reporting is
+// throttled, and InstancedMesh bounds are conservative. P9.31 keeps those CPU
+// limits unchanged, but learns travel direction from floating-origin recenters
+// and prioritizes the queued forest roughly one recenter ahead of the vehicle.
+// A protected near ring always wins first so the car never outruns local cover.
 export function createForestChunkStreamer({
   THREE,
   forestGroup,
@@ -34,6 +36,9 @@ export function createForestChunkStreamer({
   const candidateBatchSize=Math.max(1,FOREST.candidatesPerBuildSlice||12);
   const sliceBudgetMs=Math.max(.45,FOREST.forestSliceBudgetMs||.95);
   const reportIntervalMs=Math.max(60,FOREST.forestReportIntervalMs||140);
+  const nearPriorityDistance=Math.max(560,(FOREST.densityNearFullDistance||500)+80);
+  const minAheadLead=Math.max(620,FOREST.forestAheadLeadMin||720);
+  const maxAheadLead=Math.max(minAheadLead,FOREST.forestAheadLeadMax||980);
 
   let assets=null;
   let active=new Map();
@@ -49,6 +54,10 @@ export function createForestChunkStreamer({
   let initialResolved=false;
   let resolveInitialReady;
   let lastReportAt=-Infinity;
+  let travelDir={x:0,z:0};
+  let travelConfidence=0;
+  let lastRecenterDistance=0;
+  let priorityLeadM=0;
   const initialReady=new Promise(resolve=>{resolveInitialReady=resolve;});
 
   const perf={
@@ -67,7 +76,13 @@ export function createForestChunkStreamer({
     lastCommitAt:0,
     manualBounds:true,
     sliceBudgetMs,
-    candidateBatchSize
+    candidateBatchSize,
+    aheadPriority:true,
+    nearPriorityDistance,
+    priorityLeadM:0,
+    travelConfidence:0,
+    travelDirX:0,
+    travelDirZ:0
   };
 
   const forestTerrain=createForestTerrainSamplerP912({
@@ -108,12 +123,76 @@ export function createForestChunkStreamer({
     return Math.hypot(chunk.centerX-center.x,chunk.centerZ-center.z);
   }
 
+  function updateTravelDirection(previous,center){
+    if(!Number.isFinite(previous?.x)||!Number.isFinite(previous?.z))return false;
+    const dx=center.x-previous.x,dz=center.z-previous.z;
+    const distance=Math.hypot(dx,dz);
+    if(distance<Math.min(FOREST.cellSize,120))return false;
+    const ux=dx/distance,uz=dz/distance;
+    if(travelConfidence<=0){
+      travelDir={x:ux,z:uz};
+      travelConfidence=.72;
+    }else{
+      // Recent direction wins quickly enough for mountain-road bends while a
+      // little history prevents a single odd recenter from flipping priority.
+      const blend=.68;
+      let x=travelDir.x*(1-blend)+ux*blend;
+      let z=travelDir.z*(1-blend)+uz*blend;
+      const length=Math.hypot(x,z)||1;
+      travelDir={x:x/length,z:z/length};
+      travelConfidence=Math.min(1,travelConfidence+.18);
+    }
+    lastRecenterDistance=distance;
+    priorityLeadM=Math.max(
+      minAheadLead,
+      Math.min(maxAheadLead,distance*1.65)
+    );
+    perf.priorityLeadM=priorityLeadM;
+    perf.travelConfidence=travelConfidence;
+    perf.travelDirX=travelDir.x;
+    perf.travelDirZ=travelDir.z;
+    return true;
+  }
+
+  function aheadPriorityCenter(center){
+    if(travelConfidence<.25||priorityLeadM<=0)return center;
+    return {
+      x:center.x+travelDir.x*priorityLeadM,
+      z:center.z+travelDir.z*priorityLeadM
+    };
+  }
+
+  function queuePriority(chunk,center){
+    const nearDistance=chunkPriorityDistance(chunk,center);
+    // Never sacrifice the forest immediately around the vehicle/origin. After
+    // that protected ring, prefer chunks nearest the predicted forward center.
+    if(nearDistance<=nearPriorityDistance){
+      return {band:0,score:nearDistance,nearDistance};
+    }
+    const aheadCenter=aheadPriorityCenter(center);
+    const aheadDistance=chunkPriorityDistance(chunk,aheadCenter);
+    let behindPenalty=0;
+    if(travelConfidence>=.25){
+      const dx=chunk.centerX-center.x,dz=chunk.centerZ-center.z;
+      const forward=dx*travelDir.x+dz*travelDir.z;
+      if(forward<0)behindPenalty=Math.min(620,-forward*.48);
+    }
+    return {
+      band:1,
+      score:aheadDistance+nearDistance*.12+behindPenalty,
+      nearDistance
+    };
+  }
+
   function sortQueueByPriority(center){
     queue.sort((a,b)=>{
-      const pa=chunkPriorityDistance(a,center),pb=chunkPriorityDistance(b,center);
-      if(Math.abs(pa-pb)>.001)return pa-pb;
+      const pa=queuePriority(a,center),pb=queuePriority(b,center);
+      if(pa.band!==pb.band)return pa.band-pb.band;
+      if(Math.abs(pa.score-pb.score)>.001)return pa.score-pb.score;
+      // Once two jobs are effectively tied, finish started work first so CPU
+      // already spent on a chunk becomes visible instead of lingering in queue.
       if(!!a.builder!==!!b.builder)return a.builder?-1:1;
-      return chunkCenterDistance(a,center)-chunkCenterDistance(b,center);
+      return pa.nearDistance-pb.nearDistance||chunkCenterDistance(a,center)-chunkCenterDistance(b,center);
     });
   }
 
@@ -338,9 +417,6 @@ export function createForestChunkStreamer({
   }
 
   function installConservativeBounds(mesh){
-    // Avoid InstancedMesh.computeBoundingSphere(), which walks every instance
-    // at commit time. A conservative chunk-local sphere is stable because all
-    // instance translations stay inside the 480 m chunk.
     if(!THREE.Vector3)return false;
     mesh.boundingSphere={
       center:new THREE.Vector3(chunkSize*.5,12,chunkSize*.5),
@@ -551,8 +627,6 @@ export function createForestChunkStreamer({
           candidates++;
         }
         if(job.builder.cellIndex>=totalCells){
-          // Commit on the NEXT idle slice so candidate work and GPU upload never
-          // stack in one frame.
           job.readyToCommit=true;
         }
       }
@@ -584,6 +658,8 @@ export function createForestChunkStreamer({
       }
       return false;
     }
+
+    updateTravelDirection(lastCenter,center);
     lastCenter=center;
 
     const required=requiredChunks(center);
@@ -658,6 +734,14 @@ export function createForestChunkStreamer({
     cache.clear();
     slopeCache.clear();
     lastCenter={x:NaN,z:NaN};
+    travelDir={x:0,z:0};
+    travelConfidence=0;
+    lastRecenterDistance=0;
+    priorityLeadM=0;
+    perf.priorityLeadM=0;
+    perf.travelConfidence=0;
+    perf.travelDirX=0;
+    perf.travelDirZ=0;
     forestTerrain.invalidate?.();
     report(true);
   }
