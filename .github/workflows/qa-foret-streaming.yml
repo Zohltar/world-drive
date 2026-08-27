@@ -54,7 +54,7 @@ jobs:
         run: node qa-streaming-p926-horizon.mjs
       - name: P9.27 road transition QA
         run: node qa-streaming-p927-road-transition.mjs
-      - name: P9.28 forest instrumentation QA
-        run: node qa-forest-p928-instrumentation.mjs
+      - name: P9.29 forest frame-budget QA
+        run: node qa-forest-p929-frame-budget.mjs
       - name: Production build
         run: npm run build
