@@ -34,6 +34,13 @@ assert(client.includes('directDistance>continuityLimit'),'Hermite interpolation 
 assert(client.includes('Math.abs(Number(state.speed)||0)-'),'local acceleration estimate must use motion-speed magnitude');
 assert(client.includes('Number(state.speed)<0'),'reverse motion must not use forward heading as velocity heading');
 
+// M2.1 network cadence: authoritative presentation states are emitted at 30 Hz
+// while rendering/interpolation remains at the local frame rate.
+assert(client.includes('const NETWORK_STATE_HZ=30;'),'multiplayer state rate must be 30 Hz');
+assert(client.includes('const NETWORK_STATE_INTERVAL_MS=1000/NETWORK_STATE_HZ;'),'30 Hz cadence must use derived interval');
+assert(client.includes('nextSendAt=now+NETWORK_STATE_INTERVAL_MS;'),'state scheduler must use the 30 Hz interval');
+assert(!client.includes('nextSendAt=now+50'),'legacy 20 Hz state cadence must not return');
+
 // Basic mathematical sanity for the exact Hermite basis used by the client.
 function basis(t){
   const t2=t*t,t3=t2*t;
@@ -44,7 +51,8 @@ assert.equal(start.h01,0);
 assert.equal(end.h01,1);
 assert(Math.abs(mid.h10)>0&&Math.abs(mid.h11)>0,'mid-curve must include endpoint velocity tangents');
 
-console.log('V21.31 MULTIPLAYER M2 MOTION QA: PASS',{
+console.log('V21.31 MULTIPLAYER M2.1 MOTION QA: PASS',{
+  networkStateHz:30,
   interpolation:'velocity-aware Hermite',
   extrapolation:'steer-aware bicycle predictor',
   driftDirection:true,
