@@ -17,6 +17,7 @@ function finite(value,fallback=0){
 }
 
 function normalizeGear(value){
+  if(value===null||value===undefined||value==='')return null;
   const n=Number(value);
   if(!Number.isFinite(n))return null;
   return n<0?-1:n===0?0:Math.max(1,Math.floor(n));
@@ -151,7 +152,7 @@ function createRelayService({port=8081,host='0.0.0.0'}={}){
       y:clamp(finite(message.y),-500,10000),
       heading:finite(message.heading),
 
-      // Keep the packaged Electron relay on the exact same M4.1 state
+      // Keep the packaged Electron relay on the exact same M4.11 state
       // contract as server/multiplayer-server.mjs.
       velocityHeading:finite(message.velocityHeading,message.heading),
       longitudinalAccel:clamp(finite(message.longitudinalAccel),-20,15),
@@ -161,7 +162,7 @@ function createRelayService({port=8081,host='0.0.0.0'}={}){
       steer:clamp(finite(message.steer),-1.2,1.2),
       gear,
       braking:!!message.braking,
-      reversing:gear!==null?gear<0:!!message.reversing,
+      reversing:gear!==null?gear===-1:!!message.reversing,
       nightLevel:clamp(finite(message.nightLevel),0,1),
       signalLeft:!!message.signalLeft,
       signalRight:!!message.signalRight,
