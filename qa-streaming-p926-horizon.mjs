@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 
-const terrain=fs.readFileSync(new URL('./src/terrain.js',import.meta.url),'utf8');
-const builder=fs.readFileSync(new URL('./src/local-world-builder.js',import.meta.url),'utf8');
+const terrain=fs.readFileSync(new URL('./src/terrain-p926.js',import.meta.url),'utf8');
+const builder=fs.readFileSync(new URL('./src/local-world-builder-p926.js',import.meta.url),'utf8');
 
 assert.match(terrain,/P926_HORIZON_BUDGET_MS=1\.15/,
   'P9.26 horizon slice budget must stay at 1.15 ms');
