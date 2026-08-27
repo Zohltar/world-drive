@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import * as THREE from 'three';
 import {createVehicleSystem} from '../src/vehicle-system.js';
 import {getMultiplayerVehicleSpec} from '../src/multiplayer-vehicle-registry.js';
+import {VEHICLE_RENDER_ROOT_SCALE} from '../src/vehicle-render-contract.js';
 import {
   listAuthoredVehicleDescriptors,
   listAuthoredVehicleIds,
@@ -15,6 +16,7 @@ const fleet=liveVehicleSystem.list().map(entry=>entry.id).sort();
 const authoredIds=listAuthoredVehicleIds().sort();
 const descriptors=listAuthoredVehicleDescriptors();
 
+assert.equal(VEHICLE_RENDER_ROOT_SCALE,.80,'shared authored-vehicle render scale drift');
 assert.deepEqual(authoredIds,fleet,'every selectable vehicle must have exactly one authored M4 descriptor');
 assert.equal(descriptors.length,8,'M4 must cover the complete 8-vehicle fleet');
 assert.equal(descriptors.filter(d=>d.kind==='passenger').length,7,'M4 passenger controller count drift');
@@ -86,6 +88,8 @@ const entries=fs.readFileSync('src/vehicle-glb-entries.js','utf8');
 const adapter=fs.readFileSync('src/multiplayer-vehicle-adapter.js','utf8');
 const visuals=fs.readFileSync('src/multiplayer-visuals-m3.js','utf8');
 const client=fs.readFileSync('src/multiplayer-client-m3.js','utf8');
+const localVisuals=fs.readFileSync('src/vehicle-visuals.js','utf8');
+const wrx=fs.readFileSync('src/wrx-glb.js','utf8');
 const id4=fs.readFileSync('src/id4-glb.js','utf8');
 
 assert(entries.includes("from './vehicle-authored-registry.js'"),'local GLB entrypoint must use canonical authored registry');
@@ -96,23 +100,33 @@ assert(adapter.includes('createVehicleSystem({initialId:vehicleId})'),'every pee
 assert(adapter.includes("descriptor?.kind==='articulated-truck'"),'adapter must convert articulated truck through the same contract');
 assert(adapter.includes('absX-state.renderX')&&adapter.includes('absZ-state.renderZ'),'truck adapter must infer floating world origin from normalized coordinates');
 assert(adapter.includes('reversing:gear!==null?gear<0:!!input.reversing'),'adapter must make explicit gear authoritative for reverse');
+assert(adapter.includes('reverseMaterialCount:optionalCount(system?.reverseMaterialCount)'),'adapter diagnostics must expose authored reverse binding when controller supports it');
 assert(visuals.includes("from './multiplayer-vehicle-adapter.js'"),'multiplayer visuals must route through M4 adapter');
+assert(visuals.includes("from './vehicle-render-contract.js'"),'remote visuals must consume shared local render transform contract');
+assert(visuals.includes('support.root.scale.set(VEHICLE_RENDER_ROOT_SCALE'),'remote authored root must use exact local car scale');
+assert(localVisuals.includes("from './vehicle-render-contract.js'"),'local visuals must consume shared render transform contract');
+assert(localVisuals.includes('car.scale.set(VEHICLE_RENDER_ROOT_SCALE'),'local car root must use shared render scale');
 assert(!visuals.includes('multiplayer-hd-vehicles-m3')&&!visuals.includes('multiplayer-hd-vehicles-m31'),'M4 runtime must not use the retired multiplayer-only GLB cache');
 assert(!visuals.includes('multiplayer-authored-lighting'),'M4 runtime must not use a second multiplayer-only lighting implementation');
 assert(visuals.includes('same-local-authored-controller'),'M4 visual source must be explicit');
 assert(client.includes('peer.visual.updateRemoteVehicle?.(dt,remoteState)'),'client must feed normalized peer state into M4 adapter each frame');
 assert(client.includes('peer.visual.setRemoteVisible?.(true,remoteState)'),'client must keep external trailer/controller visibility aligned');
 assert(client.includes('gear:peer.gear'),'client must forward network gear into normalized remote state');
+assert(wrx.includes('function rootLocalGeometryCenter'),'WRX lamp classifier must be transform-invariant');
+assert(!wrx.includes('new THREE.Box3().setFromObject(obj)'),'WRX per-lamp classifier must not depend on a world AABB');
+assert(wrx.includes('get reverseMaterialCount(){return reverseMaterials.length;}'),'WRX must expose reverse binding diagnostics');
 assert(id4.includes('for(const [obj,visible] of hiddenWheelState)obj.visible=visible'),'ID.4 local controller wheel visibility restoration regression');
 assert(!id4.includes('hiddenWheelState)pivot.visible=visible'),'ID.4 invalid pivot visibility reference must not return');
 
-console.log('V21.31 MULTIPLAYER M4.1 ADAPTER QA: PASS',{
+console.log('V21.31 MULTIPLAYER M4.2 ADAPTER QA: PASS',{
   vehicles:reports,
+  renderRootScale:VEHICLE_RENDER_ROOT_SCALE,
   sameControllerForLocalAndRemote:true,
   isolatedPeerVehicleSystems:true,
   capabilitiesDerivedFromLocalSource:true,
   normalizedContract:['pose','motion','steering','gear','brake','reverse','night','signals','distance'],
   gearAuthoritativeReverse:true,
+  wrxTransformInvariantLampBinding:true,
   articulatedTruckConverted:true,
   duplicateRemoteGlbLightingRuntime:false
 });
