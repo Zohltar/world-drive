@@ -7,6 +7,10 @@ import {
 } from '../src/transmission-network-state.js';
 import {readTransmissionRuntimeState} from '../src/transmission-runtime-bridge.js';
 import {enforceExactGearOnOutgoingPayload} from '../src/multiplayer.js';
+import {
+  normalizeMultiplayerGear,
+  reverseFromMultiplayerGear
+} from '../src/multiplayer-client-m3.js';
 
 for(const file of [
   'server/multiplayer-server.mjs',
@@ -46,11 +50,10 @@ for(const marker of commonRelayMarkers){
   assert(browser.includes(marker),`browser relay drops/changes field: ${marker}`);
   assert(electron.includes(marker),`electron relay drops/changes field: ${marker}`);
 }
-assert(browser.includes("if(value===null||value===undefined||value==='')return null"),'browser relay must preserve missing gear as null');
-assert(browser.includes('reversing:gear!==null?gear===-1:!!message.reversing'),'browser relay reverse must derive from numeric -1 gear');
-// Electron normalizes numeric gear to {-1,0,1..N}; `<0` is equivalent to ===-1
-// until its packaged relay is next regenerated from the browser relay.
-assert(electron.includes('reversing:gear!==null?gear<0:!!message.reversing'),'electron relay reverse contract drift');
+for(const [label,source] of [['browser',browser],['electron',electron]]){
+  assert(source.includes("if(value===null||value===undefined||value==='')return null"),`${label} relay must preserve missing gear as null`);
+  assert(source.includes('reversing:gear!==null?gear===-1:!!message.reversing'),`${label} relay reverse must derive strictly from numeric -1 gear`);
+}
 
 for(const marker of [
   'seq:++localSequence',
@@ -68,7 +71,7 @@ for(const marker of [
   'bodyRoll:state.bodyRoll',
   'wheelPitch:state.wheelPitch',
   'wheelRoll:state.wheelRoll'
-])assert(client.includes(marker),`M4.9 sender missing state field: ${marker}`);
+])assert(client.includes(marker),`M4.11 sender missing state field: ${marker}`);
 
 assert(transmission.includes("from './transmission-network-state.js'"),'transmission controller must publish a dedicated multiplayer gear state');
 assert(transmission.includes('publishTransmissionNetworkGear(args.state.transmissionGear)'),'network gear must be the exact authoritative transmissionGear written for the instrument cluster');
@@ -84,9 +87,18 @@ publishTransmissionNetworkGear(-1);
 assert.equal(readTransmissionNetworkGear(),-1,'R must publish as -1');
 assert.equal(readTransmissionRuntimeState().selectorGear,-1,'runtime bridge must expose R exactly for multiplayer reverse lights');
 
-// M4.9 regression: even if the maintained client assembled a stale Neutral
-// packet, the final WebSocket boundary must overwrite it with the exact numeric
-// transmission gear immediately before bytes leave the browser.
+// M4.11 receiver regression: missing gear is not Neutral. Preserve the last
+// explicit numeric gear until another explicit numeric value arrives.
+assert.equal(normalizeMultiplayerGear(null,-1),-1,'receiver null gear must preserve previous R');
+assert.equal(normalizeMultiplayerGear(undefined,-1),-1,'receiver undefined gear must preserve previous R');
+assert.equal(normalizeMultiplayerGear('',-1),-1,'receiver empty gear must preserve previous R');
+assert.equal(normalizeMultiplayerGear(0,-1),0,'explicit Neutral must override previous R');
+assert.equal(reverseFromMultiplayerGear(-1,false),true,'numeric -1 must derive reversing=true');
+assert.equal(reverseFromMultiplayerGear(0,true),false,'numeric 0 must derive reversing=false');
+assert(client.includes("const present=input=>input!==null&&input!==undefined&&input!==''"),'receiver must guard null/undefined/empty before Number conversion');
+
+// Final WebSocket ownership boundary: even if the maintained client assembled a
+// stale Neutral packet, the actual JSON frame leaving the browser is corrected.
 const forcedReverse=JSON.parse(enforceExactGearOnOutgoingPayload(JSON.stringify({
   type:'state',vehicleId:'sonata',gear:0,reversing:false,braking:false
 }),-1));
@@ -98,7 +110,7 @@ assert.equal(forcedNeutral.reversing,false,'Neutral must disable reverse present
 assert(entry.includes('send(enforceExactGearOnOutgoingPayload')||entry.includes('super.send(enforceExactGearOnOutgoingPayload'),'actual WebSocket.send boundary must enforce exact numeric gear');
 assert(entry.includes('__WORLD_DRIVE_MULTIPLAYER_WIRE__'),'wire diagnostics must expose actual outgoing/incoming state');
 
-assert(client.includes('const gear=normalizeGear(state.gear,runtime.selectorGear)'),'maintained sender fallback remains documented behind M4.9 boundary enforcement');
+assert(client.includes('const gear=normalizeGear(state.gear,runtime.selectorGear)'),'maintained sender fallback remains documented behind final boundary enforcement');
 assert(client.includes('const remoteReversing=reverseFromGear(peer.gear,peer.reversing)'),'receiver must derive reverse from network gear');
 assert(client.includes('gear:peer.gear'),'normalized remote state must retain gear');
 assert(client.includes('reverseSource:\'network-gear\''),'diagnostics must state explicit reverse source');
@@ -107,9 +119,10 @@ assert(client.includes('INTERPOLATION_DELAY_MS=110'),'receiver interpolation buf
 assert(client.includes('MAX_EXTRAPOLATION_MS=105'),'receiver extrapolation horizon changed unexpectedly');
 assert(client.includes('SNAPSHOT_HISTORY_MS=900'),'snapshot retention changed unexpectedly');
 
-console.log('V21.31 MULTIPLAYER M4.9 PROTOCOL QA: PASS',{
+console.log('V21.31 MULTIPLAYER M4.11 PROTOCOL QA: PASS',{
   relays:['browser','electron'],
   numericGear:{reverse:-1,neutral:0,forward:'1..N'},
+  missingGearPreservesPriorState:true,
   finalWebSocketBoundaryEnforcement:true,
   wireDiagnostics:true,
   exactGearSequence:[3,0,-1],
