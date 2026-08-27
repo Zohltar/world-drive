@@ -15,8 +15,12 @@ const LIGHTING_CONTRACTS=Object.freeze({
     // its material is misleadingly named "Eblems", so never detect it by mat name.
     reversePaths:['fh_reverse_material'],
     headlightPaths:['fh_lowhighbeam_material'],
-    leftSignalPaths:['fh_front_indicator_orange_l_material','fh_signal_l_material'],
-    rightSignalPaths:['fh_front_indicator_orange_r_material','fh_signal_r_material']
+    // The WRX asset has clean L/R front indicators, but its rear indicator mesh
+    // is a single authored branch with an asymmetric "R" name. Treat that rear
+    // lens as shared geometry and split it by local X at presentation time.
+    leftSignalPaths:['fh_front_indicator_orange_l_material'],
+    rightSignalPaths:['fh_front_indicator_orange_r_material'],
+    sharedRearSignalPaths:['fh_signal_r_material_19']
   }),
   civic:Object.freeze({
     strategy:'civic',
