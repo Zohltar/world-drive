@@ -130,8 +130,21 @@ export function createStreamingCoordinator(options){
       options.imageryService?.deferCommits?.(HITCH_IMAGERY_GUARD_MS);return;
     }
     gameplayFrames++;maxGameplayFrameMs=Math.max(maxGameplayFrameMs,rawFrameMs);
-    if(rawFrameMs>12)over12Ms++;if(rawFrameMs>16.7)over16_7Ms++;if(rawFrameMs>25)over25Ms++;
-    if(rawFrameMs>50)over50Ms++;if(rawFrameMs>100)over100Ms++;if(rawFrameMs>20)gameplayHitchCount++;
+    if(rawFrameMs>12)over12Ms++;
+    if(rawFrameMs>16.7)over16_7Ms++;
+    if(rawFrameMs>25)over25Ms++;
+    if(rawFrameMs>50)over50Ms++;
+    if(rawFrameMs>100)over100Ms++;
+    if(rawFrameMs>20){
+      gameplayHitchCount++;
+      try{
+        globalThis.__WORLD_DRIVE_P928_RECORD_HITCH__?.({
+          hitchCount:gameplayHitchCount,
+          hitchAt:now,
+          frameMs:rawFrameMs
+        });
+      }catch{}
+    }
     base.recordFrame(rawFrameMs,now);updateFrameBaseline(rawFrameMs);
     if(rawFrameMs>hitchThresholdMs()){
       lastAdaptiveHitchAt=now;adaptiveHitches++;if(base.state)base.state.lastHitchAt=now;
