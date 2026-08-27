@@ -15,8 +15,8 @@ export function solveRemoteSupportPlane({
   const c=Math.cos(Number(heading)||0),s=Math.sin(Number(heading)||0);
   const sampled=contacts.map((contact,index)=>{
     const lx=Number(contact.x)||0,lz=Number(contact.z)||0;
-    const absX=Number(centerX)||0+lx*c+lz*s;
-    const absZ=Number(centerZ)||0-lx*s+lz*c;
+    const absX=(Number(centerX)||0)+lx*c+lz*s;
+    const absZ=(Number(centerZ)||0)-lx*s+lz*c;
     const ground=Number(groundHeight(absX,absZ));
     return {
       index,
