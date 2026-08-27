@@ -52,5 +52,7 @@ jobs:
         run: node qa-streaming-p925-scenery-and-prep.mjs
       - name: P9.26 horizon QA
         run: node qa-streaming-p926-horizon.mjs
+      - name: P9.27 road transition QA
+        run: node qa-streaming-p927-road-transition.mjs
       - name: Production build
         run: npm run build
