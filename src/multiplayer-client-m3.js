@@ -1,9 +1,10 @@
 import {readTransmissionRuntimeState} from './transmission-runtime-bridge.js';
 import {getMultiplayerVehicleSpec} from './multiplayer-vehicle-registry.js';
 
-// Multiplayer M4 client: presentation-only N-player LAN replication at 30 Hz.
+// Multiplayer M4.1 client: presentation-only N-player LAN replication at 30 Hz.
 // Network state is normalized once, then the remote visual adapter feeds the
-// exact same authored controller used by a local vehicle.
+// exact same authored controller used by a local vehicle. Transmission gear is
+// explicit protocol data; reverse lamps derive from gear < 0 on the receiver.
 
 const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
 const lerp=(a,b,t)=>a+(b-a)*t;
@@ -23,6 +24,16 @@ function finite(value,fallback=0){return Number.isFinite(Number(value))?Number(v
 function boolOr(value,fallback=false){return typeof value==='boolean'?value:!!fallback;}
 function angleDelta(a,b){return Math.atan2(Math.sin((Number(a)||0)-(Number(b)||0)),Math.cos((Number(a)||0)-(Number(b)||0)));}
 function angleLerp(a,b,t){return (Number(a)||0)+angleDelta(b,a)*t;}
+function normalizeGear(value,fallback=null){
+  const n=Number(value);
+  if(Number.isFinite(n))return n<0?-1:n===0?0:Math.max(1,Math.floor(n));
+  const f=Number(fallback);
+  if(Number.isFinite(f))return f<0?-1:f===0?0:Math.max(1,Math.floor(f));
+  return null;
+}
+function reverseFromGear(gear,fallback=false){
+  return gear!==null&&Number.isFinite(Number(gear))?Number(gear)<0:!!fallback;
+}
 
 function geographicOffsetMeters(fromLat,fromLon,toLat,toLon){
   const dLat=(toLat-fromLat)*DEG_TO_RAD;
@@ -42,6 +53,7 @@ function motionSpeed(snapshot){return Math.abs(finite(snapshot?.speed,0));}
 function motionVector(snapshot){const h=motionHeading(snapshot),v=motionSpeed(snapshot);return{x:Math.sin(h)*v,z:Math.cos(h)*v};}
 
 function snapshotFromMessage(message,peer,receivedAt){
+  const gear=normalizeGear(message.gear,peer.gear);
   return {
     receivedAt,
     seq:Math.max(0,Math.floor(finite(message.seq,0))),
@@ -49,7 +61,8 @@ function snapshotFromMessage(message,peer,receivedAt){
     lat:finite(message.lat,peer.lat),lon:finite(message.lon,peer.lon),y:finite(message.y,peer.y),
     heading:finite(message.heading,peer.heading),velocityHeading:finite(message.velocityHeading,peer.velocityHeading),
     steer:finite(message.steer,peer.steer),speed:finite(message.speed,peer.speed),longitudinalAccel:finite(message.longitudinalAccel,peer.longitudinalAccel),
-    braking:boolOr(message.braking,peer.braking),reversing:boolOr(message.reversing,peer.reversing),
+    gear,
+    braking:boolOr(message.braking,peer.braking),reversing:reverseFromGear(gear,boolOr(message.reversing,peer.reversing)),
     nightLevel:Number.isFinite(Number(message.nightLevel))?clamp(Number(message.nightLevel),0,1):peer.nightLevel,
     signalLeft:boolOr(message.signalLeft,peer.signalLeft),signalRight:boolOr(message.signalRight,peer.signalRight),signalBlink:boolOr(message.signalBlink,peer.signalBlink),
     lightingProtocol:message.lightingProtocol==='m2.4'?'m2.4':peer.lightingProtocol,
@@ -117,19 +130,17 @@ export function createMultiplayerClient({
   function resetSignals(){localSignalLeft=false;localSignalRight=false;localSignalTimer=0;localSignalLastAt=performance.now();}
   function localLightingState(state,now){
     const runtime=readTransmissionRuntimeState?.()||{};
-    // Brake and reverse now come first from the same authoritative transmission
-    // bridge that drives the local authored vehicle controllers. A smoothed lamp
-    // material must never become the network source of truth.
+    // M4.1: gear is explicit protocol state. Prefer a future caller-provided
+    // full gear number, otherwise use the authoritative local D/N/R selector.
+    const gear=normalizeGear(state.gear,runtime.selectorGear);
     const braking=Number.isFinite(Number(runtime.serviceBrake))
       ?(Number(runtime.serviceBrake)||0)>.04
       :!!state.braking;
-    const reversing=Number.isFinite(Number(runtime.selectorGear))
-      ?Number(runtime.selectorGear)===-1
-      :boolOr(state.reversing,finite(state.speed,0)<-.08);
+    const reversing=reverseFromGear(gear,boolOr(state.reversing,finite(state.speed,0)<-.08));
     const nightLevel=Number.isFinite(Number(state.nightLevel))?clamp(Number(state.nightLevel),0,1):clamp(Number(getHeadlightLevel?.())||0,0,1);
 
     if(typeof state.signalLeft==='boolean'&&typeof state.signalRight==='boolean'&&typeof state.signalBlink==='boolean'){
-      return {braking,reversing,nightLevel,signalLeft:state.signalLeft,signalRight:state.signalRight,signalBlink:state.signalBlink,lightingProtocol:'m2.4'};
+      return {gear,braking,reversing,nightLevel,signalLeft:state.signalLeft,signalRight:state.signalRight,signalBlink:state.signalBlink,lightingProtocol:'m2.4'};
     }
 
     const dt=Math.max(.001,Math.min(.05,(now-localSignalLastAt)/1000));localSignalLastAt=now;
@@ -137,7 +148,7 @@ export function createMultiplayerClient({
     if(abs<=TURN_SIGNAL_NEUTRAL_RAD){localSignalLeft=false;localSignalRight=false;localSignalTimer=0;}
     else if(!localSignalLeft&&!localSignalRight&&stopped&&abs>=TURN_SIGNAL_ACTIVATION_RAD){localSignalLeft=steer<0;localSignalRight=steer>0;localSignalTimer=0;}
     if(localSignalLeft||localSignalRight)localSignalTimer+=dt;
-    return {braking,reversing,nightLevel,signalLeft:localSignalLeft,signalRight:localSignalRight,signalBlink:(localSignalLeft||localSignalRight)&&((localSignalTimer%TURN_SIGNAL_PERIOD_SEC)<TURN_SIGNAL_ON_SEC),lightingProtocol:'m2.4'};
+    return {gear,braking,reversing,nightLevel,signalLeft:localSignalLeft,signalRight:localSignalRight,signalBlink:(localSignalLeft||localSignalRight)&&((localSignalTimer%TURN_SIGNAL_PERIOD_SEC)<TURN_SIGNAL_ON_SEC),lightingProtocol:'m2.4'};
   }
 
   function replaceVisual(peer,vehicleId){
@@ -150,11 +161,12 @@ export function createMultiplayerClient({
   function ensurePeer(message){
     if(!message.id||message.id===ownId)return null;
     let peer=peers.get(message.id);if(peer)return peer;
-    const speed=finite(message.speed,0),heading=finite(message.heading,0);
+    const speed=finite(message.speed,0),heading=finite(message.heading,0),gear=normalizeGear(message.gear,null);
     peer={
       id:message.id,name:String(message.name||'Conducteur').slice(0,24),vehicleId:message.vehicleId||'wrx',lat:finite(message.lat,0),lon:finite(message.lon,0),y:finite(message.y,0),renderY:null,
       heading,velocityHeading:Number.isFinite(Number(message.velocityHeading))?Number(message.velocityHeading):(speed<0?heading+Math.PI:heading),steer:finite(message.steer,0),speed,longitudinalAccel:finite(message.longitudinalAccel,0),
-      braking:!!message.braking,reversing:boolOr(message.reversing,speed<-.08),nightLevel:Number.isFinite(Number(message.nightLevel))?clamp(Number(message.nightLevel),0,1):NaN,
+      gear,
+      braking:!!message.braking,reversing:reverseFromGear(gear,boolOr(message.reversing,speed<-.08)),nightLevel:Number.isFinite(Number(message.nightLevel))?clamp(Number(message.nightLevel),0,1):NaN,
       signalLeft:!!message.signalLeft,signalRight:!!message.signalRight,signalBlink:!!message.signalBlink,lightingProtocol:message.lightingProtocol==='m2.4'?'m2.4':null,
       onRoad:!!message.onRoad,skidFront:clamp(finite(message.skidFront,0),0,1),skidRear:clamp(finite(message.skidRear,0),0,1),
       bodyPitch:finite(message.bodyPitch,0),bodyYaw:finite(message.bodyYaw,0),bodyRoll:finite(message.bodyRoll,0),bodyY:finite(message.bodyY,0),wheelPitch:finite(message.wheelPitch,0),wheelRoll:finite(message.wheelRoll,0),
@@ -187,6 +199,7 @@ export function createMultiplayerClient({
   function sendLocalState(){
     const state=getLocalState?.();if(!state)return;const now=performance.now(),motion=estimateLocalMotion(state,now),lighting=localLightingState(state,now);
     send({type:'state',seq:++localSequence,name:cachedName,lat:state.lat,lon:state.lon,y:state.y,heading:state.heading,velocityHeading:motion.velocityHeading,speed:state.speed,longitudinalAccel:motion.longitudinalAccel,vehicleId:state.vehicleId,steer:state.steer,
+      gear:lighting.gear,
       braking:lighting.braking,reversing:lighting.reversing,nightLevel:lighting.nightLevel,signalLeft:lighting.signalLeft,signalRight:lighting.signalRight,signalBlink:lighting.signalBlink,lightingProtocol:lighting.lightingProtocol,
       onRoad:state.onRoad,skidFront:state.skidFront,skidRear:state.skidRear,bodyPitch:state.bodyPitch,bodyYaw:state.bodyYaw,bodyRoll:state.bodyRoll,bodyY:state.bodyY,wheelPitch:state.wheelPitch,wheelRoll:state.wheelRoll});
   }
@@ -254,11 +267,13 @@ export function createMultiplayerClient({
 
       const distance=Math.sqrt(relativeD2),night=Number.isFinite(peer.nightLevel)?clamp(peer.nightLevel,0,1):clamp(Number(getHeadlightLevel?.())||0,0,1);
       const correctionX=Number(peer.visual.presentationCorrectionX)||0,correctionZ=Number(peer.visual.presentationCorrectionZ)||0;
+      const remoteReversing=reverseFromGear(peer.gear,peer.reversing);
       const remoteState={
         absX:peerAbs.x,absZ:peerAbs.z,
         renderX:rx+correctionX,renderZ:rz+correctionZ,
         heading:peer.heading,speed:peer.speed,steerAngle:peer.steer,
-        braking:!!peer.braking,reversing:!!peer.reversing,nightLevel:night,
+        gear:peer.gear,
+        braking:!!peer.braking,reversing:remoteReversing,nightLevel:night,
         signalLeft:!!peer.signalLeft,signalRight:!!peer.signalRight,signalBlink:!!peer.signalBlink,
         distance
       };
@@ -269,11 +284,11 @@ export function createMultiplayerClient({
     }
   }
 
-  function getPeers(){return [...peers.values()].map(peer=>({id:peer.id,name:peer.name,lat:peer.lat,lon:peer.lon,vehicleId:peer.vehicleId,speed:peer.speed,velocityHeading:peer.velocityHeading,longitudinalAccel:peer.longitudinalAccel,braking:peer.braking,reversing:peer.reversing,nightLevel:peer.nightLevel,signalLeft:peer.signalLeft,signalRight:peer.signalRight,signalBlink:peer.signalBlink,lightingProtocol:peer.lightingProtocol}));}
+  function getPeers(){return [...peers.values()].map(peer=>({id:peer.id,name:peer.name,lat:peer.lat,lon:peer.lon,vehicleId:peer.vehicleId,speed:peer.speed,velocityHeading:peer.velocityHeading,longitudinalAccel:peer.longitudinalAccel,gear:peer.gear,braking:peer.braking,reversing:reverseFromGear(peer.gear,peer.reversing),nightLevel:peer.nightLevel,signalLeft:peer.signalLeft,signalRight:peer.signalRight,signalBlink:peer.signalBlink,lightingProtocol:peer.lightingProtocol}));}
 
   if(nameInput){nameInput.value=localStorage.getItem('worlddrive_multiplayer_name')||nameInput.value||'Conducteur';refreshName();nameInput.addEventListener('change',refreshName);}
   toggleButton?.addEventListener('click',toggle);addEventListener('beforeunload',()=>disconnect(),{once:true});setStatus('Déconnecté','off');
   return {connect,disconnect,toggle,update,getPeers,isConnected:()=>socket?.readyState===WebSocket.OPEN};
 }
 
-export const MULTIPLAYER_M3_DIAGNOSTICS=Object.freeze({networkHz:NETWORK_STATE_HZ,interpolationDelayMs:INTERPOLATION_DELAY_MS,maxExtrapolationMs:MAX_EXTRAPOLATION_MS,metrics:'multiplayer-vehicle-registry',visuals:'local-controller-adapter'});
+export const MULTIPLAYER_M3_DIAGNOSTICS=Object.freeze({networkHz:NETWORK_STATE_HZ,interpolationDelayMs:INTERPOLATION_DELAY_MS,maxExtrapolationMs:MAX_EXTRAPOLATION_MS,metrics:'multiplayer-vehicle-registry',visuals:'local-controller-adapter',reverseSource:'network-gear'});
