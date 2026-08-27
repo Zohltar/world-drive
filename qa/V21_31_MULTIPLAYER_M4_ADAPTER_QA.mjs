@@ -42,12 +42,20 @@ for(const descriptor of descriptors){
   assert.equal(typeof controller.update,'function',`${descriptor.id}: controller lacks update()`);
 
   const caps=new Set(descriptor.capabilities||[]);
+  const sourceHasNight=source.includes('nightLevel');
+  const sourceHasFunctionalSignals=/signalState\s*=|turnLeft\s*:|turnRight\s*:|truckLightState\.turnLeft|truckLightState\.turnRight/.test(source);
+  const sourceHasTrailer=source.includes('stepTrailerArticulation');
+  const sourceHasSteeringWheel=source.includes('steeringWheelBone');
+  assert.equal(caps.has('night'),sourceHasNight,`${descriptor.id}: night capability must exactly match local controller source`);
+  assert.equal(caps.has('turn-signals'),sourceHasFunctionalSignals,`${descriptor.id}: turn-signal capability must exactly match local controller source`);
+  assert.equal(caps.has('trailer'),sourceHasTrailer,`${descriptor.id}: trailer capability must exactly match local controller source`);
+  assert.equal(caps.has('steering-wheel'),sourceHasSteeringWheel,`${descriptor.id}: steering-wheel capability must exactly match local controller source`);
+
   if(caps.has('wheels'))assert(/animateWheels|animateAssetWheels|wheelSpin|wheelAnimators|wheelControllers|Tire|tire/i.test(source),`${descriptor.id}: wheel capability has no authored wheel implementation`);
   if(caps.has('steering'))assert(/steerAngle|steerPivot|steerQuaternion|steerQuat|steering/i.test(source),`${descriptor.id}: steering capability has no controller path`);
   if(caps.has('brake'))assert(source.includes('braking'),`${descriptor.id}: brake capability must consume braking state`);
   if(caps.has('reverse'))assert(source.includes('reversing'),`${descriptor.id}: reverse capability must consume reversing state`);
   if(caps.has('night'))assert(source.includes('nightLevel'),`${descriptor.id}: night capability must consume nightLevel`);
-  if(caps.has('turn-signals'))assert(/signalState|turnLeft|turnRight|signalLeft|signalRight|indicator/i.test(source),`${descriptor.id}: signal capability has no turn-signal implementation`);
   if(caps.has('trailer'))assert(source.includes('stepTrailerArticulation'),`${descriptor.id}: trailer capability must use real articulation model`);
   if(caps.has('steering-wheel'))assert(source.includes('steeringWheelBone'),`${descriptor.id}: steering-wheel capability must use authored steering wheel`);
 
@@ -63,8 +71,6 @@ for(const descriptor of descriptors){
   assert.equal(normalized.nightLevel,1,`${descriptor.id}: night level must clamp`);
   assert.equal(normalized.reversing,true,`${descriptor.id}: reverse state must survive conversion`);
 
-  // No controller is activated in Node: asset loading stays lazy. Still dispose
-  // the constructed scene graph so this QA can instantiate all 8 safely.
   controller.setActive(false);
   scene.traverse(obj=>{obj.geometry?.dispose?.();for(const mat of (Array.isArray(obj.material)?obj.material:[obj.material]))mat?.dispose?.();});
   scene.clear();
@@ -97,6 +103,7 @@ console.log('V21.31 MULTIPLAYER M4 ADAPTER QA: PASS',{
   vehicles:reports,
   sameControllerForLocalAndRemote:true,
   isolatedPeerVehicleSystems:true,
+  capabilitiesDerivedFromLocalSource:true,
   normalizedContract:['pose','motion','steering','brake','reverse','night','signals','distance'],
   articulatedTruckConverted:true,
   duplicateRemoteGlbLightingRuntime:false
