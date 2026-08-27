@@ -78,11 +78,19 @@ export function createForestChunkStreamer(options){
     const raw=base.stats?.()||{};
     return {
       enabled:true,
-      observerMode:'p929-direct-last-slice',
+      observerMode:'p931-ahead-priority',
       trees:visible.trees,near:visible.near,mid:visible.mid,far:visible.far,edge:visible.edge,
       activeChunks:finite(raw.activeChunks),cachedChunks:finite(raw.cachedChunks),queuedChunks:finite(raw.queuedChunks),
       chunksBuilt:finite(raw.chunksBuilt),chunksReplaced:finite(raw.chunksReplaced),
       matrixUploads:finite(raw.matrixUploads),densityCountUpdates:finite(raw.densityCountUpdates),
+      aheadPriority:{
+        enabled:raw.aheadPriority===true,
+        nearPriorityDistance:round3(raw.nearPriorityDistance),
+        leadM:round3(raw.priorityLeadM),
+        confidence:round3(raw.travelConfidence),
+        dirX:round3(raw.travelDirX),
+        dirZ:round3(raw.travelDirZ)
+      },
       slice:{
         lastMs:round3(raw.lastSliceMs),maxMs:round3(raw.maxSliceMs),lastAt:round3(raw.lastSliceAt),
         count:finite(raw.sliceCount),lastCandidates:finite(raw.lastCandidates),maxCandidates:finite(raw.maxCandidates),
@@ -107,6 +115,7 @@ export function createForestChunkStreamer(options){
   function installDiagnostics(){
     globalThis.__WORLD_DRIVE_P928_RECORD_HITCH__=recordHitch;
     globalThis.__WORLD_DRIVE_P929_FOREST__=snapshot;
+    globalThis.__WORLD_DRIVE_P931_FOREST__=snapshot;
     if(typeof globalThis.setTimeout!=='function')return;
     const attempt=()=>{
       const current=globalThis.WorldDriveFramePacing;
@@ -114,10 +123,11 @@ export function createForestChunkStreamer(options){
         globalThis.setTimeout(attempt,INSTALL_RETRY_MS);
         return;
       }
-      if(current.__worldDriveP929Forest)return;
+      if(current.__worldDriveP931Forest)return;
       const original=current.__worldDriveP928Original||current;
       const wrapped=()=>({...((original?.()||{})),forest:snapshot()});
       wrapped.__worldDriveP929Forest=true;
+      wrapped.__worldDriveP931Forest=true;
       wrapped.__worldDriveP928Original=original;
       globalThis.WorldDriveFramePacing=wrapped;
     };
@@ -132,6 +142,6 @@ export function createForestChunkStreamer(options){
     refreshVisibleHeights:(...args)=>base.refreshVisibleHeights(...args),
     clearAll:(...args)=>base.clearAll(...args),
     whenInitialReady:(...args)=>base.whenInitialReady(...args),
-    stats:()=>({...base.stats(),p929:snapshot()})
+    stats:()=>({...base.stats(),p931:snapshot()})
   });
 }
