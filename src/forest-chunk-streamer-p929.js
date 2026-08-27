@@ -5,14 +5,14 @@ import {
   forestDensityNoise
 } from './forest-streaming-policy.js';
 
-// Foret P9.31 — frame-budgeted dense forest streamer with travel-ahead priority.
+// Foret P9.35 — frame-budgeted dense forest streamer with travel-ahead priority.
 //
 // P9.29 remains the frame-budget baseline: candidate evaluation is resumable
 // inside a cell, chunk commit gets its own idle slice, status reporting is
-// throttled, and InstancedMesh bounds are conservative. P9.31 keeps those CPU
-// limits unchanged, but learns travel direction from floating-origin recenters
-// and prioritizes the queued forest roughly one recenter ahead of the vehicle.
-// A protected near ring always wins first so the car never outruns local cover.
+// throttled, and InstancedMesh bounds are conservative. P9.31/P9.32 keep those
+// CPU limits unchanged and prioritize travel ahead. P9.35 fixes startup bias:
+// once a route direction is known, the protected near ring still wins as a
+// whole, but its forward chunks are built before lateral/rear chunks.
 export function createForestChunkStreamer({
   THREE,
   forestGroup,
@@ -78,6 +78,9 @@ export function createForestChunkStreamer({
     sliceBudgetMs,
     candidateBatchSize,
     aheadPriority:true,
+    directionalNearPriority:true,
+    nearForwardBonus:.72,
+    nearRearPenalty:1.05,
     nearPriorityDistance,
     priorityLeadM:0,
     travelConfidence:0,
@@ -133,8 +136,6 @@ export function createForestChunkStreamer({
       travelDir={x:ux,z:uz};
       travelConfidence=.72;
     }else{
-      // Recent direction wins quickly enough for mountain-road bends while a
-      // little history prevents a single odd recenter from flipping priority.
       const blend=.68;
       let x=travelDir.x*(1-blend)+ux*blend;
       let z=travelDir.z*(1-blend)+uz*blend;
@@ -162,25 +163,43 @@ export function createForestChunkStreamer({
     };
   }
 
+  function signedForwardDistance(chunk,center){
+    if(travelConfidence<.25)return 0;
+    const dx=chunk.centerX-center.x,dz=chunk.centerZ-center.z;
+    return dx*travelDir.x+dz*travelDir.z;
+  }
+
   function queuePriority(chunk,center){
     const nearDistance=chunkPriorityDistance(chunk,center);
-    // Never sacrifice the forest immediately around the vehicle/origin. After
-    // that protected ring, prefer chunks nearest the predicted forward center.
+    const forward=signedForwardDistance(chunk,center);
+
+    // P9.35: the old protected near ring was purely radial, so startup could
+    // spend most of its first chunks behind the vehicle even though P9.31 knew
+    // the route direction. Keep the entire near ring ahead of distant work, but
+    // strongly sort FORWARD chunks first inside that protected ring.
     if(nearDistance<=nearPriorityDistance){
-      return {band:0,score:nearDistance,nearDistance};
+      let score=nearDistance;
+      if(travelConfidence>=.25){
+        if(forward>=0){
+          score-=Math.min(520,forward*perf.nearForwardBonus);
+        }else{
+          score+=Math.min(760,-forward*perf.nearRearPenalty);
+        }
+      }
+      return {band:0,score,nearDistance,forward};
     }
+
     const aheadCenter=aheadPriorityCenter(center);
     const aheadDistance=chunkPriorityDistance(chunk,aheadCenter);
     let behindPenalty=0;
-    if(travelConfidence>=.25){
-      const dx=chunk.centerX-center.x,dz=chunk.centerZ-center.z;
-      const forward=dx*travelDir.x+dz*travelDir.z;
-      if(forward<0)behindPenalty=Math.min(620,-forward*.48);
+    if(travelConfidence>=.25&&forward<0){
+      behindPenalty=Math.min(620,-forward*.48);
     }
     return {
       band:1,
       score:aheadDistance+nearDistance*.12+behindPenalty,
-      nearDistance
+      nearDistance,
+      forward
     };
   }
 
@@ -189,8 +208,6 @@ export function createForestChunkStreamer({
       const pa=queuePriority(a,center),pb=queuePriority(b,center);
       if(pa.band!==pb.band)return pa.band-pb.band;
       if(Math.abs(pa.score-pb.score)>.001)return pa.score-pb.score;
-      // Once two jobs are effectively tied, finish started work first so CPU
-      // already spent on a chunk becomes visible instead of lingering in queue.
       if(!!a.builder!==!!b.builder)return a.builder?-1:1;
       return pa.nearDistance-pb.nearDistance||chunkCenterDistance(a,center)-chunkCenterDistance(b,center);
     });
