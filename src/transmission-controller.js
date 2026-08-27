@@ -5,6 +5,7 @@ import {
   publishClutchShockMultiplier,
   publishTransmissionSelectorGear
 } from './transmission-runtime-bridge.js';
+import {publishTransmissionNetworkGear} from './transmission-network-state.js';
 
 function clamp01(value){return Math.max(0,Math.min(1,Number(value)||0));}
 
@@ -98,6 +99,10 @@ export function createTransmissionController(args={}){
     else if(selector===0){args.state.transmissionGear=0;args.state.transmissionPendingGear=0;}
     else if((Number(args.state.transmissionGear)||0)<1){args.state.transmissionGear=1;args.state.transmissionPendingGear=1;}
     publishTransmissionSelectorGear(selector);
+    // M4.5: publish the exact authoritative gear just written to the same state
+    // consumed by the instrument cluster. This is the multiplayer source of
+    // truth, not a derived visual/reverse flag.
+    publishTransmissionNetworkGear(args.state.transmissionGear);
   }
 
   function resetTransmissionState(){
