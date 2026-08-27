@@ -56,5 +56,7 @@ jobs:
         run: node qa-streaming-p927-road-transition.mjs
       - name: P9.29 forest frame-budget QA
         run: node qa-forest-p929-frame-budget.mjs
+      - name: P9.30 road-sign runtime QA
+        run: node qa-road-signs-p930-runtime.mjs
       - name: Production build
         run: npm run build
