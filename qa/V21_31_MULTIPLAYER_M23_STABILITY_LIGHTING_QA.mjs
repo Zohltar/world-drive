@@ -16,12 +16,12 @@ for(const marker of [
   'heading:(Number(input.heading)||0)+yawCorrection',
   'smoothedPosition.y=targetPosition.y;',
   'supportPresentationAdjustments',
-  "mode:'multiplayer-hd-overlay-v4-support-aligned-smoothing'",
   'verticalDoubleSmoothing:false',
   'receiverSupportAligned:true'
 ]){
   assert(visuals.includes(marker),`missing M2.3 support-aligned smoothing marker: ${marker}`);
 }
+assert(visuals.includes("mode:'multiplayer-hd-overlay-v5-replicated-lighting'"),'M2.4 wrapper must retain M2.3 support alignment');
 
 assert(
   /contentRoot\.position\.set\([\s\S]*?0,[\s\S]*?s\*dx\+c\*dz[\s\S]*?\);/.test(visuals),
@@ -66,6 +66,7 @@ console.log('V21.31 MULTIPLAYER M2.3 STABILITY + LIGHTING QA: PASS',{
   supportUsesRenderedPose:true,
   verticalDoubleSmoothing:false,
   materialProfile:'local-parity-v1',
+  m24LightingOverlay:true,
   tunedVehicles:['wrx','civic','sonata','i3_2017','countach_80'],
   authoredBaseVehicles:['id4','f1_2010']
 });
