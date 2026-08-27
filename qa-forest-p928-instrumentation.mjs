@@ -45,7 +45,7 @@ for(const marker of [
   'hitchesCorrelated',
   'maxCommitSliceMs',
   'maxChunkCompletionSliceMs',
-  "reason:'stream-report'"
+  "queueSample('stream-report')"
 ]){
   expect(p928.includes(marker),`P9.28 telemetry marker missing: ${marker}`);
 }
