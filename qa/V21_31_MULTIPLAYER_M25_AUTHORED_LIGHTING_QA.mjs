@@ -4,6 +4,7 @@ import {execFileSync} from 'node:child_process';
 
 for(const file of [
   'src/multiplayer-authored-lighting.js',
+  'src/multiplayer-authored-lighting-m251.js',
   'src/multiplayer-hd-vehicles.js',
   'src/multiplayer-visuals.js'
 ]){
@@ -11,6 +12,7 @@ for(const file of [
 }
 
 const authored=fs.readFileSync('src/multiplayer-authored-lighting.js','utf8');
+const reverseFix=fs.readFileSync('src/multiplayer-authored-lighting-m251.js','utf8');
 const hd=fs.readFileSync('src/multiplayer-hd-vehicles.js','utf8');
 const visuals=fs.readFileSync('src/multiplayer-visuals.js','utf8');
 
@@ -34,13 +36,34 @@ for(const marker of [
 
 for(const marker of [
   "from './multiplayer-authored-lighting.js'",
+  "vehicleId==='wrx'",
+  '!(Number(baseDiagnostics.reverse)>0)',
+  'function wrxReverseCandidateScore(THREE,root,object)',
+  "path.includes('fh_light_glass')",
+  '/red|taillight_new|chmsl|brake|signal|indicator|amber|orange/',
+  "mode:'wrx-authored-reverse-fallback-m251'",
+  "reverseBinding:'wrx-authored-fallback-m251'",
+  'material.emissiveIntensity=reversing?5.6:.01;',
+  "mode:'authored-glb-lamps-v1'"
+]){
+  assert(reverseFix.includes(marker),`missing M2.5.1 WRX reverse marker: ${marker}`);
+}
+
+assert(
+  !reverseFix.includes('new THREE.PlaneGeometry')&&
+  !reverseFix.includes('new THREE.BoxGeometry'),
+  'M2.5.1 reverse fallback must use authored WRX GLB geometry, not procedural lamp geometry'
+);
+
+for(const marker of [
+  "from './multiplayer-authored-lighting-m251.js'",
   'const lighting=createRemoteAuthoredLighting(THREE,vehicleId,root);',
   "lightingMode:lighting?.mode||'none'",
   'setLighting(state){',
   'lighting?.setState(state);',
   "authoredLighting:'authored-glb-lamps-v1'"
 ]){
-  assert(hd.includes(marker),`missing M2.5 HD lighting controller marker: ${marker}`);
+  assert(hd.includes(marker),`missing M2.5.1 HD lighting controller marker: ${marker}`);
 }
 
 for(const marker of [
@@ -60,9 +83,10 @@ const routeStart=visuals.indexOf('if(hdLightingActive&&hdInstance?.setLighting)'
 const fallbackStart=visuals.indexOf('if(lightingRig?.rig)lightingRig.rig.visible=true;',routeStart);
 assert(routeStart>=0&&fallbackStart>routeStart,'authored lighting must be selected before fallback rendering');
 
-console.log('V21.31 MULTIPLAYER M2.5 AUTHORED LIGHTING QA: PASS',{
+console.log('V21.31 MULTIPLAYER M2.5.1 AUTHORED LIGHTING QA: PASS',{
   fallbackScope:'loading-only',
   hdLighting:'peer-local authored GLB lamps',
+  wrxReverseFallback:'authored rear clear-lens geometry only',
   replicated:['brake','reverse','night','signal-left','signal-right'],
   oldProceduralLightsAfterHd:false
 });
