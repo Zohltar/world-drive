@@ -64,7 +64,7 @@ export function createId4GlbSystem({
   function restoreProceduralVisuals(){
     if(!swapped)return;
     for(const [obj,visible] of hiddenBodyState)obj.visible=visible;
-    for(const [obj,visible] of hiddenWheelState)pivot.visible=visible;
+    for(const [obj,visible] of hiddenWheelState)obj.visible=visible;
     hiddenBodyState.clear();
     hiddenWheelState.clear();
     swapped=false;
