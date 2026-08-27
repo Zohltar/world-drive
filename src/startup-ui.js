@@ -88,14 +88,15 @@ export function createStartupUi({
       if(startButton){startButton.disabled=true;startButton.textContent='PRÉPARATION DE LA FORÊT DEVANT…';}
       try{
         const waitForForest=
+          globalThis.__WORLD_DRIVE_P935_FOREST_READY__||
           globalThis.__WORLD_DRIVE_P934_FOREST_READY__||
           globalThis.__WORLD_DRIVE_P933_FOREST_READY__;
         if(typeof waitForForest==='function'){
-          // P9.34: total chunk count alone can be satisfied behind the spawn.
-          // Require a useful forward half-plane as well before exposing gameplay.
+          // P9.35: do not accept a startup ring dominated by rear chunks.
           await waitForForest({
             minChunks:14,
-            minFrontChunks:7,
+            minFrontChunks:8,
+            minFrontLead:2,
             timeoutMs:5500,
             pollMs:35
           });
