@@ -36,5 +36,7 @@ jobs:
         run: node qa/V21_31_MULTIPLAYER_SMOOTHING_QA.mjs
       - name: Multiplayer M2.3 stability and lighting QA
         run: node qa/V21_31_MULTIPLAYER_M23_STABILITY_LIGHTING_QA.mjs
+      - name: Multiplayer M2.4 replicated lighting QA
+        run: node qa/V21_31_MULTIPLAYER_M24_LIGHTING_QA.mjs
       - name: Production build
         run: npm run build
