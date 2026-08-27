@@ -1,5 +1,6 @@
 import {createMultiplayerVisualSystem as createSupportSystem} from './multiplayer-visuals-v18.js';
 import {createRemoteVehicleAdapter} from './multiplayer-vehicle-adapter.js';
+import {VEHICLE_RENDER_ROOT_SCALE} from './vehicle-render-contract.js';
 
 // Multiplayer M4 presentation pipeline:
 // normalized support chassis -> isolated adapter -> exact LOCAL authored controller.
@@ -63,6 +64,14 @@ export function createMultiplayerVisualSystem(options={}){
   function createRemoteVehicleVisual(vehicleId,name){
     const support=base.createRemoteVehicleVisual(vehicleId,name);if(!support)return null;
     perf.visualsCreated++;
+
+    // M4.2 parity: support.root is the remote equivalent of the local `car`
+    // group. Apply the exact same render scale before the local authored
+    // controller is instantiated. Support math intentionally continues to use
+    // unscaled local probe coordinates, matching vehicle-presentation locally.
+    support.root.scale.set(VEHICLE_RENDER_ROOT_SCALE,VEHICLE_RENDER_ROOT_SCALE,VEHICLE_RENDER_ROOT_SCALE);
+    support.renderRootScale=VEHICLE_RENDER_ROOT_SCALE;
+
     const adapter=createRemoteVehicleAdapter({
       THREE,
       vehicleId,
@@ -78,9 +87,6 @@ export function createMultiplayerVisualSystem(options={}){
 
     support.setLighting=state=>{
       lastLighting={...lastLighting,...state};perf.lightingUpdates++;
-      // During the authored controller load window only, retain the minimal
-      // support brake indication. Once ready, the local controller owns every
-      // visible lamp exactly as it does for the local player.
       if(!adapter.ready)support.setBraking?.(lastLighting.braking?1:0);
     };
     support.updateRemoteVehicle=(dt,state={})=>{
@@ -123,7 +129,8 @@ export function createMultiplayerVisualSystem(options={}){
   function diagnostics(){
     return {
       enabled:true,
-      mode:'multiplayer-m4-local-controller-parity',
+      mode:'multiplayer-m4.2-local-controller-parity',
+      renderRootScale:VEHICLE_RENDER_ROOT_SCALE,
       ...perf,
       smoothing:{positionRate:SMOOTH_POSITION_RATE,yawRate:SMOOTH_YAW_RATE,receiverSupportAligned:true,verticalDoubleSmoothing:false},
       visualSource:'same-local-authored-controller',
