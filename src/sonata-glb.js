@@ -24,6 +24,8 @@ export function createSonataGlbSystem({
   let loadStarted=false;
   let root=null;
   let wheelSpin=0;
+  let lastReverseRequested=false;
+  let lastReverseGlowOpacity=0;
 
   const wheelControllers=[];
   const headlightMaterials=[];
@@ -133,9 +135,6 @@ export function createSonataGlbSystem({
         mat.dithering=true;
         if(mat.transparent)mat.depthWrite=false;
 
-        // V21.24.65: the Sonata comes in very dark at noon. Similar to the
-        // WRX/Civic fixes, add a modest texture-preserving emissive daylight
-        // fill so the GLB reads correctly without changing global exposure.
         if(name.includes('glass')||name.includes('window')||name.includes('windshield')){
           if(mat.color)mat.color.multiplyScalar(1.10);
           if(!mat.emissive)mat.emissive=new THREE.Color(0x101418);
@@ -175,9 +174,6 @@ export function createSonataGlbSystem({
   }
 
   function installDarkGlassMeshes(){
-    // These are the five actual glazing meshes in the authored Sonata GLB.
-    // Replace their authored transmissive materials outright so hidden GLB
-    // transmission/alpha settings cannot cancel the requested tint.
     const glassMeshNames=['Object_97','Object_94','Object_84','Object_72','Object_62'];
     for(const meshName of glassMeshNames){
       const mesh=root?.getObjectByName(meshName);
@@ -203,9 +199,6 @@ export function createSonataGlbSystem({
   }
 
   function canonicalNodeName(name){
-    // GLTFLoader sanitizes punctuation (notably dots) in authored node names.
-    // Compare names without punctuation so Blender's `wheel.029_56` still
-    // resolves if Three.js exposes it as `wheel029_56`, `wheel_029_56`, etc.
     return String(name||'').toLowerCase().replace(/[^a-z0-9]/g,'');
   }
 
@@ -223,10 +216,10 @@ export function createSonataGlbSystem({
   function bindAuthoredWheels(){
     wheelControllers.length=0;
     const specs=[
-      {spinName:'wheel.029_56',steerName:'wheel_rf_dummy.015_57',front:false,side: 1,spinSign:-1}, // right rear
-      {spinName:'wheel.031_62',steerName:'wheel_rf_dummy.016_63',front:true, side: 1,spinSign:-1}, // right front
-      {spinName:'wheel.035_68',steerName:'wheel_rf_dummy.017_69',front:false,side:-1,spinSign: 1}, // left rear
-      {spinName:'wheel.039_74',steerName:'wheel_rf_dummy.018_75',front:true, side:-1,spinSign: 1}  // left front
+      {spinName:'wheel.029_56',steerName:'wheel_rf_dummy.015_57',front:false,side: 1,spinSign:-1},
+      {spinName:'wheel.031_62',steerName:'wheel_rf_dummy.016_63',front:true, side: 1,spinSign:-1},
+      {spinName:'wheel.035_68',steerName:'wheel_rf_dummy.017_69',front:false,side:-1,spinSign: 1},
+      {spinName:'wheel.039_74',steerName:'wheel_rf_dummy.018_75',front:true, side:-1,spinSign: 1}
     ];
 
     const box=new THREE.Box3();
@@ -241,11 +234,6 @@ export function createSonataGlbSystem({
         continue;
       }
 
-      // The authored wheel root is not centred on the hub: its geometry is
-      // modelled at an offset in local space. Rotating that node directly makes
-      // the wheel orbit like a paddle. Build a dedicated pivot at the actual
-      // world-space centre of the visible wheel geometry, then reparent the
-      // authored wheel root under it while preserving its world transform.
       spinNode.updateWorldMatrix(true,true);
       box.setFromObject(spinNode);
       box.getCenter(centerWorld);
@@ -262,18 +250,12 @@ export function createSonataGlbSystem({
       const spinPivot=new THREE.Object3D();
       spinPivot.name=`sonata_spin_pivot_${spec.spinName}`;
       spinPivot.position.copy(centerLocal);
-      // Match the authored wheel root orientation so local X remains the axle.
       spinPivot.quaternion.copy(spinNode.quaternion);
       spinPivot.matrixAutoUpdate=true;
       parent.add(spinPivot);
       spinPivot.updateWorldMatrix(true,false);
       spinPivot.attach(spinNode);
 
-      // The authored steering dummy is also offset from the wheel hub. Rotating
-      // it directly makes the front wheel orbit out of its socket. For front
-      // wheels, add a second hub-centred pivot one level above that dummy. The
-      // outer centred pivot handles steering; the inner centred pivot handles
-      // rolling. Both motions therefore share the exact same physical centre.
       let steerPivot=null;
       let steerBindQuaternion=null;
       if(spec.front){
@@ -289,8 +271,6 @@ export function createSonataGlbSystem({
         steerPivot=new THREE.Object3D();
         steerPivot.name=`sonata_steer_pivot_${spec.steerName}`;
         steerPivot.position.copy(steerCenterLocal);
-        // Preserve the authored steering basis so local Y remains the same
-        // steering axis as before, only translated to the hub centre.
         steerPivot.quaternion.copy(steerNode.quaternion);
         steerPivot.matrixAutoUpdate=true;
         steerParent.add(steerPivot);
@@ -322,17 +302,11 @@ export function createSonataGlbSystem({
     if(Math.abs(wheelSpin)>Math.PI*2048)wheelSpin%=Math.PI*2;
 
     for(const wheel of wheelControllers){
-      // Roll around the dedicated hub-centred pivot. The pivot inherited the
-      // authored wheel orientation, so its local X is the axle but its origin is
-      // now the true geometric centre of the wheel.
       spinQuat.setFromAxisAngle(spinAxis,wheelSpin*wheel.spinSign);
       combinedQuat.copy(wheel.spinBindQuaternion).multiply(spinQuat);
       wheel.spinPivot.quaternion.copy(combinedQuat);
       wheel.spinPivot.updateMatrix();
 
-      // Front steering rotates the dedicated hub-centred outer pivot. Do not
-      // rotate the authored dummy itself: its origin is offset from the hub and
-      // would make the wheel leave its socket.
       if(wheel.front&&wheel.steerPivot&&wheel.steerBindQuaternion){
         steerQuat.setFromAxisAngle(steerAxis,Number(steerAngle)||0);
         combinedQuat.copy(wheel.steerBindQuaternion).multiply(steerQuat);
@@ -342,14 +316,33 @@ export function createSonataGlbSystem({
     }
   }
 
-  function makeLensGlowMaterial({sourceMaterial,filterMode=0,sideMode=0,tint=0xffffff,whiteWarmth=0.0}){
+  // M4.6: every uniform referenced by the shader is explicitly initialized.
+  // Previous builds declared tint/UV uniforms in GLSL but omitted them from the
+  // ShaderMaterial uniform map, making authored lens masks driver-dependent.
+  function makeLensGlowMaterial({
+    sourceMaterial,
+    filterMode=0,
+    sideMode=0,
+    tint=0xffffff,
+    whiteWarmth=0.0,
+    uvRegion=null,
+    tintMix=1.0
+  }){
+    const uvMin=uvRegion?.min||[0,0];
+    const uvMax=uvRegion?.max||[1,1];
+    const uvFeather=uvRegion?.feather||[.004,.004];
     const uniforms={
       uMap:{value:sourceMaterial?.map||null},
       uOpacity:{value:0},
       uTint:{value:new THREE.Color(tint)},
       uFilterMode:{value:filterMode},
       uSideMode:{value:sideMode},
-      uWhiteWarmth:{value:whiteWarmth}
+      uWhiteWarmth:{value:whiteWarmth},
+      uTintMix:{value:clamp(Number(tintMix)||0,0,1)},
+      uUseUvRegion:{value:uvRegion?1:0},
+      uUvMin:{value:new THREE.Vector2(uvMin[0],uvMin[1])},
+      uUvMax:{value:new THREE.Vector2(uvMax[0],uvMax[1])},
+      uUvFeather:{value:new THREE.Vector2(uvFeather[0],uvFeather[1])}
     };
 
     return new THREE.ShaderMaterial({
@@ -399,10 +392,6 @@ export function createSonataGlbSystem({
           float minc=min(tex.r,min(tex.g,tex.b));
           float colorSpread=maxc-minc;
 
-          // Brake/running red must be much stricter than the amber/white masks.
-          // The Sonata atlas contains orange indicator pixels and dark neutral
-          // pixels inside the lower clear lens that the older broad red mask
-          // could misclassify. Require a genuinely red-dominant source texel.
           float redRatioG=tex.g / max(tex.r,0.001);
           float redRatioB=tex.b / max(tex.r,0.001);
           float redDominance=tex.r-max(tex.g,tex.b);
@@ -417,7 +406,10 @@ export function createSonataGlbSystem({
           float amberMaskB=smoothstep(0.42,0.60,tex.r) * smoothstep(0.18,0.34,tex.g) * (1.0-smoothstep(0.78,1.00,amberRatioG)) * (1.0-smoothstep(0.26,0.46,tex.b / max(tex.g,0.001)));
           float amberMask=max(amberMaskA, amberMaskB);
 
-          float whiteMask=smoothstep(0.28,0.48,lum) * (1.0-smoothstep(0.28,0.50,colorSpread));
+          // M4.6: retain texture discrimination, but do not require almost
+          // perfectly neutral pixels. The authored clear reverse lens contains
+          // mild warm/grey shading in its base-color atlas.
+          float whiteMask=smoothstep(0.12,0.32,lum) * (1.0-smoothstep(0.38,0.70,colorSpread));
 
           float filterMask=redMask;
           if(uFilterMode>0.5 && uFilterMode<1.5) filterMask=amberMask;
@@ -475,13 +467,11 @@ export function createSonataGlbSystem({
     const rearOuterLens=root.getObjectByName('Object_33');
     if(rearInnerLens?.isMesh){
       registerGlowLayer({targetArray:authoredRearGlowLayers,sourceMesh:rearInnerLens,filter:'red',side:0,tint:0xff2a2e,tintMix:0.42,uvRegion:{min:[0.04,0.842],max:[0.54,1.00],feather:[0.004,0.004]}});
-      registerGlowLayer({targetArray:authoredRearGlowLayers,sourceMesh:rearInnerLens,filter:'white',side:0,tint:0xf8fbff,whiteWarmth:0.15,tintMix:0.78});
+      // M4.6: the reverse lamp uses the complementary lower region of the same
+      // authored Object_46 lens. This excludes the known upper red strip before
+      // the white texture mask is evaluated.
+      registerGlowLayer({targetArray:authoredRearGlowLayers,sourceMesh:rearInnerLens,filter:'white',side:0,tint:0xf8fbff,whiteWarmth:0.10,tintMix:1.0,uvRegion:{min:[0.04,0.00],max:[0.54,0.842],feather:[0.008,0.008]}});
     }
-    // V21.24.66 had the best overall rear-light look, while V21.24.69 fixed the
-    // actual rear indicator mesh and signal-state logic. Merge both here: keep
-    // Object_33 as the real amber indicator owner, but also restore a red glow
-    // only over its authored upper red zone so it cannot wash out the lower
-    // reverse or amber bands.
     if(rearOuterLens?.isMesh){
       registerGlowLayer({
         targetArray:authoredRearGlowLayers,
@@ -603,6 +593,8 @@ export function createSonataGlbSystem({
     const brakingRed=braking?.52:0;
     const headlightWhite=nightOn?(.45+night*.28):0;
     const reverseWhite=reversing?.98:0;
+    lastReverseRequested=!!reversing;
+    lastReverseGlowOpacity=reverseWhite;
     const leftBlink=(signalState.left&&blinkOn)?.98:0;
     const rightBlink=(signalState.right&&blinkOn)?.98:0;
 
@@ -673,6 +665,10 @@ export function createSonataGlbSystem({
     get ready(){return ready;},
     get loadError(){return loadError;},
     get active(){return requestedActive&&ready;},
+    get wheelControllerCount(){return wheelControllers.length;},
+    get reverseMaterialCount(){return authoredRearGlowLayers.filter(layer=>layer.filter==='white').length;},
+    get reverseRequested(){return lastReverseRequested;},
+    get reverseGlowOpacity(){return lastReverseGlowOpacity;},
     host
   };
 }
