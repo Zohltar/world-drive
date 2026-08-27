@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import {getMultiplayerVehicleSpec,listMultiplayerVehicleSpecs} from '../src/multiplayer-vehicle-registry.js';
+import {listMultiplayerVehicleSpecs} from '../src/multiplayer-vehicle-registry.js';
 
 function parseGlb(path){
   const data=fs.readFileSync(path);
@@ -14,22 +14,27 @@ function parseGlb(path){
   assert(json,`${path}: missing JSON chunk`);return json;
 }
 function indexAsset(json){
-  const nodes=json.nodes||[],materials=json.materials||[],meshes=json.meshes||[],parents=new Array(nodes.length).fill(-1);
+  const nodes=json.nodes||[],materials=json.materials||[],parents=new Array(nodes.length).fill(-1);
   for(let i=0;i<nodes.length;i++)for(const child of nodes[i].children||[])parents[child]=i;
   const pathFor=index=>{const names=[];let i=index,guard=0;while(i>=0&&guard++<nodes.length+2){names.unshift(nodes[i]?.name||`node_${i}`);i=parents[i];}return names.join('/').toLowerCase();};
-  const paths=nodes.map((_,i)=>pathFor(i));
-  const nodeNames=new Set(nodes.map(n=>String(n.name||'').toLowerCase()));
-  const materialNames=new Set(materials.map(m=>String(m.name||'').toLowerCase()));
-  const meshMaterialNames=new Map();
-  for(let i=0;i<nodes.length;i++){
-    const node=nodes[i];if(!Number.isInteger(node.mesh))continue;
-    const names=(meshes[node.mesh]?.primitives||[]).map(p=>Number.isInteger(p.material)?String(materials[p.material]?.name||'').toLowerCase():'').filter(Boolean);
-    meshMaterialNames.set(String(node.name||'').toLowerCase(),names);
-  }
-  return {json,nodes,materials,paths,nodeNames,materialNames,meshMaterialNames};
+  return {
+    json,
+    nodes,
+    materials,
+    paths:nodes.map((_,i)=>pathFor(i)),
+    nodeNames:new Set(nodes.map(n=>String(n.name||'').toLowerCase())),
+    materialNames:new Set(materials.map(m=>String(m.name||'').toLowerCase()))
+  };
 }
 function includesPath(asset,selector){
   const term=String(selector).toLowerCase();return asset.paths.some(path=>path.includes(term));
+}
+function materialsForNode(asset,nodeIndex){
+  const node=asset.nodes[nodeIndex];
+  const mesh=asset.json.meshes?.[node?.mesh];
+  return (mesh?.primitives||[])
+    .map(primitive=>Number.isInteger(primitive.material)?String(asset.materials[primitive.material]?.name||'').toLowerCase():'')
+    .filter(Boolean);
 }
 
 const reports=[];
@@ -60,7 +65,8 @@ for(const spec of listMultiplayerVehicleSpecs().filter(spec=>spec.hd.enabled)){
   if(spec.id==='wrx'){
     assert(includesPath(asset,'fh_reverse_material'),'WRX real reverse node path must exist');
     const reverseNode=asset.nodes.findIndex((_,i)=>asset.paths[i].includes('fh_reverse_material'));
-    const reverseMaterials=asset.meshMaterialNames.get(String(asset.nodes[reverseNode]?.name||'').toLowerCase())||[];
+    assert(reverseNode>=0,'WRX reverse node index must resolve');
+    const reverseMaterials=materialsForNode(asset,reverseNode);
     assert(reverseMaterials.includes('eblems'),'WRX audit regression: reverse node deliberately has misleading Eblems material; path binding is required');
   }
   if(spec.id==='sonata'){
