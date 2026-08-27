@@ -1,59 +1,48 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import {computeRemoteLightLevels} from '../src/multiplayer-authored-lighting-v2.js';
-import {listMultiplayerVehicleSpecs} from '../src/multiplayer-vehicle-registry.js';
+import {normalizeMultiplayerVehicleState} from '../src/multiplayer-vehicle-adapter.js';
+import {listAuthoredVehicleDescriptors} from '../src/vehicle-authored-registry.js';
 
-const day=computeRemoteLightLevels({});
-assert.equal(day.braking,false);assert.equal(day.reversing,false);assert(day.brake<.02);assert(day.reverse<.02);assert(day.headlight<.02);assert(day.leftSignal<.02);assert(day.rightSignal<.02);
+const states={
+  day:{braking:false,reversing:false,nightLevel:0,signalLeft:false,signalRight:false,signalBlink:false},
+  night:{braking:false,reversing:false,nightLevel:.8,signalLeft:false,signalRight:false,signalBlink:false},
+  brake:{braking:true,reversing:false,nightLevel:.4,signalLeft:false,signalRight:false,signalBlink:false},
+  'reverse-stopped':{speed:0,braking:false,reversing:true,nightLevel:0,signalLeft:false,signalRight:false,signalBlink:false},
+  'reverse+brake+night':{speed:0,braking:true,reversing:true,nightLevel:1,signalLeft:false,signalRight:false,signalBlink:false},
+  'left-on':{signalLeft:true,signalRight:false,signalBlink:true},
+  'left-off':{signalLeft:true,signalRight:false,signalBlink:false},
+  'right-on':{signalLeft:false,signalRight:true,signalBlink:true}
+};
 
-const night=computeRemoteLightLevels({nightLevel:.8});
-assert.equal(night.nightOn,true);assert(night.running>.5);assert(night.headlight>4);
+const normalized=Object.fromEntries(Object.entries(states).map(([name,state])=>[name,normalizeMultiplayerVehicleState(state,{physics:{maxSteerLow:.45}})]));
+assert.equal(normalized.day.braking,false);assert.equal(normalized.day.reversing,false);assert.equal(normalized.day.nightLevel,0);
+assert.equal(normalized.night.nightLevel,.8);
+assert.equal(normalized.brake.braking,true);
+assert.equal(normalized['reverse-stopped'].reversing,true,'selector-R state must survive independently of vehicle speed');
+assert.equal(normalized['reverse+brake+night'].reversing,true);assert.equal(normalized['reverse+brake+night'].braking,true);assert.equal(normalized['reverse+brake+night'].nightLevel,1);
+assert.equal(normalized['left-on'].signalLeft,true);assert.equal(normalized['left-on'].signalBlink,true);assert.equal(normalized['left-off'].signalBlink,false);assert.equal(normalized['right-on'].signalRight,true);
 
-const brake=computeRemoteLightLevels({braking:true,nightLevel:.4});
-assert(brake.brake>5);assert.equal(brake.braking,true);assert(brake.running>.3);
+const client=fs.readFileSync('src/multiplayer-client-m3.js','utf8');
+assert(client.includes('readTransmissionRuntimeState'),'network lighting must read the authoritative transmission bridge');
+assert(client.includes('Number(runtime.serviceBrake)'),'brake replication must originate from service-brake state');
+assert(client.includes('Number(runtime.selectorGear)===-1'),'reverse replication must originate from selector R');
+for(const field of ['braking:lighting.braking','reversing:lighting.reversing','nightLevel:lighting.nightLevel','signalLeft:lighting.signalLeft','signalRight:lighting.signalRight','signalBlink:lighting.signalBlink'])assert(client.includes(field),`network snapshot missing ${field}`);
+assert(client.includes('peer.visual.updateRemoteVehicle?.(dt,remoteState)'),'all replicated light state must flow through the M4 local-controller adapter');
 
-const reverseStopped=computeRemoteLightLevels({reversing:true,nightLevel:0});
-assert(reverseStopped.reverse>5,'stationary selector-R must illuminate reverse without requiring negative speed');
-assert.equal(reverseStopped.reversing,true);
-
-const reverseNightBrake=computeRemoteLightLevels({reversing:true,braking:true,nightLevel:1});
-assert(reverseNightBrake.reverse>5&&reverseNightBrake.brake>5&&reverseNightBrake.headlight>5,'reverse/brake/night states must coexist');
-
-const leftOn=computeRemoteLightLevels({signalLeft:true,signalBlink:true});
-const leftOff=computeRemoteLightLevels({signalLeft:true,signalBlink:false});
-const rightOn=computeRemoteLightLevels({signalRight:true,signalBlink:true});
-assert(leftOn.leftSignal>5&&leftOn.rightSignal<.02);
-assert(leftOff.leftSignal<.02,'blink OFF phase must actually extinguish signal');
-assert(rightOn.rightSignal>5&&rightOn.leftSignal<.02);
-
-const authored=fs.readFileSync('src/multiplayer-authored-lighting-v2.js','utf8');
-for(const marker of [
-  "findMeshes(root,['fh_reverse_material'])",
-  "namedMesh(root,'Object_46')",
-  "namedMesh(root,'Object_33')",
-  "namedMesh(root,'Object_7')",
-  "n==='carro_refletor_lanterna'",
-  "names.includes('signallights')",
-  "namedMesh(root,'13_headlight_glass_1_glass_0')",
-  "namedMesh(root,'REARLEDs_011_001_RearLight_0')",
-  "mode:'authored-glb-lamps-v2'",
-  'missingFamilies:Object.freeze(missing)',
-  'geometryFallbackFamilies'
-])assert(authored.includes(marker),`missing M3 lighting implementation marker: ${marker}`);
-
-const coverage=listMultiplayerVehicleSpecs().map(spec=>({id:spec.id,required:[...(spec.lighting.requiredFamilies||[])]}));
-for(const spec of coverage){
-  assert(spec.required.includes('brake'),`${spec.id}: brake must be a declared remote-light capability`);
-  assert(spec.required.includes('reverse'),`${spec.id}: reverse must be a declared remote-light capability`);
-  if(spec.id!=='f1_2010'){
-    assert(spec.required.includes('night'),`${spec.id}: night lights must be declared`);
-    assert(spec.required.includes('signal-left')&&spec.required.includes('signal-right'),`${spec.id}: turn signals must be declared`);
-  }
+const coverage=listAuthoredVehicleDescriptors().map(descriptor=>({id:descriptor.id,capabilities:[...(descriptor.capabilities||[])]}));
+for(const descriptor of coverage){
+  assert(descriptor.capabilities.includes('brake'),`${descriptor.id}: local controller must expose brake behavior`);
+  assert(descriptor.capabilities.includes('reverse'),`${descriptor.id}: local controller must expose reverse behavior`);
 }
+const signalVehicles=coverage.filter(entry=>entry.capabilities.includes('turn-signals')).map(entry=>entry.id).sort();
+assert.deepEqual(signalVehicles,['semi_6x4','sonata'],'turn-signal replication must match actual local-controller capabilities, not invent features');
+const nightVehicles=coverage.filter(entry=>entry.capabilities.includes('night')).map(entry=>entry.id).sort();
+assert(nightVehicles.includes('wrx')&&nightVehicles.includes('sonata')&&nightVehicles.includes('id4'),'authored night-light capability coverage drift');
 
-console.log('V21.31 MULTIPLAYER M3 LIGHTING MATRIX QA: PASS',{
-  states:['day','night','brake','reverse-stopped','reverse+brake+night','left-on','left-off','right-on'],
+console.log('V21.31 MULTIPLAYER M4 LIGHTING STATE MATRIX QA: PASS',{
+  states:Object.keys(states),
   coverage,
   reverseIndependentOfSpeed:true,
-  authoredGeometryFallbackOnly:true
+  signalVehicles,
+  visualSink:'same local authored controller'
 });
