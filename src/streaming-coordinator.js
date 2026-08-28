@@ -64,6 +64,8 @@ export function createStreamingCoordinator(options){
   const HITCH_IMAGERY_GUARD_MS=650;
   const SUSPENDED_FRAME_MS=250;
   const PREPARED_START_QUIET_MS=160;
+  const HITCH_ATTRIBUTION_WINDOW_MS=90;
+  const HITCH_ATTRIBUTION_HISTORY=12;
   let lastAdaptiveHitchAt=-Infinity;
   let adaptiveDeferrals=0;
   let adaptiveHitches=0;
@@ -74,6 +76,10 @@ export function createStreamingCoordinator(options){
   let over12Ms=0,over16_7Ms=0,over25Ms=0,over50Ms=0,over100Ms=0;
   let suspendedFrames=0,ignoredNonDrivingFrames=0;
   const visualJobStats=new Map();
+  let lastVisualJobEvent=null;
+  let lastPreparedCommitEvent=null;
+  const hitchAttributionCounts=new Map();
+  const hitchAttributionHistory=[];
 
   let preparedSerial=0;
   let worldPreparePending=false;
@@ -92,18 +98,61 @@ export function createStreamingCoordinator(options){
   }
   function backgroundAllowed(now=performance.now()){return now-lastAdaptiveHitchAt>=BACKGROUND_COOLDOWN_MS;}
   function runtimeState(){try{return options.getRuntimeState?.()||{};}catch{return {};}}
-  function recordVisualJob(key,ms){
+  function recordVisualJob(key,ms,endedAt=performance.now()){
     if(!Number.isFinite(ms))return;
     const previous=visualJobStats.get(key)||{runs:0,totalMs:0,maxMs:0,lastMs:0};
     previous.runs++;previous.totalMs+=ms;previous.lastMs=ms;previous.maxMs=Math.max(previous.maxMs,ms);
     visualJobStats.set(key,previous);
+    lastVisualJobEvent={key:String(key),ms,at:endedAt};
   }
   function scheduleVisualJob(key,job,timeout=180){
     return base.scheduleVisualJob(key,()=>{
       const started=performance.now();
-      try{const result=job();recordVisualJob(key,performance.now()-started);return result;}
-      catch(error){recordVisualJob(key,performance.now()-started);throw error;}
+      try{
+        const result=job();
+        const ended=performance.now();
+        recordVisualJob(key,ended-started,ended);
+        return result;
+      }catch(error){
+        const ended=performance.now();
+        recordVisualJob(key,ended-started,ended);
+        throw error;
+      }
     },timeout);
+  }
+
+  function recentEvent(event,now){
+    if(!event||!Number.isFinite(event.at))return null;
+    const age=now-event.at;
+    if(age<0||age>HITCH_ATTRIBUTION_WINDOW_MS)return null;
+    return {...event,ageMs:age};
+  }
+  function recordHitchAttribution({hitchCount,frameMs,now,forestMatched=false}){
+    const world=recentEvent(lastPreparedCommitEvent,now);
+    const visual=recentEvent(lastVisualJobEvent,now);
+    let source='unknown',candidate=null;
+    if(world&&world.ms>=4){
+      source='prepared-world';candidate=world;
+    }else if(visual&&visual.ms>=1.5){
+      source=`visual:${visual.key}`;candidate=visual;
+    }else if(forestMatched){
+      source='forest';
+    }
+    hitchAttributionCounts.set(source,(hitchAttributionCounts.get(source)||0)+1);
+    const event={
+      hitchCount:Number(hitchCount)||0,
+      frameMs:Number(Number(frameMs).toFixed(3)),
+      at:Number(Number(now).toFixed(3)),
+      source,
+      candidateMs:candidate?Number(Number(candidate.ms).toFixed(3)):null,
+      candidateAgeMs:candidate?Number(Number(candidate.ageMs).toFixed(3)):null,
+      candidateKey:candidate?.key||null,
+      reasons:Array.isArray(candidate?.reasons)?[...candidate.reasons]:null,
+      forestMatched:!!forestMatched
+    };
+    hitchAttributionHistory.push(event);
+    while(hitchAttributionHistory.length>HITCH_ATTRIBUTION_HISTORY)hitchAttributionHistory.shift();
+    return event;
   }
 
   function markWorldRefresh(reason='stream'){
@@ -137,13 +186,20 @@ export function createStreamingCoordinator(options){
     if(rawFrameMs>100)over100Ms++;
     if(rawFrameMs>20){
       gameplayHitchCount++;
+      let forestMatched=false;
       try{
-        globalThis.__WORLD_DRIVE_P928_RECORD_HITCH__?.({
+        forestMatched=globalThis.__WORLD_DRIVE_P928_RECORD_HITCH__?.({
           hitchCount:gameplayHitchCount,
           hitchAt:now,
           frameMs:rawFrameMs
-        });
+        })===true;
       }catch{}
+      recordHitchAttribution({
+        hitchCount:gameplayHitchCount,
+        frameMs:rawFrameMs,
+        now,
+        forestMatched
+      });
     }
     base.recordFrame(rawFrameMs,now);updateFrameBaseline(rawFrameMs);
     if(rawFrameMs>hitchThresholdMs()){
@@ -172,8 +228,10 @@ export function createStreamingCoordinator(options){
     const recenterOnly=reasons.length===1&&reasons[0]==='recenter';
     if(!recenterOnly){options.imageryService?.invalidateGeometry?.();options.applyImageryToGround?.();}
     schedulePostPreparedImagery(current);
-    const ms=performance.now()-started;
+    const ended=performance.now();
+    const ms=ended-started;
     lastPreparedCommitMs=ms;maxPreparedCommitMs=Math.max(maxPreparedCommitMs,ms);
+    lastPreparedCommitEvent={at:ended,ms,reasons:[...reasons]};
     base.state.lastBuiltCenter={...(current.worldOffset||{x:0,z:0})};
     base.state.lastWorldBuildAt=performance.now();
     base.state.lastWorldBuildMs=ms;base.state.maxWorldBuildMs=Math.max(base.state.maxWorldBuildMs,ms);
@@ -291,6 +349,7 @@ export function createStreamingCoordinator(options){
     gameplayFrames=0;gameplayHitchCount=0;maxGameplayFrameMs=0;
     over12Ms=0;over16_7Ms=0;over25Ms=0;over50Ms=0;over100Ms=0;
     suspendedFrames=0;ignoredNonDrivingFrames=0;visualJobStats.clear();
+    lastVisualJobEvent=null;lastPreparedCommitEvent=null;hitchAttributionCounts.clear();hitchAttributionHistory.length=0;
     lastLocalWorldPhases=null;for(const key of Object.keys(localWorldPhaseMax))delete localWorldPhaseMax[key];
     preparedStarts=0;preparedCommits=0;preparedDiscards=0;preparedFailures=0;sceneryOnlyRefreshes=0;
     lastPrepareWallMs=0;maxPrepareWallMs=0;lastPreparedCommitMs=0;maxPreparedCommitMs=0;lastPreparedReasons=[];
@@ -315,6 +374,8 @@ export function createStreamingCoordinator(options){
       visualJobs[key]={runs:value.runs,lastMs:Number(value.lastMs.toFixed(3)),maxMs:Number(value.maxMs.toFixed(3)),avgMs:Number((value.totalMs/Math.max(1,value.runs)).toFixed(3))};
     }
     const phaseMax={};for(const [key,value] of Object.entries(localWorldPhaseMax))phaseMax[key]=Number(value.toFixed(3));
+    const attributionCounts={};
+    for(const [key,value] of hitchAttributionCounts)attributionCounts[key]=value;
     return {
       ...legacy,
       hitchCount:gameplayHitchCount,maxFrameMs:maxGameplayFrameMs,suspendedFrames,ignoredNonDrivingFrames,
@@ -333,6 +394,14 @@ export function createStreamingCoordinator(options){
         lastPreparedReasons,builder:p923Builder()?.p923Diagnostics?.()||options.localWorldP923Diagnostics?.()||null,
         p924PreparedStartQuietMs:PREPARED_START_QUIET_MS,
         p925SceneryBypass:true
+      },
+      p939HitchAttribution:{
+        enabled:true,
+        windowMs:HITCH_ATTRIBUTION_WINDOW_MS,
+        historyLimit:HITCH_ATTRIBUTION_HISTORY,
+        counts:attributionCounts,
+        last:hitchAttributionHistory.length?hitchAttributionHistory[hitchAttributionHistory.length-1]:null,
+        recent:hitchAttributionHistory.map(event=>({...event}))
       }
     };
   }
