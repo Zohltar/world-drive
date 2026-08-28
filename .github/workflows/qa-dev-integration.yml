@@ -5,6 +5,7 @@ on:
     branches:
       - dev
       - road/v21.31
+      - traffic/v21.31
   workflow_dispatch:
 
 permissions:
@@ -32,6 +33,8 @@ jobs:
         run: node qa/DEV_DRIVING_SIM_QA.mjs
       - name: Road banking limits QA
         run: node qa-road-banking-r1.mjs
+      - name: Sparse civil traffic QA
+        run: node qa-traffic-r1.mjs
       - name: Crest launch regression
         run: node qa/V21_27_CREST_LAUNCH_QA.mjs
       - name: Oblique landing regression
