@@ -1,11 +1,18 @@
 import * as THREE from 'three';
+import {
+  CIVIL_TRAFFIC_VEHICLE_POOL,
+  GENERIC_PASSENGER_PACK_URL,
+  GENERIC_PASSENGER_PACK_FALLBACK_URL,
+  buildGenericPassengerTemplates,
+  civilTrafficChooseVehicleId,
+  civilTrafficPoolEntry
+} from './civil-traffic-pool.js';
 
-// World Drive Traffic R5 — deliberately sparse, presentation-only civil traffic.
+// World Drive Traffic R7 — sparse civil traffic with a reusable vehicle pool.
 //
-// The player physics remain authoritative and untouched. At most two lightweight
-// traffic agents follow the engineered active road profile. R5 keeps the corrected
-// right-hand lane convention and authored textured Sonata lamp glows, restores the
-// pilotable Sonata's exact forward headlight beams, and keeps all rear/point spill off.
+// Traffic density, road following and player physics remain unchanged. R7 keeps the
+// validated Sonata behavior, then adds the supplied generic passenger-car pack as
+// ten additional visual templates selected from a weighted civilian vehicle pool.
 
 export const CIVIL_TRAFFIC_MAX_ACTIVE=2;
 export const CIVIL_TRAFFIC_LANE_OFFSET_M=1.72;
@@ -27,8 +34,6 @@ const clamp=(value,min,max)=>Math.max(min,Math.min(max,value));
 const lerp=(a,b,t)=>a+(b-a)*t;
 const angleDelta=(a,b)=>Math.atan2(Math.sin(b-a),Math.cos(b-a));
 
-// R2+: verified against the rendered road in-game. Positive lateral offset is
-// the player's right-hand lane; negative is the player's left-hand/oncoming lane.
 export function civilTrafficLaneOffset(direction=1){
   return direction>=0?CIVIL_TRAFFIC_LANE_OFFSET_M:-CIVIL_TRAFFIC_LANE_OFFSET_M;
 }
@@ -127,9 +132,6 @@ function makeContactShadow(){
   return mesh;
 }
 
-// Same texture-driven idea as the authored Sonata lighting system. The traffic
-// version only needs white headlamps and red running lamps for now. The overlay
-// reuses the exact authored lens geometry/UVs; no generic visible lamp primitives.
 function makeTrafficLensGlowMaterial({sourceMaterial,filter='white',tint=0xffffff,tintMix=.8,uvRegion=null}){
   if(!sourceMaterial?.map)return null;
   const uvMin=uvRegion?.min||[0,0];
@@ -181,7 +183,6 @@ function makeTrafficLensGlowMaterial({sourceMaterial,filter='white',tint=0xfffff
         float maxc=max(rawTex.r,max(rawTex.g,rawTex.b));
         float minc=min(rawTex.r,min(rawTex.g,rawTex.b));
         float spread=maxc-minc;
-
         float redRatioG=rawTex.g/max(rawTex.r,0.001);
         float redRatioB=rawTex.b/max(rawTex.r,0.001);
         float redDominance=rawTex.r-max(rawTex.g,rawTex.b);
@@ -189,11 +190,9 @@ function makeTrafficLensGlowMaterial({sourceMaterial,filter='white',tint=0xfffff
           *(1.0-smoothstep(0.24,0.32,redRatioG))
           *(1.0-smoothstep(0.27,0.36,redRatioB))
           *smoothstep(0.14,0.24,redDominance);
-
         float whiteMask=smoothstep(0.12,0.32,lum)
           *(1.0-smoothstep(0.38,0.70,spread));
         float filterMask=mix(whiteMask,redMask,uFilterRed);
-
         float uvMask=1.0;
         if(uUseUvRegion>0.5){
           float uEnter=smoothstep(uUvMin.x-uUvFeather.x,uUvMin.x+uUvFeather.x,vUv.x);
@@ -202,7 +201,6 @@ function makeTrafficLensGlowMaterial({sourceMaterial,filter='white',tint=0xfffff
           float vExit=1.0-smoothstep(uUvMax.y-uUvFeather.y,uUvMax.y+uUvFeather.y,vUv.y);
           uvMask=uEnter*uExit*vEnter*vExit;
         }
-
         float alpha=uOpacity*filterMask*uvMask;
         if(alpha<0.01)discard;
         vec3 litColor=mix(rawTex,uTint,clamp(uTintMix,0.0,1.0));
@@ -236,31 +234,28 @@ function buildAuthoredTrafficLensGlows(model){
   const frontLens=model.getObjectByName('Object_7');
   const rearInner=model.getObjectByName('Object_46');
   const rearOuter=model.getObjectByName('Object_33');
-
-  const frontWhite=registerTrafficLensGlow({
-    sourceMesh:frontLens,
-    filter:'white',
-    tint:0xf8fbff,
-    tintMix:.82
-  });
+  const frontWhite=registerTrafficLensGlow({sourceMesh:frontLens,filter:'white',tint:0xf8fbff,tintMix:.82});
   if(frontWhite)front.push(frontWhite);
-
-  const rearInnerRed=registerTrafficLensGlow({
-    sourceMesh:rearInner,
-    filter:'red',
-    tint:0xff2a2e,
-    tintMix:.42
-  });
+  const rearInnerRed=registerTrafficLensGlow({sourceMesh:rearInner,filter:'red',tint:0xff2a2e,tintMix:.42});
   if(rearInnerRed)rear.push(rearInnerRed);
-
-  const rearOuterRed=registerTrafficLensGlow({
-    sourceMesh:rearOuter,
-    filter:'red',
-    tint:0xff2a2e,
-    tintMix:.42
-  });
+  const rearOuterRed=registerTrafficLensGlow({sourceMesh:rearOuter,filter:'red',tint:0xff2a2e,tintMix:.42});
   if(rearOuterRed)rear.push(rearOuterRed);
+  return {front,rear};
+}
 
+function buildGenericTrafficLensGlows(model){
+  const front=[];
+  const rear=[];
+  const optics=[];
+  model.traverse(obj=>{
+    if(obj?.isMesh&&/optics/i.test(obj.name||'')&&!/^traffic-authored-/.test(obj.name||''))optics.push(obj);
+  });
+  for(const obj of optics){
+    const frontWhite=registerTrafficLensGlow({sourceMesh:obj,filter:'white',tint:0xf8fbff,tintMix:.82});
+    const rearRed=registerTrafficLensGlow({sourceMesh:obj,filter:'red',tint:0xff2a2e,tintMix:.42});
+    if(frontWhite)front.push(frontWhite);
+    if(rearRed)rear.push(rearRed);
+  }
   return {front,rear};
 }
 
@@ -278,10 +273,32 @@ function buildPlayerStyleTrafficHeadlights(root){
     const target=new THREE.Object3D();
     target.position.set(side*.45,.15,30);
     root.add(target);
-
-    // Exact forward-beam contract used by the pilotable Sonata.
     const beam=new THREE.SpotLight(0xf8fbff,0,72,.36,.68,1.0);
     beam.position.set(side*.68,.66,2.25);
+    beam.target=target;
+    beam.castShadow=false;
+    beam.visible=false;
+    root.add(beam);
+    headlightBeams.push({light:beam,target});
+  }
+  return headlightBeams;
+}
+
+function buildGenericTrafficHeadlights(root,model){
+  model.updateMatrixWorld(true);
+  const box=new THREE.Box3().setFromObject(model);
+  const size=new THREE.Vector3();
+  box.getSize(size);
+  const frontZ=box.max.z-.08;
+  const lampY=box.min.y+size.y*.38;
+  const lampX=Math.min(.78,Math.max(.48,size.x*.30));
+  const headlightBeams=[];
+  for(const side of [-1,1]){
+    const target=new THREE.Object3D();
+    target.position.set(side*lampX*.66,Math.max(.12,lampY-.50),frontZ+30);
+    root.add(target);
+    const beam=new THREE.SpotLight(0xf8fbff,0,72,.36,.68,1.0);
+    beam.position.set(side*lampX,lampY,frontZ);
     beam.target=target;
     beam.castShadow=false;
     beam.visible=false;
@@ -294,15 +311,10 @@ function buildPlayerStyleTrafficHeadlights(root){
 function updateTrafficLights(agent){
   const night=clamp(Number(agent.getHeadlightLevel?.())||0,0,1);
   const nightOn=night>.06;
-
-  // Visible lamp surfaces use the same authored-lens levels as the pilotable Sonata.
   const runningRed=nightOn?(.16+night*.18):0;
   const headlightWhite=nightOn?(.45+night*.28):0;
   setTexturedGlow(agent.lensGlows.front,headlightWhite);
   setTexturedGlow(agent.lensGlows.rear,runningRed);
-
-  // R5 restores only the pilotable Sonata's normal forward beams. No PointLight
-  // fill and no rear light source are created, so there is no red pool behind cars.
   for(const beam of agent.headlightBeams){
     beam.light.visible=nightOn;
     beam.light.intensity=nightOn?night*95:0;
@@ -342,6 +354,15 @@ function bindWheelSpin(root){
   return controllers;
 }
 
+function bindGenericPackWheelSpin(root){
+  const controllers=[];
+  root.traverse(node=>{
+    if(!/^traffic-pack-wheel-/.test(node?.name||''))return;
+    controllers.push({pivot:node,bind:node.quaternion.clone(),sign:1});
+  });
+  return controllers;
+}
+
 function applyWheelSpin(agent,dt){
   if(!agent.wheels.length)return;
   agent.wheelSpin+=Math.abs(agent.speed)*Math.max(.001,Math.min(.05,dt))/.35;
@@ -358,25 +379,21 @@ function setAgentPose(agent,frame,worldOffset){
   const x=frame.px+frame.nx*lateral;
   const z=frame.pz+frame.nz*lateral;
   const y=frame.y+Math.tan(Number(frame.roll)||0)*lateral+BODY_CLEARANCE_M;
-
   agent.root.position.set(
     x-(Number(worldOffset?.x)||0),
     y,
     z-(Number(worldOffset?.z)||0)
   );
-
   agent.forward.set(
     Math.sin(frame.angle),
     Math.tan(Number(frame.pitch)||0),
     Math.cos(frame.angle)
   ).multiplyScalar(agent.direction).normalize();
-
   agent.left.set(
     Number(frame.nx)||0,
     Math.tan(Number(frame.roll)||0),
     Number(frame.nz)||0
   ).normalize();
-
   agent.right.copy(agent.left).multiplyScalar(-agent.direction).normalize();
   agent.up.crossVectors(agent.forward,agent.right).normalize();
   agent.right.crossVectors(agent.up,agent.forward).normalize();
@@ -402,39 +419,69 @@ export function createCivilTrafficSystem({
 
   let elapsed=0;
   let nextSpawnAt=civilTrafficFirstSpawnSec(random());
-  let template=null;
-  let loadPromise=null;
-  let loadError=null;
+  const templates=new Map();
+  let poolLoadPromise=null;
+  let sonataLoadError=null;
+  let packLoadError=null;
+  let packReady=false;
+  let lastSpawnVehicleId=null;
   let lastPlayerCum=null;
   let lastRouteLength=0;
   let spawnedTotal=0;
   let spawnedOncoming=0;
   let spawnedAhead=0;
+  const spawnedByVehicle={};
   const agents=[];
 
+  async function loadSonataTemplate(loader){
+    try{
+      const url=new URL('./assets/2006_hyundai_sonata.glb',import.meta.url).href;
+      const gltf=await loader.loadAsync(url);
+      const root=gltf.scene||gltf.scenes?.[0];
+      if(!root)throw new Error('Traffic Sonata GLB sans scène');
+      root.name='civil-traffic-sonata-template';
+      normalizeModel(root);
+      tuneTrafficMaterials(root);
+      root.userData.trafficVehicleId='sonata';
+      templates.set('sonata',root);
+    }catch(error){
+      sonataLoadError=error;
+      console.warn('Civil traffic Sonata unavailable',error);
+    }
+  }
+
+  async function loadGenericPassengerPack(loader){
+    let gltf=null,lastError=null;
+    for(const url of [GENERIC_PASSENGER_PACK_URL,GENERIC_PASSENGER_PACK_FALLBACK_URL]){
+      try{gltf=await loader.loadAsync(url);break;}catch(error){lastError=error;}
+    }
+    if(!gltf){
+      packLoadError=lastError||new Error('Generic passenger-car pack unavailable');
+      console.warn('Civil traffic variety pack unavailable; Sonata fallback kept.',packLoadError);
+      return;
+    }
+    const scene=gltf.scene||gltf.scenes?.[0];
+    const built=buildGenericPassengerTemplates(scene);
+    for(const [id,template] of built){
+      tuneTrafficMaterials(template);
+      templates.set(id,template);
+    }
+    packReady=built.size===CIVIL_TRAFFIC_VEHICLE_POOL.filter(entry=>entry.source==='generic-pack').length;
+    if(!packReady){
+      packLoadError=new Error(`Generic passenger pack incomplete: ${built.size} templates`);
+      console.warn(packLoadError);
+    }
+  }
+
   async function ensureTemplate(){
-    if(template||loadError)return template;
-    if(loadPromise)return loadPromise;
-    loadPromise=(async()=>{
-      try{
-        const {GLTFLoader}=await import('three/addons/loaders/GLTFLoader.js');
-        const loader=new GLTFLoader();
-        const url=new URL('./assets/2006_hyundai_sonata.glb',import.meta.url).href;
-        const gltf=await loader.loadAsync(url);
-        const root=gltf.scene||gltf.scenes?.[0];
-        if(!root)throw new Error('Traffic Sonata GLB sans scène');
-        root.name='civil-traffic-sonata-template';
-        normalizeModel(root);
-        tuneTrafficMaterials(root);
-        template=root;
-        return template;
-      }catch(error){
-        loadError=error;
-        console.warn('Civil traffic Sonata unavailable',error);
-        return null;
-      }
+    if(poolLoadPromise)return poolLoadPromise;
+    poolLoadPromise=(async()=>{
+      const {GLTFLoader}=await import('three/addons/loaders/GLTFLoader.js');
+      const loader=new GLTFLoader();
+      await Promise.allSettled([loadSonataTemplate(loader),loadGenericPassengerPack(loader)]);
+      return templates;
     })();
-    return loadPromise;
+    return poolLoadPromise;
   }
 
   function removeAgent(agent){
@@ -447,26 +494,28 @@ export function createCivilTrafficSystem({
     while(agents.length)removeAgent(agents[agents.length-1]);
   }
 
-  function makeAgent(plan){
-    if(!template||!plan)return null;
+  function makeAgent(plan,requestedVehicleId=null){
+    if(!templates.size||!plan)return null;
+    const availableIds=Array.from(templates.keys());
+    const vehicleId=requestedVehicleId&&templates.has(requestedVehicleId)
+      ?requestedVehicleId
+      :civilTrafficChooseVehicleId(availableIds,random(),lastSpawnVehicleId);
+    const template=templates.get(vehicleId);
+    if(!template)return null;
+    const entry=civilTrafficPoolEntry(vehicleId);
     const root=new THREE.Group();
-    root.name=`civil-traffic-${plan.kind}-${spawnedTotal+1}`;
+    root.name=`civil-traffic-${vehicleId}-${plan.kind}-${spawnedTotal+1}`;
     const model=template.clone(true);
-    model.name='civil-traffic-sonata';
+    model.name=`civil-traffic-${vehicleId}`;
     root.add(model);
     root.add(makeContactShadow());
-
-    const lensGlows=buildAuthoredTrafficLensGlows(model);
-    const headlightBeams=buildPlayerStyleTrafficHeadlights(root);
+    const generic=entry?.source==='generic-pack';
+    const lensGlows=generic?buildGenericTrafficLensGlows(model):buildAuthoredTrafficLensGlows(model);
+    const headlightBeams=generic?buildGenericTrafficHeadlights(root,model):buildPlayerStyleTrafficHeadlights(root);
+    const wheels=generic?bindGenericPackWheelSpin(model):bindWheelSpin(model);
     trafficGroup.add(root);
-
-    const wheels=bindWheelSpin(model);
     const agent={
-      root,
-      model,
-      lensGlows,
-      headlightBeams,
-      wheels,
+      root,model,lensGlows,headlightBeams,wheels,vehicleId,
       kind:plan.kind,
       direction:plan.direction,
       cum:plan.cum,
@@ -484,6 +533,8 @@ export function createCivilTrafficSystem({
       basis:new THREE.Matrix4()
     };
     agents.push(agent);
+    lastSpawnVehicleId=vehicleId;
+    spawnedByVehicle[vehicleId]=(spawnedByVehicle[vehicleId]||0)+1;
     spawnedTotal++;
     if(plan.kind==='oncoming')spawnedOncoming++;else spawnedAhead++;
     return agent;
@@ -499,19 +550,20 @@ export function createCivilTrafficSystem({
     });
   }
 
-  function forceSpawn(kind='oncoming'){
+  function forceSpawn(kind='oncoming',vehicleId=null){
     const state=getState?.()||{};
     const nr=nearestRouteForVehicle?.(Number(state.absX)||0,Number(state.absZ)||0);
-    if(!nr||!template)return false;
+    if(!nr||!templates.size)return false;
+    if(vehicleId&&!templates.has(vehicleId))return false;
     if(agents.length>=CIVIL_TRAFFIC_MAX_ACTIVE)return false;
     const plan=planSpawn(kind==='ahead'?'ahead':'oncoming',Number(nr.cum)||0);
     if(!plan)return false;
-    return !!makeAgent(plan);
+    return !!makeAgent(plan,vehicleId);
   }
 
   function maybeSpawn(playerCum){
     if(elapsed<nextSpawnAt||agents.length>=CIVIL_TRAFFIC_MAX_ACTIVE)return;
-    if(!template){
+    if(!templates.size){
       ensureTemplate();
       nextSpawnAt=elapsed+2.5;
       return;
@@ -534,7 +586,6 @@ export function createCivilTrafficSystem({
     const lookAngle=(Number(look.angle)||0)+(agent.direction<0?Math.PI:0);
     const currentAngle=(Number(frame.angle)||0)+(agent.direction<0?Math.PI:0);
     let targetSpeed=civilTrafficCurveSpeed(agent.cruiseSpeed,currentAngle,lookAngle);
-
     for(const other of agents){
       if(other===agent||other.direction!==agent.direction)continue;
       const gap=(other.cum-agent.cum)*agent.direction;
@@ -542,16 +593,13 @@ export function createCivilTrafficSystem({
         targetSpeed=Math.min(targetSpeed,Math.max(5,other.speed-(42-gap)*.18));
       }
     }
-
     const accel=targetSpeed>agent.speed?1.25:3.0;
     const maxDelta=accel*Math.max(.001,Math.min(.05,dt));
     agent.speed+=clamp(targetSpeed-agent.speed,-maxDelta,maxDelta);
     agent.cum+=agent.direction*agent.speed*dt;
-
     setAgentPose(agent,frame,worldOffset);
     applyWheelSpin(agent,dt);
     updateTrafficLights(agent);
-
     const relative=agent.cum-playerCum;
     const routeLength=Math.max(0,getRouteLength?.()||0);
     if(agent.cum<=ROUTE_END_MARGIN_M||agent.cum>=routeLength-ROUTE_END_MARGIN_M)return false;
@@ -569,7 +617,6 @@ export function createCivilTrafficSystem({
       const nr=nearestRouteForVehicle?.(Number(state.absX)||0,Number(state.absZ)||0);
       if(!nr||!Number.isFinite(Number(nr.cum)))return;
       const playerCum=Number(nr.cum)||0;
-
       if(lastRouteLength&&Math.abs(routeLength-lastRouteLength)>1){
         clear();
         nextSpawnAt=elapsed+civilTrafficFirstSpawnSec(random());
@@ -580,8 +627,7 @@ export function createCivilTrafficSystem({
       }
       lastRouteLength=routeLength;
       lastPlayerCum=playerCum;
-
-      if(elapsed>4&&!template&&!loadPromise&&!loadError)ensureTemplate();
+      if(elapsed>4&&!poolLoadPromise)ensureTemplate();
       maybeSpawn(playerCum);
       const offset=getWorldOffset?.()||{x:0,z:0};
       for(let i=agents.length-1;i>=0;i--){
@@ -595,22 +641,30 @@ export function createCivilTrafficSystem({
   function diagnostics(){
     return {
       enabled:true,
-      mode:'traffic-r5-player-sonata-headlights',
-      templateReady:!!template,
-      loadError:loadError?String(loadError?.message||loadError):null,
+      mode:'traffic-r7-variety-pool',
+      templateReady:templates.has('sonata'),
+      poolReady:templates.size>1,
+      packReady,
+      availableVehicles:Array.from(templates.keys()),
+      configuredPool:CIVIL_TRAFFIC_VEHICLE_POOL.map(entry=>entry.id),
+      sonataLoadError:sonataLoadError?String(sonataLoadError?.message||sonataLoadError):null,
+      packLoadError:packLoadError?String(packLoadError?.message||packLoadError):null,
       active:agents.length,
       maxActive:CIVIL_TRAFFIC_MAX_ACTIVE,
       spawnedTotal,
       spawnedOncoming,
       spawnedAhead,
+      spawnedByVehicle:{...spawnedByVehicle},
       nextSpawnInSec:Number(Math.max(0,nextSpawnAt-elapsed).toFixed(1)),
       rightHandTraffic:true,
       authoredTexturedLamps:true,
       playerStyleHeadlightBeams:true,
+      varietyPool:true,
       pointLights:false,
       rearRoadLightSpill:false,
       roadLightSpill:'player-style-headlights-only',
       agents:agents.map(agent=>({
+        vehicleId:agent.vehicleId,
         kind:agent.kind,
         direction:agent.direction,
         cum:Number(agent.cum.toFixed(1)),
@@ -625,7 +679,12 @@ export function createCivilTrafficSystem({
 
   if(typeof globalThis!=='undefined'){
     globalThis.WorldDriveTraffic=diagnostics;
-    globalThis.WorldDriveTrafficSpawn=kind=>forceSpawn(kind);
+    globalThis.WorldDriveTrafficPool=()=>({
+      configured:CIVIL_TRAFFIC_VEHICLE_POOL.map(entry=>entry.id),
+      available:Array.from(templates.keys()),
+      packReady
+    });
+    globalThis.WorldDriveTrafficSpawn=(kind,vehicleId)=>forceSpawn(kind,vehicleId);
   }
 
   return Object.freeze({
