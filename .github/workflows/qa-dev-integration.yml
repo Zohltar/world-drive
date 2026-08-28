@@ -1,0 +1,83 @@
+name: Dev Integration QA
+
+on:
+  push:
+    branches:
+      - dev
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  qa:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install
+        run: npm ci
+      - name: Runtime import and debt audit
+        run: node qa/DEV_INTEGRATION_AUDIT.mjs
+      - name: Full V21.31 regression stress
+        run: npm run qa:stress
+      - name: Driving dynamics simulation matrix
+        run: node qa/DEV_DRIVING_SIM_QA.mjs
+      - name: Forest startup/front-load QA
+        run: node qa-forest-p935-front-startup.mjs
+      - name: Forest rolling prefetch QA
+        run: node qa-forest-p936-rolling-prefetch.mjs
+      - name: Combined frame-pacing QA
+        run: node qa-p937-combined-frame-pacing.mjs
+      - name: Road-sign runtime QA
+        run: node qa-road-signs-p930-runtime.mjs
+      - name: M4.14 authored reverse WebGL pixel QA
+        shell: bash
+        run: |
+          npx vite --host 127.0.0.1 --port 5187 --strictPort >/tmp/dev-m414-vite.log 2>&1 &
+          VITE_PID=$!
+          cleanup(){ kill "$VITE_PID" >/dev/null 2>&1 || true; cat /tmp/dev-m414-vite.log || true; }
+          trap cleanup EXIT
+          READY=0
+          for i in {1..80}; do
+            if curl -fsS http://127.0.0.1:5187/qa/m414-render.html >/dev/null 2>&1; then READY=1; break; fi
+            sleep 0.1
+          done
+          test "$READY" = "1"
+          xvfb-run -a ./node_modules/.bin/electron --no-sandbox qa/m414-electron-main.cjs
+      - name: M4.15 network to WebGL reverse QA
+        shell: bash
+        run: |
+          npx vite --host 127.0.0.1 --port 5188 --strictPort >/tmp/dev-m415-vite.log 2>&1 &
+          VITE_PID=$!
+          WORLD_DRIVE_MP_PORT=8081 node server/multiplayer-server.mjs >/tmp/dev-m415-relay.log 2>&1 &
+          RELAY_PID=$!
+          cleanup(){
+            kill "$VITE_PID" "$RELAY_PID" >/dev/null 2>&1 || true
+            echo "--- Vite ---"; cat /tmp/dev-m415-vite.log || true
+            echo "--- Relay ---"; cat /tmp/dev-m415-relay.log || true
+          }
+          trap cleanup EXIT
+          READY=0
+          for i in {1..100}; do
+            if curl -fsS http://127.0.0.1:5188/qa/m415-render.html >/dev/null 2>&1 && curl -fsS http://127.0.0.1:8081/ >/dev/null 2>&1; then READY=1; break; fi
+            sleep 0.1
+          done
+          test "$READY" = "1"
+          M415_URL=http://127.0.0.1:5188/qa/m415-render.html xvfb-run -a ./node_modules/.bin/electron --no-sandbox qa/m415-electron-main.cjs
+      - name: Live route preset smoke
+        continue-on-error: true
+        run: node qa/STRESS_ROUTE_PRESETS_LIVE.mjs
+      - name: Runtime dependency audit
+        continue-on-error: true
+        run: npm audit --omit=dev --audit-level=high
+      - name: Production build
+        run: npm run build
+      - name: Production code split QA
+        run: node qa/BUILD_V21_31_CODE_SPLIT_QA.mjs
