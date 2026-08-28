@@ -1,11 +1,11 @@
 import * as THREE from 'three';
 
-// World Drive Traffic R1 — deliberately sparse, presentation-only civil traffic.
+// World Drive Traffic R2 — deliberately sparse, presentation-only civil traffic.
 //
 // The player physics remain authoritative and untouched. At most two lightweight
-// traffic agents follow the engineered active road profile. Right-hand traffic is
-// assumed for R1: same-direction vehicles use the player's right lane, while
-// oncoming traffic uses its own right lane (the player's left lane).
+// traffic agents follow the engineered active road profile. Runtime testing of R1
+// showed that its assumed lateral lane sign was reversed relative to the rendered
+// road convention, so R2 flips lane ownership while preserving right-hand traffic.
 
 export const CIVIL_TRAFFIC_MAX_ACTIVE=2;
 export const CIVIL_TRAFFIC_LANE_OFFSET_M=1.72;
@@ -27,8 +27,10 @@ const clamp=(value,min,max)=>Math.max(min,Math.min(max,value));
 const lerp=(a,b,t)=>a+(b-a)*t;
 const angleDelta=(a,b)=>Math.atan2(Math.sin(b-a),Math.cos(b-a));
 
+// R2: verified against the rendered road in-game. Positive lateral offset is the
+// player's right-hand lane; negative is the player's left-hand/oncoming lane.
 export function civilTrafficLaneOffset(direction=1){
-  return direction>=0?-CIVIL_TRAFFIC_LANE_OFFSET_M:CIVIL_TRAFFIC_LANE_OFFSET_M;
+  return direction>=0?CIVIL_TRAFFIC_LANE_OFFSET_M:-CIVIL_TRAFFIC_LANE_OFFSET_M;
 }
 
 export function civilTrafficCooldownSec(randomValue=Math.random()){
@@ -104,6 +106,7 @@ function tuneTrafficMaterials(root){
       if('envMapIntensity' in material){
         material.envMapIntensity=Math.max(1.25,Number(material.envMapIntensity)||1.25);
       }
+      material.needsUpdate=true;
     }
   });
 }
@@ -126,24 +129,76 @@ function makeContactShadow(){
   return mesh;
 }
 
-function makeSimpleTrafficLights(){
+function makeTrafficLights(){
   const group=new THREE.Group();
-  group.name='civil-traffic-simple-lights';
+  group.name='civil-traffic-lights';
+
+  // Visible lamp surfaces remain cheap emissive-looking meshes.
   const frontMat=new THREE.MeshBasicMaterial({color:0xf7fbff,toneMapped:false});
   const rearMat=new THREE.MeshBasicMaterial({color:0xff2028,toneMapped:false});
   const bulbGeometry=new THREE.SphereGeometry(.085,8,6);
-  const fronts=[],rears=[];
+  const fronts=[],rears=[],beams=[];
+
+  // R2 adds real scene lights. They cast no shadows, so at the hard two-car cap
+  // they remain cheap while finally illuminating body panels and nearby asphalt.
+  const frontFill=new THREE.PointLight(0xf7fbff,0,3.4,2);
+  frontFill.name='civil-traffic-front-body-fill';
+  frontFill.position.set(0,.78,1.95);
+  frontFill.castShadow=false;
+  frontFill.visible=false;
+  group.add(frontFill);
+
+  const rearFill=new THREE.PointLight(0xff1824,0,2.8,2);
+  rearFill.name='civil-traffic-rear-body-fill';
+  rearFill.position.set(0,.72,-2.05);
+  rearFill.castShadow=false;
+  rearFill.visible=false;
+  group.add(rearFill);
+
   for(const side of [-1,1]){
     const front=new THREE.Mesh(bulbGeometry,frontMat);
     front.position.set(side*.62,.68,2.35);
     front.visible=false;
     group.add(front);fronts.push(front);
+
     const rear=new THREE.Mesh(bulbGeometry,rearMat);
     rear.position.set(side*.64,.68,-2.34);
     rear.visible=false;
     group.add(rear);rears.push(rear);
+
+    const target=new THREE.Object3D();
+    target.name=`civil-traffic-headlight-target-${side}`;
+    target.position.set(side*.35,.12,25);
+    group.add(target);
+
+    const beam=new THREE.SpotLight(0xf8fbff,0,58,.34,.72,1.3);
+    beam.name=`civil-traffic-headlight-beam-${side}`;
+    beam.position.set(side*.58,.70,2.24);
+    beam.target=target;
+    beam.castShadow=false;
+    beam.visible=false;
+    group.add(beam);
+    beams.push(beam);
   }
-  return {group,fronts,rears};
+
+  return {group,fronts,rears,frontFill,rearFill,beams};
+}
+
+function updateTrafficLights(agent){
+  const level=clamp(Number(agent.getHeadlightLevel?.())||0,0,1);
+  const night=level>.08;
+  for(const lamp of agent.lights.fronts)lamp.visible=night;
+  for(const lamp of agent.lights.rears)lamp.visible=night;
+
+  agent.lights.frontFill.visible=night;
+  agent.lights.frontFill.intensity=night?8+level*12:0;
+  agent.lights.rearFill.visible=night;
+  agent.lights.rearFill.intensity=night?3+level*5:0;
+
+  for(const beam of agent.lights.beams){
+    beam.visible=night;
+    beam.intensity=night?level*85:0;
+  }
 }
 
 function bindWheelSpin(root){
@@ -291,7 +346,7 @@ export function createCivilTrafficSystem({
     model.name='civil-traffic-sonata';
     root.add(model);
     root.add(makeContactShadow());
-    const lights=makeSimpleTrafficLights();
+    const lights=makeTrafficLights();
     root.add(lights.group);
     trafficGroup.add(root);
     const wheels=bindWheelSpin(model);
@@ -307,6 +362,7 @@ export function createCivilTrafficSystem({
       cruiseSpeed:plan.cruiseSpeed,
       speed:plan.cruiseSpeed*.82,
       wheelSpin:0,
+      getHeadlightLevel,
       spinAxis:new THREE.Vector3(1,0,0),
       spinQuat:new THREE.Quaternion(),
       forward:new THREE.Vector3(),
@@ -384,9 +440,7 @@ export function createCivilTrafficSystem({
 
     setAgentPose(agent,frame,worldOffset);
     applyWheelSpin(agent,dt);
-    const night=(Number(getHeadlightLevel?.())||0)>.08;
-    for(const lamp of agent.lights.fronts)lamp.visible=night;
-    for(const lamp of agent.lights.rears)lamp.visible=night;
+    updateTrafficLights(agent);
 
     const relative=agent.cum-playerCum;
     const routeLength=Math.max(0,getRouteLength?.()||0);
@@ -431,7 +485,7 @@ export function createCivilTrafficSystem({
   function diagnostics(){
     return {
       enabled:true,
-      mode:'traffic-r1-sparse-sonata',
+      mode:'traffic-r2-lanes-real-lights',
       templateReady:!!template,
       loadError:loadError?String(loadError?.message||loadError):null,
       active:agents.length,
@@ -441,6 +495,7 @@ export function createCivilTrafficSystem({
       spawnedAhead,
       nextSpawnInSec:Number(Math.max(0,nextSpawnAt-elapsed).toFixed(1)),
       rightHandTraffic:true,
+      realSceneLights:true,
       agents:agents.map(agent=>({
         kind:agent.kind,
         direction:agent.direction,
