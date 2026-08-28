@@ -48,7 +48,9 @@ assert.equal(civilTrafficCooldownSec(0),CIVIL_TRAFFIC_COOLDOWN_MIN_SEC);
 assert.equal(civilTrafficCooldownSec(1),CIVIL_TRAFFIC_COOLDOWN_MAX_SEC);
 assert.ok(CIVIL_TRAFFIC_COOLDOWN_MIN_SEC>=30,'normal traffic cadence must stay deliberately sparse');
 
-const source=fs.readFileSync(new URL('./src/civil-traffic.js',import.meta.url),'utf8');
+const facadeSource=fs.readFileSync(new URL('./src/civil-traffic.js',import.meta.url),'utf8');
+const localSource=fs.readFileSync(new URL('./src/civil-traffic-local.js',import.meta.url),'utf8');
+const source=`${facadeSource}\n${localSource}`;
 assert.ok(source.includes("getObjectByName('Object_7')"),'traffic must reuse the authored front Sonata lens mesh');
 assert.ok(source.includes("getObjectByName('Object_46')"),'traffic must reuse the authored inner rear Sonata lens mesh');
 assert.ok(source.includes("getObjectByName('Object_33')"),'traffic must reuse the authored outer rear Sonata lens mesh');
@@ -61,13 +63,13 @@ assert.ok(source.includes('beam.position.set(side*.68,.66,2.25);'),'Sonata traff
 assert.ok(source.includes('beam.light.intensity=nightOn?night*95:0;'),'traffic beam intensity must match the pilotable Sonata');
 assert.ok(source.includes('beam.light.distance=65+night*15;'),'traffic beam distance must match the pilotable Sonata');
 assert.ok(!source.includes('new THREE.PointLight('),'traffic must not reintroduce point-light pools');
-assert.ok(source.includes("mode:'traffic-r7-variety-pool'"),'traffic diagnostics mode must identify R7 variety pool');
+assert.ok(source.includes("mode:'traffic-r7-variety-pool'"),'local traffic diagnostics mode must retain R7 variety pool');
+assert.ok(facadeSource.includes("mode:'traffic-mp1-shared-variety'"),'traffic facade must identify shared multiplayer mode');
 assert.ok(source.includes('rearRoadLightSpill:false'),'traffic diagnostics must report rear road spill disabled');
 
-console.log('PASS Traffic R7 sparse civil traffic policy');
+console.log('PASS Traffic MP1 sparse civil traffic policy');
 console.log('  - max two active civilian traffic cars');
-console.log('  - corrected rendered lane ownership is deterministic');
-console.log('  - traffic appears 360-690 m ahead, not beside the player');
+console.log('  - validated R7 local engine remains intact behind the MP facade');
 console.log('  - authored Sonata lighting contract remains intact inside the variety pool');
 console.log('  - forward headlight beams retain the pilotable Sonata contract');
 console.log('  - no PointLight or rear red road spill remains');
