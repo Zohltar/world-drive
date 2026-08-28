@@ -44,6 +44,18 @@ export function civilTrafficChooseVehicleId(availableIds=[],randomValue=Math.ran
   return candidates[candidates.length-1].id;
 }
 
+// GLTFLoader sanitizes authored node names for animation bindings (spaces and
+// punctuation can become underscores). Compare semantic names canonically so the
+// runtime accepts both the raw Sketchfab/Blender names and Three.js sanitized names.
+export function civilTrafficCanonicalNodeName(name){
+  return String(name||'').toLowerCase().replace(/[^a-z0-9]/g,'');
+}
+
+function findDirectAuthoredChild(rootNode,authoredName){
+  const wanted=civilTrafficCanonicalNodeName(authoredName);
+  return Array.from(rootNode?.children||[]).find(node=>civilTrafficCanonicalNodeName(node?.name)===wanted)||null;
+}
+
 function matrixPosition(node){
   const e=node?.matrix?.elements;
   return e?new THREE.Vector3(e[12],e[13],e[14]):new THREE.Vector3();
@@ -68,9 +80,9 @@ function normalizeGenericTemplate(root,targetLength){
 
 function extractGenericVehicle(rootNode,entry){
   const direct=Array.from(rootNode?.children||[]);
-  const body=direct.find(node=>node.name===entry.bodyName);
+  const body=findDirectAuthoredChild(rootNode,entry.bodyName);
   if(!body)return null;
-  const wheels=direct.filter(node=>/^Wheel_/i.test(node.name));
+  const wheels=direct.filter(node=>civilTrafficCanonicalNodeName(node?.name).startsWith('wheel'));
   const bodyPos=matrixPosition(body);
   const nearest=wheels
     .map(node=>{
@@ -109,7 +121,13 @@ function extractGenericVehicle(rootNode,entry){
 
 export function buildGenericPassengerTemplates(packScene){
   const result=new Map();
-  const rootNode=packScene?.getObjectByName?.('RootNode');
+  let rootNode=packScene?.getObjectByName?.('RootNode')||null;
+  if(!rootNode&&packScene?.traverse){
+    const wanted=civilTrafficCanonicalNodeName('RootNode');
+    packScene.traverse(node=>{
+      if(!rootNode&&civilTrafficCanonicalNodeName(node?.name)===wanted)rootNode=node;
+    });
+  }
   if(!rootNode)return result;
   rootNode.updateMatrixWorld(true);
   for(const entry of CIVIL_TRAFFIC_VEHICLE_POOL){
