@@ -94,7 +94,7 @@ function interpolateSnapshot(a,b,t,spanMs){
     steer:lerp(a.steer,b.steer,poseT),speed:lerp(a.speed,b.speed,t),longitudinalAccel:lerp(finite(a.longitudinalAccel,0),finite(b.longitudinalAccel,0),poseT),
     vehicleId:b.vehicleId||a.vehicleId,nightLevel:lerp(finite(a.nightLevel,0),finite(b.nightLevel,0),poseT),
     skidFront:lerp(a.skidFront,b.skidFront,poseT),skidRear:lerp(a.skidRear,b.skidRear,poseT),
-    bodyPitch:lerp(a.bodyPitch,b.bodyPitch,poseT),bodyYaw:angleLerp(a.bodyYaw,b.bodyYaw,poseT),bodyRoll:lerp(a.bodyRoll,b.bodyRoll,poseT),bodyY:lerp(a.bodyY,b.bodyY,poseT),
+    bodyPitch:lerp(a.bodyPitch,b.bodyPitch,poseT),bodyYaw:angleLerp(a.bodyYaw,b.bodyYaw,t),bodyRoll:lerp(a.bodyRoll,b.bodyRoll,poseT),bodyY:lerp(a.bodyY,b.bodyY,poseT),
     wheelPitch:lerp(a.wheelPitch,b.wheelPitch,poseT),wheelRoll:lerp(a.wheelRoll,b.wheelRoll,poseT)
   };
 }
@@ -117,7 +117,8 @@ function samplePeer(peer,renderAt){
 
 export function createMultiplayerClient({
   scene,latLonToWorld,getWorldOffset,getLocalState,createRemoteVisual,getLocalRenderPosition,solveRemoteSupport,getHeadlightLevel=()=>0,
-  onRemoteSkidFrame=null,onRemotePeerRemoved=null,statusEl=null,countEl=null,serverEl=null,nameInput=null,toggleButton=null,toast=()=>{}
+  onRemoteSkidFrame=null,onRemotePeerRemoved=null,statusEl=null,countEl=null,serverEl=null,nameInput=null,toggleButton=null,toast=()=>{},
+  transformOutgoingState=null,transformIncomingPayload=null
 }={}){
   let socket=null,ownId=null,nextSendAt=0,manuallyClosed=false,cachedName='Conducteur',localSequence=0,lastLocalMotion=null;
   let localSignalLeft=false,localSignalRight=false,localSignalTimer=0,localSignalLastAt=performance.now();
@@ -192,7 +193,13 @@ export function createMultiplayerClient({
   }
   function removePeer(id){const peer=peers.get(id);if(!peer)return;if(peer.visual){scene.remove(peer.visual.root);peer.visual.dispose?.();}onRemotePeerRemoved?.(id);peers.delete(id);updateCount();}
   function clearPeers(){for(const id of [...peers.keys()])removePeer(id);}
-  function send(payload){if(socket?.readyState!==WebSocket.OPEN)return;try{socket.send(JSON.stringify(payload));}catch(error){console.warn('Multiplayer send failed',error);}}
+  function send(payload){
+    if(socket?.readyState!==WebSocket.OPEN)return;
+    try{
+      const prepared=typeof transformOutgoingState==='function'?transformOutgoingState(payload):payload;
+      socket.send(JSON.stringify(prepared||payload));
+    }catch(error){console.warn('Multiplayer send failed',error);}
+  }
 
   function estimateLocalMotion(state,now){
     const fallback=finite(state.speed,0)<0?finite(state.heading,0)+Math.PI:finite(state.heading,0);let velocityHeading=fallback,longitudinalAccel=0;
@@ -217,7 +224,11 @@ export function createMultiplayerClient({
     try{socket=new WebSocket(defaultUrl());}catch(error){console.warn('Multiplayer WebSocket failed',error);setStatus('Indisponible','error');return;}
     socket.addEventListener('open',()=>{send({type:'hello',name:refreshName(),vehicleId:getLocalState?.()?.vehicleId||'wrx'});setStatus('Connecté','on');toast('Multijoueur LAN connecté');});
     socket.addEventListener('message',event=>{
-      let message;try{message=JSON.parse(event.data);}catch{return;}
+      let raw=event.data;
+      if(typeof transformIncomingPayload==='function'){
+        try{raw=transformIncomingPayload(raw);}catch(error){console.warn('Multiplayer incoming transform failed',error);return;}
+      }
+      let message;try{message=JSON.parse(raw);}catch{return;}
       if(message.type==='welcome'){ownId=message.id;updateCount(message.count);}
       else if(message.type==='snapshot'){for(const state of message.states||[])applyState(state);}
       else if(message.type==='refresh-state')sendLocalState();
