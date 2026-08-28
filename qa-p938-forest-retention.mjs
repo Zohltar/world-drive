@@ -25,6 +25,9 @@ for(const marker of [
   'preserveForestDuringPreparedCommit=false',
   'group===forestGroup',
   'clearGroup:clearGroupForBuilder',
+  'freezeStaticMatricesForBuilder',
+  'freezeStaticMatrices:freezeStaticMatricesForBuilder',
+  'forestRetentionPerf.freezeSkips++',
   'p938ForestRetention'
 ])expect(local.includes(marker),`P9.38 prepared-forest marker missing: ${marker}`);
 
