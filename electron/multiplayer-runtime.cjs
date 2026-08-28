@@ -23,6 +23,33 @@ function normalizeGear(value){
   return n<0?-1:n===0?0:Math.max(1,Math.floor(n));
 }
 
+function safeTrafficState(value){
+  if(!value||typeof value!=='object'||value.protocol!=='traffic-mp1')return null;
+  const agents=Array.isArray(value.agents)?value.agents.slice(0,2):[];
+  return {
+    protocol:'traffic-mp1',
+    sequence:Math.max(0,Math.floor(finite(value.sequence))),
+    routeLength:clamp(finite(value.routeLength),0,10000000),
+    agents:agents.map(agent=>{
+      if(!agent||typeof agent!=='object')return null;
+      const direction=finite(agent.direction,1)<0?-1:1;
+      const id=String(agent.id||agent.networkId||'').slice(0,48);
+      const vehicleId=String(agent.vehicleId||'sonata').slice(0,32);
+      if(!id||!vehicleId)return null;
+      return {
+        id,
+        vehicleId,
+        kind:direction>0?'ahead':'oncoming',
+        direction,
+        cum:clamp(finite(agent.cum),0,10000000),
+        speed:clamp(finite(agent.speed),0,60),
+        cruiseSpeed:clamp(finite(agent.cruiseSpeed,agent.speed),0,60),
+        laneOffset:clamp(finite(agent.laneOffset),-4,4)
+      };
+    }).filter(Boolean)
+  };
+}
+
 function cleanName(value){
   return String(value||'Conducteur')
     .replace(/[\u0000-\u001f\u007f]/g,'')
@@ -152,8 +179,8 @@ function createRelayService({port=8081,host='0.0.0.0'}={}){
       y:clamp(finite(message.y),-500,10000),
       heading:finite(message.heading),
 
-      // Keep the packaged Electron relay on the exact same M4.11 state
-      // contract as server/multiplayer-server.mjs.
+      // Keep the packaged Electron relay on the exact same state contract as
+      // server/multiplayer-server.mjs.
       velocityHeading:finite(message.velocityHeading,message.heading),
       longitudinalAccel:clamp(finite(message.longitudinalAccel),-20,15),
 
@@ -177,7 +204,11 @@ function createRelayService({port=8081,host='0.0.0.0'}={}){
       bodyRoll:clamp(finite(message.bodyRoll),-1.2,1.2),
       bodyY:clamp(finite(message.bodyY),-2,2),
       wheelPitch:clamp(finite(message.wheelPitch),-1.2,1.2),
-      wheelRoll:clamp(finite(message.wheelRoll),-1.2,1.2)
+      wheelRoll:clamp(finite(message.wheelRoll),-1.2,1.2),
+
+      // Traffic MP1 remains presentation-only; the Electron relay only sanitizes
+      // and forwards the elected client's compact route snapshot.
+      trafficState:safeTrafficState(message.trafficState)
     };
   }
 
