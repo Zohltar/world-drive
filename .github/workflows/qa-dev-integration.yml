@@ -35,6 +35,8 @@ jobs:
         run: node qa-road-banking-r1.mjs
       - name: Sparse civil traffic QA
         run: node qa-traffic-r1.mjs
+      - name: Sonata night body lighting QA
+        run: node qa-sonata-night-body-r1.mjs
       - name: Crest launch regression
         run: node qa/V21_27_CREST_LAUNCH_QA.mjs
       - name: Oblique landing regression
