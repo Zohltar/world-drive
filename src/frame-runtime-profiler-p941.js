@@ -1,11 +1,11 @@
 import * as THREE from 'three';
 
-// World Drive P9.42 — zero-polling runtime + browser frame profiler.
+// World Drive P9.43 — zero-polling runtime + browser frame profiler.
 //
-// P9.41 retains previous animate() callback timing. P9.42 adds the browser's
-// Long Animation Frames observer when Chromium exposes it, so rare >50 ms
-// rAF gaps can be separated into script work, browser render/presentation work,
-// style/layout, and pauses without changing any gameplay/rendering behavior.
+// P9.41 retains previous animate() callback timing. P9.42 added Chromium Long
+// Animation Frames. P9.43 keeps that observer but uses the API's standard timing
+// semantics: renderStart begins the render cycle *including requestAnimationFrame
+// callbacks*, so time after renderStart must not be labelled browser/GPU-only.
 
 const STATE_KEY='__WORLD_DRIVE_P941_FRAME_RUNTIME_STATE__';
 const RAF_PATCH_KEY='__worldDriveP941RafPatch';
@@ -86,10 +86,17 @@ function compactLoaf(entry){
   const end=start+duration;
   const renderStart=finite(entry?.renderStart);
   const styleStart=finite(entry?.styleAndLayoutStart);
+  const paint=finite(entry?.paintTime);
+  const presentation=finite(entry?.presentationTime);
   const scripts=Array.isArray(entry?.scripts)?entry.scripts:[];
   const scriptMs=scripts.reduce((sum,script)=>sum+Math.max(0,finite(script?.duration)),0);
   const pauseMs=scripts.reduce((sum,script)=>sum+Math.max(0,finite(script?.pauseDuration)),0);
   const forcedStyleLayoutMs=scripts.reduce((sum,script)=>sum+Math.max(0,finite(script?.forcedStyleAndLayoutDuration)),0);
+  const preRenderWorkMs=renderStart>start?renderStart-start:duration;
+  const renderCycleMs=renderStart>0?Math.max(0,end-renderStart):0;
+  const preLayoutMs=styleStart>0&&renderStart>0?Math.max(0,styleStart-renderStart):0;
+  const styleLayoutMs=styleStart>0?Math.max(0,end-styleStart):0;
+  const presentationLagMs=presentation>0&&paint>0?Math.max(0,presentation-paint):0;
   const topScripts=scripts
     .slice()
     .sort((a,b)=>finite(b?.duration)-finite(a?.duration))
@@ -99,15 +106,22 @@ function compactLoaf(entry){
     startAt:round3(start),
     durationMs:round3(duration),
     blockingMs:round3(entry?.blockingDuration),
-    workMs:round3(renderStart>start?renderStart-start:duration),
-    browserRenderMs:round3(renderStart>0?Math.max(0,end-renderStart):0),
-    styleLayoutMs:round3(styleStart>0?Math.max(0,end-styleStart):0),
+    preRenderWorkMs:round3(preRenderWorkMs),
+    renderCycleMs:round3(renderCycleMs),
+    preLayoutMs:round3(preLayoutMs),
+    styleLayoutMs:round3(styleLayoutMs),
     scriptMs:round3(scriptMs),
     pauseMs:round3(pauseMs),
     forcedStyleLayoutMs:round3(forcedStyleLayoutMs),
+    presentationLagMs:round3(presentationLagMs),
     renderStartAt:round3(renderStart),
-    paintAt:round3(entry?.paintTime),
-    presentationAt:round3(entry?.presentationTime),
+    paintAt:round3(paint),
+    presentationAt:round3(presentation),
+    // P9.42 compatibility aliases. browserRenderMs is retained only so old
+    // console snippets do not break; renderCycleMs is the correct interpretation.
+    workMs:round3(preRenderWorkMs),
+    browserRenderMs:round3(renderCycleMs),
+    browserRenderMsDeprecated:true,
     scripts:topScripts
   };
 }
@@ -187,7 +201,7 @@ export function frameRuntimeSnapshot(){
   return {
     enabled:true,
     mode:'p941-previous-main-frame',
-    browserMode:'p942-long-animation-frame',
+    browserMode:'p943-loaf-standard-timings',
     main:{
       frames:state.mainFrames,
       lastMs:round3(state.lastMainMs),
@@ -210,6 +224,7 @@ export function frameRuntimeSnapshot(){
     },
     browserLongFrames:{
       supported:state.loafSupported===true,
+      mode:'p943-standard-loaf-timings',
       thresholdMs:50,
       count:finite(state.loafCount),
       maxMs:round3(state.loafMaxMs),
