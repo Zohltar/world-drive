@@ -77,6 +77,23 @@ function whiteVisualState(host){
   return{hot,shader};
 }
 
+function reverseVisualState(vehicleId,host){
+  const white=whiteVisualState(host);
+  if(vehicleId==='sonata'){
+    return{
+      all:white,
+      active:white.shader.filter(entry=>entry.object.includes('Object_46-white-0')&&entry.visible)
+    };
+  }
+  if(vehicleId==='wrx'){
+    return{
+      all:white,
+      active:white.hot.filter(entry=>entry.object==='Object_27')
+    };
+  }
+  return{all:white,active:[]};
+}
+
 function state({gear=1,braking=false,nightLevel=0}={}){
   return{
     absX:100,absZ:200,renderX:10,renderZ:20,heading:.4,speed:0,steerAngle:0,
@@ -108,36 +125,35 @@ async function exercise(vehicleId){
   visual.setLighting?.(drive);
   visual.updateRemoteVehicle?.(1/60,drive);
   let diag=adapter.diagnostics();
-  // Traverse the authored controller through the visual's body group. The
-  // adapter's controller host is attached below this support body group.
-  let white=whiteVisualState(visual.bodyGroup);
+  let reverseVisual=reverseVisualState(vehicleId,visual.bodyGroup);
   assert.equal(diag.gear,1,`${vehicleId}: initial forward gear lost`);
   assert.equal(diag.reversing,false,`${vehicleId}: forward state starts in reverse`);
-  assert.equal(white.hot.length+white.shader.length,0,`${vehicleId}: white reverse output visible in Drive`);
+  assert.equal(reverseVisual.active.length,0,`${vehicleId}: authored reverse output visible in Drive`);
 
   const reverse=state({gear:-1});
   visual.setRemoteVisible?.(true,reverse);
   visual.setLighting?.(reverse);
   visual.updateRemoteVehicle?.(1/60,reverse);
   diag=adapter.diagnostics();
-  white=whiteVisualState(visual.bodyGroup);
+  reverseVisual=reverseVisualState(vehicleId,visual.bodyGroup);
   assert.equal(diag.gear,-1,`${vehicleId}: adapter lost explicit -1`);
   assert.equal(diag.reversing,true,`${vehicleId}: adapter did not derive reversing=true`);
   assert((diag.reverseMaterialCount??0)>0,`${vehicleId}: authored controller bound zero reverse materials/layers`);
-  assert(white.hot.length+white.shader.length>0,`${vehicleId}: real authored controller produced no visible white reverse output`);
+  assert(reverseVisual.active.length>0,`${vehicleId}: real authored controller produced no active reverse output`);
 
   if(vehicleId==='sonata'){
     assert.equal(diag.reverseRequested,true,'Sonata: authored controller did not receive reversing=true');
     assert((diag.reverseGlowOpacity??0)>.9,'Sonata: authored reverse shader opacity did not activate');
-    assert(white.shader.some(entry=>entry.object.includes('Object_46-white-0')),'Sonata: Object_46 authored white overlay is not the active reverse output');
+    assert(reverseVisual.active.some(entry=>entry.object.includes('Object_46-white-0')),'Sonata: Object_46 authored white overlay is not the active reverse output');
   }
   if(vehicleId==='wrx'){
-    assert(white.hot.some(entry=>entry.object==='Object_27'),'WRX: proven rear fh_light_glass Object_27 is not the active white reverse output');
-    assert(!white.hot.some(entry=>entry.object==='Object_37'),'WRX: misleading fh_reverse_material/Object_37 must not be the active reverse output');
+    assert(reverseVisual.active.some(entry=>entry.object==='Object_27'),'WRX: proven rear fh_light_glass Object_27 is not the active white reverse output');
+    assert(!reverseVisual.all.hot.some(entry=>entry.object==='Object_37'),'WRX: misleading fh_reverse_material/Object_37 must not be the active reverse output');
   }
 
-  // Stress the discrete state path. This catches a sticky material, one-frame
-  // stale state, or gear coercion that only appears after repeated transitions.
+  // Stress the discrete state path while brake/night states change independently.
+  // Only the reverse-specific authored mesh counts here, so headlights at night
+  // cannot masquerade as a stuck reverse lamp.
   for(let i=0;i<120;i++){
     const gear=i%4===0?-1:(i%4===1?1:(i%4===2?0:-1));
     const frame=state({gear,braking:i%3===0,nightLevel:i%5===0?1:0});
@@ -145,13 +161,13 @@ async function exercise(vehicleId){
     visual.setLighting?.(frame);
     visual.updateRemoteVehicle?.(1/60,frame);
     const d=adapter.diagnostics();
-    const w=whiteVisualState(visual.bodyGroup);
+    const rv=reverseVisualState(vehicleId,visual.bodyGroup);
     assert.equal(d.gear,gear,`${vehicleId}: gear drift at stress frame ${i}`);
     assert.equal(d.reversing,gear===-1,`${vehicleId}: reverse boolean drift at stress frame ${i}`);
     if(gear===-1){
-      assert(w.hot.length+w.shader.length>0,`${vehicleId}: reverse output dropped at stress frame ${i}`);
+      assert(rv.active.length>0,`${vehicleId}: reverse output dropped at stress frame ${i}`);
     }else{
-      assert.equal(w.hot.length+w.shader.length,0,`${vehicleId}: reverse output stuck on at stress frame ${i}`);
+      assert.equal(rv.active.length,0,`${vehicleId}: reverse output stuck on at stress frame ${i}`);
     }
   }
 
@@ -163,10 +179,10 @@ async function exercise(vehicleId){
   visual.setLighting?.(reverse);
   visual.updateRemoteVehicle?.(1/60,reverse);
   diag=adapter.diagnostics();
-  white=whiteVisualState(visual.bodyGroup);
+  reverseVisual=reverseVisualState(vehicleId,visual.bodyGroup);
   assert.equal(diag.gear,-1,`${vehicleId}: visibility round-trip lost reverse gear`);
   assert.equal(diag.reversing,true,`${vehicleId}: visibility round-trip lost reverse state`);
-  assert(white.hot.length+white.shader.length>0,`${vehicleId}: reverse output did not recover after visibility round-trip`);
+  assert(reverseVisual.active.length>0,`${vehicleId}: reverse output did not recover after visibility round-trip`);
 
   visual.dispose?.();
   scene.clear();
@@ -177,6 +193,7 @@ async function exercise(vehicleId){
     reverseGlowOpacity:diag.reverseGlowOpacity,
     reverseEvidence:diag.reverseVisualEvidence,
     stressFrames:120,
+    brakeNightCrossTalkChecked:true,
     visibilityRoundTrip:true
   };
 }
