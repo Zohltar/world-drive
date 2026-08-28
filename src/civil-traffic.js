@@ -104,7 +104,18 @@ function snapshotSignature(snapshot){
 }
 
 export function createCivilTrafficSystem(args={}){
-  const local=createLocalCivilTrafficSystem(args);
+  let replicaVisualFactory=false;
+  const local=createLocalCivilTrafficSystem({
+    ...args,
+    // The follower uses R7 forceSpawn only to instantiate the validated vehicle
+    // visual. During that tiny synchronous call, route position is deliberately
+    // detached from the follower player's current location; the root is moved to
+    // the authoritative cum immediately afterward.
+    nearestRouteForVehicle:(x,z)=>{
+      if(replicaVisualFactory)return {cum:0};
+      return args.nearestRouteForVehicle?.(x,z);
+    }
+  });
   const networkIds=new WeakMap();
   const followers=new Map();
   let networkSerial=0;
@@ -162,7 +173,14 @@ export function createCivilTrafficSystem(args={}){
 
     for(const remote of incoming){
       const before=local.group?.children?.length||0;
-      if(!local.forceSpawn(remote.kind,remote.vehicleId)){
+      let spawned=false;
+      replicaVisualFactory=true;
+      try{
+        spawned=local.forceSpawn(remote.kind,remote.vehicleId);
+      }finally{
+        replicaVisualFactory=false;
+      }
+      if(!spawned){
         clearFollowers();
         return false;
       }
