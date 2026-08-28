@@ -40,6 +40,26 @@ jobs:
         run: node qa/V21_31_MULTIPLAYER_M412_CONTROLLER_RUNTIME_QA.mjs
       - name: M4.13 reverse snapshot and burst QA
         run: node qa/V21_31_MULTIPLAYER_M413_REVERSE_BURST_SNAPSHOT_QA.mjs
+      - name: M4.14 WebGL reverse pixel QA
+        shell: bash
+        run: |
+          npx vite --host 127.0.0.1 --port 5187 --strictPort >/tmp/m414-vite.log 2>&1 &
+          VITE_PID=$!
+          cleanup(){
+            kill "$VITE_PID" >/dev/null 2>&1 || true
+            cat /tmp/m414-vite.log || true
+          }
+          trap cleanup EXIT
+          READY=0
+          for i in {1..80}; do
+            if curl -fsS http://127.0.0.1:5187/qa/m414-render.html >/dev/null 2>&1; then READY=1; break; fi
+            sleep 0.1
+          done
+          if [ "$READY" != "1" ]; then
+            echo "Vite M4.14 harness did not start"
+            exit 1
+          fi
+          xvfb-run -a ./node_modules/.bin/electron --no-sandbox qa/m414-electron-main.cjs
       - name: Sonata authored lamp UV QA
         run: node qa/V21_31_SONATA_AUTHORED_LAMP_UV_QA.mjs
       - name: Network lighting-state matrix QA
