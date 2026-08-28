@@ -186,7 +186,8 @@ installLongAnimationFrameProfiler();
 export function frameRuntimeSnapshot(){
   return {
     enabled:true,
-    mode:'p942-browser-frame-attribution',
+    mode:'p941-previous-main-frame',
+    browserMode:'p942-long-animation-frame',
     main:{
       frames:state.mainFrames,
       lastMs:round3(state.lastMainMs),
