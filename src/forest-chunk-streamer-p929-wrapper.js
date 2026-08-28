@@ -1,7 +1,10 @@
 import {createForestChunkStreamer as createForestChunkStreamerP929} from './forest-chunk-streamer-p929.js';
+import {frameRuntimeSnapshot} from './frame-runtime-profiler-p941.js';
 
-const MATCH_BEFORE_MS=70;
-const MATCH_AFTER_MS=12;
+const FRAME_MATCH_SLACK_MS=2;
+const MATCH_AFTER_MS=2;
+const FOREST_MIN_CONTRIBUTION_MS=1.5;
+const FOREST_MIN_FRAME_SHARE=.10;
 const INSTALL_RETRY_MS=120;
 const STARTUP_DIRECTION_SEED_M=180;
 
@@ -24,12 +27,17 @@ export function createForestChunkStreamer(options){
   const correlation={
     hitchesObserved:0,
     hitchesCorrelated:0,
+    hitchesAttributedToForest:0,
     hitchesUnmatched:0,
     sliceMatches:0,
     commitMatches:0,
+    runtimeMainCpu:0,
+    runtimeRenderSubmit:0,
+    runtimeOutsideMain:0,
     lastHitchAt:0,
     lastMatchedHitch:null,
-    lastUnmatchedHitch:null
+    lastUnmatchedHitch:null,
+    lastRuntimeHitch:null
   };
 
   const readRealOffset=()=>{
@@ -87,7 +95,7 @@ export function createForestChunkStreamer(options){
     return true;
   }
 
-  function nearestActivity(raw,hitchAt){
+  function nearestActivity(raw,hitchAt,frameMs){
     const candidates=[];
     if(Number.isFinite(raw.lastSliceAt)&&raw.lastSliceAt>0){
       candidates.push({kind:'slice',at:raw.lastSliceAt,ms:finite(raw.lastSliceMs)});
@@ -95,14 +103,49 @@ export function createForestChunkStreamer(options){
     if(Number.isFinite(raw.lastCommitAt)&&raw.lastCommitAt>0){
       candidates.push({kind:'commit',at:raw.lastCommitAt,ms:finite(raw.lastCommitMs)});
     }
+    const frameWindow=Math.max(0,Math.min(250,finite(frameMs)))+FRAME_MATCH_SLACK_MS;
     let best=null,bestAbs=Infinity;
     for(const event of candidates){
       const delta=hitchAt-event.at;
-      if(delta>MATCH_BEFORE_MS||delta<-MATCH_AFTER_MS)continue;
+      // P9.41: the old 70 ms look-back correlated almost every hitch simply
+      // because forest idle slices are frequent. Only accept work whose end time
+      // actually falls inside the rAF interval that just hitch-stalled.
+      if(delta>frameWindow||delta<-MATCH_AFTER_MS)continue;
       const abs=Math.abs(delta);
-      if(abs<bestAbs){best={...event,deltaMs:delta};bestAbs=abs;}
+      if(abs<bestAbs){best={...event,deltaMs:delta,frameWindowMs:frameWindow};bestAbs=abs;}
     }
     return best;
+  }
+
+  function classifyRuntimeHitch(frameMs){
+    const runtime=frameRuntimeSnapshot();
+    const mainMs=finite(runtime?.main?.lastMs);
+    const renderMs=finite(runtime?.renderSubmit?.lastMs);
+    const frame= Math.max(.001,finite(frameMs));
+    const outsideMainMs=Math.max(0,frame-mainMs);
+    const mainShare=mainMs/frame;
+    const renderShare=renderMs/frame;
+    let source='outside-main';
+    if(renderMs>=8||renderShare>=.35){
+      source='render-submit';
+      correlation.runtimeRenderSubmit++;
+    }else if(mainMs>=12||mainShare>=.62){
+      source='main-cpu';
+      correlation.runtimeMainCpu++;
+    }else{
+      correlation.runtimeOutsideMain++;
+    }
+    return {
+      source,
+      frameMs:round3(frame),
+      previousMainMs:round3(mainMs),
+      previousMainSharePct:round3(mainShare*100),
+      previousRenderSubmitMs:round3(renderMs),
+      previousRenderSharePct:round3(renderShare*100),
+      outsideMainMs:round3(outsideMainMs),
+      mainEndedAt:round3(runtime?.main?.lastEndedAt),
+      renderEndedAt:round3(runtime?.renderSubmit?.lastEndedAt)
+    };
   }
 
   function recordHitch({hitchCount=0,hitchAt=0,frameMs=0}={}){
@@ -110,17 +153,29 @@ export function createForestChunkStreamer(options){
     const raw=base.stats?.()||{};
     correlation.hitchesObserved++;
     correlation.lastHitchAt=hitchAt;
-    const event=nearestActivity(raw,hitchAt);
+    correlation.lastRuntimeHitch={
+      hitchCount:finite(hitchCount),
+      hitchAt:round3(hitchAt),
+      ...classifyRuntimeHitch(frameMs)
+    };
+
+    const event=nearestActivity(raw,hitchAt,frameMs);
     if(event){
       correlation.hitchesCorrelated++;
       if(event.kind==='commit')correlation.commitMatches++;
       else correlation.sliceMatches++;
+      const share=finite(frameMs)>0?event.ms/frameMs:0;
+      const meaningful=
+        event.ms>=FOREST_MIN_CONTRIBUTION_MS&&
+        share>=FOREST_MIN_FRAME_SHARE;
+      if(meaningful)correlation.hitchesAttributedToForest++;
       correlation.lastMatchedHitch={
         hitchCount:finite(hitchCount),hitchAt:round3(hitchAt),frameMs:round3(frameMs),
         kind:event.kind,forestActivityAt:round3(event.at),deltaMs:round3(event.deltaMs),
-        forestWorkMs:round3(event.ms)
+        frameWindowMs:round3(event.frameWindowMs),forestWorkMs:round3(event.ms),
+        forestFrameSharePct:round3(share*100),meaningful
       };
-      return true;
+      return meaningful;
     }
     correlation.hitchesUnmatched++;
     const latest=Math.max(finite(raw.lastSliceAt),finite(raw.lastCommitAt));
@@ -138,6 +193,7 @@ export function createForestChunkStreamer(options){
       observerMode:'p931-ahead-priority',
       startupMode:'p934-startup-route-seed',
       streamingMode:'p940-dirty-priority-queue',
+      hitchMode:'p941-frame-window-runtime',
       legacyObserverMode:'p929-direct-last-slice',
       trees:visible.trees,near:visible.near,mid:visible.mid,far:visible.far,edge:visible.edge,
       activeChunks:finite(raw.activeChunks),cachedChunks:finite(raw.cachedChunks),queuedChunks:finite(raw.queuedChunks),
@@ -195,12 +251,22 @@ export function createForestChunkStreamer(options){
       hitchCorrelation:{
         hitchesObserved:correlation.hitchesObserved,
         hitchesCorrelated:correlation.hitchesCorrelated,
+        hitchesAttributedToForest:correlation.hitchesAttributedToForest,
         hitchesUnmatched:correlation.hitchesUnmatched,
         matchesByKind:{slice:correlation.sliceMatches,commit:correlation.commitMatches},
-        matchBeforeMs:MATCH_BEFORE_MS,matchAfterMs:MATCH_AFTER_MS,
+        runtimeSources:{
+          mainCpu:correlation.runtimeMainCpu,
+          renderSubmit:correlation.runtimeRenderSubmit,
+          outsideMain:correlation.runtimeOutsideMain
+        },
+        frameMatchSlackMs:FRAME_MATCH_SLACK_MS,
+        matchAfterMs:MATCH_AFTER_MS,
+        minContributionMs:FOREST_MIN_CONTRIBUTION_MS,
+        minFrameShare:FOREST_MIN_FRAME_SHARE,
         lastHitchAt:round3(correlation.lastHitchAt),
         lastMatchedHitch:correlation.lastMatchedHitch?{...correlation.lastMatchedHitch}:null,
-        lastUnmatchedHitch:correlation.lastUnmatchedHitch?{...correlation.lastUnmatchedHitch}:null
+        lastUnmatchedHitch:correlation.lastUnmatchedHitch?{...correlation.lastUnmatchedHitch}:null,
+        lastRuntimeHitch:correlation.lastRuntimeHitch?{...correlation.lastRuntimeHitch}:null
       }
     };
   }
@@ -212,6 +278,7 @@ export function createForestChunkStreamer(options){
     globalThis.__WORLD_DRIVE_P934_FOREST__=snapshot;
     globalThis.__WORLD_DRIVE_P936_FOREST__=snapshot;
     globalThis.__WORLD_DRIVE_P940_FOREST__=snapshot;
+    globalThis.__WORLD_DRIVE_P941_FOREST__=snapshot;
     if(typeof globalThis.setTimeout!=='function')return;
     const attempt=()=>{
       const current=globalThis.WorldDriveFramePacing;
@@ -219,14 +286,19 @@ export function createForestChunkStreamer(options){
         globalThis.setTimeout(attempt,INSTALL_RETRY_MS);
         return;
       }
-      if(current.__worldDriveP940Forest)return;
+      if(current.__worldDriveP941Forest)return;
       const original=current.__worldDriveP928Original||current;
-      const wrapped=()=>({...((original?.()||{})),forest:snapshot()});
+      const wrapped=()=>({
+        ...((original?.()||{})),
+        forest:snapshot(),
+        frameRuntime:frameRuntimeSnapshot()
+      });
       wrapped.__worldDriveP929Forest=true;
       wrapped.__worldDriveP931Forest=true;
       wrapped.__worldDriveP934Forest=true;
       wrapped.__worldDriveP936Forest=true;
       wrapped.__worldDriveP940Forest=true;
+      wrapped.__worldDriveP941Forest=true;
       wrapped.__worldDriveP928Original=original;
       globalThis.WorldDriveFramePacing=wrapped;
     };
@@ -255,6 +327,6 @@ export function createForestChunkStreamer(options){
       return base.clearAll(...args);
     },
     whenInitialReady:(...args)=>base.whenInitialReady(...args),
-    stats:()=>({...base.stats(),p934:snapshot(),p936:snapshot(),p940:snapshot()})
+    stats:()=>({...base.stats(),p934:snapshot(),p936:snapshot(),p940:snapshot(),p941:snapshot()})
   });
 }
