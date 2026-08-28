@@ -1,11 +1,11 @@
 import * as THREE from 'three';
 
-// World Drive Traffic R4 — deliberately sparse, presentation-only civil traffic.
+// World Drive Traffic R5 — deliberately sparse, presentation-only civil traffic.
 //
 // The player physics remain authoritative and untouched. At most two lightweight
-// traffic agents follow the engineered active road profile. R4 keeps the corrected
-// right-hand lane convention and authored textured Sonata lamp glows, but removes
-// all traffic scene lights so civilian lamps no longer paint white/red pools on road.
+// traffic agents follow the engineered active road profile. R5 keeps the corrected
+// right-hand lane convention and authored textured Sonata lamp glows, restores the
+// pilotable Sonata's exact forward headlight beams, and keeps all rear/point spill off.
 
 export const CIVIL_TRAFFIC_MAX_ACTIVE=2;
 export const CIVIL_TRAFFIC_LANE_OFFSET_M=1.72;
@@ -272,14 +272,42 @@ function setTexturedGlow(layers,opacity){
   }
 }
 
-function updateTrafficLights(agent){
-  const level=clamp(Number(agent.getHeadlightLevel?.())||0,0,1);
-  const night=level>.08;
+function buildPlayerStyleTrafficHeadlights(root){
+  const headlightBeams=[];
+  for(const side of [-1,1]){
+    const target=new THREE.Object3D();
+    target.position.set(side*.45,.15,30);
+    root.add(target);
 
-  // R4: lamps are visible only through authored textured lens overlays. Civil
-  // traffic intentionally contributes no PointLight/SpotLight road spill.
-  setTexturedGlow(agent.lensGlows.front,night?.42+level*.30:0);
-  setTexturedGlow(agent.lensGlows.rear,night?.13+level*.20:0);
+    // Exact forward-beam contract used by the pilotable Sonata.
+    const beam=new THREE.SpotLight(0xf8fbff,0,72,.36,.68,1.0);
+    beam.position.set(side*.68,.66,2.25);
+    beam.target=target;
+    beam.castShadow=false;
+    beam.visible=false;
+    root.add(beam);
+    headlightBeams.push({light:beam,target});
+  }
+  return headlightBeams;
+}
+
+function updateTrafficLights(agent){
+  const night=clamp(Number(agent.getHeadlightLevel?.())||0,0,1);
+  const nightOn=night>.06;
+
+  // Visible lamp surfaces use the same authored-lens levels as the pilotable Sonata.
+  const runningRed=nightOn?(.16+night*.18):0;
+  const headlightWhite=nightOn?(.45+night*.28):0;
+  setTexturedGlow(agent.lensGlows.front,headlightWhite);
+  setTexturedGlow(agent.lensGlows.rear,runningRed);
+
+  // R5 restores only the pilotable Sonata's normal forward beams. No PointLight
+  // fill and no rear light source are created, so there is no red pool behind cars.
+  for(const beam of agent.headlightBeams){
+    beam.light.visible=nightOn;
+    beam.light.intensity=nightOn?night*95:0;
+    beam.light.distance=65+night*15;
+  }
 }
 
 function bindWheelSpin(root){
@@ -429,6 +457,7 @@ export function createCivilTrafficSystem({
     root.add(makeContactShadow());
 
     const lensGlows=buildAuthoredTrafficLensGlows(model);
+    const headlightBeams=buildPlayerStyleTrafficHeadlights(root);
     trafficGroup.add(root);
 
     const wheels=bindWheelSpin(model);
@@ -436,6 +465,7 @@ export function createCivilTrafficSystem({
       root,
       model,
       lensGlows,
+      headlightBeams,
       wheels,
       kind:plan.kind,
       direction:plan.direction,
@@ -565,7 +595,7 @@ export function createCivilTrafficSystem({
   function diagnostics(){
     return {
       enabled:true,
-      mode:'traffic-r4-authored-lamps-no-road-spill',
+      mode:'traffic-r5-player-sonata-headlights',
       templateReady:!!template,
       loadError:loadError?String(loadError?.message||loadError):null,
       active:agents.length,
@@ -576,8 +606,10 @@ export function createCivilTrafficSystem({
       nextSpawnInSec:Number(Math.max(0,nextSpawnAt-elapsed).toFixed(1)),
       rightHandTraffic:true,
       authoredTexturedLamps:true,
-      realSceneLights:false,
-      roadLightSpill:false,
+      playerStyleHeadlightBeams:true,
+      pointLights:false,
+      rearRoadLightSpill:false,
+      roadLightSpill:'player-style-headlights-only',
       agents:agents.map(agent=>({
         kind:agent.kind,
         direction:agent.direction,
