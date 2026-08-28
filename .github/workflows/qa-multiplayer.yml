@@ -60,6 +60,29 @@ jobs:
             exit 1
           fi
           xvfb-run -a ./node_modules/.bin/electron --no-sandbox qa/m414-electron-main.cjs
+      - name: M4.15 network to WebGL reverse QA
+        shell: bash
+        run: |
+          npx vite --host 127.0.0.1 --port 5187 --strictPort >/tmp/m415-vite.log 2>&1 &
+          VITE_PID=$!
+          WORLD_DRIVE_MP_PORT=8081 node server/multiplayer-server.mjs >/tmp/m415-relay.log 2>&1 &
+          RELAY_PID=$!
+          cleanup(){
+            kill "$VITE_PID" "$RELAY_PID" >/dev/null 2>&1 || true
+            echo "--- M4.15 Vite ---"; cat /tmp/m415-vite.log || true
+            echo "--- M4.15 relay ---"; cat /tmp/m415-relay.log || true
+          }
+          trap cleanup EXIT
+          READY=0
+          for i in {1..100}; do
+            if curl -fsS http://127.0.0.1:5187/qa/m415-render.html >/dev/null 2>&1 && curl -fsS http://127.0.0.1:8081/ >/dev/null 2>&1; then READY=1; break; fi
+            sleep 0.1
+          done
+          if [ "$READY" != "1" ]; then
+            echo "M4.15 harness/relay did not start"
+            exit 1
+          fi
+          xvfb-run -a ./node_modules/.bin/electron --no-sandbox qa/m415-electron-main.cjs
       - name: Sonata authored lamp UV QA
         run: node qa/V21_31_SONATA_AUTHORED_LAMP_UV_QA.mjs
       - name: Network lighting-state matrix QA
