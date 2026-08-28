@@ -1,11 +1,11 @@
 import * as THREE from 'three';
 
-// World Drive Traffic R3 — deliberately sparse, presentation-only civil traffic.
+// World Drive Traffic R4 — deliberately sparse, presentation-only civil traffic.
 //
 // The player physics remain authoritative and untouched. At most two lightweight
-// traffic agents follow the engineered active road profile. R3 keeps the corrected
-// right-hand lane convention from R2, removes generic visible lamp bulbs, and uses
-// the Sonata's authored textured lens geometry for visible head/tail-light glow.
+// traffic agents follow the engineered active road profile. R4 keeps the corrected
+// right-hand lane convention and authored textured Sonata lamp glows, but removes
+// all traffic scene lights so civilian lamps no longer paint white/red pools on road.
 
 export const CIVIL_TRAFFIC_MAX_ACTIVE=2;
 export const CIVIL_TRAFFIC_LANE_OFFSET_M=1.72;
@@ -27,7 +27,7 @@ const clamp=(value,min,max)=>Math.max(min,Math.min(max,value));
 const lerp=(a,b,t)=>a+(b-a)*t;
 const angleDelta=(a,b)=>Math.atan2(Math.sin(b-a),Math.cos(b-a));
 
-// R2/R3: verified against the rendered road in-game. Positive lateral offset is
+// R2+: verified against the rendered road in-game. Positive lateral offset is
 // the player's right-hand lane; negative is the player's left-hand/oncoming lane.
 export function civilTrafficLaneOffset(direction=1){
   return direction>=0?CIVIL_TRAFFIC_LANE_OFFSET_M:-CIVIL_TRAFFIC_LANE_OFFSET_M;
@@ -272,63 +272,14 @@ function setTexturedGlow(layers,opacity){
   }
 }
 
-function makeTrafficSceneLights(){
-  const group=new THREE.Group();
-  group.name='civil-traffic-scene-lights';
-  const beams=[];
-
-  // Invisible scene-light spill makes the authored textured lamps actually affect
-  // body panels and nearby asphalt. No shadow maps are allocated for traffic.
-  const frontFill=new THREE.PointLight(0xf7fbff,0,3.2,2);
-  frontFill.name='civil-traffic-front-body-fill';
-  frontFill.position.set(0,.80,1.92);
-  frontFill.castShadow=false;
-  frontFill.visible=false;
-  group.add(frontFill);
-
-  const rearFill=new THREE.PointLight(0xff1824,0,2.5,2);
-  rearFill.name='civil-traffic-rear-body-fill';
-  rearFill.position.set(0,.72,-2.00);
-  rearFill.castShadow=false;
-  rearFill.visible=false;
-  group.add(rearFill);
-
-  for(const side of [-1,1]){
-    const target=new THREE.Object3D();
-    target.name=`civil-traffic-headlight-target-${side}`;
-    target.position.set(side*.32,.10,25);
-    group.add(target);
-
-    const beam=new THREE.SpotLight(0xf8fbff,0,58,.34,.72,1.3);
-    beam.name=`civil-traffic-headlight-beam-${side}`;
-    beam.position.set(side*.58,.70,2.24);
-    beam.target=target;
-    beam.castShadow=false;
-    beam.visible=false;
-    group.add(beam);
-    beams.push(beam);
-  }
-
-  return {group,frontFill,rearFill,beams};
-}
-
 function updateTrafficLights(agent){
   const level=clamp(Number(agent.getHeadlightLevel?.())||0,0,1);
   const night=level>.08;
 
-  // Visible output comes only from the authored textured lens overlays.
+  // R4: lamps are visible only through authored textured lens overlays. Civil
+  // traffic intentionally contributes no PointLight/SpotLight road spill.
   setTexturedGlow(agent.lensGlows.front,night?.42+level*.30:0);
   setTexturedGlow(agent.lensGlows.rear,night?.13+level*.20:0);
-
-  agent.sceneLights.frontFill.visible=night;
-  agent.sceneLights.frontFill.intensity=night?4+level*8:0;
-  agent.sceneLights.rearFill.visible=night;
-  agent.sceneLights.rearFill.intensity=night?1.5+level*3.5:0;
-
-  for(const beam of agent.sceneLights.beams){
-    beam.visible=night;
-    beam.intensity=night?level*85:0;
-  }
 }
 
 function bindWheelSpin(root){
@@ -478,8 +429,6 @@ export function createCivilTrafficSystem({
     root.add(makeContactShadow());
 
     const lensGlows=buildAuthoredTrafficLensGlows(model);
-    const sceneLights=makeTrafficSceneLights();
-    root.add(sceneLights.group);
     trafficGroup.add(root);
 
     const wheels=bindWheelSpin(model);
@@ -487,7 +436,6 @@ export function createCivilTrafficSystem({
       root,
       model,
       lensGlows,
-      sceneLights,
       wheels,
       kind:plan.kind,
       direction:plan.direction,
@@ -617,7 +565,7 @@ export function createCivilTrafficSystem({
   function diagnostics(){
     return {
       enabled:true,
-      mode:'traffic-r3-authored-textured-lamps',
+      mode:'traffic-r4-authored-lamps-no-road-spill',
       templateReady:!!template,
       loadError:loadError?String(loadError?.message||loadError):null,
       active:agents.length,
@@ -628,7 +576,8 @@ export function createCivilTrafficSystem({
       nextSpawnInSec:Number(Math.max(0,nextSpawnAt-elapsed).toFixed(1)),
       rightHandTraffic:true,
       authoredTexturedLamps:true,
-      realSceneLights:true,
+      realSceneLights:false,
+      roadLightSpill:false,
       agents:agents.map(agent=>({
         kind:agent.kind,
         direction:agent.direction,
