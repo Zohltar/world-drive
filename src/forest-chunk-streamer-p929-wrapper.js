@@ -25,6 +25,8 @@ export function createForestChunkStreamer(options){
     hitchesObserved:0,
     hitchesCorrelated:0,
     hitchesUnmatched:0,
+    sliceMatches:0,
+    commitMatches:0,
     lastHitchAt:0,
     lastMatchedHitch:null,
     lastUnmatchedHitch:null
@@ -111,6 +113,8 @@ export function createForestChunkStreamer(options){
     const event=nearestActivity(raw,hitchAt);
     if(event){
       correlation.hitchesCorrelated++;
+      if(event.kind==='commit')correlation.commitMatches++;
+      else correlation.sliceMatches++;
       correlation.lastMatchedHitch={
         hitchCount:finite(hitchCount),hitchAt:round3(hitchAt),frameMs:round3(frameMs),
         kind:event.kind,forestActivityAt:round3(event.at),deltaMs:round3(event.deltaMs),
@@ -133,7 +137,7 @@ export function createForestChunkStreamer(options){
       enabled:true,
       observerMode:'p931-ahead-priority',
       startupMode:'p934-startup-route-seed',
-      streamingMode:'p936-rolling-prefetch',
+      streamingMode:'p940-dirty-priority-queue',
       legacyObserverMode:'p929-direct-last-slice',
       trees:visible.trees,near:visible.near,mid:visible.mid,far:visible.far,edge:visible.edge,
       activeChunks:finite(raw.activeChunks),cachedChunks:finite(raw.cachedChunks),queuedChunks:finite(raw.queuedChunks),
@@ -171,6 +175,14 @@ export function createForestChunkStreamer(options){
         candidateBatchSize:finite(raw.catchupCandidateBatchSize),
         slices:finite(raw.catchupSlices)
       },
+      maintenance:{
+        queueSorts:finite(raw.queueSorts),
+        lastQueueSortMs:round3(raw.lastQueueSortMs),
+        maxQueueSortMs:round3(raw.maxQueueSortMs),
+        cacheTrimRuns:finite(raw.cacheTrimRuns),
+        lastCacheTrimMs:round3(raw.lastCacheTrimMs),
+        maxCacheTrimMs:round3(raw.maxCacheTrimMs)
+      },
       slice:{
         lastMs:round3(raw.lastSliceMs),maxMs:round3(raw.maxSliceMs),lastAt:round3(raw.lastSliceAt),
         count:finite(raw.sliceCount),lastCandidates:finite(raw.lastCandidates),maxCandidates:finite(raw.maxCandidates),
@@ -184,6 +196,7 @@ export function createForestChunkStreamer(options){
         hitchesObserved:correlation.hitchesObserved,
         hitchesCorrelated:correlation.hitchesCorrelated,
         hitchesUnmatched:correlation.hitchesUnmatched,
+        matchesByKind:{slice:correlation.sliceMatches,commit:correlation.commitMatches},
         matchBeforeMs:MATCH_BEFORE_MS,matchAfterMs:MATCH_AFTER_MS,
         lastHitchAt:round3(correlation.lastHitchAt),
         lastMatchedHitch:correlation.lastMatchedHitch?{...correlation.lastMatchedHitch}:null,
@@ -198,6 +211,7 @@ export function createForestChunkStreamer(options){
     globalThis.__WORLD_DRIVE_P931_FOREST__=snapshot;
     globalThis.__WORLD_DRIVE_P934_FOREST__=snapshot;
     globalThis.__WORLD_DRIVE_P936_FOREST__=snapshot;
+    globalThis.__WORLD_DRIVE_P940_FOREST__=snapshot;
     if(typeof globalThis.setTimeout!=='function')return;
     const attempt=()=>{
       const current=globalThis.WorldDriveFramePacing;
@@ -205,13 +219,14 @@ export function createForestChunkStreamer(options){
         globalThis.setTimeout(attempt,INSTALL_RETRY_MS);
         return;
       }
-      if(current.__worldDriveP936Forest)return;
+      if(current.__worldDriveP940Forest)return;
       const original=current.__worldDriveP928Original||current;
       const wrapped=()=>({...((original?.()||{})),forest:snapshot()});
       wrapped.__worldDriveP929Forest=true;
       wrapped.__worldDriveP931Forest=true;
       wrapped.__worldDriveP934Forest=true;
       wrapped.__worldDriveP936Forest=true;
+      wrapped.__worldDriveP940Forest=true;
       wrapped.__worldDriveP928Original=original;
       globalThis.WorldDriveFramePacing=wrapped;
     };
@@ -240,6 +255,6 @@ export function createForestChunkStreamer(options){
       return base.clearAll(...args);
     },
     whenInitialReady:(...args)=>base.whenInitialReady(...args),
-    stats:()=>({...base.stats(),p934:snapshot(),p936:snapshot()})
+    stats:()=>({...base.stats(),p934:snapshot(),p936:snapshot(),p940:snapshot()})
   });
 }
