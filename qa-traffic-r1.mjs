@@ -14,11 +14,8 @@ import {
   civilTrafficCooldownSec
 } from './src/civil-traffic.js';
 
-assert.equal(CIVIL_TRAFFIC_MAX_ACTIVE,2,'Traffic R2 must remain capped at two active cars');
+assert.equal(CIVIL_TRAFFIC_MAX_ACTIVE,2,'Traffic must remain capped at two active cars');
 assert.ok(CIVIL_TRAFFIC_LANE_OFFSET_M>1.5&&CIVIL_TRAFFIC_LANE_OFFSET_M<2.0,'traffic lane center must stay inside a two-lane 7.5 m road');
-
-// R2 runtime convention verified visually in World Drive: positive lateral is
-// the player's right lane, negative lateral is the player's left/oncoming lane.
 assert.ok(civilTrafficLaneOffset(1)>0,'same-direction traffic must use the rendered player-right lane');
 assert.ok(civilTrafficLaneOffset(-1)<0,'oncoming traffic must use the rendered opposite lane');
 
@@ -52,15 +49,22 @@ assert.equal(civilTrafficCooldownSec(1),CIVIL_TRAFFIC_COOLDOWN_MAX_SEC);
 assert.ok(CIVIL_TRAFFIC_COOLDOWN_MIN_SEC>=30,'normal traffic cadence must stay deliberately sparse');
 
 const source=fs.readFileSync(new URL('./src/civil-traffic.js',import.meta.url),'utf8');
-assert.ok(source.includes('new THREE.SpotLight('),'Traffic R2 headlights must use real scene SpotLights');
-assert.ok(source.includes('new THREE.PointLight('),'Traffic R2 lamp spill must use real scene PointLights');
-assert.ok(source.includes("mode:'traffic-r2-lanes-real-lights'"),'Traffic R2 diagnostics mode must identify corrected lanes and lighting');
-assert.ok(source.includes('castShadow=false'),'traffic lights must not cast expensive dynamic shadows');
+assert.ok(source.includes("getObjectByName('Object_7')"),'Traffic R3 must reuse the authored front Sonata lens mesh');
+assert.ok(source.includes("getObjectByName('Object_46')"),'Traffic R3 must reuse the authored inner rear Sonata lens mesh');
+assert.ok(source.includes("getObjectByName('Object_33')"),'Traffic R3 must reuse the authored outer rear Sonata lens mesh');
+assert.ok(source.includes('new THREE.ShaderMaterial('),'Traffic R3 lamp glow must be texture-filtered on authored meshes');
+assert.ok(source.includes('texture2D(uMap,vUv)'),'Traffic R3 glow must sample the original authored lamp texture');
+assert.ok(!source.includes('new THREE.SphereGeometry(.085'),'Traffic R3 must not reintroduce generic visible lamp bulbs');
+assert.ok(source.includes('new THREE.SpotLight('),'traffic headlights must retain real scene SpotLights for road illumination');
+assert.ok(source.includes('new THREE.PointLight('),'traffic lamps must retain low-cost body/road spill lights');
+assert.ok(source.includes("mode:'traffic-r3-authored-textured-lamps'"),'Traffic R3 diagnostics mode must identify authored textured lamps');
+assert.ok(source.includes('castShadow=false'),'traffic scene lights must not cast expensive dynamic shadows');
 
-console.log('PASS Traffic R2 sparse civil traffic policy');
+console.log('PASS Traffic R3 sparse civil traffic policy');
 console.log('  - max two active Sonata traffic cars');
 console.log('  - corrected rendered lane ownership is deterministic');
 console.log('  - traffic appears 360-690 m ahead, not beside the player');
-console.log('  - ordinary cruise speeds slow naturally for sharp curves');
-console.log('  - real no-shadow scene lights affect body panels and nearby road');
+console.log('  - authored Sonata front/rear textured lenses provide the visible glow');
+console.log('  - no generic visible bulb geometry remains');
+console.log('  - invisible no-shadow scene lights still illuminate body panels and road');
 console.log('  - normal respawn cooldown remains 32-68 seconds');
