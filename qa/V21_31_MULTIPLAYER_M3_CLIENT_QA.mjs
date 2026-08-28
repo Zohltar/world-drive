@@ -49,6 +49,9 @@ assert(client.includes('signalBlink:lighting.signalBlink'),'blink phase must be 
 assert(client.includes('peer.visual.updateRemoteVehicle?.(dt,remoteState)'),'sampled peer state must feed the M4 local-controller adapter');
 assert(client.includes('solveRemoteSupport?.({lat:peer.lat,lon:peer.lon,heading:peer.heading,visual:peer.visual})'),'receiver-local support must remain after interpolation');
 assert(client.includes("return {connect,disconnect,toggle,update,getPeers,isConnected:"),'maintained client API drift');
+assert(entry.includes('transformOutgoingState:payload=>'),'lazy public client must scope wire transform to maintained client');
+assert(entry.includes('transformIncomingPayload:raw=>'),'lazy public client must scope incoming compatibility to maintained client');
+assert(!entry.includes('globalThis.WebSocket='),'multiplayer must never replace global WebSocket');
 
 for(const [input,expectedGear,expectedReverse] of [[-1,-1,true],[0,0,false],[1,1,false],[2,2,false],[6,6,false]]){
   const merged=mergeExactTransmissionGear({type:'state',gear:99,reversing:!expectedReverse},input);
@@ -123,5 +126,6 @@ console.log('V21.31 MULTIPLAYER M4 LAZY CLIENT QA: PASS',{
   authoredBrakeNightParity:true,
   legacyRelayReverseCompatibility:true,
   visualSource:'same local authored controller',
-  startupBundleDefersMultiplayer:true
+  startupBundleDefersMultiplayer:true,
+  globalWebSocketUntouched:true
 });
