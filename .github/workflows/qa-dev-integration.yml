@@ -41,6 +41,8 @@ jobs:
         run: node qa-traffic-preload-p1.mjs
       - name: Shared multiplayer civil traffic QA
         run: node qa-traffic-mp1.mjs
+      - name: Live shared multiplayer traffic QA
+        run: node qa-traffic-mp1-live.mjs
       - name: Sonata night body lighting QA
         run: node qa-sonata-night-body-r1.mjs
       - name: Crest launch regression
