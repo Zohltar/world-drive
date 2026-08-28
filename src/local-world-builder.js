@@ -1,12 +1,16 @@
 import {createLocalWorldBuilder as createLocalWorldBuilderP926} from './local-world-builder-p926.js';
 
 const P937_ROAD_PREP_GAP_MS=8;
+const P938_PRESERVE_FOREST_DURING_PREPARED_COMMIT=true;
 
 export function createLocalWorldBuilder(options={}){
   const terrainService=options.terrainService;
   const scheduleVisualJob=options.scheduleVisualJob;
   const getWorldOffset=options.getWorldOffset;
+  const originalClearGroup=options.clearGroup;
+  const forestGroup=options.forestGroup;
   let incrementalInstall=false;
+  let preserveForestDuringPreparedCommit=false;
   let roadReplay=null;
 
   const roadPerf={
@@ -19,6 +23,11 @@ export function createLocalWorldBuilder(options={}){
     maxSliceMs:0,
     lastPrepareWallMs:0,
     maxPrepareWallMs:0
+  };
+  const forestRetentionPerf={
+    commits:0,
+    lastPreservedChildren:0,
+    maxPreservedChildren:0
   };
 
   const sameOffset=(a,b)=>!!a&&!!b&&Math.hypot(
@@ -37,6 +46,24 @@ export function createLocalWorldBuilder(options={}){
       for(const object of list||[])if(object)disposePreparedObject(object);
       if(list)list.length=0;
     }
+  }
+
+  function clearGroupForBuilder(group,...args){
+    if(
+      P938_PRESERVE_FOREST_DURING_PREPARED_COMMIT&&
+      preserveForestDuringPreparedCommit&&
+      group===forestGroup
+    ){
+      const children=group?.children?.length||0;
+      forestRetentionPerf.commits++;
+      forestRetentionPerf.lastPreservedChildren=children;
+      forestRetentionPerf.maxPreservedChildren=Math.max(
+        forestRetentionPerf.maxPreservedChildren,
+        children
+      );
+      return;
+    }
+    return originalClearGroup?.(group,...args);
   }
 
   function takePrepared(kind,fallback,args){
@@ -68,6 +95,7 @@ export function createLocalWorldBuilder(options={}){
   const base=createLocalWorldBuilderP926({
     ...options,
     terrainService:terrainProxy,
+    clearGroup:clearGroupForBuilder,
     buildRoadVolume:(...args)=>takePrepared('volume',originalRoadVolume,args),
     buildLateralBand:(...args)=>takePrepared('lateral',originalLateralBand,args),
     buildRibbon:(...args)=>takePrepared('ribbon',originalRibbon,args),
@@ -155,7 +183,14 @@ export function createLocalWorldBuilder(options={}){
   function commitPrepared(prepared){
     roadReplay=prepared?.p937RoadStage||null;
     if(roadReplay)roadPerf.replayCommits++;
+    preserveForestDuringPreparedCommit=true;
     try{
+      // P9.38: forest chunks are owned by forest-chunk-streamer. Its ordinary
+      // refresh contract keeps cached/active chunks alive across floating-origin
+      // world commits, repositions them for the new origin, and replaces only
+      // nearby chunks whose heights need refreshing. Avoiding the generic
+      // clearGroup(forestGroup) here removes redundant synchronous traversal,
+      // geometry disposal and subsequent recreation from the atomic swap.
       const result=base.commitPrepared?.(prepared);
       if(result&&typeof terrainService?.rebuildRoadTransitionIncremental==='function'){
         terrainService.cancelRoadTransitionPreparation?.();
@@ -167,6 +202,7 @@ export function createLocalWorldBuilder(options={}){
       }
       return result;
     }finally{
+      preserveForestDuringPreparedCommit=false;
       // Any leftovers mean the base commit did not consume the complete staged
       // road (for example a discarded/stale commit). Dispose only geometry;
       // shared road materials remain owned by main.js.
@@ -201,6 +237,12 @@ export function createLocalWorldBuilder(options={}){
         lastPrepareWallMs:Number(roadPerf.lastPrepareWallMs.toFixed(3)),
         maxPrepareWallMs:Number(roadPerf.maxPrepareWallMs.toFixed(3)),
         gapMs:P937_ROAD_PREP_GAP_MS
+      },
+      p938ForestRetention:{
+        enabled:P938_PRESERVE_FOREST_DURING_PREPARED_COMMIT,
+        commits:forestRetentionPerf.commits,
+        lastPreservedChildren:forestRetentionPerf.lastPreservedChildren,
+        maxPreservedChildren:forestRetentionPerf.maxPreservedChildren
       }
     };
   }
