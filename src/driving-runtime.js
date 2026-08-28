@@ -8,6 +8,7 @@ import {
   consumeClutchShockMultiplier,
   readTransmissionRuntimeState
 } from './transmission-runtime-bridge.js';
+import {createCivilTrafficSystem} from './civil-traffic.js';
 
 export function clutchShockDurationSec(profile={},vehicleId=''){
   if(vehicleId==='semi_6x4')return .18;
@@ -241,7 +242,7 @@ export function createDrivingRuntime(args={}){
     }
   }:originalSkidMarks;
 
-  return createBaseDrivingRuntime({
+  const runtime=createBaseDrivingRuntime({
     ...args,
     setState:setStateWithAuthoritativeLights,
     updateTransmission:updateTransmissionWithBodySpeed,
@@ -249,5 +250,28 @@ export function createDrivingRuntime(args={}){
     skidMarks:skidMarksWithWheelspin||args.skidMarks,
     vehicleVisuals:vehicleVisualsWithAuthoritativeBrake,
     truckTrailerSystem:truckTrailerWithAuthoritativeBrake
+  });
+
+  // Traffic R1 runs strictly after the player's authoritative frame. The civil
+  // cars are presentation-only and therefore cannot perturb traction, steering,
+  // braking, crest launches, landings or multiplayer state.
+  const civilTraffic=createCivilTrafficSystem({
+    car:args.car,
+    getState:args.getState,
+    getRouteLength:args.getRouteLength,
+    getWorldOffset:args.getWorldOffset,
+    nearestRouteForVehicle:args.nearestRouteForVehicle,
+    roadProfileFrameAtCum:args.roadProfileFrameAtCum,
+    getHeadlightLevel:()=>Number(originalVehicleVisuals?.headlightLevel)||0
+  });
+
+  return Object.freeze({
+    ...runtime,
+    update(dt){
+      const result=runtime.update(dt);
+      civilTraffic.update(dt);
+      return result;
+    },
+    traffic:civilTraffic
   });
 }
