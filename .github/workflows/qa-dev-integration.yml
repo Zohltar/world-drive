@@ -41,6 +41,8 @@ jobs:
         run: node qa-p937-combined-frame-pacing.mjs
       - name: Prepared forest-retention QA
         run: node qa-p938-forest-retention.mjs
+      - name: Hitch attribution QA
+        run: node qa-p939-hitch-attribution.mjs
       - name: Road-sign runtime QA
         run: node qa-road-signs-p930-runtime.mjs
       - name: M4.14 authored reverse WebGL pixel QA
