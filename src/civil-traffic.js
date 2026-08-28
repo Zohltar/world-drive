@@ -1,11 +1,11 @@
 import * as THREE from 'three';
 
-// World Drive Traffic R2 — deliberately sparse, presentation-only civil traffic.
+// World Drive Traffic R3 — deliberately sparse, presentation-only civil traffic.
 //
 // The player physics remain authoritative and untouched. At most two lightweight
-// traffic agents follow the engineered active road profile. Runtime testing of R1
-// showed that its assumed lateral lane sign was reversed relative to the rendered
-// road convention, so R2 flips lane ownership while preserving right-hand traffic.
+// traffic agents follow the engineered active road profile. R3 keeps the corrected
+// right-hand lane convention from R2, removes generic visible lamp bulbs, and uses
+// the Sonata's authored textured lens geometry for visible head/tail-light glow.
 
 export const CIVIL_TRAFFIC_MAX_ACTIVE=2;
 export const CIVIL_TRAFFIC_LANE_OFFSET_M=1.72;
@@ -27,8 +27,8 @@ const clamp=(value,min,max)=>Math.max(min,Math.min(max,value));
 const lerp=(a,b,t)=>a+(b-a)*t;
 const angleDelta=(a,b)=>Math.atan2(Math.sin(b-a),Math.cos(b-a));
 
-// R2: verified against the rendered road in-game. Positive lateral offset is the
-// player's right-hand lane; negative is the player's left-hand/oncoming lane.
+// R2/R3: verified against the rendered road in-game. Positive lateral offset is
+// the player's right-hand lane; negative is the player's left-hand/oncoming lane.
 export function civilTrafficLaneOffset(direction=1){
   return direction>=0?CIVIL_TRAFFIC_LANE_OFFSET_M:-CIVIL_TRAFFIC_LANE_OFFSET_M;
 }
@@ -68,8 +68,6 @@ export function civilTrafficSpawnPlan({
 export function civilTrafficCurveSpeed(cruiseSpeed,currentAngle,nextAngle){
   const cruise=Math.max(7,Number(cruiseSpeed)||16);
   const turn=Math.abs(angleDelta(Number(currentAngle)||0,Number(nextAngle)||0));
-  // Around 35 m of look-ahead: a broad bend barely changes speed, while a
-  // mountain hairpin progressively pulls ordinary traffic down toward 30 km/h.
   const severity=clamp(turn/.72,0,1);
   return Math.max(8.3,cruise*(1-.57*severity*severity));
 }
@@ -129,46 +127,176 @@ function makeContactShadow(){
   return mesh;
 }
 
-function makeTrafficLights(){
+// Same texture-driven idea as the authored Sonata lighting system. The traffic
+// version only needs white headlamps and red running lamps for now. The overlay
+// reuses the exact authored lens geometry/UVs; no generic visible lamp primitives.
+function makeTrafficLensGlowMaterial({sourceMaterial,filter='white',tint=0xffffff,tintMix=.8,uvRegion=null}){
+  if(!sourceMaterial?.map)return null;
+  const uvMin=uvRegion?.min||[0,0];
+  const uvMax=uvRegion?.max||[1,1];
+  const uvFeather=uvRegion?.feather||[.004,.004];
+  return new THREE.ShaderMaterial({
+    uniforms:{
+      uMap:{value:sourceMaterial.map},
+      uOpacity:{value:0},
+      uTint:{value:new THREE.Color(tint)},
+      uFilterRed:{value:filter==='red'?1:0},
+      uTintMix:{value:clamp(Number(tintMix)||0,0,1)},
+      uUseUvRegion:{value:uvRegion?1:0},
+      uUvMin:{value:new THREE.Vector2(uvMin[0],uvMin[1])},
+      uUvMax:{value:new THREE.Vector2(uvMax[0],uvMax[1])},
+      uUvFeather:{value:new THREE.Vector2(uvFeather[0],uvFeather[1])}
+    },
+    transparent:true,
+    depthWrite:false,
+    depthTest:true,
+    toneMapped:false,
+    side:THREE.DoubleSide,
+    blending:THREE.AdditiveBlending,
+    polygonOffset:true,
+    polygonOffsetFactor:-2,
+    polygonOffsetUnits:-2,
+    vertexShader:`
+      varying vec2 vUv;
+      void main(){
+        vUv=uv;
+        gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);
+      }
+    `,
+    fragmentShader:`
+      uniform sampler2D uMap;
+      uniform float uOpacity;
+      uniform vec3 uTint;
+      uniform float uFilterRed;
+      uniform float uTintMix;
+      uniform float uUseUvRegion;
+      uniform vec2 uUvMin;
+      uniform vec2 uUvMax;
+      uniform vec2 uUvFeather;
+      varying vec2 vUv;
+
+      void main(){
+        vec3 rawTex=texture2D(uMap,vUv).rgb;
+        float lum=dot(rawTex,vec3(0.2126,0.7152,0.0722));
+        float maxc=max(rawTex.r,max(rawTex.g,rawTex.b));
+        float minc=min(rawTex.r,min(rawTex.g,rawTex.b));
+        float spread=maxc-minc;
+
+        float redRatioG=rawTex.g/max(rawTex.r,0.001);
+        float redRatioB=rawTex.b/max(rawTex.r,0.001);
+        float redDominance=rawTex.r-max(rawTex.g,rawTex.b);
+        float redMask=smoothstep(0.30,0.44,rawTex.r)
+          *(1.0-smoothstep(0.24,0.32,redRatioG))
+          *(1.0-smoothstep(0.27,0.36,redRatioB))
+          *smoothstep(0.14,0.24,redDominance);
+
+        float whiteMask=smoothstep(0.12,0.32,lum)
+          *(1.0-smoothstep(0.38,0.70,spread));
+        float filterMask=mix(whiteMask,redMask,uFilterRed);
+
+        float uvMask=1.0;
+        if(uUseUvRegion>0.5){
+          float uEnter=smoothstep(uUvMin.x-uUvFeather.x,uUvMin.x+uUvFeather.x,vUv.x);
+          float uExit=1.0-smoothstep(uUvMax.x-uUvFeather.x,uUvMax.x+uUvFeather.x,vUv.x);
+          float vEnter=smoothstep(uUvMin.y-uUvFeather.y,uUvMin.y+uUvFeather.y,vUv.y);
+          float vExit=1.0-smoothstep(uUvMax.y-uUvFeather.y,uUvMax.y+uUvFeather.y,vUv.y);
+          uvMask=uEnter*uExit*vEnter*vExit;
+        }
+
+        float alpha=uOpacity*filterMask*uvMask;
+        if(alpha<0.01)discard;
+        vec3 litColor=mix(rawTex,uTint,clamp(uTintMix,0.0,1.0));
+        gl_FragColor=vec4(litColor*filterMask,alpha);
+      }
+    `
+  });
+}
+
+function registerTrafficLensGlow({sourceMesh,filter,tint,tintMix=.8,uvRegion=null}){
+  if(!sourceMesh?.isMesh||!sourceMesh.material?.map)return null;
+  const material=makeTrafficLensGlowMaterial({sourceMaterial:sourceMesh.material,filter,tint,tintMix,uvRegion});
+  if(!material)return null;
+  const mesh=new THREE.Mesh(sourceMesh.geometry,material);
+  mesh.name=`traffic-authored-${sourceMesh.name}-${filter}`;
+  mesh.position.copy(sourceMesh.position);
+  mesh.quaternion.copy(sourceMesh.quaternion);
+  mesh.scale.copy(sourceMesh.scale);
+  mesh.renderOrder=(sourceMesh.renderOrder||0)+2;
+  mesh.visible=false;
+  mesh.frustumCulled=sourceMesh.frustumCulled;
+  mesh.castShadow=false;
+  mesh.receiveShadow=false;
+  sourceMesh.parent?.add(mesh);
+  return {mesh,material,filter};
+}
+
+function buildAuthoredTrafficLensGlows(model){
+  const front=[];
+  const rear=[];
+  const frontLens=model.getObjectByName('Object_7');
+  const rearInner=model.getObjectByName('Object_46');
+  const rearOuter=model.getObjectByName('Object_33');
+
+  const frontWhite=registerTrafficLensGlow({
+    sourceMesh:frontLens,
+    filter:'white',
+    tint:0xf8fbff,
+    tintMix:.82
+  });
+  if(frontWhite)front.push(frontWhite);
+
+  const rearInnerRed=registerTrafficLensGlow({
+    sourceMesh:rearInner,
+    filter:'red',
+    tint:0xff2a2e,
+    tintMix:.42
+  });
+  if(rearInnerRed)rear.push(rearInnerRed);
+
+  const rearOuterRed=registerTrafficLensGlow({
+    sourceMesh:rearOuter,
+    filter:'red',
+    tint:0xff2a2e,
+    tintMix:.42
+  });
+  if(rearOuterRed)rear.push(rearOuterRed);
+
+  return {front,rear};
+}
+
+function setTexturedGlow(layers,opacity){
+  const visible=opacity>.001;
+  for(const layer of layers){
+    layer.material.uniforms.uOpacity.value=visible?clamp(opacity,0,1):0;
+    layer.mesh.visible=visible;
+  }
+}
+
+function makeTrafficSceneLights(){
   const group=new THREE.Group();
-  group.name='civil-traffic-lights';
+  group.name='civil-traffic-scene-lights';
+  const beams=[];
 
-  // Visible lamp surfaces remain cheap emissive-looking meshes.
-  const frontMat=new THREE.MeshBasicMaterial({color:0xf7fbff,toneMapped:false});
-  const rearMat=new THREE.MeshBasicMaterial({color:0xff2028,toneMapped:false});
-  const bulbGeometry=new THREE.SphereGeometry(.085,8,6);
-  const fronts=[],rears=[],beams=[];
-
-  // R2 adds real scene lights. They cast no shadows, so at the hard two-car cap
-  // they remain cheap while finally illuminating body panels and nearby asphalt.
-  const frontFill=new THREE.PointLight(0xf7fbff,0,3.4,2);
+  // Invisible scene-light spill makes the authored textured lamps actually affect
+  // body panels and nearby asphalt. No shadow maps are allocated for traffic.
+  const frontFill=new THREE.PointLight(0xf7fbff,0,3.2,2);
   frontFill.name='civil-traffic-front-body-fill';
-  frontFill.position.set(0,.78,1.95);
+  frontFill.position.set(0,.80,1.92);
   frontFill.castShadow=false;
   frontFill.visible=false;
   group.add(frontFill);
 
-  const rearFill=new THREE.PointLight(0xff1824,0,2.8,2);
+  const rearFill=new THREE.PointLight(0xff1824,0,2.5,2);
   rearFill.name='civil-traffic-rear-body-fill';
-  rearFill.position.set(0,.72,-2.05);
+  rearFill.position.set(0,.72,-2.00);
   rearFill.castShadow=false;
   rearFill.visible=false;
   group.add(rearFill);
 
   for(const side of [-1,1]){
-    const front=new THREE.Mesh(bulbGeometry,frontMat);
-    front.position.set(side*.62,.68,2.35);
-    front.visible=false;
-    group.add(front);fronts.push(front);
-
-    const rear=new THREE.Mesh(bulbGeometry,rearMat);
-    rear.position.set(side*.64,.68,-2.34);
-    rear.visible=false;
-    group.add(rear);rears.push(rear);
-
     const target=new THREE.Object3D();
     target.name=`civil-traffic-headlight-target-${side}`;
-    target.position.set(side*.35,.12,25);
+    target.position.set(side*.32,.10,25);
     group.add(target);
 
     const beam=new THREE.SpotLight(0xf8fbff,0,58,.34,.72,1.3);
@@ -181,21 +309,23 @@ function makeTrafficLights(){
     beams.push(beam);
   }
 
-  return {group,fronts,rears,frontFill,rearFill,beams};
+  return {group,frontFill,rearFill,beams};
 }
 
 function updateTrafficLights(agent){
   const level=clamp(Number(agent.getHeadlightLevel?.())||0,0,1);
   const night=level>.08;
-  for(const lamp of agent.lights.fronts)lamp.visible=night;
-  for(const lamp of agent.lights.rears)lamp.visible=night;
 
-  agent.lights.frontFill.visible=night;
-  agent.lights.frontFill.intensity=night?8+level*12:0;
-  agent.lights.rearFill.visible=night;
-  agent.lights.rearFill.intensity=night?3+level*5:0;
+  // Visible output comes only from the authored textured lens overlays.
+  setTexturedGlow(agent.lensGlows.front,night?.42+level*.30:0);
+  setTexturedGlow(agent.lensGlows.rear,night?.13+level*.20:0);
 
-  for(const beam of agent.lights.beams){
+  agent.sceneLights.frontFill.visible=night;
+  agent.sceneLights.frontFill.intensity=night?4+level*8:0;
+  agent.sceneLights.rearFill.visible=night;
+  agent.sceneLights.rearFill.intensity=night?1.5+level*3.5:0;
+
+  for(const beam of agent.sceneLights.beams){
     beam.visible=night;
     beam.intensity=night?level*85:0;
   }
@@ -346,14 +476,18 @@ export function createCivilTrafficSystem({
     model.name='civil-traffic-sonata';
     root.add(model);
     root.add(makeContactShadow());
-    const lights=makeTrafficLights();
-    root.add(lights.group);
+
+    const lensGlows=buildAuthoredTrafficLensGlows(model);
+    const sceneLights=makeTrafficSceneLights();
+    root.add(sceneLights.group);
     trafficGroup.add(root);
+
     const wheels=bindWheelSpin(model);
     const agent={
       root,
       model,
-      lights,
+      lensGlows,
+      sceneLights,
       wheels,
       kind:plan.kind,
       direction:plan.direction,
@@ -423,8 +557,6 @@ export function createCivilTrafficSystem({
     const currentAngle=(Number(frame.angle)||0)+(agent.direction<0?Math.PI:0);
     let targetSpeed=civilTrafficCurveSpeed(agent.cruiseSpeed,currentAngle,lookAngle);
 
-    // With only two agents, a small longitudinal gap rule is enough to prevent
-    // duplicate cars from occupying each other if two same-direction events overlap.
     for(const other of agents){
       if(other===agent||other.direction!==agent.direction)continue;
       const gap=(other.cum-agent.cum)*agent.direction;
@@ -485,7 +617,7 @@ export function createCivilTrafficSystem({
   function diagnostics(){
     return {
       enabled:true,
-      mode:'traffic-r2-lanes-real-lights',
+      mode:'traffic-r3-authored-textured-lamps',
       templateReady:!!template,
       loadError:loadError?String(loadError?.message||loadError):null,
       active:agents.length,
@@ -495,6 +627,7 @@ export function createCivilTrafficSystem({
       spawnedAhead,
       nextSpawnInSec:Number(Math.max(0,nextSpawnAt-elapsed).toFixed(1)),
       rightHandTraffic:true,
+      authoredTexturedLamps:true,
       realSceneLights:true,
       agents:agents.map(agent=>({
         kind:agent.kind,
@@ -502,6 +635,8 @@ export function createCivilTrafficSystem({
         cum:Number(agent.cum.toFixed(1)),
         speedKmh:Number((agent.speed*3.6).toFixed(1)),
         laneOffset:Number(agent.laneOffset.toFixed(2)),
+        texturedFrontLayers:agent.lensGlows.front.length,
+        texturedRearLayers:agent.lensGlows.rear.length,
         visible:agent.root.visible
       }))
     };
