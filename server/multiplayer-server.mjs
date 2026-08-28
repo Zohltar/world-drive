@@ -81,6 +81,37 @@ function normalizeGear(value){
   return n<0?-1:n===0?0:Math.max(1,Math.floor(n));
 }
 
+function clamp(v,a,b){
+  return Math.max(a,Math.min(b,v));
+}
+
+function safeTrafficState(value){
+  if(!value||typeof value!=='object'||value.protocol!=='traffic-mp1')return null;
+  const agents=Array.isArray(value.agents)?value.agents.slice(0,2):[];
+  return {
+    protocol:'traffic-mp1',
+    sequence:Math.max(0,Math.floor(finite(value.sequence))),
+    routeLength:clamp(finite(value.routeLength),0,10000000),
+    agents:agents.map(agent=>{
+      if(!agent||typeof agent!=='object')return null;
+      const direction=finite(agent.direction,1)<0?-1:1;
+      const id=String(agent.id||agent.networkId||'').slice(0,48);
+      const vehicleId=String(agent.vehicleId||'sonata').slice(0,32);
+      if(!id||!vehicleId)return null;
+      return {
+        id,
+        vehicleId,
+        kind:direction>0?'ahead':'oncoming',
+        direction,
+        cum:clamp(finite(agent.cum),0,10000000),
+        speed:clamp(finite(agent.speed),0,60),
+        cruiseSpeed:clamp(finite(agent.cruiseSpeed,agent.speed),0,60),
+        laneOffset:clamp(finite(agent.laneOffset),-4,4)
+      };
+    }).filter(Boolean)
+  };
+}
+
 function safeState(client,message){
   const gear=normalizeGear(message.gear);
   return {
@@ -94,8 +125,6 @@ function safeState(client,message){
     y:clamp(finite(message.y),-500,10000),
     heading:finite(message.heading),
 
-    // M2 presentation prediction fields. They remain data only; the relay does
-    // not integrate or author any remote physics.
     velocityHeading:finite(message.velocityHeading,message.heading),
     longitudinalAccel:clamp(finite(message.longitudinalAccel),-20,15),
 
@@ -103,37 +132,32 @@ function safeState(client,message){
     vehicleId:String(message.vehicleId||client.vehicleId||'wrx').slice(0,32),
     steer:clamp(finite(message.steer),-1.2,1.2),
 
-    // M4.9 numeric transmission contract: -1 reverse, 0 neutral, 1..N forward.
-    // Missing information remains null and is never silently converted to N.
     gear,
     braking:!!message.braking,
     reversing:gear!==null?gear===-1:!!message.reversing,
 
-    // M2.4 presentation-only lighting state. The relay never decides when a
-    // lamp should be on; it only normalizes and forwards the driver's state.
     nightLevel:clamp(finite(message.nightLevel),0,1),
     signalLeft:!!message.signalLeft,
     signalRight:!!message.signalRight,
     signalBlink:!!message.signalBlink,
     lightingProtocol:message.lightingProtocol==='m2.4'?'m2.4':null,
 
-    // Skid geometry is never networked: just normalized visual slip state.
     onRoad:!!message.onRoad,
     skidFront:clamp(finite(message.skidFront),0,1),
     skidRear:clamp(finite(message.skidRear),0,1),
 
-    // Presentation-only pose. The relay still performs no vehicle physics.
     bodyPitch:clamp(finite(message.bodyPitch),-1.2,1.2),
     bodyYaw:clamp(finite(message.bodyYaw),-.35,.35),
     bodyRoll:clamp(finite(message.bodyRoll),-1.2,1.2),
     bodyY:clamp(finite(message.bodyY),-2,2),
     wheelPitch:clamp(finite(message.wheelPitch),-1.2,1.2),
-    wheelRoll:clamp(finite(message.wheelRoll),-1.2,1.2)
-  };
-}
+    wheelRoll:clamp(finite(message.wheelRoll),-1.2,1.2),
 
-function clamp(v,a,b){
-  return Math.max(a,Math.min(b,v));
+    // Traffic MP1 is still presentation-only. The relay sanitizes and forwards
+    // the elected client's compact one-dimensional route snapshot; it never
+    // advances civil cars itself.
+    trafficState:safeTrafficState(message.trafficState)
+  };
 }
 
 function handleMessage(client,message){
@@ -150,7 +174,6 @@ function handleMessage(client,message){
       count:activeClientCount()
     });
 
-    // Atomic snapshot: every existing driver's state remains keyed by peer id.
     const states=[];
     for(const other of clients.values()){
       if(
@@ -166,7 +189,6 @@ function handleMessage(client,message){
       states
     });
 
-    // Force fresh states from existing drivers for the late joiner.
     broadcast(
       {type:'refresh-state',joinedId:client.id},
       client.id
