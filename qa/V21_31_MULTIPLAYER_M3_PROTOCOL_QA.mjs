@@ -87,8 +87,6 @@ publishTransmissionNetworkGear(-1);
 assert.equal(readTransmissionNetworkGear(),-1,'R must publish as -1');
 assert.equal(readTransmissionRuntimeState().selectorGear,-1,'runtime bridge must expose R exactly for multiplayer reverse lights');
 
-// M4.11 receiver regression: missing gear is not Neutral. Preserve the last
-// explicit numeric gear until another explicit numeric value arrives.
 assert.equal(normalizeMultiplayerGear(null,-1),-1,'receiver null gear must preserve previous R');
 assert.equal(normalizeMultiplayerGear(undefined,-1),-1,'receiver undefined gear must preserve previous R');
 assert.equal(normalizeMultiplayerGear('',-1),-1,'receiver empty gear must preserve previous R');
@@ -97,17 +95,22 @@ assert.equal(reverseFromMultiplayerGear(-1,false),true,'numeric -1 must derive r
 assert.equal(reverseFromMultiplayerGear(0,true),false,'numeric 0 must derive reversing=false');
 assert(client.includes("const present=input=>input!==null&&input!==undefined&&input!==''"),'receiver must guard null/undefined/empty before Number conversion');
 
-// Final WebSocket ownership boundary: even if the maintained client assembled a
-// stale Neutral packet, the actual JSON frame leaving the browser is corrected.
 const forcedReverse=JSON.parse(enforceExactGearOnOutgoingPayload(JSON.stringify({
   type:'state',vehicleId:'sonata',gear:0,reversing:false,braking:false
 }),-1));
-assert.equal(forcedReverse.gear,-1,'WebSocket boundary must force exact -1 reverse gear');
-assert.equal(forcedReverse.reversing,true,'WebSocket boundary must derive reversing from exact -1 gear');
+assert.equal(forcedReverse.gear,-1,'outgoing boundary must force exact -1 reverse gear');
+assert.equal(forcedReverse.reversing,true,'outgoing boundary must derive reversing from exact -1 gear');
 const forcedNeutral=JSON.parse(enforceExactGearOnOutgoingPayload(JSON.stringify({type:'state',gear:-1,reversing:true}),0));
-assert.equal(forcedNeutral.gear,0,'WebSocket boundary must preserve exact Neutral');
+assert.equal(forcedNeutral.gear,0,'outgoing boundary must preserve exact Neutral');
 assert.equal(forcedNeutral.reversing,false,'Neutral must disable reverse presentation');
-assert(entry.includes('send(enforceExactGearOnOutgoingPayload')||entry.includes('super.send(enforceExactGearOnOutgoingPayload'),'actual WebSocket.send boundary must enforce exact numeric gear');
+
+assert(client.includes('transformOutgoingState=null,transformIncomingPayload=null'),'maintained client must expose socket-scoped transforms');
+assert(client.includes("typeof transformOutgoingState==='function'"),'owned socket send path must apply scoped outgoing transform');
+assert(client.includes("typeof transformIncomingPayload==='function'"),'owned socket receive path must apply scoped incoming transform');
+assert(entry.includes('transformOutgoingState:payload=>'),'public entry must inject exact-gear transform into owned client');
+assert(entry.includes('transformIncomingPayload:raw=>'),'public entry must inject legacy/diagnostic transform into owned client');
+assert(!entry.includes('globalThis.WebSocket='),'public entry must never replace global WebSocket');
+assert(!entry.includes('class WorldDriveCompatWebSocket'),'global WebSocket subclass must stay retired');
 assert(entry.includes('__WORLD_DRIVE_MULTIPLAYER_WIRE__'),'wire diagnostics must expose actual outgoing/incoming state');
 
 assert(client.includes('const gear=normalizeGear(state.gear,runtime.selectorGear)'),'maintained sender fallback remains documented behind final boundary enforcement');
@@ -119,11 +122,12 @@ assert(client.includes('INTERPOLATION_DELAY_MS=110'),'receiver interpolation buf
 assert(client.includes('MAX_EXTRAPOLATION_MS=105'),'receiver extrapolation horizon changed unexpectedly');
 assert(client.includes('SNAPSHOT_HISTORY_MS=900'),'snapshot retention changed unexpectedly');
 
-console.log('V21.31 MULTIPLAYER M4.11 PROTOCOL QA: PASS',{
+console.log('V21.31 MULTIPLAYER SOCKET-SCOPED PROTOCOL QA: PASS',{
   relays:['browser','electron'],
   numericGear:{reverse:-1,neutral:0,forward:'1..N'},
   missingGearPreservesPriorState:true,
-  finalWebSocketBoundaryEnforcement:true,
+  ownedSocketBoundaryEnforcement:true,
+  globalWebSocketUntouched:true,
   wireDiagnostics:true,
   exactGearSequence:[3,0,-1],
   lighting:['brake','reverse','night','signal-left','signal-right','blink'],
