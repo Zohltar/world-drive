@@ -68,54 +68,35 @@ function compactWireState(state){
   };
 }
 function recordIncomingPayload(raw){
-  if(typeof raw!=='string')return;
-  let message;try{message=JSON.parse(raw);}catch{return;}
+  if(typeof raw!=='string')return raw;
+  let message;try{message=JSON.parse(raw);}catch{return raw;}
   wireDiagnostics.incomingCount++;
   if(message?.type==='state')wireDiagnostics.incoming={at:Date.now(),...compactWireState(message)};
   else if(message?.type==='snapshot'&&Array.isArray(message.states)){
     wireDiagnostics.incoming={at:Date.now(),type:'snapshot',states:message.states.map(compactWireState).filter(Boolean)};
   }
+  return raw;
+}
+
+function prepareOutgoingState(payload,gear=readTransmissionNetworkGear()){
+  if(!payload||typeof payload!=='object'||payload.type!=='state')return payload;
+  const prepared=mergeExactTransmissionGear(payload,gear);
+  wireDiagnostics.outgoingCount++;
+  wireDiagnostics.outgoing={at:Date.now(),...compactWireState(prepared)};
+  return prepared;
 }
 
 export function enforceExactGearOnOutgoingPayload(raw,gear=readTransmissionNetworkGear()){
   if(typeof raw!=='string')return raw;
   let message;try{message=JSON.parse(raw);}catch{return raw;}
   if(message?.type!=='state')return raw;
-  const exactGear=normalizeWireGear(gear);
-  if(exactGear!==null){message.gear=exactGear;message.reversing=exactGear===-1;}
-  wireDiagnostics.outgoingCount++;
-  wireDiagnostics.outgoing={at:Date.now(),...compactWireState(message)};
-  try{return JSON.stringify(message);}catch{return raw;}
+  const prepared=prepareOutgoingState(message,gear);
+  try{return JSON.stringify(prepared);}catch{return raw;}
 }
 
-let websocketCompatInstalled=false;
-function installLegacyGearWebSocketCompatibility(){
-  if(websocketCompatInstalled||typeof globalThis==='undefined')return;
-  const NativeWebSocket=globalThis.WebSocket;
-  if(typeof NativeWebSocket!=='function')return;
-  class WorldDriveCompatWebSocket extends NativeWebSocket{
-    send(data){return super.send(enforceExactGearOnOutgoingPayload(data,readTransmissionNetworkGear()));}
-    addEventListener(type,listener,options){
-      if(type!=='message'||!listener)return super.addEventListener(type,listener,options);
-      const wrapped=event=>{
-        const originalData=event?.data;
-        const data=upgradeLegacyMultiplayerPayload(originalData);
-        recordIncomingPayload(data);
-        if(data===originalData){
-          if(typeof listener==='function')return listener.call(this,event);
-          return listener.handleEvent?.(event);
-        }
-        const patchedEvent=new MessageEvent('message',{
-          data,origin:event?.origin||'',lastEventId:event?.lastEventId||'',source:event?.source||null,ports:event?.ports||[]
-        });
-        if(typeof listener==='function')return listener.call(this,patchedEvent);
-        return listener.handleEvent?.(patchedEvent);
-      };
-      return super.addEventListener(type,wrapped,options);
-    }
-  }
-  globalThis.WebSocket=WorldDriveCompatWebSocket;
-  websocketCompatInstalled=true;
+function prepareIncomingPayload(raw){
+  const upgraded=upgradeLegacyMultiplayerPayload(raw);
+  return recordIncomingPayload(upgraded);
 }
 
 try{
@@ -133,17 +114,28 @@ try{
 }catch{}
 
 export function createMultiplayerClient(options={}){
-  installLegacyGearWebSocketCompatibility();
   const baseGetLocalState=options.getLocalState;
-  const preparedOptions=typeof baseGetLocalState==='function'
-    ?{
-      ...options,
-      getLocalState:()=>mergeExactTransmissionGear(
+  const externalOutgoing=options.transformOutgoingState;
+  const externalIncoming=options.transformIncomingPayload;
+  const preparedOptions={
+    ...options,
+    getLocalState:typeof baseGetLocalState==='function'
+      ?()=>mergeExactTransmissionGear(
         mergeLocalAuthoredMultiplayerState(baseGetLocalState(),readLocalAuthoredPresentationState()),
         readTransmissionNetworkGear()
       )
+      :baseGetLocalState,
+    transformOutgoingState:payload=>{
+      let prepared=prepareOutgoingState(payload,readTransmissionNetworkGear());
+      if(typeof externalOutgoing==='function')prepared=externalOutgoing(prepared)??prepared;
+      return prepared;
+    },
+    transformIncomingPayload:raw=>{
+      let prepared=prepareIncomingPayload(raw);
+      if(typeof externalIncoming==='function')prepared=externalIncoming(prepared)??prepared;
+      return prepared;
     }
-    :options;
+  };
 
   let implementation=null;
   let loadPromise=null;
