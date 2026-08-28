@@ -148,6 +148,7 @@ export function createMultiplayerClient(options={}){
   let implementation=null;
   let loadPromise=null;
   let wantsConnection=false;
+  let lastConnected=false;
   const toggleButton=options.toggleButton||null;
   const statusEl=options.statusEl||null;
   const serverEl=options.serverEl||null;
@@ -198,6 +199,7 @@ export function createMultiplayerClient(options={}){
   function disconnect(){
     wantsConnection=false;
     resetCivilTrafficMultiplayerBridge();
+    lastConnected=false;
     if(implementation)return implementation.disconnect?.();
     if(toggleButton){toggleButton.disabled=false;toggleButton.textContent='Connecter';}
     setBootstrapStatus('Déconnecté','off');
@@ -217,7 +219,12 @@ export function createMultiplayerClient(options={}){
 
   return {
     connect,disconnect,toggle,
-    update(dt){implementation?.update?.(dt);},
+    update(dt){
+      implementation?.update?.(dt);
+      const connected=!!implementation?.isConnected?.();
+      if(lastConnected&&!connected)resetCivilTrafficMultiplayerBridge();
+      lastConnected=connected;
+    },
     getPeers(){return implementation?.getPeers?.()||[];},
     isConnected(){return implementation?.isConnected?.()||false;},
     get loaded(){return !!implementation;}
