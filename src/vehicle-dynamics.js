@@ -105,11 +105,43 @@ function shadowVehicleForAntiRoll(vehicle,scales){
   return shadow;
 }
 
+function clearAirborneTireState(result){
+  // Tire/road utilization has no physical meaning once the chassis has no road
+  // contact. The frozen base solver already drives raw demand to zero airborne,
+  // but its temporal filter can retain smoothed/slip values from the preceding
+  // crest frame. Chassis sideslip/yaw memory is owned separately by the driving
+  // runtime and is intentionally NOT cleared here; landing has its own seed.
+  for(const key of ['raw','smoothed','slip','lateralSlip','lateralUsage','longitudinalUsage']){
+    const values=result?.[key];
+    if(Array.isArray(values))values.fill(0);
+  }
+  result.frontCombined=0;
+  result.rearCombined=0;
+  result.frontLateral=0;
+  result.rearLateral=0;
+  result.netLateralAccel=0;
+  result.frictionYawAccel=0;
+  result.trajectoryLateralCapacityScale=0;
+  result.trajectoryLateralCapacityAccel=0;
+  result.frontLateralForceScale=0;
+  result.rearLateralForceScale=0;
+
+  // V21.29 publishes this optional diagnostic before the V21.30 wrapper sees
+  // the result. Keep the diagnostic consistent with the authoritative output.
+  if(typeof globalThis!=='undefined'&&globalThis.WorldDriveWheelSpinTelemetry){
+    const telemetry=globalThis.WorldDriveWheelSpinTelemetry;
+    if(Array.isArray(telemetry.levels))telemetry.levels.fill(0);
+    if(Array.isArray(telemetry.longitudinalUsage))telemetry.longitudinalUsage.fill(0);
+  }
+  return result;
+}
+
 export function estimateWheelGripUsage(args={},out=null){
   const scales=antiRollAxleGripScales({vehicle:args?.vehicle||{},signedLatAccel:args?.signedLatAccel});
   const active=scales.loadT>.001&&Math.abs(scales.imbalance)>.001;
   const vehicle=active?shadowVehicleForAntiRoll(args?.vehicle||{},scales):args?.vehicle;
   const result=baseEstimateWheelGripUsage({...args,vehicle},out);
+  if(args?.airborne)clearAirborneTireState(result);
   result.antiRollFrontGripScale=scales.front;
   result.antiRollRearGripScale=scales.rear;
   result.antiRollFrontBalance=scales.frontBalance;
