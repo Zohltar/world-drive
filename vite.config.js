@@ -115,12 +115,25 @@ function worldDriveOverpassProxy(){
   };
 }
 
+function productionChunkName(id){
+  const normalized=String(id||'').replaceAll('\\','/');
+  // Keep only the Three.js core in the eager stable vendor chunk. Examples and
+  // loaders (notably GLTFLoader) remain in their lazy vehicle dependency graph.
+  if(normalized.includes('/node_modules/three/build/three.module.js'))return 'vendor-three';
+  return undefined;
+}
+
 export default defineConfig({
   plugins:[
     copyWorldDriveStaticAssets(),
     worldDriveOverpassProxy()
   ],
   build:{
-    emptyOutDir:true
+    emptyOutDir:true,
+    rollupOptions:{
+      output:{
+        manualChunks:productionChunkName
+      }
+    }
   }
 });
