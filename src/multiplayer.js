@@ -1,5 +1,10 @@
 import {readLocalAuthoredPresentationState} from './deferred-glb-system.js';
 import {readTransmissionNetworkGear} from './transmission-network-state.js';
+import {
+  consumeCivilTrafficMultiplayerPayload,
+  mergeCivilTrafficIntoOutgoingState,
+  resetCivilTrafficMultiplayerBridge
+} from './civil-traffic-network-bridge.js';
 
 // Lightweight multiplayer public entrypoint.
 // Wire/compatibility guards remain tiny and always available, while the full
@@ -64,7 +69,8 @@ function compactWireState(state){
     vehicleId:state.vehicleId||null,
     gear:normalizeWireGear(state.gear),
     reversing:!!state.reversing,
-    braking:!!state.braking
+    braking:!!state.braking,
+    trafficAgents:Array.isArray(state.trafficState?.agents)?state.trafficState.agents.length:0
   };
 }
 function recordIncomingPayload(raw){
@@ -80,7 +86,8 @@ function recordIncomingPayload(raw){
 
 function prepareOutgoingState(payload,gear=readTransmissionNetworkGear()){
   if(!payload||typeof payload!=='object'||payload.type!=='state')return payload;
-  const prepared=mergeExactTransmissionGear(payload,gear);
+  let prepared=mergeExactTransmissionGear(payload,gear);
+  prepared=mergeCivilTrafficIntoOutgoingState(prepared);
   wireDiagnostics.outgoingCount++;
   wireDiagnostics.outgoing={at:Date.now(),...compactWireState(prepared)};
   return prepared;
@@ -96,6 +103,7 @@ export function enforceExactGearOnOutgoingPayload(raw,gear=readTransmissionNetwo
 
 function prepareIncomingPayload(raw){
   const upgraded=upgradeLegacyMultiplayerPayload(raw);
+  consumeCivilTrafficMultiplayerPayload(upgraded);
   return recordIncomingPayload(upgraded);
 }
 
@@ -159,8 +167,6 @@ export function createMultiplayerClient(options={}){
     if(toggleButton){toggleButton.disabled=true;toggleButton.textContent='Chargement…';}
     setBootstrapStatus('Chargement…','connecting');
     loadPromise=(async()=>{
-      // Visuals are synchronous once peers begin arriving. Preload their lazy
-      // facade before the socket is opened so no first-peer frame can race it.
       const prepareVisuals=options.createRemoteVisual?.prepare;
       if(typeof prepareVisuals==='function')await prepareVisuals();
       const module=await import('./multiplayer-client-m3.js');
@@ -183,6 +189,7 @@ export function createMultiplayerClient(options={}){
   }
 
   async function connect(){
+    resetCivilTrafficMultiplayerBridge();
     wantsConnection=true;
     const client=await ensureImplementation();
     if(wantsConnection)client?.connect?.();
@@ -190,12 +197,13 @@ export function createMultiplayerClient(options={}){
   }
   function disconnect(){
     wantsConnection=false;
+    resetCivilTrafficMultiplayerBridge();
     if(implementation)return implementation.disconnect?.();
     if(toggleButton){toggleButton.disabled=false;toggleButton.textContent='Connecter';}
     setBootstrapStatus('Déconnecté','off');
   }
   function toggle(){
-    if(implementation)return implementation.toggle?.();
+    if(implementation?.isConnected?.())return disconnect();
     return connect();
   }
   function bootstrapToggle(){void toggle()?.catch?.(()=>{});}
