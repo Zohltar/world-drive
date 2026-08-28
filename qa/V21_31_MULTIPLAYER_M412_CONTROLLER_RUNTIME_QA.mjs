@@ -11,6 +11,7 @@ import {createMultiplayerVisualSystem} from '../src/multiplayer-visuals-m3.js';
 // while the Sonata pixel QA separately validates the real embedded texture.
 
 const originalFetch=globalThis.fetch;
+globalThis.self=globalThis;
 globalThis.fetch=async(input,init)=>{
   const value=typeof input==='string'?input:input?.url;
   if(typeof value==='string'&&value.startsWith('file:')){
@@ -98,7 +99,7 @@ async function exercise(vehicleId){
   const adapter=visual.vehicleAdapter;
   assert(adapter,`${vehicleId}: M4 adapter missing`);
   await adapter.ensureLoaded();
-  await waitFor(()=>adapter.ready||adapter.loadError,{label:`${vehicleId} authored controller`});
+  await waitFor(()=>adapter.ready,{label:`${vehicleId} authored controller`});
   assert.equal(adapter.loadError,null,`${vehicleId}: authored GLB load failed: ${adapter.loadError||''}`);
   assert.equal(adapter.ready,true,`${vehicleId}: authored controller never became ready`);
 
@@ -107,10 +108,9 @@ async function exercise(vehicleId){
   visual.setLighting?.(drive);
   visual.updateRemoteVehicle?.(1/60,drive);
   let diag=adapter.diagnostics();
-  let white=whiteVisualState(adapter?.diagnostics&&adapter ? adapter.diagnostics()&&adapter : null);
   // Traverse the authored controller through the visual's body group. The
   // adapter's controller host is attached below this support body group.
-  white=whiteVisualState(visual.bodyGroup);
+  let white=whiteVisualState(visual.bodyGroup);
   assert.equal(diag.gear,1,`${vehicleId}: initial forward gear lost`);
   assert.equal(diag.reversing,false,`${vehicleId}: forward state starts in reverse`);
   assert.equal(white.hot.length+white.shader.length,0,`${vehicleId}: white reverse output visible in Drive`);
