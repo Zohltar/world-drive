@@ -158,14 +158,15 @@ export function createSonataGlbSystem({
           mat.emissiveIntensity=.09;
           if('envMapIntensity' in mat)mat.envMapIntensity=Math.max(1.20,Number(mat.envMapIntensity)||1.20);
         }else{
-          if(mat.color)mat.color.multiplyScalar(1.08);
-          if(mat.map)mat.emissiveMap=mat.map;
-          if(!mat.emissive)mat.emissive=new THREE.Color(0xf1ece2);
-          else mat.emissive.setHex(0xf1ece2);
-          mat.emissiveIntensity=.20;
+          // Traffic R6: match the more realistic civilian Sonata exterior. The
+          // authored body is lit by the world instead of self-illuminating at night.
+          // Keep normal PBR response while preserving the existing daytime surface.
+          if(mat.emissiveMap)mat.emissiveMap=null;
+          if(mat.emissive)mat.emissive.setHex(0x000000);
+          mat.emissiveIntensity=0;
           if('roughness' in mat)mat.roughness=Math.max(.18,Math.min(.52,Number(mat.roughness)||.34));
           if('metalness' in mat)mat.metalness=Math.max(.08,Number(mat.metalness)||.08);
-          if('envMapIntensity' in mat)mat.envMapIntensity=Math.max(1.75,Number(mat.envMapIntensity)||1.75);
+          if('envMapIntensity' in mat)mat.envMapIntensity=Math.max(1.25,Number(mat.envMapIntensity)||1.25);
         }
 
         mat.needsUpdate=true;
