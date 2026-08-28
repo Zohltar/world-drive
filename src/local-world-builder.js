@@ -8,6 +8,7 @@ export function createLocalWorldBuilder(options={}){
   const scheduleVisualJob=options.scheduleVisualJob;
   const getWorldOffset=options.getWorldOffset;
   const originalClearGroup=options.clearGroup;
+  const originalFreezeStaticMatrices=options.freezeStaticMatrices;
   const forestGroup=options.forestGroup;
   let incrementalInstall=false;
   let preserveForestDuringPreparedCommit=false;
@@ -27,7 +28,8 @@ export function createLocalWorldBuilder(options={}){
   const forestRetentionPerf={
     commits:0,
     lastPreservedChildren:0,
-    maxPreservedChildren:0
+    maxPreservedChildren:0,
+    freezeSkips:0
   };
 
   const sameOffset=(a,b)=>!!a&&!!b&&Math.hypot(
@@ -66,6 +68,21 @@ export function createLocalWorldBuilder(options={}){
     return originalClearGroup?.(group,...args);
   }
 
+  function freezeStaticMatricesForBuilder(root,...args){
+    if(
+      P938_PRESERVE_FOREST_DURING_PREPARED_COMMIT&&
+      preserveForestDuringPreparedCommit&&
+      root===forestGroup
+    ){
+      // Forest chunk groups and instanced meshes are created with
+      // matrixAutoUpdate=false by the streamer, so traversing every retained
+      // chunk again on the atomic commit frame is redundant.
+      forestRetentionPerf.freezeSkips++;
+      return;
+    }
+    return originalFreezeStaticMatrices?.(root,...args);
+  }
+
   function takePrepared(kind,fallback,args){
     const list=roadReplay?.[kind];
     if(list?.length){
@@ -96,6 +113,7 @@ export function createLocalWorldBuilder(options={}){
     ...options,
     terrainService:terrainProxy,
     clearGroup:clearGroupForBuilder,
+    freezeStaticMatrices:freezeStaticMatricesForBuilder,
     buildRoadVolume:(...args)=>takePrepared('volume',originalRoadVolume,args),
     buildLateralBand:(...args)=>takePrepared('lateral',originalLateralBand,args),
     buildRibbon:(...args)=>takePrepared('ribbon',originalRibbon,args),
@@ -242,7 +260,8 @@ export function createLocalWorldBuilder(options={}){
         enabled:P938_PRESERVE_FOREST_DURING_PREPARED_COMMIT,
         commits:forestRetentionPerf.commits,
         lastPreservedChildren:forestRetentionPerf.lastPreservedChildren,
-        maxPreservedChildren:forestRetentionPerf.maxPreservedChildren
+        maxPreservedChildren:forestRetentionPerf.maxPreservedChildren,
+        freezeSkips:forestRetentionPerf.freezeSkips
       }
     };
   }
