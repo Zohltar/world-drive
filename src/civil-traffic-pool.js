@@ -18,6 +18,7 @@ export const CIVIL_TRAFFIC_VEHICLE_POOL=Object.freeze([
 ]);
 
 const POOL_BY_ID=new Map(CIVIL_TRAFFIC_VEHICLE_POOL.map(entry=>[entry.id,entry]));
+const GENERIC_TEMPLATE_CACHE=new WeakMap();
 
 export function civilTrafficPoolEntry(id){
   return POOL_BY_ID.get(String(id||''))||null;
@@ -120,6 +121,10 @@ function extractGenericVehicle(rootNode,entry){
 }
 
 export function buildGenericPassengerTemplates(packScene){
+  if(!packScene||typeof packScene!=='object')return new Map();
+  const cached=GENERIC_TEMPLATE_CACHE.get(packScene);
+  if(cached)return cached;
+
   const result=new Map();
   let rootNode=packScene?.getObjectByName?.('RootNode')||null;
   if(!rootNode&&packScene?.traverse){
@@ -128,16 +133,26 @@ export function buildGenericPassengerTemplates(packScene){
       if(!rootNode&&civilTrafficCanonicalNodeName(node?.name)===wanted)rootNode=node;
     });
   }
-  if(!rootNode)return result;
-  rootNode.updateMatrixWorld(true);
-  for(const entry of CIVIL_TRAFFIC_VEHICLE_POOL){
-    if(entry.source!=='generic-pack')continue;
-    const template=extractGenericVehicle(rootNode,entry);
-    if(template)result.set(entry.id,template);
+  if(rootNode){
+    rootNode.updateMatrixWorld(true);
+    for(const entry of CIVIL_TRAFFIC_VEHICLE_POOL){
+      if(entry.source!=='generic-pack')continue;
+      const template=extractGenericVehicle(rootNode,entry);
+      if(template)result.set(entry.id,template);
+    }
   }
+  GENERIC_TEMPLATE_CACHE.set(packScene,result);
   return result;
 }
 
 export function genericPassengerPackIds(){
   return CIVIL_TRAFFIC_VEHICLE_POOL.filter(entry=>entry.source==='generic-pack').map(entry=>entry.id);
+}
+
+// Browser/Electron only: begin parsing the civil GLBs during application startup.
+// Node QA imports this module too, so keep the startup side effect out of Node.
+if(typeof window!=='undefined'&&typeof fetch==='function'){
+  import('./civil-traffic-preload.js')
+    .then(module=>module.startCivilTrafficAssetPreload?.())
+    .catch(error=>console.warn('Civil traffic startup preload unavailable',error));
 }
