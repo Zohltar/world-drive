@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
+import {createRequire} from 'node:module';
 import {
   consumeCivilTrafficMultiplayerPayload,
   mergeCivilTrafficIntoOutgoingState,
@@ -67,16 +68,25 @@ assert.equal(p1Outgoing.trafficState?.agents?.length,0,'empty traffic state must
 const facade=fs.readFileSync(new URL('./src/civil-traffic.js',import.meta.url),'utf8');
 const multiplayer=fs.readFileSync(new URL('./src/multiplayer.js',import.meta.url),'utf8');
 const relay=fs.readFileSync(new URL('./server/multiplayer-server.mjs',import.meta.url),'utf8');
+const electronRelay=fs.readFileSync(new URL('./electron/multiplayer-runtime.cjs',import.meta.url),'utf8');
 assert.ok(facade.includes("mode==='follower'"),'follower client must have an explicit no-local-simulation path');
 assert.ok(facade.includes('publishLocalCivilTrafficSnapshot'),'authority must publish the R7 local traffic state');
 assert.ok(facade.includes('network.remoteSnapshot'),'follower must consume the elected authority snapshot');
 assert.ok(multiplayer.includes('mergeCivilTrafficIntoOutgoingState'),'existing 30 Hz multiplayer state must carry authority traffic');
 assert.ok(multiplayer.includes('consumeCivilTrafficMultiplayerPayload'),'incoming multiplayer messages must feed the traffic authority bridge');
 assert.ok(relay.includes('trafficState:safeTrafficState(message.trafficState)'),'Node relay must sanitize and forward civil traffic state');
+assert.ok(electronRelay.includes('trafficState:safeTrafficState(message.trafficState)'),'Electron host relay must preserve the same shared traffic state');
+assert.ok(electronRelay.includes("value.protocol!=='traffic-mp1'"),'Electron relay must reject unrelated traffic payloads');
+
+const require=createRequire(import.meta.url);
+const electronRuntime=require('./electron/multiplayer-runtime.cjs');
+assert.equal(typeof electronRuntime.createMultiplayerRuntime,'function','Electron multiplayer runtime must remain loadable after traffic relay extension');
+assert.equal(typeof electronRuntime.sanitizeRemoteHost,'function');
 
 console.log('PASS Traffic MP1 shared multiplayer civil traffic');
 console.log('  - earliest connected peer is deterministic authority');
 console.log('  - follower never publishes competing random traffic');
 console.log('  - at most two network agents share id/model/cum/speed/lane');
 console.log('  - authority leave promotes the next peer');
+console.log('  - Node and Electron host relays preserve the same sanitized traffic state');
 console.log('  - empty snapshots synchronize despawns and late joins use normal state snapshots');
