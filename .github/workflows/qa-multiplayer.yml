@@ -36,6 +36,8 @@ jobs:
         run: node qa/V21_31_MULTIPLAYER_M3_PROTOCOL_QA.mjs
       - name: M4.11 reverse relay end-to-end QA
         run: node qa/V21_31_MULTIPLAYER_M411_REVERSE_E2E_QA.mjs
+      - name: M4.12 authored controller runtime QA
+        run: node qa/V21_31_MULTIPLAYER_M412_CONTROLLER_RUNTIME_QA.mjs
       - name: Sonata authored lamp UV QA
         run: node qa/V21_31_SONATA_AUTHORED_LAMP_UV_QA.mjs
       - name: Network lighting-state matrix QA
