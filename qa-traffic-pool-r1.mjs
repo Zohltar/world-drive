@@ -23,16 +23,11 @@ assert.notEqual(civilTrafficChooseVehicleId(['sedan','suv'],.2,'sedan'),'sedan',
 assert.equal(GENERIC_PASSENGER_PACK_URL,'./assets/traffic/generic_passenger_car_pack_traffic.glb');
 assert.equal(GENERIC_PASSENGER_PACK_FALLBACK_URL,'./assets/traffic/generic_passenger_car_pack.glb');
 
-// GLTFLoader sanitizes spaces/punctuation in node names. The extraction contract
-// must compare semantic names rather than requiring the raw authored string.
 assert.equal(civilTrafficCanonicalNodeName('Compact Body'),'compactbody');
 assert.equal(civilTrafficCanonicalNodeName('Compact_Body'),'compactbody');
 assert.equal(civilTrafficCanonicalNodeName('minivan body'),'minivanbody');
 assert.equal(civilTrafficCanonicalNodeName('minivan_body'),'minivanbody');
 
-// Synthetic GLTFLoader-style hierarchy: body names contain underscores, while the
-// pool retains the original Sketchfab names with spaces. All ten variants must
-// still be extracted, which directly covers the runtime failure seen in R7.
 const syntheticScene=new THREE.Group();
 const syntheticRoot=new THREE.Group();
 syntheticRoot.name='RootNode';
@@ -69,17 +64,19 @@ assert.ok(!poolSource.includes('node.name===entry.bodyName'),'pack extraction mu
 assert.ok(poolSource.includes('assembly.rotation.x=-Math.PI/2'),'pack extraction must convert source -Y forward / Z-up into World Drive +Z forward / Y-up');
 assert.ok(poolSource.includes('.slice(0,4)'),'each pack body must bind its four nearest authored wheels');
 
-const trafficSource=fs.readFileSync(new URL('./src/civil-traffic.js',import.meta.url),'utf8');
-assert.ok(trafficSource.includes("mode:'traffic-r7-variety-pool'"),'traffic diagnostics must identify variety-pool mode');
-assert.ok(trafficSource.includes('buildGenericPassengerTemplates'),'traffic runtime must build templates from the supplied pack');
-assert.ok(trafficSource.includes('civilTrafficChooseVehicleId'),'traffic spawns must select from the vehicle pool');
-assert.ok(trafficSource.includes('WorldDriveTrafficPool'),'runtime must expose pool diagnostics for visual testing');
+const facadeSource=fs.readFileSync(new URL('./src/civil-traffic.js',import.meta.url),'utf8');
+const localSource=fs.readFileSync(new URL('./src/civil-traffic-local.js',import.meta.url),'utf8');
+const trafficSource=`${facadeSource}\n${localSource}`;
+assert.ok(localSource.includes("mode:'traffic-r7-variety-pool'"),'local diagnostics must retain variety-pool mode');
+assert.ok(localSource.includes('buildGenericPassengerTemplates'),'local traffic engine must build templates from the supplied pack');
+assert.ok(localSource.includes('civilTrafficChooseVehicleId'),'local traffic spawns must select from the vehicle pool');
+assert.ok(localSource.includes('WorldDriveTrafficPool'),'runtime must expose pool diagnostics for visual testing');
 assert.ok(trafficSource.includes('WorldDriveTrafficSpawn=(kind,vehicleId)'),'forced test spawn must accept an explicit vehicle id');
-assert.ok(trafficSource.includes('spawnedByVehicle'),'diagnostics must count spawned vehicles by variant');
+assert.ok(localSource.includes('spawnedByVehicle'),'diagnostics must count spawned vehicles by variant');
+assert.ok(facadeSource.includes("mode:'traffic-mp1-shared-variety'"),'facade must identify synchronized multiplayer traffic');
 
-console.log('PASS Traffic R7.1 civilian vehicle variety pool');
+console.log('PASS Traffic MP1 civilian vehicle variety pool');
 console.log('  - Sonata + 10 supplied generic passenger-car silhouettes');
 console.log('  - GLTFLoader-sanitized body names resolve to authored pool entries');
-console.log('  - weighted selection avoids immediate duplicate variants');
-console.log('  - pack bodies are centered with their four nearest authored wheels');
-console.log('  - explicit vehicle-id test spawning and pool diagnostics are available');
+console.log('  - weighted selection and explicit vehicle spawning remain in local authority engine');
+console.log('  - MP facade preserves the same visual pool for follower clients');
