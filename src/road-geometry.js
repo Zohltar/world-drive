@@ -7,8 +7,16 @@ import { createRoadGeometrySystem as createBaseRoadGeometrySystem } from './road
 function clamp01(v){return Math.max(0,Math.min(1,Number(v)||0));}
 function smoothstep01(v){const t=clamp01(v);return t*t*(3-2*t);}
 
+const ROAD_BANK_MIN_RAD=-5*Math.PI/180;
+const ROAD_BANK_MAX_RAD=15*Math.PI/180;
+
+export function clampRoadBankV21_31(roll){
+  const value=Number.isFinite(roll)?roll:0;
+  return Math.max(ROAD_BANK_MIN_RAD,Math.min(ROAD_BANK_MAX_RAD,value));
+}
+
 export function smoothRoadProfileV21_31(profile,{terrainAbs,bridgeHeightAtCum,bridgeManager}={}){
-  if(!Array.isArray(profile)||profile.length<5)return Array.isArray(profile)?profile.map(p=>({...p})):[];
+  if(!Array.isArray(profile)||profile.length<5)return Array.isArray(profile)?profile.map(p=>({...p,roll:clampRoadBankV21_31(p?.roll)})):[];
   const source=profile.map(p=>({...p}));
   let xy=source.map(p=>({x:p.x,z:p.z}));
 
@@ -65,7 +73,7 @@ export function smoothRoadProfileV21_31(profile,{terrainAbs,bridgeHeightAtCum,br
       const ground=terrainAbs(xy[i].x,xy[i].z);
       if(Number.isFinite(ground))y=Math.max(ground-3.5,Math.min(ground+3.5,y));
     }
-    return {...p,x:xy[i].x,z:xy[i].z,y};
+    return {...p,x:xy[i].x,z:xy[i].z,y,roll:clampRoadBankV21_31(p.roll)};
   });
 }
 
