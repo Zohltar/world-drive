@@ -5,13 +5,15 @@ import {
   forestDensityNoise
 } from './forest-streaming-policy.js';
 
-// Foret P9.36 — frame-budgeted dense forest streamer with rolling prefetch.
+// Foret P9.40 — frame-budgeted dense forest streamer with rolling prefetch.
 //
 // P9.29 remains the frame-budget baseline and P9.35 keeps startup forward-biased.
 // P9.36 fixes the remaining long-drive pop-in: visible chunks still live inside
 // maxDistance, but a detached/cache-only lobe is fully built farther ahead. When
 // those chunks later enter the visible radius, only a cheap group attach/count
 // update remains; candidate generation and matrix upload already happened idle.
+// P9.40 keeps the same visual/streaming policy while removing redundant queue
+// sorting and cache trimming from every candidate slice.
 export function createForestChunkStreamer({
   THREE,
   forestGroup,
@@ -52,6 +54,7 @@ export function createForestChunkStreamer({
   const queued=new Map();
   let queue=[];
   let queueRunning=false;
+  let queuePriorityDirty=true;
   let pollTimer=null;
   let serial=0;
   let lastCenter={x:NaN,z:NaN};
@@ -85,6 +88,12 @@ export function createForestChunkStreamer({
     manualBounds:true,
     sliceBudgetMs,
     candidateBatchSize,
+    queueSorts:0,
+    lastQueueSortMs:0,
+    maxQueueSortMs:0,
+    cacheTrimRuns:0,
+    lastCacheTrimMs:0,
+    maxCacheTrimMs:0,
     aheadPriority:true,
     directionalNearPriority:true,
     nearForwardBonus:.72,
@@ -237,7 +246,9 @@ export function createForestChunkStreamer({
     };
   }
 
-  function sortQueueByPriority(center){
+  function sortQueueByPriority(center,force=false){
+    if(!force&&!queuePriorityDirty)return false;
+    const started=performance.now();
     queue.sort((a,b)=>{
       const pa=queuePriority(a,center),pb=queuePriority(b,center);
       if(pa.band!==pb.band)return pa.band-pb.band;
@@ -245,6 +256,12 @@ export function createForestChunkStreamer({
       if(!!a.builder!==!!b.builder)return a.builder?-1:1;
       return pa.nearDistance-pb.nearDistance||chunkCenterDistance(a,center)-chunkCenterDistance(b,center);
     });
+    const elapsed=performance.now()-started;
+    perf.queueSorts++;
+    perf.lastQueueSortMs=elapsed;
+    perf.maxQueueSortMs=Math.max(perf.maxQueueSortMs,elapsed);
+    queuePriorityDirty=false;
+    return true;
   }
 
   function requiredChunks(center){
@@ -580,7 +597,8 @@ export function createForestChunkStreamer({
   }
 
   function trimCache(){
-    if(cache.size<=cacheLimit)return;
+    if(cache.size<=cacheLimit)return false;
+    const started=performance.now();
     const inactive=[...cache.values()].filter(data=>!active.has(data.key));
     inactive.sort((a,b)=>{
       const aw=wantedKeys.has(a.key)?1:0,bw=wantedKeys.has(b.key)?1:0;
@@ -594,6 +612,11 @@ export function createForestChunkStreamer({
       disposeChunk(data);
       disposed++;
     }
+    const elapsed=performance.now()-started;
+    perf.cacheTrimRuns++;
+    perf.lastCacheTrimMs=elapsed;
+    perf.maxCacheTrimMs=Math.max(perf.maxCacheTrimMs,elapsed);
+    return disposed>0;
   }
 
   function prefetchReadyCount(){
@@ -660,6 +683,7 @@ export function createForestChunkStreamer({
     const job={...desc,replace,builder:null,readyToCommit:false};
     queued.set(job.key,job);
     queue.push(job);
+    queuePriorityDirty=true;
     return job;
   }
 
@@ -705,6 +729,9 @@ export function createForestChunkStreamer({
     const step=deadline=>{
       const sliceStart=performance.now();
       if(!queue.length){queueRunning=false;report(true);return;}
+      // P9.40: requestUpdate/queueJob mark priority dirty. Between those events
+      // the center and wanted sets are unchanged, so resorting the same queue on
+      // every candidate slice only burns CPU without changing which job runs.
       sortQueueByPriority(lastCenter);
       const job=queue[0];
       let candidates=0;
@@ -729,6 +756,9 @@ export function createForestChunkStreamer({
         const data=finalizeBuilder(job.builder);
         queue.shift();queued.delete(job.key);
         finishJob(job,data);
+        // P9.40: cache size can only grow on a completed job. Trim here instead
+        // of rebuilding/sorting the inactive-cache list on every generation slice.
+        trimCache();
         const commitEnded=performance.now();
         perf.lastCommitMs=commitEnded-commitStarted;
         perf.lastCommitAt=commitEnded;
@@ -754,7 +784,6 @@ export function createForestChunkStreamer({
         }
       }
 
-      trimCache();
       report(false);
       maybeResolveInitial(lastCenter);
       recordSlice(sliceStart,candidates,catchup);
@@ -807,6 +836,7 @@ export function createForestChunkStreamer({
       queued.delete(job.key);
       return false;
     });
+    queuePriorityDirty=true;
 
     for(const desc of wanted){
       const isVisible=visibleKeys.has(desc.key);
@@ -827,7 +857,7 @@ export function createForestChunkStreamer({
       queueJob(desc);
     }
 
-    sortQueueByPriority(center);
+    sortQueueByPriority(center,true);
     trimCache();
     report(true);
     maybeResolveInitial(center);
@@ -855,7 +885,8 @@ export function createForestChunkStreamer({
       queueJob(chunkDescriptor(data.cx,data.cz),{replace:true});
       replacements++;
     }
-    sortQueueByPriority(center);
+    queuePriorityDirty=true;
+    sortQueueByPriority(center,true);
     runQueue();
     return replacements;
   }
@@ -865,6 +896,7 @@ export function createForestChunkStreamer({
     queue=[];
     queued.clear();
     queueRunning=false;
+    queuePriorityDirty=true;
     visibleKeys.clear();
     prefetchKeys.clear();
     wantedKeys.clear();
