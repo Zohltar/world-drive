@@ -35,6 +35,8 @@ jobs:
         run: node qa-road-banking-r1.mjs
       - name: Sparse civil traffic QA
         run: node qa-traffic-r1.mjs
+      - name: Civil traffic variety pool QA
+        run: node qa-traffic-pool-r1.mjs
       - name: Sonata night body lighting QA
         run: node qa-sonata-night-body-r1.mjs
       - name: Crest launch regression
