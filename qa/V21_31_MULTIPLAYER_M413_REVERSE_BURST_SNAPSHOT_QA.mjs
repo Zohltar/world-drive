@@ -18,7 +18,7 @@ function freePort(){
   });
 }
 function wait(ms){return new Promise(resolve=>setTimeout(resolve,ms));}
-function waitForOpen(ws,timeoutMs=2500){
+function waitForOpen(ws,timeoutMs=800){
   return new Promise((resolve,reject)=>{
     if(ws.readyState===WebSocket.OPEN)return resolve();
     const timeout=setTimeout(()=>reject(new Error('WebSocket open timeout')),timeoutMs);
@@ -38,12 +38,23 @@ function waitForMessage(ws,predicate,timeoutMs=3000){
   });
 }
 async function connect(url,name,vehicleId,{captureSnapshot=false}={}){
-  const ws=new WebSocket(url);await waitForOpen(ws);
-  const welcome=waitForMessage(ws,m=>m?.type==='welcome');
-  const snapshot=captureSnapshot?waitForMessage(ws,m=>m?.type==='snapshot'):null;
-  ws.send(JSON.stringify({type:'hello',name,vehicleId}));
-  await welcome;
-  return{ws,snapshot:snapshot?await snapshot:null};
+  let lastError=null;
+  for(let attempt=0;attempt<15;attempt++){
+    const ws=new WebSocket(url);
+    try{
+      await waitForOpen(ws);
+      const welcome=waitForMessage(ws,m=>m?.type==='welcome');
+      const snapshot=captureSnapshot?waitForMessage(ws,m=>m?.type==='snapshot'):null;
+      ws.send(JSON.stringify({type:'hello',name,vehicleId}));
+      await welcome;
+      return{ws,snapshot:snapshot?await snapshot:null};
+    }catch(error){
+      lastError=error;
+      try{ws.close();}catch{}
+      await wait(50);
+    }
+  }
+  throw lastError||new Error(`Unable to connect ${name}`);
 }
 function packet(seq,gear,{vehicleId='sonata'}={}){
   return{
