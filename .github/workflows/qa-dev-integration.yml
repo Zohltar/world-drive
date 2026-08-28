@@ -45,6 +45,8 @@ jobs:
         run: node qa-p939-hitch-attribution.mjs
       - name: Forest queue maintenance QA
         run: node qa-forest-p940-maintenance.mjs
+      - name: Frame-runtime attribution QA
+        run: node qa-p941-frame-runtime-attribution.mjs
       - name: Road-sign runtime QA
         run: node qa-road-signs-p930-runtime.mjs
       - name: M4.14 authored reverse WebGL pixel QA
