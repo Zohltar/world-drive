@@ -1,8 +1,8 @@
 // World Drive M4 — canonical authored-vehicle controller registry.
 //
 // Local gameplay and multiplayer must resolve the SAME controller factory for a
-// vehicle. This file owns that mapping so remote rendering can never drift into
-// a second WRX/Sonata/etc implementation.
+// vehicle. This file owns only that mapping; per-vehicle visual contracts belong
+// inside their authored controllers.
 
 const DESCRIPTORS=Object.freeze({
   id4:Object.freeze({
@@ -47,53 +47,6 @@ const DESCRIPTORS=Object.freeze({
   })
 });
 
-function restoreSonataBrakeGlowContract(system){
-  if(!system||typeof system!=='object')return system;
-
-  let patched=false;
-  const patchRedLayers=()=>{
-    if(patched)return true;
-    let count=0;
-    system.host?.traverse?.(obj=>{
-      const name=String(obj?.name||'');
-      if(name!=='Object_46-red-0'&&name!=='Object_33-red-0')return;
-      const uniforms=obj?.material?.uniforms;
-      if(!uniforms?.uUseUvRegion)return;
-
-      // M4.6 made the previously dormant UV-region uniforms active. The two
-      // guessed red regions do not match the actual Sonata atlas and clipped the
-      // authored brake/running glow completely. Keep the proven texture-based
-      // red discrimination, but do not spatially crop the red layers. Reverse
-      // (white) and indicators (amber) retain their own authored contracts.
-      uniforms.uUseUvRegion.value=0;
-      obj.material.needsUpdate=true;
-      count++;
-    });
-    patched=count>=2;
-    return patched;
-  };
-
-  const originalSetActive=typeof system.setActive==='function'?system.setActive.bind(system):null;
-  const originalUpdate=typeof system.update==='function'?system.update.bind(system):null;
-
-  if(originalSetActive){
-    system.setActive=(...args)=>{
-      const result=originalSetActive(...args);
-      patchRedLayers();
-      return result;
-    };
-  }
-  if(originalUpdate){
-    system.update=(...args)=>{
-      const result=originalUpdate(...args);
-      patchRedLayers();
-      return result;
-    };
-  }
-
-  return system;
-}
-
 export function getAuthoredVehicleDescriptor(vehicleId){return DESCRIPTORS[vehicleId]||null;}
 export function listAuthoredVehicleDescriptors(){return Object.values(DESCRIPTORS);}
 export function listAuthoredVehicleIds(){return Object.keys(DESCRIPTORS);}
@@ -104,9 +57,5 @@ export async function loadAuthoredVehicleFactory(vehicleId){
   const module=await descriptor.loadModule();
   const factory=module?.[descriptor.exportName];
   if(typeof factory!=='function')throw new Error(`${descriptor.label}: ${descriptor.exportName} unavailable`);
-
-  if(vehicleId==='sonata'){
-    return options=>restoreSonataBrakeGlowContract(factory(options));
-  }
   return factory;
 }
