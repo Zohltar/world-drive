@@ -63,7 +63,7 @@ jobs:
       - name: M4.15 network to WebGL reverse QA
         shell: bash
         run: |
-          npx vite --host 127.0.0.1 --port 5187 --strictPort >/tmp/m415-vite.log 2>&1 &
+          npx vite --host 127.0.0.1 --port 5188 --strictPort >/tmp/m415-vite.log 2>&1 &
           VITE_PID=$!
           WORLD_DRIVE_MP_PORT=8081 node server/multiplayer-server.mjs >/tmp/m415-relay.log 2>&1 &
           RELAY_PID=$!
@@ -75,7 +75,7 @@ jobs:
           trap cleanup EXIT
           READY=0
           for i in {1..100}; do
-            if curl -fsS http://127.0.0.1:5187/qa/m415-render.html >/dev/null 2>&1 && curl -fsS http://127.0.0.1:8081/ >/dev/null 2>&1; then READY=1; break; fi
+            if curl -fsS http://127.0.0.1:5188/qa/m415-render.html >/dev/null 2>&1 && curl -fsS http://127.0.0.1:8081/ >/dev/null 2>&1; then READY=1; break; fi
             sleep 0.1
           done
           if [ "$READY" != "1" ]; then
