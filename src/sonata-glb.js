@@ -466,10 +466,12 @@ export function createSonataGlbSystem({
     const rearInnerLens=root.getObjectByName('Object_46');
     const rearOuterLens=root.getObjectByName('Object_33');
     if(rearInnerLens?.isMesh){
-      registerGlowLayer({targetArray:authoredRearGlowLayers,sourceMesh:rearInnerLens,filter:'red',side:0,tint:0xff2a2e,tintMix:0.42,uvRegion:{min:[0.04,0.842],max:[0.54,1.00],feather:[0.004,0.004]}});
-      // M4.6: the reverse lamp uses the complementary lower region of the same
-      // authored Object_46 lens. This excludes the known upper red strip before
-      // the white texture mask is evaluated.
+      // The red lens contract is texture-driven across the full authored mesh.
+      // Earlier guessed UV crops clipped the actual atlas and could suppress the
+      // running/brake glow. Keep only the proven red texture discrimination.
+      registerGlowLayer({targetArray:authoredRearGlowLayers,sourceMesh:rearInnerLens,filter:'red',side:0,tint:0xff2a2e,tintMix:0.42});
+      // Reverse is spatially narrower and intentionally retains its audited lower
+      // Object_46 UV region so white glow cannot wash the upper red strip.
       registerGlowLayer({targetArray:authoredRearGlowLayers,sourceMesh:rearInnerLens,filter:'white',side:0,tint:0xf8fbff,whiteWarmth:0.10,tintMix:1.0,uvRegion:{min:[0.04,0.00],max:[0.54,0.842],feather:[0.008,0.008]}});
     }
     if(rearOuterLens?.isMesh){
@@ -479,8 +481,7 @@ export function createSonataGlbSystem({
         filter:'red',
         side:0,
         tint:0xff2a2e,
-        tintMix:0.42,
-        uvRegion:{min:[0.44,0.842],max:[0.96,1.00],feather:[0.004,0.004]}
+        tintMix:0.42
       });
       registerGlowLayer({targetArray:authoredRearGlowLayers,sourceMesh:rearOuterLens,filter:'amber',side:-1,tint:0xffb21c,tintMix:0.88});
       registerGlowLayer({targetArray:authoredRearGlowLayers,sourceMesh:rearOuterLens,filter:'amber',side:1,tint:0xffb21c,tintMix:0.88});
