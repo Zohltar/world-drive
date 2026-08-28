@@ -1,6 +1,6 @@
 import * as THREE from 'three';
-import {createMultiplayerClient} from '/src/multiplayer-client-m3.js';
-import {createMultiplayerVisualSystem} from '/src/multiplayer-visuals-m3.js';
+import {createMultiplayerClient} from '/src/multiplayer.js';
+import {createMultiplayerVisualSystem} from '/src/multiplayer-visuals.js';
 
 const WIDTH=640,HEIGHT=360;
 const BASE_LAT=45.50,BASE_LON=-73.40;
@@ -102,14 +102,17 @@ async function testVehicle(vehicleId){
   const fill=new THREE.DirectionalLight(0xffffff,1.2);fill.position.set(3,2,4);scene.add(fill);
 
   const visuals=createMultiplayerVisualSystem({THREE,scene,llToXZ,groundHeightForWheel:()=>0});
+  if(visuals.loaded)throw new Error(`${vehicleId}: public visual runtime should start lazy`);
   const localState={lat:BASE_LAT,lon:BASE_LON,y:0,heading:0,speed:0,vehicleId:'id4',steer:0,onRoad:true,skidFront:0,skidRear:0,bodyPitch:0,bodyYaw:0,bodyRoll:0,bodyY:0,wheelPitch:0,wheelRoll:0};
   const client=createMultiplayerClient({
     scene,latLonToWorld:llToXZ,getWorldOffset:()=>({x:0,z:0}),getLocalState:()=>localState,
-    createRemoteVisual:(id,name)=>visuals.createRemoteVehicleVisual(id,name),
-    getLocalRenderPosition:()=>({x:0,z:0}),solveRemoteSupport:input=>visuals.solveRemoteVehicleSupport(input),
+    createRemoteVisual:visuals.createRemoteVehicleVisual,
+    getLocalRenderPosition:()=>({x:0,z:0}),solveRemoteSupport:visuals.solveRemoteVehicleSupport,
     getHeadlightLevel:()=>0,toast:()=>{}
   });
-  client.connect();
+  if(client.loaded)throw new Error(`${vehicleId}: public client runtime should start lazy`);
+  await client.connect();
+  if(!client.loaded||!visuals.loaded)throw new Error(`${vehicleId}: lazy multiplayer runtimes did not load on connect`);
   await waitFor(()=>client.isConnected(),{label:'observer websocket connection'});
 
   const sender=new WebSocket('ws://127.0.0.1:8081');await waitForOpen(sender);
@@ -119,9 +122,7 @@ async function testVehicle(vehicleId){
   await hold(sender,client,vehicleId,1,480);
   await waitFor(()=>client.getPeers().some(p=>p.vehicleId===vehicleId),{label:`${vehicleId} peer receive`});
   const root=await waitFor(()=>remoteRoot(scene,vehicleId),{label:`${vehicleId} remote root`});
-  const adapter=await waitFor(()=>{
-    const d=visuals.diagnostics();return d.adapters.find(a=>a.vehicleId===vehicleId&&a.visualReady)||null;
-  },{label:`${vehicleId} authored adapter`});
+  await waitFor(()=>{const d=visuals.diagnostics();return d.adapters?.find(a=>a.vehicleId===vehicleId&&a.visualReady)||null;},{label:`${vehicleId} authored adapter`});
   frameCamera(camera,root);
   key.position.copy(camera.position).add(new THREE.Vector3(0,3,0));key.target.position.set(0,1,0);scene.add(key.target);
 
@@ -147,7 +148,7 @@ async function testVehicle(vehicleId){
   if(on.positive<20||on.strong<4||on.maxDelta<12)throw new Error(`${vehicleId}: network->client->GPU R lacks pixel evidence ${JSON.stringify(on)}`);
   if(off.positive<20||off.strong<4||off.maxDelta<12)throw new Error(`${vehicleId}: network->client->GPU N->R lacks pixel evidence ${JSON.stringify(off)}`);
 
-  const report={vehicleId,peerReverse:{gear:reversePeer.gear,reversing:reversePeer.reversing},adapterReverse:{gear:reverseDiag.gear,reversing:reverseDiag.reversing,reverseMaterialCount:reverseDiag.reverseMaterialCount,reverseGlowOpacity:reverseDiag.reverseGlowOpacity},driveToReverse:on,neutralToReverse:off};
+  const report={vehicleId,lazyFacades:true,peerReverse:{gear:reversePeer.gear,reversing:reversePeer.reversing},adapterReverse:{gear:reverseDiag.gear,reversing:reverseDiag.reversing,reverseMaterialCount:reverseDiag.reverseMaterialCount,reverseGlowOpacity:reverseDiag.reverseGlowOpacity},driveToReverse:on,neutralToReverse:off};
   try{sender.close();}catch{} client.disconnect(); renderer.dispose();scene.clear();
   return report;
 }
@@ -155,6 +156,6 @@ async function testVehicle(vehicleId){
 (async()=>{
   try{
     const reports=[];for(const id of ['sonata','wrx'])reports.push(await testVehicle(id));
-    globalThis.__M415_RESULT__={ok:true,reports};console.log('M4.15 NETWORK GPU QA PASS',reports);
-  }catch(error){globalThis.__M415_RESULT__={ok:false,error:String(error?.stack||error)};console.error('M4.15 NETWORK GPU QA FAIL',error);}
+    globalThis.__M415_RESULT__={ok:true,reports};console.log('M4.15 PUBLIC LAZY NETWORK GPU QA PASS',reports);
+  }catch(error){globalThis.__M415_RESULT__={ok:false,error:String(error?.stack||error)};console.error('M4.15 PUBLIC LAZY NETWORK GPU QA FAIL',error);}
 })();
