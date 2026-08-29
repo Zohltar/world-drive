@@ -1,0 +1,59 @@
+name: Tune WRX rear night lights R2
+
+on:
+  push:
+    branches:
+      - dev
+    paths:
+      - '.github/workflows/wrx-tail-tune-r2.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  tune:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Expand WRX running-lamp area and brightness
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('src/wrx-glb.js')
+          s=p.read_text()
+          old_cut="const cut=minY+(maxY-minY)*.50;"
+          new_cut="const cut=minY+(maxY-minY)*.35;"
+          old_curve="const runningIntensity=night>.06 ? (.90+night*3.60) : .02;"
+          new_curve="const runningIntensity=night>.06 ? (.90+night*4.60) : .02;"
+          if old_cut not in s: raise SystemExit('expected WRX rear lens split not found')
+          if old_curve not in s: raise SystemExit('expected WRX running-tail curve not found')
+          s=s.replace(old_cut,new_cut,1).replace(old_curve,new_curve,1)
+          p.write_text(s)
+
+          q=Path('qa-wrx-night-tail-r1.mjs')
+          t=q.read_text()
+          t=t.replace("const runningIntensity=night>.06 ? (.90+night*3.60) : .02;","const runningIntensity=night>.06 ? (.90+night*4.60) : .02;")
+          t=t.replace("const fullNight=.90+1*3.60;","const fullNight=.90+1*4.60;")
+          t=t.replace("assert.equal(fullNight,4.5,'WRX full-night running-tail intensity must be 4.5');","assert.equal(fullNight,5.5,'WRX full-night running-tail intensity must be 5.5');")
+          t=t.replace("assert.ok(fullNight<5.0,'night running lamps must remain below brake intensity');","assert.ok(source.includes(\"const cut=minY+(maxY-minY)*.35;\"),'WRX night running section must cover about 65% of the authored red lens');")
+          t=t.replace("full-night running-tail intensity: 4.5","full-night running-tail intensity: 5.5")
+          q.write_text(t)
+          PY
+          grep -F "const cut=minY+(maxY-minY)*.35;" src/wrx-glb.js
+          grep -F "const runningIntensity=night>.06 ? (.90+night*4.60) : .02;" src/wrx-glb.js
+          node qa-wrx-night-tail-r1.mjs
+          rm -f .github/workflows/wrx-tail-tune-r2.yml
+      - name: Commit WRX lighting adjustment
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/wrx-glb.js qa-wrx-night-tail-r1.mjs .github/workflows/wrx-tail-tune-r2.yml
+          git commit -m "WRX: make rear night running lights clearly visible"
+          git push
