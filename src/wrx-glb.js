@@ -366,7 +366,7 @@ export function createWrxGlbSystem({
 
   function setRearLights(braking=false,reversing=false,nightLevel=0){
     const night=clamp(Number(nightLevel)||0,0,1);
-    const runningIntensity=night>.06 ? (.55+night*3.25) : .02;
+    const runningIntensity=night>.06 ? (.90+night*3.60) : .02;
     for(const mat of runningTailMaterials){
       mat.emissive?.setHex(0xff2028);
       mat.emissiveIntensity=runningIntensity;
