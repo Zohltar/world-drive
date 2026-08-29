@@ -155,31 +155,48 @@ export function steeringCommand({vehicle,speedAbs=0,input=0}={},out=null){
   const result=out||{};
   const v=Math.max(0,safeNumber(speedAbs,0));
   const raw=clampDynamics(safeNumber(input,0),-1,1);
+
+  // Grip R3 — steering geometry keeps its real mechanical lock at every speed.
+  // Speed changes sensitivity, not the maximum road-wheel angle. This preserves
+  // emergency/full-lock manoeuvres and handbrake turns while making small
+  // analog inputs progressively softer as speed rises.
   const low=safeNumber(vehicle?.maxSteerLow,.46);
-  const high=safeNumber(vehicle?.maxSteerHigh,.16);
-  const speedBlend=clampDynamics(v/32,0,1);
-
-  const parkingSteerT=1-smoothstep01(v/8.0);
   const parkingSteerBoost=clampDynamics(safeNumber(vehicle?.parkingSteerBoost,.26),0,.50);
-  const parkingSteerScale=1+parkingSteerBoost*parkingSteerT;
-  const lowSpeedRoadWheelAngle=low*parkingSteerScale;
-  const baseRoadWheelAngle=
-    lowSpeedRoadWheelAngle+
-    (high-lowSpeedRoadWheelAngle)*(speedBlend*speedBlend);
+  const defaultMechanicalAngle=low*(1+parkingSteerBoost);
+  const maxRoadWheelAngle=Math.max(
+    .08,
+    safeNumber(vehicle?.maxSteerMechanical,defaultMechanicalAngle)
+  );
 
-  const highSpeedAuthorityT=clampDynamics((v-27)/28,0,1);
-  const highSpeedAuthoritySmooth=
-    highSpeedAuthorityT*highSpeedAuthorityT*(3-2*highSpeedAuthorityT);
-  const highSpeedAuthorityScale=1-.28*highSpeedAuthoritySmooth;
-  let maxRoadWheelAngle=baseRoadWheelAngle*highSpeedAuthorityScale;
+  // 0 km/h is linear. The curve then grows smoothly toward a strong high-speed
+  // exponent. At full input pow(1,p) is still 1, so there is no hidden angle cap.
+  const steeringCurveFullSpeedMps=Math.max(
+    18,
+    safeNumber(vehicle?.steeringCurveFullSpeedMps,40)
+  );
+  const steeringCurveMaxExponent=Math.max(
+    1.4,
+    safeNumber(vehicle?.steeringInputExponentHigh,3.2)
+  );
+  const steeringCurveT=smoothstep01(v/steeringCurveFullSpeedMps);
+  const steeringInputExponent=
+    1+(steeringCurveMaxExponent-1)*steeringCurveT;
 
+  let target=raw;
+  if(Math.abs(target)<.08){
+    target=0;
+  }else{
+    target=Math.sign(target)*Math.pow(Math.abs(target),steeringInputExponent);
+  }
+
+  // Keep the old grip-envelope calculation as a diagnostic only. Tire physics
+  // decides understeer/saturation; this value must never clamp steering angle.
   const steeringGripEnvelopeFraction=clampDynamics(
     safeNumber(vehicle?.steeringGripEnvelopeFraction,0),
     0,
     1
   );
   let gripEnvelopeRoadWheelAngle=0;
-  let gripEnvelopeLimited=false;
   if(steeringGripEnvelopeFraction>0&&v>4){
     const layout=vehicleLayout(vehicle);
     const aero=safeNumber(vehicle?.aeroDownforceClA,0)>0
@@ -193,22 +210,16 @@ export function steeringCommand({vehicle,speedAbs=0,input=0}={},out=null){
     gripEnvelopeRoadWheelAngle=Math.atan(
       (lateralEnvelopeAccel*layout.wheelbase)/Math.max(16,v*v)
     );
-    if(gripEnvelopeRoadWheelAngle<maxRoadWheelAngle){
-      maxRoadWheelAngle=gripEnvelopeRoadWheelAngle;
-      gripEnvelopeLimited=true;
-    }
   }
 
-  let target=raw;
-  if(Math.abs(target)<.08){
-    target=0;
-  }else{
-    const vehicleExponent=Math.max(.75,safeNumber(vehicle?.steeringInputExponent,1.65));
-    target=Math.sign(target)*Math.pow(Math.abs(target),vehicleExponent);
-  }
-
+  // Rack motion still slows at high speed. This matters for keyboard input,
+  // where raw input is binary and therefore cannot benefit from an analog curve
+  // until the rack has had time to travel toward full lock.
+  const highSpeedResponseT=clampDynamics((v-20)/32,0,1);
+  const highSpeedResponseSmooth=
+    highSpeedResponseT*highSpeedResponseT*(3-2*highSpeedResponseT);
   const highSpeedResponse=Math.max(.5,safeNumber(vehicle?.steeringResponseHigh,3.8));
-  const highSpeedResponseScale=1-.45*highSpeedAuthoritySmooth;
+  const highSpeedResponseScale=1-.48*highSpeedResponseSmooth;
   const lowSpeedResponse=Math.max(.5,safeNumber(vehicle?.steeringResponseLow,5.2));
   const midSpeedResponse=Math.max(.5,safeNumber(vehicle?.steeringResponseMid,4.5));
   const lowReturnRate=Math.max(.5,safeNumber(vehicle?.steeringReturnRateLow,7.2));
@@ -218,7 +229,7 @@ export function steeringCommand({vehicle,speedAbs=0,input=0}={},out=null){
   result.maxRoadWheelAngle=maxRoadWheelAngle;
   result.inputRate=v<5
     ?lowSpeedResponse
-    :(v>25?highSpeedResponse*highSpeedResponseScale:midSpeedResponse);
+    :(v>20?highSpeedResponse*highSpeedResponseScale:midSpeedResponse);
   result.returnRate=v<5?lowReturnRate:highReturnRate;
 
   const centerToFullTimeSec=safeNumber(vehicle?.steeringCenterToFullTimeSec,0);
@@ -233,11 +244,16 @@ export function steeringCommand({vehicle,speedAbs=0,input=0}={},out=null){
       :result.inputSlewRate;
   result.centerToFullTimeSec=centerToFullTimeSec>1e-4?centerToFullTimeSec:0;
   result.returnToCenterTimeSec=returnToCenterTimeSec>1e-4?returnToCenterTimeSec:0;
-  result.parkingSteerScale=parkingSteerScale;
-  result.highSpeedAuthorityScale=highSpeedAuthorityScale;
+
+  result.parkingSteerScale=1+parkingSteerBoost;
+  result.highSpeedAuthorityScale=1;
   result.highSpeedResponseScale=highSpeedResponseScale;
-  result.highSpeedInputExponentBoost=0;
+  result.highSpeedInputExponentBoost=steeringInputExponent-1;
+  result.steeringInputExponent=steeringInputExponent;
+  result.steeringCurveT=steeringCurveT;
+  result.steeringCurveFullSpeedMps=steeringCurveFullSpeedMps;
+  result.mechanicalSteerAngle=maxRoadWheelAngle;
   result.gripEnvelopeRoadWheelAngle=gripEnvelopeRoadWheelAngle;
-  result.gripEnvelopeLimited=gripEnvelopeLimited?1:0;
+  result.gripEnvelopeLimited=0;
   return result;
 }
