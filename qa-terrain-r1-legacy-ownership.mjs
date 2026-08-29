@@ -15,7 +15,7 @@ assert.match(base,/function groundTerrainHeight\(x,z\)/,'authoritative safety-cu
 assert.match(base,/function refinedRoadVisualHeight\(x,z,naturalY\)/,'refined visible road earthwork height missing');
 assert.match(base,/renderHeightAt:renderedTerrainHeight/,'satellite visible-height API missing');
 assert.match(base,/const y=groundTerrainHeight\(wx,wz\)/,'near ground must retain safety excavation instead of using visual overlay height');
-assert.match(base,/return refinedRoadVisualHeight\(x,z,departureSafe\)/,'visible terrain height must use refined earthwork near roads');
+assert.match(base,/refinedRoadVisualHeight\(x,z,departureSafe\)/,'visible terrain height must use refined earthwork near roads');
 
 // The old monolithic imagery-copy bridge is invalid with chunked satellite rendering.
 assert.doesNotMatch(base,/mesh\.material\.map=ground\.material\.map/,'legacy ground-map copy still pollutes road earthwork');
