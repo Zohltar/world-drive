@@ -870,6 +870,7 @@ export function createTerrainService({
 
   function applyRoadBedTerrainColors(geometry){
     const positions=geometry.attributes.position;
+    const normals=geometry.attributes.normal;
     if(!positions)return;
 
     const offset=getWorldOffset();
@@ -919,6 +920,7 @@ export function createTerrainService({
       let nx=-gx,ny=1,nz=-gz;
       const nlen=Math.hypot(nx,ny,nz)||1;
       nx/=nlen;ny/=nlen;nz/=nlen;
+      if(normals)normals.setXYZ(i,nx,ny,nz);
 
       const directional=nx*lightX+ny*lightY+nz*lightZ;
       const slope=Math.max(0,Math.min(1,1-Math.abs(ny)));
@@ -1226,15 +1228,44 @@ export function createTerrainService({
     );
   }
 
-  function renderedTerrainHeight(x,z){
+  function groundTerrainHeight(x,z){
     const natural=heightAt(x,z)-.15;
     const departureSafe=startPadHeight(x,z,natural);
 
-    // First flatten the dedicated departure pad, then let the normal road cut
-    // win inside the asphalt corridor. This prevents the pad from ever pushing
-    // terrain through the road surface.
+    // The coarse near mesh remains a hidden safety excavation. It may cut wider
+    // than the visible shoulder so no 12.5 m terrain triangle can bridge through
+    // the road surface.
     return activeRoadProfile.length
       ?gradedHeight(x,z,departureSafe)
+      :departureSafe;
+  }
+
+  // Terrain R1 — authoritative visible road earthwork. Satellite chunks and the
+  // refined procedural shoulder now follow the same analytic surface instead of
+  // sampling the broader hidden safety cut underneath it.
+  function refinedRoadVisualHeight(x,z,naturalY){
+    if(!activeRoadProfile.length)return naturalY;
+    const sample=nearestRoadSample(x,z,naturalY);
+    if(!sample)return naturalY;
+    const roadSupportY=
+      sample.y+
+      Math.tan(sample.roll||0)*sample.signedLateral-
+      roadBedOptions.surfaceOffset;
+    const visualInner=Math.max(roadBedOptions.roadHalfWidth-.15,5.20);
+    const visualOuter=Math.max(visualInner+1,roadBedOptions.terrainCutHalfWidth+roadBedOptions.blendWidth);
+    const distance=Math.sqrt(Math.max(0,sample.distance2));
+    if(distance<=visualInner)return Math.min(naturalY,roadSupportY);
+    if(distance>=visualOuter)return naturalY;
+    const t=(distance-visualInner)/Math.max(.001,visualOuter-visualInner);
+    const rise=1-Math.pow(1-Math.max(0,Math.min(1,t)),2.35);
+    return Math.min(naturalY,roadSupportY*(1-rise)+naturalY*rise);
+  }
+
+  function renderedTerrainHeight(x,z){
+    const natural=heightAt(x,z)-.15;
+    const departureSafe=startPadHeight(x,z,natural);
+    return activeRoadProfile.length
+      ?refinedRoadVisualHeight(x,z,departureSafe)
       :departureSafe;
   }
 
@@ -1295,7 +1326,7 @@ export function createTerrainService({
       const rz=positionArray[j+2];
       const wx=offset.x+rx;
       const wz=offset.z+rz;
-      const y=renderedTerrainHeight(wx,wz);
+      const y=groundTerrainHeight(wx,wz);
       positionArray[j+1]=y;
       if(y<colorMinY)colorMinY=y;
       if(y>colorMaxY)colorMaxY=y;
@@ -1325,17 +1356,6 @@ export function createTerrainService({
     started=nowMs();
     applyImagery?.();
 
-    if(roadBedGroup){
-      for(const mesh of roadBedGroup.children){
-        if(mesh?.material){
-          mesh.material.map=ground.material.map;
-          mesh.material.color.copy?.(
-            ground.material.color
-          );
-          mesh.material.needsUpdate=true;
-        }
-      }
-    }
     const groundImagery=nowMs()-started;
 
     return {

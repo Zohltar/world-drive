@@ -326,23 +326,6 @@ export function createTerrainService(options={}){
       if(data._triangleClear(b,c,d))data.indices.push(b,c,d);
     },'indexCpuMs');
 
-    const accumulateNormals=async()=>{
-      for(const data of sides){
-        const triCount=Math.floor(data.indices.length/3);
-        if(!await runSliced(triCount,24,tri=>{
-          const ia=data.indices[tri*3]*3,ib=data.indices[tri*3+1]*3,ic=data.indices[tri*3+2]*3,p=data.positions,n=data.normals;
-          const abx=p[ib]-p[ia],aby=p[ib+1]-p[ia+1],abz=p[ib+2]-p[ia+2];
-          const acx=p[ic]-p[ia],acy=p[ic+1]-p[ia+1],acz=p[ic+2]-p[ia+2];
-          const nx=aby*acz-abz*acy,ny=abz*acx-abx*acz,nz=abx*acy-aby*acx;
-          n[ia]+=nx;n[ia+1]+=ny;n[ia+2]+=nz;n[ib]+=nx;n[ib+1]+=ny;n[ib+2]+=nz;n[ic]+=nx;n[ic+1]+=ny;n[ic+2]+=nz;
-        },'normalCpuMs'))return false;
-      }
-      return runSliced(sideVertexCount*2,96,globalIndex=>{
-        const sideIndex=globalIndex>=sideVertexCount?1:0,i=globalIndex-sideIndex*sideVertexCount,n=sides[sideIndex].normals,j=i*3;
-        let nx=n[j],ny=n[j+1],nz=n[j+2];const inv=1/(Math.hypot(nx,ny,nz)||1);n[j]=nx*inv;n[j+1]=ny*inv;n[j+2]=nz*inv;
-      },'normalCpuMs');
-    };
-
     const groundPosition=ground.geometry?.getAttribute?.('position')?.array;
     let rangeMin=Infinity,rangeMax=-Infinity;
     const scanGroundRange=()=>{
@@ -362,6 +345,10 @@ export function createTerrainService(options={}){
         const y=data.rawHeights[i]-.15;
         const hL=base.heightAt(wx-eps,wz)-.15,hR=base.heightAt(wx+eps,wz)-.15,hD=base.heightAt(wx,wz-eps)-.15,hU=base.heightAt(wx,wz+eps)-.15;
         const gx=(hR-hL)/(2*eps),gz=(hU-hD)/(2*eps);let nx=-gx,ny=1,nz=-gz;const inv=1/(Math.hypot(nx,ny,nz)||1);nx*=inv;ny*=inv;nz*=inv;
+        // Terrain R1: the refined road earthwork replaces natural ground geometry,
+        // but its lighting must retain the natural DEM normal so the helper mesh
+        // cannot reveal itself as a bright band across steep hillsides.
+        data.normals[j]=nx;data.normals[j+1]=ny;data.normals[j+2]=nz;
         const directional=nx*lightX+ny*lightY+nz*lightZ,slope=clamp01(1-Math.abs(ny)),altitude=clamp01((y-rangeMin)/span);
         let r,g,b;if(altitude<.58){const t=altitude/.58;r=lerp(low[0],mid[0],t);g=lerp(low[1],mid[1],t);b=lerp(low[2],mid[2],t);}else{const t=(altitude-.58)/.42;r=lerp(mid[0],high[0],t);g=lerp(mid[1],high[1],t);b=lerp(mid[2],high[2],t);}
         const shade=Math.max(.34,Math.min(1.36,.72+directional*.46-slope*.10));data.colors[j]=Math.min(1,r*shade);data.colors[j+1]=Math.min(1,g*shade);data.colors[j+2]=Math.min(1,b*shade);
@@ -371,7 +358,6 @@ export function createTerrainService(options={}){
     const promise=(async()=>{
       if(!await buildVertices())return null;
       if(!await buildIndices())return null;
-      if(!await accumulateNormals())return null;
       if(!await scanGroundRange())return null;
       if(!await buildColors())return null;
       if(serial!==transitionSerial)return null;
@@ -386,7 +372,7 @@ export function createTerrainService(options={}){
         geometry.setAttribute('normal',new THREE.BufferAttribute(data.normals,3));
         geometry.setAttribute('color',new THREE.BufferAttribute(data.colors,3));
         geometry.setIndex(new THREE.BufferAttribute(new Uint32Array(data.indices),1));
-        const material=ground.material.clone();material.alphaMap=null;material.alphaTest=0;material.transparent=false;material.side=THREE.DoubleSide;material.polygonOffset=true;material.polygonOffsetFactor=1;material.polygonOffsetUnits=1;
+        const material=ground.material.clone();material.map=null;material.alphaMap=null;material.alphaTest=0;material.transparent=false;material.side=THREE.DoubleSide;material.polygonOffset=true;material.polygonOffsetFactor=1;material.polygonOffsetUnits=1;
         const mesh=new THREE.Mesh(geometry,material);mesh.receiveShadow=true;mesh.castShadow=false;mesh.renderOrder=-1;group.add(mesh);
       }
       const meta={serial,preparedOffset:{...offset},profilePoints:profile.length,usablePoints:usable.length,vertices:sideVertexCount*2,triangles,prepareWallMs:nowMs()-wallStarted,prepareCpuMs:stats.vertexCpuMs+stats.indexCpuMs+stats.normalCpuMs+stats.colorCpuMs,slices:stats.slices,maxSliceMs:stats.maxSliceMs,p927SliceBudgetMs:P927_TRANSITION_BUDGET_MS,p927SliceGapMs:P927_TRANSITION_GAP_MS};
