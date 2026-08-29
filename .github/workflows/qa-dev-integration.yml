@@ -12,6 +12,7 @@ on:
       - grip/v21.31-r9
       - terrain/v21.31
       - power/v21.31
+      - drift-stress/v21.31
   workflow_dispatch:
 
 permissions:
@@ -55,6 +56,10 @@ jobs:
         run: node qa-grip-braking-r9.mjs
       - name: Power R1 WRX torque and gearing QA
         run: node qa-power-wrx-r1.mjs
+      - name: Power R2 WRX midrange torque QA
+        run: node qa-power-wrx-r2.mjs
+      - name: Drift R10 forward reverse road dirt transition stress QA
+        run: node qa-drift-surface-stress-r1.mjs
       - name: Terrain R1 visual ownership QA
         run: node qa-terrain-r1-legacy-ownership.mjs
       - name: Terrain R2 road imagery alignment QA
