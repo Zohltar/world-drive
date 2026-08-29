@@ -11,6 +11,7 @@ on:
       - grip/v21.31-r8
       - grip/v21.31-r9
       - terrain/v21.31
+      - power/v21.31
   workflow_dispatch:
 
 permissions:
@@ -52,6 +53,8 @@ jobs:
         run: node qa-grip-braking-r8.mjs
       - name: Grip R9 reverse and J-turn braking QA
         run: node qa-grip-braking-r9.mjs
+      - name: Power R1 WRX torque and gearing QA
+        run: node qa-power-wrx-r1.mjs
       - name: Terrain R1 visual ownership QA
         run: node qa-terrain-r1-legacy-ownership.mjs
       - name: Terrain R2 road imagery alignment QA
