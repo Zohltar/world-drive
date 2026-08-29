@@ -28,12 +28,12 @@ export function bodyRelativeSteeringSpeed({speed=0,heading=0,velocityHeading=0,h
   const speedAbs=Math.abs(v);
   if(speedAbs<1e-8)return 0;
   if(handbrake)return Math.sign(v||1)*speedAbs;
-  const bodyLong=bodyRelativeLongitudinalSpeed({speed:v,heading,velocityHeading});
-  const projectionDeadband=speedAbs*.06;
-  const direction=Math.abs(bodyLong)>projectionDeadband
-    ?Math.sign(bodyLong)
-    :Math.sign(v||1);
-  return direction*speedAbs;
+
+  // Grip R4 — use the actual longitudinal velocity seen by the chassis instead
+  // of snapping the full speed magnitude from +v to -v around 90 degrees.
+  // The bicycle steering model therefore fades continuously to zero as travel
+  // becomes sideways, then naturally becomes reverse steering beyond 90 deg.
+  return bodyRelativeLongitudinalSpeed({speed:v,heading,velocityHeading});
 }
 
 export function travelAxisSideslip({heading=0,velocityHeading=0}={}){
@@ -56,14 +56,24 @@ export function rearContactPatchSideslip({speed=0,heading=0,velocityHeading=0,ya
   return Math.atan2(rearLat,Math.max(.50,Math.abs(bodyLong)));
 }
 
-export function postSpinSteeringAuthority({rearSlipAmount=0,heading=0,velocityHeading=0,handbrake=false}={}){
-  if(handbrake)return 1;
-  const slip=Math.max(0,Math.min(1,Number(rearSlipAmount)||0));
-  const sideslip=travelAxisSideslip({heading,velocityHeading});
-  const extremeSideslip=smoothstep01((sideslip-.70)/.70);
-  const rearSlipGate=smoothstep01((slip-.18)/.55);
-  const suppression=extremeSideslip*rearSlipGate;
-  return 1-.72*suppression;
+export function postSpinSteeringAuthority(){
+  // Grip R4 — steering input itself is never artificially removed in a spin.
+  // Tire force and body-relative contact velocity decide how much authority the
+  // front axle can physically produce. The old 28% valley around 90 degrees was
+  // a numerical anti-spin aid and created a perceptible rotation wall.
+  return 1;
+}
+
+export function driftKinematicCoupling({sideslipRad=0,forceCoupledSlide=0}={}){
+  const sideslip=Math.max(0,Math.min(Math.PI*.5,Math.abs(Number(sideslipRad)||0)));
+  const slide=Math.max(0,Math.min(1,Number(forceCoupledSlide)||0));
+  // Bicycle-model yaw is valid near the no-slip region, but it must stop acting
+  // like stability control once the chassis is far from its momentum vector.
+  // Near 90 degrees only 6% of the kinematic yaw target remains; angular inertia
+  // and measured tire-force imbalance dominate instead.
+  const sideT=smoothstep01((sideslip-.30)/.85);
+  const forceT=smoothstep01((slide-.12)/.68);
+  return 1-.94*Math.max(sideT,forceT);
 }
 
 export function jTurnTransientYawActive({
@@ -400,10 +410,20 @@ export function createDrivingRuntime({
 
     if(Math.abs(steerAngle)>.006&&Math.abs(yawRate)>1e-5&&frictionYawAccel*yawRate<0)frictionYawAccel=0;
     const yawResponse=yawResponseRate({vehicle:VEHICLE,speedAbs,airborne:airborneNow});
-    const yawReleaseBoost=Math.abs(yawRate)<Math.abs(dynamicYawRate)?1.35:1;
     const frictionYawLoss=physicsClamp(Math.abs(frictionYawAccel)/4.5,0,1);
     const forceCoupledSlide=physicsClamp(Math.max(frictionYawLoss,rearLateralForceLoss),0,1);
-    const yawGripResponseScale=Math.max(.34,1-forceCoupledSlide*.66);
+    const driftKinematicScale=driftKinematicCoupling({
+      sideslipRad:currentSideslip,
+      forceCoupledSlide
+    });
+    // Keep the familiar fast settling only while the car is close to the
+    // bicycle-model regime. During a real drift, do not numerically brake yaw
+    // just because the steady-state target is smaller or changes sign.
+    const yawReleaseBoost=
+      driftKinematicScale>.82&&Math.abs(yawRate)<Math.abs(dynamicYawRate)
+        ?1.35
+        :1;
+    const yawGripResponseScale=driftKinematicScale;
     dynamicYawRate+=frictionYawAccel*dt;
     dynamicYawRate+=(yawRate-dynamicYawRate)*(1-Math.exp(-dt*yawResponse*yawReleaseBoost*yawGripResponseScale));
     heading+=dynamicYawRate*dt;
@@ -438,12 +458,17 @@ export function createDrivingRuntime({
       }
     }else{
       let attemptedTrajectoryDelta=0;
-      if(!airborneNow&&speedAbs>4&&forceCoupledSlide>.10){
+      const forceDominatedDrift=
+        !airborneNow&&
+        speedAbs>4&&
+        (forceCoupledSlide>.10||driftKinematicScale<.88);
+      if(forceDominatedDrift){
         const signedSpeedForCurvature=Math.abs(speed)>.5?speed:Math.sign(speed||1)*.5;
         const forceTrajectoryYawRate=netLateralAccel/signedSpeedForCurvature;
+        // Grip R4 — in a drift the momentum vector can only rotate because tire
+        // forces bend it. Remove the old synthetic alignment toward the nearest
+        // body axis, whose target switched at 90 degrees.
         attemptedTrajectoryDelta+=forceTrajectoryYawRate*dt;
-        const slideAlignmentRate=.65+(1-forceCoupledSlide)*3.20;
-        attemptedTrajectoryDelta+=angleDelta(momentumTargetHeading,velocityHeading)*(1-Math.exp(-dt*slideAlignmentRate));
       }else{
         const velocityFollowRate=airborneNow?0:((2.8-1.45*frictionTrajectoryLoss)+27.2*Math.pow(1-physicsClamp(trajectoryRearSlip,0,1),2));
         attemptedTrajectoryDelta+=angleDelta(momentumTargetHeading,velocityHeading)*(1-Math.exp(-dt*velocityFollowRate));
