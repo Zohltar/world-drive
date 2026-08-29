@@ -209,7 +209,7 @@ export function createWrxGlbSystem({
       if(y<minY)minY=y;
       if(y>maxY)maxY=y;
     }
-    const cut=minY+(maxY-minY)*.50;
+    const cut=minY+(maxY-minY)*.35;
     const sourceIndex=geometry.index
       ?Array.from(geometry.index.array)
       :Array.from({length:pos.count},(_,i)=>i);
@@ -366,7 +366,7 @@ export function createWrxGlbSystem({
 
   function setRearLights(braking=false,reversing=false,nightLevel=0){
     const night=clamp(Number(nightLevel)||0,0,1);
-    const runningIntensity=night>.06 ? (.90+night*3.60) : .02;
+    const runningIntensity=night>.06 ? (.90+night*4.60) : .02;
     for(const mat of runningTailMaterials){
       mat.emissive?.setHex(0xff2028);
       mat.emissiveIntensity=runningIntensity;
