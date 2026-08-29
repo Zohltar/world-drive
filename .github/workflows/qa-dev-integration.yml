@@ -40,6 +40,8 @@ jobs:
         run: node qa-grip-drift-r4.mjs
       - name: Grip R5 off-road lateral physics QA
         run: node qa-grip-offroad-r5.mjs
+      - name: Grip R6 airborne physics QA
+        run: node qa-grip-jump-r6.mjs
       - name: Road banking limits QA
         run: node qa-road-banking-r1.mjs
       - name: Sparse civil traffic QA
