@@ -7,6 +7,7 @@ on:
     paths:
       - 'tools/apply-grip-r6.mjs'
       - 'qa-grip-jump-r6.mjs'
+      - 'qa/V21_27_CREST_LAUNCH_QA.mjs'
       - 'src/physics/airborne-dynamics.js'
       - '.github/workflows/grip-r6-apply.yml'
 
