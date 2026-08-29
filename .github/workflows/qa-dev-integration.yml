@@ -45,6 +45,8 @@ jobs:
         run: node qa-traffic-mp1-live.mjs
       - name: Sonata night body lighting QA
         run: node qa-sonata-night-body-r1.mjs
+      - name: WRX rear night running lights QA
+        run: node qa-wrx-night-tail-r1.mjs
       - name: Crest launch regression
         run: node qa/V21_27_CREST_LAUNCH_QA.mjs
       - name: Oblique landing regression
