@@ -62,11 +62,15 @@ assert.equal(airborneLandingDecision({nextY:9.99,supportY:10,verticalVelocity:1,
 assert.equal(airborneLandingDecision({nextY:10.1,supportY:10,verticalVelocity:-2,supportVerticalVelocity:0}),false);
 
 // Integration contract: airborne yaw must not be numerically attracted toward
-// the bicycle steering target, and presentation must receive velocityHeading.
+// any bicycle/drift steering target, and presentation must receive velocityHeading.
 const runtime=fs.readFileSync(new URL('./src/driving-runtime-base.js',import.meta.url),'utf8');
 const presentation=fs.readFileSync(new URL('./src/vehicle-presentation-v21.29.js',import.meta.url),'utf8');
 const main=fs.readFileSync(new URL('./src/main.js',import.meta.url),'utf8');
-assert.match(runtime,/yawGripResponseScale=airborneNow\?0:driftKinematicScale/,'airborne yaw still has legacy kinematic damping');
+assert.match(
+  runtime,
+  /const yawGripResponseScale=airborneNow[\s\S]*?\?0[\s\S]*?:driftKinematicScale/,
+  'airborne yaw must keep zero kinematic steering response even with later drift-force blends'
+);
 assert.match(presentation,/horizontalTravelDirection\(\{speed,heading,velocityHeading\}\)/,'crest launch does not use actual travel direction');
 assert.doesNotMatch(presentation,/Math\.abs\(speed\)<=7\.5/,'legacy 7.5 m\/s launch threshold remains');
 assert.doesNotMatch(presentation,/airborneTime>\.025/,'legacy airborne-time landing lockout remains');
