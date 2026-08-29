@@ -5,10 +5,8 @@ import {
   blendedSurfaceProfile,
   weightedRoadFraction
 } from './src/physics/surface-transition.js';
-import {
-  lateralDynamicsEnvelope,
-  jTurnTransientYawBlend
-} from './src/vehicle-dynamics-base.js';
+import {lateralDynamicsEnvelope} from './src/vehicle-dynamics-base.js';
+import {jTurnTransientYawBlend} from './src/driving-runtime-base.js';
 
 const DEG=Math.PI/180;
 const system=createVehicleSystem({initialId:'wrx'});

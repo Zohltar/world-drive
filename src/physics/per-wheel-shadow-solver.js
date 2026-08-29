@@ -6,6 +6,7 @@ import {
 } from './tire-model.js';
 import { ackermannSteeringAngles } from './steering-geometry.js';
 import { regulateAbsWheelOmega, lockedTireGroundForce } from './braking-tire-control.js';
+import { blendedSurfaceProfile } from './surface-transition.js';
 
 // World Drive V21.27 per-wheel solver, selectively promoted by Grip R7.
 //
@@ -501,11 +502,15 @@ export function createPerWheelShadowSolver({hz=120,maxSubSteps=8}={}){
         handbrakeTorqueNm=-rollingSign*normalLoadN*Math.max(.75,tire.peakMu)*tire.rollingRadiusM*hardwareScale;
       }
 
+      const contactRoadFraction=Number(contact?.roadFraction);
+      const wheelSurface=Number.isFinite(contactRoadFraction)
+        ?blendedSurfaceProfile(contactRoadFraction)
+        :surfaceId;
       const integrated=integrateWheelOmegaStable({
         state,
         step,
         tire,
-        surfaceId,
+        surfaceId:wheelSurface,
         normalLoadN,
         patch,
         steerAngle,

@@ -468,7 +468,7 @@ export function advanceSteeringRack({current=0,target=0,dt=0,inputSlewRate=0,ret
   return clampDynamics(cur+(tgt-cur)*(1-Math.exp(-stepDt*response)),-1,1);
 }
 
-export function lateralDynamicsEnvelope({vehicle,speed=0,steerAngle=0,steerInput=0,driveThrottle=0,onPavement=true,surfaceGrip=1,awdOffroadGripBonus=1,offroadPeakMu=null,rearSlipAmount=0,airborne=false}={},out=null){
+export function lateralDynamicsEnvelope({vehicle,speed=0,steerAngle=0,steerInput=0,driveThrottle=0,onPavement=true,surfaceGrip=1,awdOffroadGripBonus=1,offroadPeakMu=null,surfaceRoadFraction=null,rearSlipAmount=0,airborne=false}={},out=null){
   const result=out||{};
   const layout=vehicleLayout(vehicle);
   const speedValue=safeNumber(speed,0),speedAbs=Math.abs(speedValue),drivetrain=layout.drivetrain;
@@ -481,10 +481,15 @@ export function lateralDynamicsEnvelope({vehicle,speed=0,steerAngle=0,steerInput
     Number.isFinite(suppliedOffroadPeak)?suppliedOffroadPeak:safeNumber(vehicle?.offroadGrip,.60),
     .18,.95
   );
+  const suppliedRoadFraction=surfaceRoadFraction===null||surfaceRoadFraction===undefined?NaN:Number(surfaceRoadFraction);
+  const roadFraction=Number.isFinite(suppliedRoadFraction)
+    ?clampDynamics(suppliedRoadFraction,0,1)
+    :(onPavement?1:0);
   // Grip R5: steering geometry itself is not weakened by loose terrain. The
   // friction limit below decides whether the requested curvature is attainable.
   // AWD is deliberately absent here: drive layout does not raise passive Fy.
-  const effectiveGrip=onPavement?safeNumber(surfaceGrip,1)*roadGripMultiplier:1;
+  const roadGeometryGrip=safeNumber(surfaceGrip,1)*roadGripMultiplier;
+  const effectiveGrip=1+(roadGeometryGrip-1)*roadFraction;
   let yawRate=(speedValue/layout.wheelbase)*Math.tan(safeNumber(steerAngle,0))*effectiveGrip;
   if(airborne)yawRate*=.06;
   if(drivetrain==='FWD')yawRate*=1-.20*powerCorneringLoad;
@@ -494,20 +499,21 @@ export function lateralDynamicsEnvelope({vehicle,speed=0,steerAngle=0,steerInput
   // m/s^2 branch at 10 m/s created a nonphysical handling discontinuity.
   const offroadLatLimit=effectiveOffroadGrip*GRAVITY;
   const roadLatLimit=Math.max(1,safeNumber(vehicle?.lateralAccelLimit,7));
-  const baseLatLimit=onPavement?roadLatLimit:offroadLatLimit;
+  const baseLatLimit=offroadLatLimit+(roadLatLimit-offroadLatLimit)*roadFraction;
   const aeroEnabled=!airborne&&safeNumber(vehicle?.aeroDownforceClA,0)>0&&speedAbs>.25;
   const aero=aeroEnabled
     ?aerodynamicLoadForLayout(layout,vehicle,speedAbs,false,result.aero||(result.aero={}))
     :null;
   const rawAeroGripScale=aero?.gripScale||1;
-  const aeroGripScale=onPavement?rawAeroGripScale:1+(rawAeroGripScale-1)*.55;
+  const dirtAeroGripScale=1+(rawAeroGripScale-1)*.55;
+  const aeroGripScale=dirtAeroGripScale+(rawAeroGripScale-dirtAeroGripScale)*roadFraction;
   const rwdPowerGripFactor=drivetrain==='RWD'?Math.max(.72,1-powerOversteerGripLoss*powerCorneringLoad):1;
   const slideGripFactor=airborne?.08:Math.max(.78,1-clampDynamics(rearSlipAmount,0,1)*.16);
   const latLimit=baseLatLimit*aeroGripScale*rwdPowerGripFactor*slideGripFactor;
   result.yawRate=yawRate;result.requestedLatAccel=requestedLatAccel;result.signedLatAccel=speedValue*yawRate;
   result.latLimit=latLimit;result.drivetrain=drivetrain;result.powerCorneringLoad=powerCorneringLoad;
   result.effectiveGrip=effectiveGrip;result.roadLatLimit=roadLatLimit;result.offroadLatLimit=offroadLatLimit;result.offroadPeakMu=effectiveOffroadGrip;
-  result.aeroGripScale=aeroGripScale;result.aeroDownforceAccel=aero?.downforceAccel||0;
+  result.aeroGripScale=aeroGripScale;result.aeroDownforceAccel=aero?.downforceAccel||0;result.surfaceRoadFraction=roadFraction;
   return result;
 }
 

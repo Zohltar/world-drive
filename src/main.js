@@ -1233,6 +1233,7 @@ const vehiclePresentation=createVehiclePresentation({
   roadSurfaceAt,
   terrainAbs,
   groundHeightForWheel,
+  roadFractionForWheel,
   activeVehicleWheels:()=>
     truckTrailerSystem.active
       ?truckTrailerSystem.tractorWheels
@@ -2232,6 +2233,9 @@ function setFastWheelRoadSupport(active,roadFrame,centerY,centerX=absX,centerZ=a
 }
 function groundHeightForWheel(...args){
   return wheelGroundSupport.groundHeightForWheel(...args);
+}
+function roadFractionForWheel(...args){
+  return wheelGroundSupport.roadFractionForWheel(...args);
 }
 
 let currentOnPavementForInstruments=true;

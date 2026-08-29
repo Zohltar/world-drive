@@ -15,6 +15,7 @@ export function createVehiclePresentation({
   roadSurfaceAt,
   terrainAbs,
   groundHeightForWheel,
+  roadFractionForWheel=()=>NaN,
   activeVehicleWheels,
   getDrivingState,
   ROAD_WHEEL_CONTACT_HALF_WIDTH,
@@ -165,10 +166,11 @@ export function createVehiclePresentation({
       const lz=w.pivot.position.z;
       const wx=absX+lx*c+lz*sn;
       const wz=absZ-lx*sn+lz*c;
-      const ground=groundHeightForWheel(wx,wz,true);
       const tireWidth=(Number(w.tire?.geometry?.parameters?.height)||.27)*(Number(car.scale?.x)||1);
+      const ground=groundHeightForWheel(wx,wz,true);
+      const roadFraction=roadFractionForWheel(wx,wz,tireWidth);
       const sample=samples[wheelIndex]||(samples[wheelIndex]={});
-      sample.w=w;sample.ground=ground;sample.absX=wx;sample.absZ=wz;
+      sample.w=w;sample.ground=ground;sample.absX=wx;sample.absZ=wz;sample.roadFraction=roadFraction;
       sample.localX=lx;sample.localZ=lz;
       sample.axleIndex=Number.isInteger(w.axleIndex)?w.axleIndex:(w.front?0:Math.max(1,(VEHICLE.axles?.length||2)-1));
       sample.front=!!w.front;sample.side=lx<0?'left':'right';sample.width=tireWidth;
@@ -333,6 +335,8 @@ export function createVehiclePresentation({
       contactSample.absX=s.absX;contactSample.absZ=s.absZ;contactSample.ground=s.ground;
       contactSample.localX=s.localX;contactSample.localZ=s.localZ;contactSample.axleIndex=s.axleIndex;
       contactSample.front=s.front;contactSample.side=s.side;contactSample.width=s.width;
+      contactSample.roadFraction=clamp(s.roadFraction,0,1);
+      contactSample.surfaceId=contactSample.roadFraction>=.999?'asphalt-dry':(contactSample.roadFraction<=.001?'dirt':'mixed');
       contactSample.contact=contact;contactSample.contactFactor=contactFactor;
       contactSample.suspensionCompression=state.compression;
       contactSample.suspensionVelocity=state.compressionVelocity;

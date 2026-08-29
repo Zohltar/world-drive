@@ -7,6 +7,7 @@ import {
 } from './physics/drift-force-coupling.js';
 import { serviceBrakeAcceleration, brakeWouldCrossZero } from './physics/longitudinal-control.js';
 import { torqueDrivenAcceleration } from './physics/powertrain-force.js';
+import { weightedRoadFraction, blendRoadDirt } from './physics/surface-transition.js';
 
 function smoothstep01(value){
   const t=Math.max(0,Math.min(1,Number(value)||0));
@@ -130,22 +131,27 @@ export function driftKinematicCoupling({sideslipRad=0,forceCoupledSlide=0}={}){
   return 1-.94*Math.max(sideT,forceT);
 }
 
-export function jTurnTransientYawActive({
+export function jTurnTransientYawBlend({
   bodyLongitudinalSpeed=0,
   speedAbs=0,
   steerAngle=0,
   handbrake=false,
   airborne=false,
-  onPavement=true
+  onPavement=true,
+  surfaceRoadFraction=null
 }={}){
-  return !!(
-    !handbrake&&
-    !airborne&&
-    onPavement&&
-    Number(bodyLongitudinalSpeed)<-4.0&&
-    Math.abs(Number(speedAbs)||0)>=8.5&&
-    Math.abs(Number(steerAngle)||0)>=.12
-  );
+  if(handbrake||airborne)return 0;
+  const suppliedRoad=surfaceRoadFraction===null||surfaceRoadFraction===undefined?NaN:Number(surfaceRoadFraction);
+  const road=Number.isFinite(suppliedRoad)?Math.max(0,Math.min(1,suppliedRoad)):(onPavement?1:0);
+  const smooth=v=>{const t=Math.max(0,Math.min(1,Number(v)||0));return t*t*(3-2*t);};
+  const rearward=smooth((-Number(bodyLongitudinalSpeed)-3.2)/3.0);
+  const speedGate=smooth((Math.abs(Number(speedAbs)||0)-7.0)/4.0);
+  const steerGate=smooth((Math.abs(Number(steerAngle)||0)-.075)/.09);
+  return road*rearward*speedGate*steerGate;
+}
+
+export function jTurnTransientYawActive(args={}){
+  return jTurnTransientYawBlend(args)>.5;
 }
 
 export function handbrakeLateralEffectForSpeed(speedAbs=0){
@@ -253,12 +259,22 @@ export function createDrivingRuntime({
     const hand=autopilot?ap.hand:manualHand;
     const onPavement=!!(nr&&nr.d<8.5);
     currentOnPavementForInstruments=onPavement;
-    const offroadFrictionModel=!onPavement&&!airborneNow
+    const surfaceRoadFraction=weightedRoadFraction(
+      vehiclePresentation?.wheelContacts||[],
+      onPavement?1:0
+    );
+    const terrainFraction=1-surfaceRoadFraction;
+    const offroadFrictionModel=terrainFraction>1e-4&&!airborneNow
       ?offroadTireFriction({vehicleId:getVehicleId?.()||'unknown',vehicle:VEHICLE})
       :null;
-    const offroadSlipForce=offroadFrictionModel
+    const rawOffroadSlipForce=offroadFrictionModel
       ?offroadSideslipFriction({speed,heading,velocityHeading,slideMu:offroadFrictionModel.slide,airborne:airborneNow})
       :{speedDecel:0,momentumYawRate:0,slideGate:0,sideslipRad:0};
+    const offroadSlipForce={
+      ...rawOffroadSlipForce,
+      speedDecel:rawOffroadSlipForce.speedDecel*terrainFraction,
+      momentumYawRate:rawOffroadSlipForce.momentumYawRate*terrainFraction
+    };
     const preDriveBodyLongitudinalSpeed=bodyRelativeLongitudinalSpeed({speed,heading,velocityHeading});
     const driveAxisProjection=bodyAxisDriveProjection({heading,velocityHeading});
     const driveThrottle=updateTransmission(dt,throttle,onPavement);
@@ -280,9 +296,10 @@ export function createDrivingRuntime({
     truckTrailerSystem.setBrakeLights(brakeRequested);
     const combination=truckTrailerSystem.longitudinalScales();
     const previousSpeed=speed;
-    const surfaceGrip=onPavement?roadSurfaceGrip():1;
+    const roadGripValue=roadSurfaceGrip();
+    const surfaceGrip=surfaceRoadFraction>1e-4?roadGripValue:1;
     const isAWD=VEHICLE.drivetrain==='AWD';
-    const awdOffroadGripBonus=!onPavement&&isAWD?1.18:1;
+    const awdOffroadGripBonus=isAWD?1.18:1;
     let requestedDriveAccel=0,requestedBrakeAccel=0;
 
     if(driveThrottle>0){
@@ -329,9 +346,9 @@ export function createDrivingRuntime({
     const longitudinalSpeedAbs=Math.abs(speed);
     const offroadStaticTractionT=1-physicsClamp(Math.abs(speed)/7,0,1);
     const offroadStaticTractionBoost=1+.12*offroadStaticTractionT;
-    const longitudinalMu=onPavement
-      ?Math.max(.25,((VEHICLE.longitudinalAccelLimit??VEHICLE.brake??9.8)/9.80665)*surfaceGrip)
-      :Math.max(.22,(VEHICLE.offroadGrip??.60)*awdOffroadGripBonus*offroadStaticTractionBoost);
+    const roadLongitudinalMu=Math.max(.25,((VEHICLE.longitudinalAccelLimit??VEHICLE.brake??9.8)/9.80665)*roadGripValue);
+    const dirtLongitudinalMu=Math.max(.22,(VEHICLE.offroadGrip??.60)*awdOffroadGripBonus*offroadStaticTractionBoost);
+    const longitudinalMu=blendRoadDirt(roadLongitudinalMu,dirtLongitudinalMu,surfaceRoadFraction);
 
     const driveForce=longitudinalTractionLimit({vehicle:VEHICLE,requestedAccel:requestedDriveAccel,surfaceMu:longitudinalMu,mode:'drive',airborne:airborneNow,speedAbs:longitudinalSpeedAbs},dynamicsScratch.drive);
     const brakeForce=longitudinalTractionLimit({vehicle:VEHICLE,requestedAccel:requestedBrakeAccel,surfaceMu:longitudinalMu,mode:'brake',airborne:airborneNow,speedAbs:longitudinalSpeedAbs},dynamicsScratch.brake);
@@ -346,7 +363,8 @@ export function createDrivingRuntime({
     accel+=gradeForce.acceleration;
 
     if(Math.abs(speed)>.05){
-      const surfaceDrag=onPavement?Math.max(0,(1-surfaceGrip)*.75):VEHICLE.offroadDrag;
+      const roadDrag=Math.max(0,(1-roadGripValue)*.75);
+      const surfaceDrag=blendRoadDirt(roadDrag,VEHICLE.offroadDrag,surfaceRoadFraction);
       const rollingAndSurface=airborneNow?0:VEHICLE.rolling+surfaceDrag;
       const resist=rollingAndSurface+VEHICLE.aero*speed*speed+combination.rollingResistanceAccel+combination.aeroDragCoeff*speed*speed;
       accel-=Math.sign(speed)*resist;
@@ -354,7 +372,7 @@ export function createDrivingRuntime({
 
     // Grip R5: terrain lateral scrub is real dissipative work, independent of
     // steering input or the legacy fourWheelSlide telemetry.
-    if(!onPavement&&!airborneNow&&offroadSlipForce.speedDecel>1e-5&&Math.abs(speed)>.05){
+    if(terrainFraction>1e-4&&!airborneNow&&offroadSlipForce.speedDecel>1e-5&&Math.abs(speed)>.05){
       accel-=Math.sign(speed)*offroadSlipForce.speedDecel;
     }
 
@@ -433,8 +451,8 @@ export function createDrivingRuntime({
     const bodyLongitudinalSpeed=bodyRelativeLongitudinalSpeed({speed,heading,velocityHeading});
     const steeringTravelSpeed=bodyRelativeSteeringSpeed({speed,heading,velocityHeading,handbrake:hand});
     const steeringAuthority=postSpinSteeringAuthority({rearSlipAmount,heading,velocityHeading,handbrake:hand});
-    const jTurnYawActive=jTurnTransientYawActive({bodyLongitudinalSpeed,speedAbs,steerAngle,handbrake:hand,airborne:airborneNow,onPavement});
-    const lateralEnvelope=lateralDynamicsEnvelope({vehicle:VEHICLE,speed:steeringTravelSpeed,steerAngle,steerInput:steer,driveThrottle,onPavement,surfaceGrip,awdOffroadGripBonus,offroadPeakMu:offroadFrictionModel?.peak,rearSlipAmount:0,airborne:airborneNow},dynamicsScratch.lateral);
+    const jTurnYawBlend=jTurnTransientYawBlend({bodyLongitudinalSpeed,speedAbs,steerAngle,handbrake:hand,airborne:airborneNow,onPavement,surfaceRoadFraction});
+    const lateralEnvelope=lateralDynamicsEnvelope({vehicle:VEHICLE,speed:steeringTravelSpeed,steerAngle,steerInput:steer,driveThrottle,onPavement,surfaceGrip,awdOffroadGripBonus,offroadPeakMu:offroadFrictionModel?.peak,surfaceRoadFraction,rearSlipAmount:0,airborne:airborneNow},dynamicsScratch.lateral);
     let yawRate=lateralEnvelope.yawRate*truckTrailerSystem.tractorYawScale(speedAbs)*steeringAuthority;
     const drivetrain=lateralEnvelope.drivetrain;
     const powerCorneringLoad=lateralEnvelope.powerCorneringLoad;
@@ -500,7 +518,10 @@ export function createDrivingRuntime({
     const gripResponse=rawGripUsage>lateralGripUsage?12:18;
     lateralGripUsage+=(rawGripUsage-lateralGripUsage)*(1-Math.exp(-dt*gripResponse));
     if(lateralGripUsage<.002&&rawGripUsage===0)lateralGripUsage=0;
-    if(!jTurnYawActive&&requestedLatAccel>latLimit&&requestedLatAccel>0)yawRate*=latLimit/requestedLatAccel;
+    if(requestedLatAccel>latLimit&&requestedLatAccel>0){
+      const saturationScale=latLimit/requestedLatAccel;
+      yawRate*=saturationScale+(1-saturationScale)*jTurnYawBlend;
+    }
 
     const frontDominance=Math.max(0,frontSlipAmount-rearSlipAmount*.55);
     const rearDominance=Math.max(0,rearSlipAmount-frontSlipAmount*.55);
@@ -556,8 +577,8 @@ export function createDrivingRuntime({
     dynamicYawRate+=(yawRate-dynamicYawRate)*(1-Math.exp(-dt*yawResponse*yawReleaseBoost*yawGripResponseScale));
     heading+=dynamicYawRate*dt;
 
-    if(onPavement&&!airborneNow&&fourWheelSlide>.01&&speedAbs>6){
-      const scrubDecel=1.0+fourWheelSlide*3.2,scrubDelta=scrubDecel*dt;
+    if(surfaceRoadFraction>1e-4&&!airborneNow&&fourWheelSlide>.01&&speedAbs>6){
+      const scrubDecel=(1.0+fourWheelSlide*3.2)*surfaceRoadFraction,scrubDelta=scrubDecel*dt;
       if(speed>0)speed=Math.max(0,speed-scrubDelta);else if(speed<0)speed=Math.min(0,speed+scrubDelta);
     }
 

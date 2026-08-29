@@ -175,7 +175,10 @@ export function effectiveTireFriction({
   normalLoadN=4000
 }={}){
   const profile=typeof tire==='string'?tireProfile(tire):tireProfile(tire?.id);
-  const surfaceProfile=typeof surface==='string'?surfaceFrictionProfile(surface):surfaceFrictionProfile(surface?.id);
+  const explicitSurface=surface&&typeof surface==='object'&&Number.isFinite(Number(surface.peakScale))&&Number.isFinite(Number(surface.slideScale));
+  const surfaceProfile=typeof surface==='string'
+    ?surfaceFrictionProfile(surface)
+    :(explicitSurface?surface:surfaceFrictionProfile(surface?.id));
   const peak=loadSensitiveMu({
     baseMu:profile.peakMu*surfaceProfile.peakScale,
     normalLoadN,
