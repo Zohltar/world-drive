@@ -28,7 +28,7 @@ export function crestLaunchDecision({
   predictionTime=.075,
   downwardAccel=9.80665,
   minimumMovingSpeed=.35,
-  gapTolerance=.002,
+  gapTolerance=.0005,
   accelerationTolerance=.18
 }={}){
   const speed=Math.max(0,finite(speedAbs,0));
@@ -44,7 +44,7 @@ export function crestLaunchDecision({
     :Infinity;
   const canLaunch=
     speed>Math.max(0,finite(minimumMovingSpeed,.35))&&
-    predictedGap>Math.max(0,finite(gapTolerance,.002))&&
+    predictedGap>Math.max(0,finite(gapTolerance,.0005))&&
     requiredSupportAccel<-(down+Math.max(0,finite(accelerationTolerance,.18)));
   return {canLaunch,predictedBallisticY,predictedGap,requiredSupportAccel};
 }
