@@ -1,0 +1,82 @@
+name: Apply Grip R2 handbrake turn balance
+
+on:
+  push:
+    branches:
+      - grip/v21.31
+    paths:
+      - '.github/workflows/grip-r2-apply.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Apply Grip R2
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          def once(s, old, new, label):
+              n=s.count(old)
+              if n!=1: raise SystemExit(f'{label}: expected 1 match, got {n}')
+              return s.replace(old,new,1)
+
+          p=Path('src/driving-runtime-base.js'); s=p.read_text()
+
+          s=once(s,
+          "export function travelAxisSideslip({heading=0,velocityHeading=0}={}){\n  let delta=(Number(velocityHeading)||0)-(Number(heading)||0);\n  delta=Math.atan2(Math.sin(delta),Math.cos(delta));\n  return Math.atan2(Math.abs(Math.sin(delta)),Math.abs(Math.cos(delta)));\n}\n",
+          "export function travelAxisSideslip({heading=0,velocityHeading=0}={}){\n  let delta=(Number(velocityHeading)||0)-(Number(heading)||0);\n  delta=Math.atan2(Math.sin(delta),Math.cos(delta));\n  return Math.atan2(Math.abs(Math.sin(delta)),Math.abs(Math.cos(delta)));\n}\n\n// Grip R2 — locked-tire friction must follow the slip velocity at the rear\n// contact patch, not the sideslip measured at the chassis centre of mass.\n// Yaw contributes an opposite lateral velocity at an axle behind the CG.\nexport function rearContactPatchSideslip({speed=0,heading=0,velocityHeading=0,yawRate=0,wheelbase=2.7,frontWeightBias=.55}={}){\n  let delta=(Number(velocityHeading)||0)-(Number(heading)||0);\n  delta=Math.atan2(Math.sin(delta),Math.cos(delta));\n  const v=Number(speed)||0;\n  const bodyLong=v*Math.cos(delta);\n  const bodyLat=v*Math.sin(delta);\n  const rearDistance=Math.max(.35,(Number(wheelbase)||2.7)*Math.max(.30,Math.min(.75,Number(frontWeightBias)||.55)));\n  const rearLat=bodyLat-(Number(yawRate)||0)*rearDistance;\n  return Math.atan2(rearLat,Math.max(.50,Math.abs(bodyLong)));\n}\n",
+          'rear contact patch helper')
+
+          s=once(s,
+          "    if(hand&&!airborneNow){\n      const handRequest=-Math.sign(speed||gradeForce.acceleration||1)*8.5;\n      accel+=longitudinalTractionLimit({vehicle:VEHICLE,requestedAccel:handRequest,surfaceMu:longitudinalMu,mode:'handbrake',airborne:false,speedAbs:longitudinalSpeedAbs},dynamicsScratch.handbrake).acceleration;\n    }",
+          "    if(hand&&!airborneNow){\n      const handRequest=-Math.sign(speed||gradeForce.acceleration||1)*8.5;\n      // A fully locked tire is on the kinetic/sliding plateau, below peak mu.\n      const handbrakeSlidingMuRatio=physicsClamp(Number(VEHICLE.handbrakeSlidingMuRatio??.72)||.72,.65,.90);\n      accel+=longitudinalTractionLimit({vehicle:VEHICLE,requestedAccel:handRequest,surfaceMu:longitudinalMu*handbrakeSlidingMuRatio,mode:'handbrake',airborne:false,speedAbs:longitudinalSpeedAbs},dynamicsScratch.handbrake).acceleration;\n    }",
+          'handbrake longitudinal sliding mu')
+
+          s=once(s,
+          "    const currentSideslip=travelAxisSideslip({heading,velocityHeading});\n    rearHandbrakeSlipState=advanceHandbrakeRearSlipState({previous:rearHandbrakeSlipState,handbrake:hand,airborne:airborneNow,speedAbs,sideslipRad:currentSideslip,dt});",
+          "    const currentSideslip=travelAxisSideslip({heading,velocityHeading});\n    const rearTireSideslip=rearContactPatchSideslip({\n      speed,heading,velocityHeading,yawRate:dynamicYawRate,\n      wheelbase:VEHICLE.wheelbase,frontWeightBias:VEHICLE.frontWeightBias\n    });\n    rearHandbrakeSlipState=advanceHandbrakeRearSlipState({previous:rearHandbrakeSlipState,handbrake:hand,airborne:airborneNow,speedAbs,sideslipRad:currentSideslip,dt});",
+          'rear tire sideslip runtime')
+
+          s=once(s,
+          "        handbrakeSlipState:rearHandbrakeSlipState,sideslipRad:currentSideslip,",
+          "        handbrakeSlipState:rearHandbrakeSlipState,sideslipRad:rearTireSideslip,",
+          'solver rear contact sideslip')
+          p.write_text(s)
+
+          p=Path('src/vehicle-dynamics-base.js'); s=p.read_text()
+          s=once(s,
+          "const handbrakeSlidingMuRatio=clampDynamics(safeNumber(vehicle?.handbrakeSlidingMuRatio,.84),.65,.95);",
+          "const handbrakeSlidingMuRatio=clampDynamics(safeNumber(vehicle?.handbrakeSlidingMuRatio,.72),.65,.90);",
+          'sliding mu ratio default')
+          p.write_text(s)
+
+          p=Path('qa-grip-handbrake-r1.mjs'); s=p.read_text()
+          s=s.replace('import {advanceHandbrakeRearSlipState} from "./src/driving-runtime-base.js";', 'import {advanceHandbrakeRearSlipState,rearContactPatchSideslip} from "./src/driving-runtime-base.js";')
+          s=s.replace('handbrakeSlidingMuRatio:.84', 'handbrakeSlidingMuRatio:.72')
+          s=s.replace('assert.ok(locked20.rearLateralForceScale>.15);', 'assert.ok(locked20.rearLateralForceScale>.10&&locked20.rearLateralForceScale<.38);')
+          s=s.replace('assert.ok(locked45.rearLateralForceScale>locked20.rearLateralForceScale+.12);', 'assert.ok(locked45.rearLateralForceScale>locked20.rearLateralForceScale+.12&&locked45.rearLateralForceScale<.72);')
+          s=s.replace('assert.equal(locked20.handbrakeSlidingMuRatio,.84);', 'assert.equal(locked20.handbrakeSlidingMuRatio,.72);\nconst body20=20*Math.PI/180;\nconst rearBeta=rearContactPatchSideslip({speed:20,heading:0,velocityHeading:body20,yawRate:1,wheelbase:2.65,frontWeightBias:.58});\nassert.ok(Math.abs(rearBeta)<body20-.04,`rear contact patch should see less sideslip while yawing into the turn: ${rearBeta}`);')
+          s=s.replace('console.log("PASS Grip R1"', 'console.log("PASS Grip R2"')
+          p.write_text(s)
+          PY
+
+          node qa-grip-handbrake-r1.mjs
+          node qa/DEV_DRIVING_SIM_QA.mjs
+      - name: Commit Grip R2
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/driving-runtime-base.js src/vehicle-dynamics-base.js qa-grip-handbrake-r1.mjs
+          git commit -m "Grip R2: restore handbrake turn with rear contact-patch slip physics"
+          git push
