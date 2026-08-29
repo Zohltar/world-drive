@@ -9,6 +9,11 @@ function once(needle,replacement,label){
   if(source.indexOf(needle,at+needle.length)>=0)throw new Error(`Grip R8 ambiguous anchor: ${label}`);
   source=source.slice(0,at)+replacement+source.slice(at+needle.length);
 }
+function first(needle,replacement,label){
+  const at=source.indexOf(needle);
+  if(at<0)throw new Error(`Grip R8 missing anchor: ${label}`);
+  source=source.slice(0,at)+replacement+source.slice(at+needle.length);
+}
 
 if(source.includes('Grip R8 — ABS service braking')){
   console.log('Grip R8 already applied');
@@ -51,7 +56,7 @@ once(
   'pre-integration lock guard'
 );
 
-once(
+first(
   `      return {force:forceAtLock,locked:true};`,
   `      return {force:forceAtLock,locked:true,absActive:false};`,
   'first locked return'
@@ -69,7 +74,7 @@ once(
   'post-integration lock guard'
 );
 
-once(
+first(
   `      return {force:forceAtLock,locked:true};`,
   `      return {force:forceAtLock,locked:true,absActive:false};`,
   'second locked return'
