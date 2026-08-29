@@ -6,6 +6,7 @@ import {
   blendDriftForce
 } from './physics/drift-force-coupling.js';
 import { serviceBrakeAcceleration, brakeWouldCrossZero } from './physics/longitudinal-control.js';
+import { torqueDrivenAcceleration } from './physics/powertrain-force.js';
 
 function smoothstep01(value){
   const t=Math.max(0,Math.min(1,Number(value)||0));
@@ -188,6 +189,7 @@ export function bodyAxisDriveProjection({heading=0,velocityHeading=0}={}){
 export function createDrivingRuntime({
   getState,setState,getFlags,getRouteLength,getWorldOffset,nearestRouteForVehicle,
   autopilotControl,keyboardActionDown,gamepadState,updateTransmission,getServiceBrakeInput,
+  getTransmissionGear,getEngineRpm,
   vehiclePresentation,vehicleVisuals,truckTrailerSystem,roadSurfaceGrip,getVehicleId,
   VEHICLE,vehicleTopSpeedKmh,activeTransmissionProfile,effectiveEngineRedlineRpm,
   transmissionRedlineSpeedKmh,vehicleReverseLimitMps,physicsClamp,
@@ -284,14 +286,29 @@ export function createDrivingRuntime({
     let requestedDriveAccel=0,requestedBrakeAccel=0;
 
     if(driveThrottle>0){
-      const performanceTop=vehicleTopSpeedKmh()/3.6;
-      const speedRatio=Math.min(1,Math.max(0,Math.abs(speed)/performanceTop));
-      const powerTaper=truckTrailerSystem.active?1:1-.38*speedRatio;
-      requestedDriveAccel=
-        VEHICLE.accel*
-        driveThrottle*
-        powerTaper*
-        driveAxisProjection;
+      const transmissionProfile=activeTransmissionProfile?.()||{};
+      const torqueDrive=torqueDrivenAcceleration({
+        vehicle:VEHICLE,
+        profile:transmissionProfile,
+        gear:typeof getTransmissionGear==='function'?getTransmissionGear():1,
+        rpm:typeof getEngineRpm==='function'?getEngineRpm():transmissionProfile.idleRpm,
+        throttle:driveThrottle,
+        speedAbs:Math.abs(speed)
+      });
+      if(torqueDrive.active){
+        // Crank torque -> gear/final drive -> tire force -> chassis acceleration.
+        // Traction limiting remains authoritative immediately below.
+        requestedDriveAccel=torqueDrive.acceleration*driveAxisProjection;
+      }else{
+        const performanceTop=vehicleTopSpeedKmh()/3.6;
+        const speedRatio=Math.min(1,Math.max(0,Math.abs(speed)/performanceTop));
+        const powerTaper=truckTrailerSystem.active?1:1-.38*speedRatio;
+        requestedDriveAccel=
+          VEHICLE.accel*
+          driveThrottle*
+          powerTaper*
+          driveAxisProjection;
+      }
     }else if(driveThrottle<0){
       // Negative drivetrain command now means reverse propulsion only. Service
       // braking never enters this branch.

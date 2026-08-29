@@ -2314,10 +2314,14 @@ function vehicleTopSpeedKmh(){
     activeTransmissionProfile();
 
   if(profile.type==='combustion'){
-    return transmissionRedlineSpeedKmh(
+    const redlineTop=transmissionRedlineSpeedKmh(
       profile,
       Number(profile.redlineRpm)||6500
     );
+    const roadCap=Number(VEHICLE.powertrainTopSpeedKmh);
+    return Number.isFinite(roadCap)&&roadCap>20
+      ?Math.min(redlineTop,roadCap)
+      :redlineTop;
   }
 
   // EVs retain their electronic vehicle-profile limiter.
@@ -2786,6 +2790,8 @@ drivingRuntime=createDrivingRuntime({
   keyboardActionDown,
   gamepadState,
   updateTransmission,
+  getTransmissionGear:()=>transmissionGear,
+  getEngineRpm:()=>engineRpm,
   vehiclePresentation,
   vehicleVisuals,
   truckTrailerSystem,

@@ -84,15 +84,21 @@ const PROFILES={
       driveBiasFront:0.45,
       yawInertiaScale:0.96,
       longitudinalAccelLimit:9.47,
+      // Power R1 — road-speed capability is separate from the theoretical
+      // sixth-gear redline used for physical gearing/RPM.
+      powertrainTopSpeedKmh:225,
       bodyLength:4.60,
       bodyWidth:1.80,
       // More immediate than ID4, but not supercar-like.
       // 2024 6MT: ~5.5 s 0-60 mph and 156 ft 70-0 mph.
+      // accel remains the fallback for legacy/non-torque paths. Power R1
+      // derives forward acceleration from crank torque and gearing instead.
       accel:6.36,
       brake:10.42,
       reverseAccel:3.5,
-      rolling:0.34,
-      aero:0.0010,
+      // Physical resistance calibration for the torque-driven WRX path.
+      rolling:0.18,
+      aero:0.00032,
       wheelbase:2.65,
       maxSteerLow:0.48,
       maxSteerHigh:0.175,
@@ -112,15 +118,36 @@ const PROFILES={
       type:'combustion',
       profile:'boxer-turbo',
       idleRpm:850,
-      redlineRpm:6700,
+      redlineRpm:6100,
       gearCount:6,
 
-      // V20.6 mechanical gearbox calibration.
-      // 225 km/h = top-gear redline at the reference RPM/ratio.
-      referenceRedlineRpm:6700,
-      referenceTopGearRedlineKmh:225,
-      referenceTopGearRatio:1,
-      gearRatios:[4.3,2.443182,1.706349,1.360759,1.168478,1],
+      // Power R1 — 2024 WRX VB 2.4T / 6MT physical powertrain. Subaru rates
+      // 258 lb-ft (~350 Nm) from 2000-5200 rpm and 271 hp at 5600 rpm.
+      powertrainModel:'torque',
+      peakPowerHp:271,
+      peakPowerRpm:5600,
+      peakTorqueNm:350,
+      torqueCurveNm:[
+        [850,180],
+        [1200,230],
+        [1600,300],
+        [2000,350],
+        [5200,350],
+        [5600,345],
+        [6100,300]
+      ],
+      finalDriveRatio:4.111,
+      driveWheelRadiusM:0.3265,
+      drivetrainEfficiency:0.82,
+      launchClutchRpm:2000,
+      launchClutchFadeMps:5.5,
+
+      // Real close-ratio 6MT gearing. The theoretical 6th-gear redline speed
+      // remains separate from the vehicle road-speed cap above.
+      referenceRedlineRpm:6100,
+      referenceTopGearRedlineKmh:274,
+      referenceTopGearRatio:0.667,
+      gearRatios:[3.455,1.947,1.367,1.029,0.825,0.667],
       shiftDuration:0.16,
       downshiftDuration:0.14,
       revLimiterHz:12.5,
