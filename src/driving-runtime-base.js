@@ -42,6 +42,20 @@ export function travelAxisSideslip({heading=0,velocityHeading=0}={}){
   return Math.atan2(Math.abs(Math.sin(delta)),Math.abs(Math.cos(delta)));
 }
 
+// Grip R2 — locked-tire friction must follow the slip velocity at the rear
+// contact patch, not the sideslip measured at the chassis centre of mass.
+// Yaw contributes an opposite lateral velocity at an axle behind the CG.
+export function rearContactPatchSideslip({speed=0,heading=0,velocityHeading=0,yawRate=0,wheelbase=2.7,frontWeightBias=.55}={}){
+  let delta=(Number(velocityHeading)||0)-(Number(heading)||0);
+  delta=Math.atan2(Math.sin(delta),Math.cos(delta));
+  const v=Number(speed)||0;
+  const bodyLong=v*Math.cos(delta);
+  const bodyLat=v*Math.sin(delta);
+  const rearDistance=Math.max(.35,(Number(wheelbase)||2.7)*Math.max(.30,Math.min(.75,Number(frontWeightBias)||.55)));
+  const rearLat=bodyLat-(Number(yawRate)||0)*rearDistance;
+  return Math.atan2(rearLat,Math.max(.50,Math.abs(bodyLong)));
+}
+
 export function postSpinSteeringAuthority({rearSlipAmount=0,heading=0,velocityHeading=0,handbrake=false}={}){
   if(handbrake)return 1;
   const slip=Math.max(0,Math.min(1,Number(rearSlipAmount)||0));
@@ -240,7 +254,9 @@ export function createDrivingRuntime({
 
     if(hand&&!airborneNow){
       const handRequest=-Math.sign(speed||gradeForce.acceleration||1)*8.5;
-      accel+=longitudinalTractionLimit({vehicle:VEHICLE,requestedAccel:handRequest,surfaceMu:longitudinalMu,mode:'handbrake',airborne:false,speedAbs:longitudinalSpeedAbs},dynamicsScratch.handbrake).acceleration;
+      // A fully locked tire is on the kinetic/sliding plateau, below peak mu.
+      const handbrakeSlidingMuRatio=physicsClamp(Number(VEHICLE.handbrakeSlidingMuRatio??.72)||.72,.65,.90);
+      accel+=longitudinalTractionLimit({vehicle:VEHICLE,requestedAccel:handRequest,surfaceMu:longitudinalMu*handbrakeSlidingMuRatio,mode:'handbrake',airborne:false,speedAbs:longitudinalSpeedAbs},dynamicsScratch.handbrake).acceleration;
     }
 
     const opposingBodyTravel=
@@ -271,6 +287,10 @@ export function createDrivingRuntime({
 
     const speedAbs=Math.abs(speed);
     const currentSideslip=travelAxisSideslip({heading,velocityHeading});
+    const rearTireSideslip=rearContactPatchSideslip({
+      speed,heading,velocityHeading,yawRate:dynamicYawRate,
+      wheelbase:VEHICLE.wheelbase,frontWeightBias:VEHICLE.frontWeightBias
+    });
     rearHandbrakeSlipState=advanceHandbrakeRearSlipState({previous:rearHandbrakeSlipState,handbrake:hand,airborne:airborneNow,speedAbs,sideslipRad:currentSideslip,dt});
     let assistedTurn=turn;
     if(assist&&!autopilot&&!airborneNow&&!hand&&nr&&routeLength&&nr.d<9.5&&speed>2){
@@ -321,7 +341,7 @@ export function createDrivingRuntime({
         requestedLatAccel:tireSolverLatAccel,signedLatAccel:tireSolverSignedLatAccel,latLimit,longitudinalAccel,
         propulsionAccel:driveForce.acceleration,serviceBrakeAccel:brakeForce.acceleration,
         surfaceMu:longitudinalMu,throttle:driveThrottle,handbrake:hand,
-        handbrakeSlipState:rearHandbrakeSlipState,sideslipRad:currentSideslip,
+        handbrakeSlipState:rearHandbrakeSlipState,sideslipRad:rearTireSideslip,
         airborne:airborneNow,vehicle:VEHICLE,speedAbs,
         contacts:vehiclePresentation?.wheelContacts||[],previousUsage:wheelGripUsage,dt:gripDt
       },dynamicsScratch.grip);

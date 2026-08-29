@@ -524,7 +524,7 @@ export function estimateWheelGripUsage({requestedLatAccel,signedLatAccel,latLimi
   const tireSpeed=Math.max(0,safeNumber(speedAbs,50));
   const rearHandbrakeSlip=airborne?0:clampDynamics(safeNumber(handbrakeSlipState,handbrake?1:0),0,1);
   // Sliding tires operate below peak/static mu. Configurable per vehicle.
-  const handbrakeSlidingMuRatio=clampDynamics(safeNumber(vehicle?.handbrakeSlidingMuRatio,.84),.65,.95);
+  const handbrakeSlidingMuRatio=clampDynamics(safeNumber(vehicle?.handbrakeSlidingMuRatio,.72),.65,.90);
   const handbrakeSideslip=Math.min(Math.PI*.5,Math.abs(safeNumber(sideslipRad,0)));
   const aeroEnabled=!airborne&&safeNumber(vehicle?.aeroDownforceClA,0)>0&&tireSpeed>.25;
   const aero=aeroEnabled
