@@ -9,6 +9,7 @@ on:
       - grip/v21.31
       - grip/v21.31-r7
       - grip/v21.31-r8
+      - grip/v21.31-r9
       - terrain/v21.31
   workflow_dispatch:
 
@@ -49,6 +50,8 @@ jobs:
         run: node qa-grip-countersteer-r7.mjs
       - name: Grip R8 hard braking steering QA
         run: node qa-grip-braking-r8.mjs
+      - name: Grip R9 reverse and J-turn braking QA
+        run: node qa-grip-braking-r9.mjs
       - name: Terrain R1 visual ownership QA
         run: node qa-terrain-r1-legacy-ownership.mjs
       - name: Terrain R2 road imagery alignment QA
