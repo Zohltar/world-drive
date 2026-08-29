@@ -14,7 +14,7 @@ function replaceRange(source,startNeedle,endNeedle,replacement,label){
   if(start<0)throw new Error(`Grip R6 missing range start: ${label}`);
   const end=source.indexOf(endNeedle,start+startNeedle.length);
   if(end<0)throw new Error(`Grip R6 missing range end: ${label}`);
-  return source.slice(0,start)+replacement+source.slice(end);
+  return source.slice(0,start)+replacement+source.slice(end+endNeedle.length);
 }
 function check(path){
   const r=spawnSync(process.execPath,['--check',path],{encoding:'utf8'});
