@@ -1,0 +1,52 @@
+name: Apply Grip R7 countersteer physics cleanup
+
+on:
+  push:
+    branches:
+      - grip/v21.31-r7
+    paths:
+      - 'tools/apply-grip-r7.mjs'
+      - 'qa-grip-countersteer-r7.mjs'
+      - 'src/physics/drift-force-coupling.js'
+      - '.github/workflows/grip-r7-apply.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install
+        run: npm ci
+      - name: Apply Grip R7
+        run: node tools/apply-grip-r7.mjs
+      - name: Grip R7 countersteer QA
+        run: node qa-grip-countersteer-r7.mjs
+      - name: Existing grip and driving regression gates
+        run: |
+          node qa-grip-handbrake-r1.mjs
+          node qa-grip-steering-curve-r3.mjs
+          node qa-grip-drift-r4.mjs
+          node qa-grip-offroad-r5.mjs
+          node qa-grip-jump-r6.mjs
+          node qa/DEV_DRIVING_SIM_QA.mjs
+          npm run qa:stress
+      - name: Production build
+        run: npm run build
+      - name: Commit Grip R7
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/driving-runtime-base.js
+          git commit -m "Grip R7: make per-wheel tire forces authoritative in drift"
+          git push
