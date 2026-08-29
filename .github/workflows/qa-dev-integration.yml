@@ -38,6 +38,8 @@ jobs:
         run: node qa-grip-steering-curve-r3.mjs
       - name: Grip R4 drift anti-spin cleanup QA
         run: node qa-grip-drift-r4.mjs
+      - name: Grip R5 off-road lateral physics QA
+        run: node qa-grip-offroad-r5.mjs
       - name: Road banking limits QA
         run: node qa-road-banking-r1.mjs
       - name: Sparse civil traffic QA
