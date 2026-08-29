@@ -45,6 +45,8 @@ jobs:
         run: node qa-grip-jump-r6.mjs
       - name: Terrain R1 visual ownership QA
         run: node qa-terrain-r1-legacy-ownership.mjs
+      - name: Terrain R2 road imagery alignment QA
+        run: node qa-terrain-r2-road-imagery.mjs
       - name: Road banking limits QA
         run: node qa-road-banking-r1.mjs
       - name: Sparse civil traffic QA
