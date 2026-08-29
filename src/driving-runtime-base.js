@@ -1,5 +1,10 @@
 import { createPerWheelShadowSolver } from './physics/per-wheel-shadow-solver.js';
 import { effectiveTireFriction, tireProfileForVehicle } from './physics/tire-model.js';
+import {
+  driftTireForceAuthority,
+  tireForceTrajectoryYawRate,
+  blendDriftForce
+} from './physics/drift-force-coupling.js';
 
 function smoothstep01(value){
   const t=Math.max(0,Math.min(1,Number(value)||0));
@@ -416,7 +421,7 @@ export function createDrivingRuntime({
       },dynamicsScratch.grip);
     }
 
-    physicsShadow.advance(dt,{
+    const physicalTireForces=physicsShadow.advance(dt,{
       vehicleId:getVehicleId?.()||'unknown',vehicle:VEHICLE,contacts:vehiclePresentation?.wheelContacts||[],speed,heading,velocityHeading,
       yawRate:dynamicYawRate,centerSteerAngle:steerAngle,longitudinalAccel,lateralAccel:physicalSignedLatAccel,
       requestedDriveAccel,requestedBrakeAccel,handbrake:hand,surfaceId:onPavement?'asphalt-dry':'dirt'
@@ -469,13 +474,29 @@ export function createDrivingRuntime({
       yawRate+=rearSlipYaw*Math.sign((hand?speed:steeringTravelSpeed)||speed||1)*steeringAuthority;
     }
 
-    if(Math.abs(steerAngle)>.006&&Math.abs(yawRate)>1e-5&&frictionYawAccel*yawRate<0)frictionYawAccel=0;
+    // Grip R7 — per-wheel tire forces become authoritative outside the small-
+    // slip bicycle-model region. The old guard above used to erase an opposing
+    // tire yaw moment whenever steering was present; that prevented countersteer
+    // from stabilizing a drift and could make both axles translate with the rack.
     const yawResponse=yawResponseRate({vehicle:VEHICLE,speedAbs,airborne:airborneNow});
     const frictionYawLoss=physicsClamp(Math.abs(frictionYawAccel)/4.5,0,1);
     const forceCoupledSlide=physicsClamp(Math.max(frictionYawLoss,rearLateralForceLoss),0,1);
     const driftKinematicScale=driftKinematicCoupling({
       sideslipRad:currentSideslip,
       forceCoupledSlide
+    });
+    const driftPhysicalAuthority=airborneNow?0:driftTireForceAuthority({
+      sideslipRad:currentSideslip,
+      forceCoupledSlide
+    });
+    const physicalTireYawAccel=Number.isFinite(physicalTireForces?.predictedYawAccel)
+      ?physicalTireForces.predictedYawAccel
+      :frictionYawAccel;
+    const physicalTrajectoryYawRate=tireForceTrajectoryYawRate({
+      bodyVx:physicalTireForces?.bodyVx,
+      bodyVz:physicalTireForces?.bodyVz,
+      accelX:physicalTireForces?.predictedAccelX,
+      accelZ:physicalTireForces?.predictedAccelZ
     });
     // Keep the familiar fast settling only while the car is close to the
     // bicycle-model regime. During a real drift, do not numerically brake yaw
@@ -484,8 +505,15 @@ export function createDrivingRuntime({
       driftKinematicScale>.82&&Math.abs(yawRate)<Math.abs(dynamicYawRate)
         ?1.35
         :1;
-    const yawGripResponseScale=airborneNow?0:driftKinematicScale;
-    dynamicYawRate+=frictionYawAccel*dt;
+    const yawGripResponseScale=airborneNow
+      ?0
+      :driftKinematicScale*(1-.85*driftPhysicalAuthority);
+    const authoritativeYawAccel=blendDriftForce(
+      frictionYawAccel,
+      physicalTireYawAccel,
+      driftPhysicalAuthority
+    );
+    dynamicYawRate+=authoritativeYawAccel*dt;
     dynamicYawRate+=(yawRate-dynamicYawRate)*(1-Math.exp(-dt*yawResponse*yawReleaseBoost*yawGripResponseScale));
     heading+=dynamicYawRate*dt;
 
@@ -527,13 +555,18 @@ export function createDrivingRuntime({
       const forceDominatedDrift=
         !airborneNow&&
         speedAbs>4&&
-        (forceCoupledSlide>.10||driftKinematicScale<.88);
+        (driftPhysicalAuthority>.12||forceCoupledSlide>.10||driftKinematicScale<.88);
       if(forceDominatedDrift){
         const signedSpeedForCurvature=Math.abs(speed)>.5?speed:Math.sign(speed||1)*.5;
-        const forceTrajectoryYawRate=netLateralAccel/signedSpeedForCurvature;
-        // Grip R4 — in a drift the momentum vector can only rotate because tire
-        // forces bend it. Remove the old synthetic alignment toward the nearest
-        // body axis, whose target switched at 90 degrees.
+        const legacyForceTrajectoryYawRate=netLateralAccel/signedSpeedForCurvature;
+        // Grip R7: once sideslip is real, the momentum vector follows the SUM of
+        // the four actual tire-force vectors. Countersteer can therefore rotate
+        // the chassis and bend momentum in different directions, as it should.
+        const forceTrajectoryYawRate=blendDriftForce(
+          legacyForceTrajectoryYawRate,
+          physicalTrajectoryYawRate,
+          driftPhysicalAuthority
+        );
         attemptedTrajectoryDelta+=forceTrajectoryYawRate*dt;
       }else{
         const velocityFollowRate=airborneNow?0:((2.8-1.45*frictionTrajectoryLoss)+27.2*Math.pow(1-physicsClamp(trajectoryRearSlip,0,1),2));
