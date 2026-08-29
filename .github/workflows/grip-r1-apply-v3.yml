@@ -1,0 +1,46 @@
+name: Apply Grip R1 physics v3
+
+on:
+  push:
+    branches:
+      - grip/v21.31
+    paths:
+      - '.github/workflows/grip-r1-apply-v3.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Reuse validated Grip R1 patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          import textwrap
+          wf=Path('.github/workflows/grip-r1-apply-v2.yml').read_text()
+          marker="python - <<'PY'\n"
+          start=wf.index(marker)+len(marker)
+          end=wf.index("\n          PY",start)
+          script=textwrap.dedent(wf[start:end])
+          # The physical patch and deterministic QA are before the normal-workflow edit.
+          script=script.split("p=Path('.github/workflows/qa-dev-integration.yml')",1)[0]
+          exec(compile(script,'grip-r1-patch','exec'))
+          PY
+          node qa-grip-handbrake-r1.mjs
+          node qa/DEV_DRIVING_SIM_QA.mjs
+      - name: Commit physics only
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/driving-runtime-base.js src/vehicle-dynamics-base.js qa-grip-handbrake-r1.mjs
+          git commit -m "Grip R1: physical handbrake slip and progressive regrip"
+          git push
