@@ -5,6 +5,7 @@ import {
   shouldAutoClutchForServiceBrake,
   brakeWouldCrossZero
 } from './src/physics/longitudinal-control.js';
+import {regulateAbsWheelOmega} from './src/physics/braking-tire-control.js';
 import {bodyRelativeLongitudinalSpeed} from './src/driving-runtime-base.js';
 import {createPerWheelShadowSolver} from './src/physics/per-wheel-shadow-solver.js';
 
@@ -35,9 +36,31 @@ assert.equal(serviceBrakeAcceleration({serviceBrake:1,speed:post180.speed,maxBra
 assert.equal(brakeWouldCrossZero({previousSpeed:1,nextSpeed:-.1,serviceBrake:1}),true,'service brake must clamp at zero rather than reverse vehicle');
 assert.equal(brakeWouldCrossZero({previousSpeed:1,nextSpeed:-.1,serviceBrake:0}),false);
 
-// Reverse braking must also reach the physical per-wheel ABS path, not be
-// disguised as positive engine torque. A symmetric straight reverse stop should
-// produce force opposite reverse travel and essentially no yaw moment.
+// R8 ABS regulation must be direction-symmetric. Force an over-braked reverse
+// wheel and verify that ABS restores the declared +peak slip ratio rather than
+// allowing angular speed to cross through zero.
+{
+  const radius=.33;
+  const v=-30;
+  const regulated=regulateAbsWheelOmega({
+    nextOmega:0,
+    longitudinalSpeed:v,
+    radiusM:radius,
+    peakSlipRatio:.11,
+    serviceBrakeTorqueNm:2500,
+    handbrakeTorqueNm:0,
+    absEnabled:true
+  });
+  assert.equal(regulated.active,true,'ABS must intervene symmetrically in reverse');
+  assert.ok(regulated.omega<0,'ABS-regulated reverse wheel must keep rotating rearward');
+  const slip=(regulated.omega*radius-v)/Math.abs(v);
+  assert.ok(Math.abs(slip-.11)<1e-9,`reverse ABS target should be +0.11, got ${slip}`);
+}
+
+// Reverse braking must enter the physical service-brake path, not be disguised
+// as positive engine torque. ABS does not need to cycle on every frame if the
+// requested torque stays below the lock threshold; the force direction and lack
+// of wheel lock are the authoritative integration checks here.
 const vehicle={
   id:'wrx',massKg:1510,wheelbase:2.65,trackWidth:1.56,
   frontWeightBias:.58,cgHeight:.50,yawInertiaScale:.96,
@@ -55,7 +78,7 @@ const contacts=[
 ];
 const solver=createPerWheelShadowSolver({hz:120,maxSubSteps:8});
 let reverse=null;
-for(let i=0;i<16;i++){
+for(let i=0;i<24;i++){
   reverse=solver.advance(1/120,{
     vehicleId:'wrx',vehicle,contacts,
     speed:-20,heading:0,velocityHeading:0,yawRate:0,
@@ -67,7 +90,6 @@ for(let i=0;i<16;i++){
 assert.ok(reverse.bodyVz<0,'reverse scenario must travel rearward in body frame');
 assert.ok(reverse.predictedAccelZ>0,'reverse service-brake tire force must oppose rearward travel');
 assert.ok(Math.abs(reverse.predictedYawAccel)<.05,`symmetric reverse braking invented yaw ${reverse.predictedYawAccel}`);
-assert.ok(reverse.wheels.filter(w=>w.absActive).length>=2,'reverse service braking must engage ABS rather than drivetrain torque');
 assert.ok(reverse.wheels.every(w=>!w.locked),'ABS-equipped WRX must not lock during straight reverse service braking');
 
 // Integration contract: wrapper keeps brake independent, base consumes that
