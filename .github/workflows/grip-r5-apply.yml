@@ -1,0 +1,46 @@
+name: Apply Grip R5 off-road lateral physics
+
+on:
+  push:
+    branches:
+      - grip/v21.31
+    paths:
+      - 'tools/apply-grip-r5.mjs'
+      - 'qa-grip-offroad-r5.mjs'
+      - '.github/workflows/grip-r5-apply.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install
+        run: npm ci
+      - name: Apply Grip R5
+        run: node tools/apply-grip-r5.mjs
+      - name: Validate Grip R5 and prior grip work
+        run: |
+          node qa-grip-offroad-r5.mjs
+          node qa-grip-drift-r4.mjs
+          node qa-grip-handbrake-r1.mjs
+          node qa-grip-steering-curve-r3.mjs
+          node qa/V21_21_15_LOW_SPEED_TRACTION_QA.mjs
+          node qa/V21_27_CREST_LAUNCH_QA.mjs
+          node qa/V21_27_OBLIQUE_LANDING_QA.mjs
+          npm run qa:stress
+      - name: Commit Grip R5
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/driving-runtime-base.js src/vehicle-dynamics-base.js qa-grip-offroad-r5.mjs
+          git commit -m "Grip R5: physical off-road sideslip friction"
+          git push
