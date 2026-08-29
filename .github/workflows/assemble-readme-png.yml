@@ -30,7 +30,11 @@ jobs:
             .image-staging/003.txt \
             .image-staging/004.txt \
             .image-staging/005.txt \
-            .image-staging/006.txt \
+            .image-staging/006a1.txt \
+            .image-staging/006a2_1.txt \
+            .image-staging/006a2_2a.txt \
+            .image-staging/006a2_2b.txt \
+            .image-staging/006b.txt \
             | base64 -d > src/assets/screenshots/FOREST_LAKE_README.png
 
           test "$(xxd -p -l 8 src/assets/screenshots/FOREST_LAKE_README.png)" = "89504e470d0a1a0a"
