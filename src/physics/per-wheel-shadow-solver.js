@@ -5,12 +5,13 @@ import {
   tireProfileForVehicle
 } from './tire-model.js';
 import { ackermannSteeringAngles } from './steering-geometry.js';
+import { regulateAbsWheelOmega, lockedTireGroundForce } from './braking-tire-control.js';
 
-// World Drive V21.27 — non-authoritative per-wheel shadow solver.
+// World Drive V21.27 per-wheel solver, selectively promoted by Grip R7.
 //
-// This solver deliberately runs beside the proven V21.26 handling. It computes
-// contact-patch slip, tire forces, wheel angular speed and chassis force/moment
-// diagnostics, but it NEVER writes vehicle position, heading or speed.
+// It began as a non-authoritative shadow solver. Grip R7 now uses its physical
+// force/moment outputs during real drift and tire saturation, while ordinary
+// small-slip driving still retains the established bicycle-model response.
 //
 // Vehicle-local coordinates:
 //   +X = right
@@ -235,7 +236,8 @@ function integrateWheelOmegaStable({
   localZ,
   driveTorqueNm,
   serviceBrakeTorqueNm,
-  handbrakeTorqueNm
+  handbrakeTorqueNm,
+  absEnabled=false
 }){
   const radius=Math.max(.05,finite(tire?.rollingRadiusM,.32));
   const inertia=Math.max(.05,finite(tire?.wheelInertiaKgM2,1.2));
@@ -243,6 +245,10 @@ function integrateWheelOmegaStable({
   const brakeTorqueNm=finite(serviceBrakeTorqueNm)+finite(handbrakeTorqueNm);
   const hasDrive=Math.abs(finite(driveTorqueNm))>.01;
   const brakingOnly=!hasDrive&&Math.abs(brakeTorqueNm)>.01;
+  const absEligible=!!absEnabled&&
+    Math.abs(finite(serviceBrakeTorqueNm))>.01&&
+    Math.abs(finite(handbrakeTorqueNm))<=.01&&
+    Math.abs(finite(patch?.longitudinal))>=2;
   const dt=Math.max(0,finite(step,0));
   const externalTorque=finite(driveTorqueNm)+brakeTorqueNm;
 
@@ -265,17 +271,17 @@ function integrateWheelOmegaStable({
       }
     }
     state.omega=Number.isFinite(nextOmega)?nextOmega:0;
-    return {force:forceAtOmega(state.omega),locked:false};
+    return {force:forceAtOmega(state.omega),locked:false,absActive:false};
   }
 
   const lockedForce=()=>forceAtOmega(0);
-  if(brakingOnly&&Math.abs(previousOmega)<.35){
+  if(brakingOnly&&!absEligible&&Math.abs(previousOmega)<.35){
     const forceAtLock=lockedForce();
     const reactionAtLock=-forceAtLock.fxWheel*radius;
     const opposing=brakeTorqueNm*reactionAtLock<=0;
     if(opposing&&Math.abs(brakeTorqueNm)+1>=Math.abs(reactionAtLock)){
       state.omega=0;
-      return {force:forceAtLock,locked:true};
+      return {force:forceAtLock,locked:true,absActive:false};
     }
   }
 
@@ -291,22 +297,37 @@ function integrateWheelOmegaStable({
   const denominator=1+dt*dampingTorquePerOmega/inertia;
   let nextOmega=(previousOmega+dt*(externalTorque+roadDriveTorque)/inertia)/Math.max(1e-9,denominator);
 
-  if(brakingOnly&&Math.abs(previousOmega)>.001&&Math.sign(previousOmega)!==Math.sign(nextOmega)){
+  // Grip R8 — ABS service braking regulates wheel angular speed around the
+  // tire's declared peak slip ratio. The old code only implemented EBD despite
+  // the absEnabled flag, so an ABS-equipped road car could still lock its front
+  // wheels during trail braking and feed a reversed force vector into Grip R7.
+  const absRegulation=regulateAbsWheelOmega({
+    nextOmega,
+    longitudinalSpeed:patch.longitudinal,
+    radiusM:radius,
+    peakSlipRatio:tire?.peakSlipRatio,
+    serviceBrakeTorqueNm,
+    handbrakeTorqueNm,
+    absEnabled:absEligible
+  });
+  nextOmega=absRegulation.omega;
+
+  if(brakingOnly&&!absRegulation.active&&Math.abs(previousOmega)>.001&&Math.sign(previousOmega)!==Math.sign(nextOmega)){
     nextOmega=0;
   }
 
   state.omega=Number.isFinite(nextOmega)?nextOmega:0;
-  if(brakingOnly&&Math.abs(state.omega)<.35){
+  if(brakingOnly&&!absEligible&&Math.abs(state.omega)<.35){
     const forceAtLock=lockedForce();
     const reactionAtLock=-forceAtLock.fxWheel*radius;
     const opposing=brakeTorqueNm*reactionAtLock<=0;
     if(opposing&&Math.abs(brakeTorqueNm)+1>=Math.abs(reactionAtLock)){
       state.omega=0;
-      return {force:forceAtLock,locked:true};
+      return {force:forceAtLock,locked:true,absActive:false};
     }
   }
 
-  return {force:forceAtOmega(state.omega),locked:false};
+  return {force:forceAtOmega(state.omega),locked:false,absActive:absRegulation.active};
 }
 
 function serializableWheel(wheel){
@@ -324,6 +345,7 @@ function serializableWheel(wheel){
     wheelOmega:wheel.wheelOmega,
     wheelRpm:wheel.wheelOmega*60/(2*Math.PI),
     locked:!!wheel.locked,
+    absActive:!!wheel.absActive,
     slipRatio:wheel.slipRatio,
     slipAngle:wheel.slipAngle,
     fxWheel:wheel.fxWheel,
@@ -491,9 +513,32 @@ export function createPerWheelShadowSolver({hz=120,maxSubSteps=8}={}){
         localZ,
         driveTorqueNm,
         serviceBrakeTorqueNm,
-        handbrakeTorqueNm
+        handbrakeTorqueNm,
+        absEnabled:vehicle?.absEnabled!==false
       });
-      const force=integrated.force;
+      let force=integrated.force;
+      if(integrated.locked){
+        // Grip R8 — a locked tire is sliding, so kinetic friction opposes the
+        // actual contact-patch velocity in the chassis frame. The old wheel-
+        // axis brush calculation could rotate a large braking force sideways
+        // with steering lock and yaw the car opposite the driver's command.
+        const groundSlide=lockedTireGroundForce({
+          bodyX:patch.bodyX,
+          bodyZ:patch.bodyZ,
+          normalLoadN,
+          slideMu:force?.slideMu,
+          steerAngle,
+          localX,
+          localZ
+        });
+        force={
+          ...force,
+          ...groundSlide,
+          slideBlend:1,
+          saturated:true,
+          utilization:Math.max(1,finite(force?.utilization,1))
+        };
+      }
 
       totalForceX+=force.forceX;
       totalForceZ+=force.forceZ;
@@ -511,6 +556,7 @@ export function createPerWheelShadowSolver({hz=120,maxSubSteps=8}={}){
         lateralSpeed:patch.lateral,
         wheelOmega:state.omega,
         locked:integrated.locked,
+        absActive:integrated.absActive,
         ...force
       }));
     }
