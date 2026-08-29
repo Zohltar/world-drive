@@ -29,7 +29,7 @@ L’objectif n’est pas de reproduire une carte fermée : **World Drive constru
 ## Aperçu
 
 <p align="center">
-  <img src="src/assets/screenshots/FOREST_LAKE_README.webp" alt="World Drive - route forestière en multijoueur" width="1200">
+  <img src="src/assets/screenshots/FOREST_LAKE_README.png" alt="World Drive - route forestière en multijoueur" width="1200">
 </p>
 
 <p align="center">
