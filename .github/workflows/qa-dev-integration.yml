@@ -7,6 +7,7 @@ on:
       - road/v21.31
       - traffic/v21.31
       - grip/v21.31
+      - terrain/v21.31
   workflow_dispatch:
 
 permissions:
@@ -42,6 +43,8 @@ jobs:
         run: node qa-grip-offroad-r5.mjs
       - name: Grip R6 airborne physics QA
         run: node qa-grip-jump-r6.mjs
+      - name: Terrain R1 visual ownership QA
+        run: node qa-terrain-r1-legacy-ownership.mjs
       - name: Road banking limits QA
         run: node qa-road-banking-r1.mjs
       - name: Sparse civil traffic QA
