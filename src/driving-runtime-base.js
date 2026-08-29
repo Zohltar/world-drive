@@ -74,6 +74,23 @@ export function handbrakeLateralEffectForSpeed(speedAbs=0){
   return smoothstep01((Math.max(0,Number(speedAbs)||0)-2.5)/6.5);
 }
 
+// Grip R1 — wheel lock/recovery is continuous, not tied to the button edge.
+export function advanceHandbrakeRearSlipState({previous=0,handbrake=false,airborne=false,speedAbs=0,sideslipRad=0,dt=0}={}){
+  const prev=Math.max(0,Math.min(1,Number(previous)||0));
+  const step=Math.min(.05,Math.max(0,Number(dt)||0));
+  if(step<=0)return prev;
+  if(airborne)return prev*Math.exp(-step/.08);
+  const speed=Math.max(0,Math.abs(Number(speedAbs)||0));
+  const beta=Math.min(Math.PI*.5,Math.abs(Number(sideslipRad)||0));
+  const target=handbrake?handbrakeLateralEffectForSpeed(speed):0;
+  const engageTau=.045;
+  const speedT=smoothstep01(speed/30);
+  const sideslipT=smoothstep01(beta/.55);
+  const releaseTau=.11+.09*speedT+.24*sideslipT;
+  const tau=target>prev?engageTau:releaseTau;
+  return prev+(target-prev)*(1-Math.exp(-step/Math.max(.02,tau)));
+}
+
 export function landingSideslipGripSeed({sideslipRad=0,speedAbs=0}={}){
   const slip=Math.abs(Number(sideslipRad)||0);
   const speed=Math.max(0,Math.abs(Number(speedAbs)||0));
@@ -108,6 +125,7 @@ export function createDrivingRuntime({
 }){
   const physicsShadow=createPerWheelShadowSolver({hz:120,maxSubSteps:8});
   let wasAirborne=false;
+  let rearHandbrakeSlipState=0;
 
   function update(dt){
     const initialState=getState();
@@ -252,6 +270,8 @@ export function createDrivingRuntime({
     longitudinalAccel=(speed-previousSpeed)/Math.max(dt,.001);
 
     const speedAbs=Math.abs(speed);
+    const currentSideslip=travelAxisSideslip({heading,velocityHeading});
+    rearHandbrakeSlipState=advanceHandbrakeRearSlipState({previous:rearHandbrakeSlipState,handbrake:hand,airborne:airborneNow,speedAbs,sideslipRad:currentSideslip,dt});
     let assistedTurn=turn;
     if(assist&&!autopilot&&!airborneNow&&!hand&&nr&&routeLength&&nr.d<9.5&&speed>2){
       let routeHeading=nr.angle,routeDirection=1;
@@ -300,7 +320,9 @@ export function createDrivingRuntime({
       perWheelGrip=estimateWheelGripUsage({
         requestedLatAccel:tireSolverLatAccel,signedLatAccel:tireSolverSignedLatAccel,latLimit,longitudinalAccel,
         propulsionAccel:driveForce.acceleration,serviceBrakeAccel:brakeForce.acceleration,
-        surfaceMu:longitudinalMu,throttle:driveThrottle,handbrake:hand,airborne:airborneNow,vehicle:VEHICLE,speedAbs,
+        surfaceMu:longitudinalMu,throttle:driveThrottle,handbrake:hand,
+        handbrakeSlipState:rearHandbrakeSlipState,sideslipRad:currentSideslip,
+        airborne:airborneNow,vehicle:VEHICLE,speedAbs,
         contacts:vehiclePresentation?.wheelContacts||[],previousUsage:wheelGripUsage,dt:gripDt
       },dynamicsScratch.grip);
     }
@@ -316,20 +338,13 @@ export function createDrivingRuntime({
     wheelLateralUsage=perWheelGrip.lateralUsage;
     wheelLongitudinalUsage=perWheelGrip.longitudinalUsage;
 
-    const handbrakeLateralEffect=hand&&!airborneNow?handbrakeLateralEffectForSpeed(speedAbs):1;
+    // Grip R1: lateral force recovery follows residual rear tire slip.
     const targetFrontSlip=perWheelGrip.frontLateral;
-    const targetRearSlip=perWheelGrip.rearLateral*handbrakeLateralEffect;
+    const sideslipDrivenRearSlip=rearHandbrakeSlipState*smoothstep01((currentSideslip-.025)/.42)*.90;
+    const targetRearSlip=Math.max(perWheelGrip.rearLateral,sideslipDrivenRearSlip);
     let frictionYawAccel=Number.isFinite(perWheelGrip.frictionYawAccel)?perWheelGrip.frictionYawAccel:0;
-    const rawNetLateralAccel=Number.isFinite(perWheelGrip.netLateralAccel)?perWheelGrip.netLateralAccel:physicalSignedLatAccel;
-    const rawRearLateralForceScale=Number.isFinite(perWheelGrip.rearLateralForceScale)?physicsClamp(perWheelGrip.rearLateralForceScale,0,1):1;
-
-    if(hand&&!airborneNow)frictionYawAccel*=handbrakeLateralEffect;
-    const netLateralAccel=hand&&!airborneNow
-      ?physicalSignedLatAccel+(rawNetLateralAccel-physicalSignedLatAccel)*handbrakeLateralEffect
-      :rawNetLateralAccel;
-    const rearLateralForceScale=hand&&!airborneNow
-      ?1-(1-rawRearLateralForceScale)*handbrakeLateralEffect
-      :rawRearLateralForceScale;
+    const netLateralAccel=Number.isFinite(perWheelGrip.netLateralAccel)?perWheelGrip.netLateralAccel:physicalSignedLatAccel;
+    const rearLateralForceScale=Number.isFinite(perWheelGrip.rearLateralForceScale)?physicsClamp(perWheelGrip.rearLateralForceScale,0,1):1;
     const rearLateralForceLoss=Math.abs(physicalSignedLatAccel)>.15?1-rearLateralForceScale:0;
     const slipDt=Math.min(.05,dt);
     const lowSpeedSlipReleaseBoost=1+(1-physicsClamp(speedAbs/8,0,1))*1.6;
@@ -414,9 +429,7 @@ export function createDrivingRuntime({
         attemptedTrajectoryDelta+=angleDelta(momentumTargetHeading,velocityHeading)*(1-Math.exp(-dt*velocityFollowRate));
       }
       const rawTrajectoryLateralCapacityAccel=Number.isFinite(perWheelGrip.trajectoryLateralCapacityAccel)?Math.max(0,perWheelGrip.trajectoryLateralCapacityAccel):Math.max(0,latLimit);
-      const trajectoryLateralCapacityAccel=hand&&!airborneNow
-        ?latLimit+(rawTrajectoryLateralCapacityAccel-latLimit)*handbrakeLateralEffect
-        :rawTrajectoryLateralCapacityAccel;
+      const trajectoryLateralCapacityAccel=rawTrajectoryLateralCapacityAccel;
       velocityHeading+=limitMomentumHeadingDelta({attemptedDelta:attemptedTrajectoryDelta,speedAbs,lateralCapacityAccel:trajectoryLateralCapacityAccel,dt,airborne:airborneNow});
     }
 

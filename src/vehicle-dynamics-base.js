@@ -517,11 +517,15 @@ function fallbackWheelMeta(index){
   };
 }
 
-export function estimateWheelGripUsage({requestedLatAccel,signedLatAccel,latLimit,longitudinalAccel,propulsionAccel=null,serviceBrakeAccel=null,surfaceMu=1,throttle,handbrake,airborne,vehicle,speedAbs=null,dt,contacts=[],previousUsage=[]}={},out=null){
+export function estimateWheelGripUsage({requestedLatAccel,signedLatAccel,latLimit,longitudinalAccel,propulsionAccel=null,serviceBrakeAccel=null,surfaceMu=1,throttle,handbrake,handbrakeSlipState=null,sideslipRad=0,airborne,vehicle,speedAbs=null,dt,contacts=[],previousUsage=[]}={},out=null){
   const result=out||{};
   const layout=vehicleLayout(vehicle),count=Math.max(4,contacts.length||0);
   const lateralDemand=latLimit>0?Math.max(0,requestedLatAccel/latLimit):0;
   const tireSpeed=Math.max(0,safeNumber(speedAbs,50));
+  const rearHandbrakeSlip=airborne?0:clampDynamics(safeNumber(handbrakeSlipState,handbrake?1:0),0,1);
+  // Sliding tires operate below peak/static mu. Configurable per vehicle.
+  const handbrakeSlidingMuRatio=clampDynamics(safeNumber(vehicle?.handbrakeSlidingMuRatio,.84),.65,.95);
+  const handbrakeSideslip=Math.min(Math.PI*.5,Math.abs(safeNumber(sideslipRad,0)));
   const aeroEnabled=!airborne&&safeNumber(vehicle?.aeroDownforceClA,0)>0&&tireSpeed>.25;
   const aero=aeroEnabled
     ?aerodynamicLoadForLayout(layout,vehicle,tireSpeed,false,result.aero||(result.aero={}))
@@ -648,20 +652,24 @@ export function estimateWheelGripUsage({requestedLatAccel,signedLatAccel,latLimi
         Math.max(.20,axleLongitudinalCapacityAccel);
     }
     longitudinalUtil=clampDynamics(longitudinalUtil,0,1.35);
-    if(handbrake&&isRear&&!airborne)longitudinalUtil=Math.max(longitudinalUtil,1.28);
 
-    // V21.21.10 — friction-circle coupling. Longitudinal tire demand now
-    // consumes the same adhesion budget used for cornering. A locked rear wheel
-    // therefore has very little lateral authority left, so a handbrake while
-    // turning can naturally create rear-dominant slip. In a straight line,
-    // baseLateralUtil is zero, so the handbrake does not invent a yaw moment.
+    // Grip R1 — kinetic friction opposes contact-patch slip velocity. A locked
+    // rear tire therefore retains a sideslip-dependent lateral component rather
+    // than an arbitrary 6% floor. Rolling -> sliding is blended continuously.
+    const rearSlipBlend=isRear&&!airborne?rearHandbrakeSlip:0;
+    let slidingLateralCapacity=0;
+    if(rearSlipBlend>1e-4){
+      const slidingLongitudinalCapacity=handbrakeSlidingMuRatio*Math.abs(Math.cos(handbrakeSideslip));
+      slidingLateralCapacity=handbrakeSlidingMuRatio*Math.abs(Math.sin(handbrakeSideslip));
+      longitudinalUtil=Math.max(longitudinalUtil,slidingLongitudinalCapacity*rearSlipBlend);
+    }
     const circleLongitudinal=clampDynamics(longitudinalUtil,0,1);
     const lateralCapacity=Math.sqrt(Math.max(0,1-circleLongitudinal*circleLongitudinal));
-    const residualLateralCapacity=
-      handbrake&&isRear&&!airborne
-        ?.06
-        :.12;
-    const usableLateralCapacity=Math.max(residualLateralCapacity,lateralCapacity);
+    const rollingLateralCapacity=Math.max(.12,lateralCapacity);
+    const lockedLateralCapacity=Math.max(.02,slidingLateralCapacity);
+    const usableLateralCapacity=rearSlipBlend>1e-4
+      ?rollingLateralCapacity+(lockedLateralCapacity-rollingLateralCapacity)*rearSlipBlend
+      :rollingLateralCapacity;
     const effectiveLateralUtil=airborne?0:baseLateralUtil/usableLateralCapacity;
 
     // The old V21.21.10 implementation stopped at effectiveLateralUtil. That
@@ -702,7 +710,8 @@ export function estimateWheelGripUsage({requestedLatAccel,signedLatAccel,latLimi
 
     lateralUsage[i]=Math.max(0,effectiveLateralUtil);longitudinalUsage[i]=Math.max(0,longitudinalUtil);
     const combined=airborne?0:Math.sqrt(baseLateralUtil*baseLateralUtil+longitudinalUtil*longitudinalUtil);
-    raw[i]=Math.min(1.65,combined);
+    const lockedSlipFloor=rearSlipBlend>0?.98+.30*rearSlipBlend:0;
+    raw[i]=Math.max(Math.min(1.65,combined),lockedSlipFloor);
     const old=safeNumber(previousUsage[i],0),response=raw[i]>old?11:17;
     smoothed[i]=old+(raw[i]-old)*(1-Math.exp(-dtSafe*response));
     slip[i]=smoothstep01((smoothed[i]-.98)/.24);lateralSlip[i]=airborne?0:smoothstep01((effectiveLateralUtil-1.00)/.30);
@@ -742,6 +751,9 @@ export function estimateWheelGripUsage({requestedLatAccel,signedLatAccel,latLimi
   result.tireForceAccel=tireForceAccel;
   result.serviceBrakeAbsEnabled=serviceBrakeAbsEnabled;
   result.absServiceBrakeUtil=absServiceBrakeUtil;
+  result.handbrakeRearSlipState=rearHandbrakeSlip;
+  result.handbrakeSlidingMuRatio=handbrakeSlidingMuRatio;
+  result.handbrakeSideslipRad=handbrakeSideslip;
   // Positive signed lateral acceleration with rear grip loss produces positive
   // yaw acceleration; front grip loss produces the opposite (understeer). Cap
   // only pathological spikes — ordinary handbrake turns remain well below it.
