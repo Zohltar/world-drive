@@ -9,6 +9,7 @@ import {
   readTransmissionRuntimeState
 } from './transmission-runtime-bridge.js';
 import {createCivilTrafficSystem} from './civil-traffic.js';
+import {shouldAutoClutchForServiceBrake} from './physics/longitudinal-control.js';
 
 export function clutchShockDurationSec(profile={},vehicleId=''){
   if(vehicleId==='semi_6x4')return .18;
@@ -144,7 +145,10 @@ export function createDrivingRuntime(args={}){
 
     const keyboardClutch=!!args.keyboardActionDown?.('clutch');
     const gamepadClutch=!!args.gamepadState?.clutch;
-    const stationaryBrakeClutch=combustion&&serviceBrake>.04&&Math.abs(bodySpeed)<.35;
+    const stationaryBrakeClutch=combustion&&shouldAutoClutchForServiceBrake({
+      serviceBrake,
+      speed:Number(state?.speed)||0
+    });
     const clutchHeld=combustion&&(keyboardClutch||gamepadClutch||stationaryBrakeClutch);
 
     publishTransmissionRuntimeState({bodyLongitudinalSpeed:bodySpeed,clutchHeld,engineThrottle,serviceBrake});
@@ -155,19 +159,12 @@ export function createDrivingRuntime(args={}){
 
     activeReleaseMultiplier=1;
 
-    if(serviceBrake>.04){
-      if(combustion&&clutchHeld){
-        clutchWasHeld=true;
-        clutchReleaseTimer=0;
-        clutchShockMultiplier=1;
-      }
-      if(bodySpeed<-.15){
-        const accel=Math.max(.1,Number(args.VEHICLE?.accel)||1);
-        const brake=Math.max(accel,Number(args.VEHICLE?.brake)||accel);
-        return serviceBrake*(brake/accel);
-      }
-      if(bodySpeed>.15)return -serviceBrake;
-      return 0;
+    // Grip R9 — keep serviceBrake independent all the way into the
+    // chassis. Do not convert it back into positive/negative engine throttle.
+    if(serviceBrake>.04&&combustion&&clutchHeld){
+      clutchWasHeld=true;
+      clutchReleaseTimer=0;
+      clutchShockMultiplier=1;
     }
 
     if(!combustion){
@@ -246,6 +243,7 @@ export function createDrivingRuntime(args={}){
     ...args,
     setState:setStateWithAuthoritativeLights,
     updateTransmission:updateTransmissionWithBodySpeed,
+    getServiceBrakeInput:()=>Math.max(0,Math.min(1,Number(readTransmissionRuntimeState()?.serviceBrake)||0)),
     longitudinalTractionLimit:longitudinalTractionWithPersistentWheelspin,
     skidMarks:skidMarksWithWheelspin||args.skidMarks,
     vehicleVisuals:vehicleVisualsWithAuthoritativeBrake,

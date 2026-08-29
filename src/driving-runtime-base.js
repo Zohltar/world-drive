@@ -5,6 +5,7 @@ import {
   tireForceTrajectoryYawRate,
   blendDriftForce
 } from './physics/drift-force-coupling.js';
+import { serviceBrakeAcceleration, brakeWouldCrossZero } from './physics/longitudinal-control.js';
 
 function smoothstep01(value){
   const t=Math.max(0,Math.min(1,Number(value)||0));
@@ -186,7 +187,7 @@ export function bodyAxisDriveProjection({heading=0,velocityHeading=0}={}){
 
 export function createDrivingRuntime({
   getState,setState,getFlags,getRouteLength,getWorldOffset,nearestRouteForVehicle,
-  autopilotControl,keyboardActionDown,gamepadState,updateTransmission,
+  autopilotControl,keyboardActionDown,gamepadState,updateTransmission,getServiceBrakeInput,
   vehiclePresentation,vehicleVisuals,truckTrailerSystem,roadSurfaceGrip,getVehicleId,
   VEHICLE,vehicleTopSpeedKmh,activeTransmissionProfile,effectiveEngineRedlineRpm,
   transmissionRedlineSpeedKmh,vehicleReverseLimitMps,physicsClamp,
@@ -259,8 +260,18 @@ export function createDrivingRuntime({
     const preDriveBodyLongitudinalSpeed=bodyRelativeLongitudinalSpeed({speed,heading,velocityHeading});
     const driveAxisProjection=bodyAxisDriveProjection({heading,velocityHeading});
     const driveThrottle=updateTransmission(dt,throttle,onPavement);
+    // Grip R9 — service brake is an independent force channel. The legacy
+    // signed-throttle adapter used body-relative speed to decide whether the
+    // same input meant braking or reverse propulsion; around 90 degrees of a
+    // J-turn that projection crosses zero while real momentum is still large.
+    const fallbackServiceBrake=Math.max(0,-(Number(throttle)||0));
+    const serviceBrakeInput=physicsClamp(
+      Number(typeof getServiceBrakeInput==='function'?getServiceBrakeInput():fallbackServiceBrake)||0,
+      0,
+      1
+    );
 
-    const brakeRequested=hand||(throttle<-.04&&preDriveBodyLongitudinalSpeed>.15);
+    const brakeRequested=hand||serviceBrakeInput>.04;
     countachBrakeLightRequested=brakeRequested;
     countachReverseLightRequested=(speed<-.08)||(driveThrottle<-.04&&speed<=.15);
     vehicleVisuals.updateBrakeLights(dt,brakeRequested);
@@ -282,16 +293,20 @@ export function createDrivingRuntime({
         powerTaper*
         driveAxisProjection;
     }else if(driveThrottle<0){
-      if(preDriveBodyLongitudinalSpeed>.15){
-        requestedBrakeAccel=VEHICLE.brake*driveThrottle;
-      }else{
-        requestedDriveAccel=
-          VEHICLE.reverseAccel*
-          driveThrottle*
-          driveAxisProjection;
-      }
+      // Negative drivetrain command now means reverse propulsion only. Service
+      // braking never enters this branch.
+      requestedDriveAccel=
+        VEHICLE.reverseAccel*
+        driveThrottle*
+        driveAxisProjection;
     }
 
+    requestedBrakeAccel=serviceBrakeAcceleration({
+      serviceBrake:serviceBrakeInput,
+      speed,
+      maxBrakeAccel:VEHICLE.brake,
+      airborne:airborneNow
+    });
     requestedDriveAccel*=truckTrailerSystem.active?truckTrailerSystem.driveAccelScaleForSpeed(Math.abs(speed)):combination.driveAccelScale;
     requestedBrakeAccel*=combination.serviceBrakeScale;
     const longitudinalSpeedAbs=Math.abs(speed);
@@ -337,11 +352,18 @@ export function createDrivingRuntime({
       (driveThrottle>.04&&preDriveBodyLongitudinalSpeed<-.15)||
       (driveThrottle<-.04&&preDriveBodyLongitudinalSpeed>.15);
     speed+=accel*dt;
+    const serviceBrakeCrossedZero=brakeWouldCrossZero({
+      previousSpeed,
+      nextSpeed:speed,
+      serviceBrake:serviceBrakeInput
+    });
     if(
-      opposingBodyTravel&&
+      (opposingBodyTravel||serviceBrakeCrossedZero)&&
       Math.abs(previousSpeed)>.02&&
       Math.sign(speed)!==Math.sign(previousSpeed)
     ){
+      // Neither engine opposition nor a service brake can teleport through zero
+      // into motion in the opposite direction during one integration step.
       speed=0;
       velocityHeading=heading;
     }
