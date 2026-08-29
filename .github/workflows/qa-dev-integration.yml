@@ -32,8 +32,10 @@ jobs:
         run: npm run qa:stress
       - name: Driving dynamics simulation matrix
         run: node qa/DEV_DRIVING_SIM_QA.mjs
-      - name: Grip R1 physical handbrake recovery QA
+      - name: Grip R2 physical handbrake recovery QA
         run: node qa-grip-handbrake-r1.mjs
+      - name: Grip R3 speed-sensitive steering curve QA
+        run: node qa-grip-steering-curve-r3.mjs
       - name: Road banking limits QA
         run: node qa-road-banking-r1.mjs
       - name: Sparse civil traffic QA
