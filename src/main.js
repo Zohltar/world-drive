@@ -1056,6 +1056,7 @@ const imageryService=createImageryService({
     z:worldOffset.z+(ground.position?.z||0)
   }),
   sampleTerrainHeight:(x,z)=>terrainService.renderHeightAt(x,z),
+  sampleRoadVisualHeight:(x,z)=>terrainService.roadVisualHeightAt?.(x,z),
   scene,
   zoom:16,
   groundSize:NEAR_TERRAIN_SIZE,

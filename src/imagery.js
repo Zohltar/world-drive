@@ -12,6 +12,7 @@ export function createImageryService(options){
   let cachedCols=0;
   let cachedSegments=0;
   let fastGroundSamples=0;
+  let roadVisualSamples=0;
   let fallbackGroundSamples=0;
 
   function resolveGroundMesh(){
@@ -43,6 +44,16 @@ export function createImageryService(options){
   }
 
   function fastRenderedGroundHeight(absx,absz){
+    // Terrain R2: the coarse ground mesh intentionally contains a wider hidden
+    // safety excavation than the visible road earthwork. Near roads, sample the
+    // authoritative refined surface so satellite geometry cannot sit underneath
+    // and expose a green procedural wedge. Everywhere else retain the fast grid.
+    const roadVisual=options?.sampleRoadVisualHeight?.(absx,absz);
+    if(Number.isFinite(roadVisual)){
+      roadVisualSamples++;
+      return roadVisual;
+    }
+
     const mesh=resolveGroundMesh();
     const positions=mesh?.geometry?.attributes?.position;
     refreshGridMetadata(positions);
@@ -185,6 +196,7 @@ export function createImageryService(options){
   service.diagnostics=()=>({
     ...(baseDiagnostics?.()||{}),
     p917FastGroundSamples:fastGroundSamples,
+    terrainR2RoadVisualSamples:roadVisualSamples,
     p917FallbackGroundSamples:fallbackGroundSamples,
     p917PrefetchBusy:prefetchBusy,
     p917PrefetchStarted:prefetchStarted,

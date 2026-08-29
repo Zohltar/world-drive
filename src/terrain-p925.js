@@ -1269,6 +1269,33 @@ export function createTerrainService({
       :departureSafe;
   }
 
+  // Terrain R2 — cheap road-visual override for the satellite sampler. Most
+  // imagery vertices are nowhere near a road, so reject them with one spatial
+  // hash lookup and keep P9.17's fast ground interpolation. Only vertices in a
+  // road-effect cell pay for the authoritative refined earthwork height.
+  function roadVisualHeightAt(x,z){
+    if(!activeRoadProfile.length||!roadSegmentIndex.size)return null;
+    const bucket=roadSegmentIndex.get(
+      roadCellKey(
+        Math.floor(x/roadIndexCellSize),
+        Math.floor(z/roadIndexCellSize)
+      )
+    );
+    if(!bucket?.length)return null;
+
+    const natural=heightAt(x,z)-.15;
+    const departureSafe=startPadHeight(x,z,natural);
+    const sample=nearestRoadSample(x,z,departureSafe);
+    if(!sample)return null;
+    const visualInner=Math.max(roadBedOptions.roadHalfWidth-.15,5.20);
+    const visualOuter=Math.max(
+      visualInner+1,
+      roadBedOptions.terrainCutHalfWidth+roadBedOptions.blendWidth
+    );
+    if(sample.distance2>=visualOuter*visualOuter)return null;
+    return refinedRoadVisualHeight(x,z,departureSafe);
+  }
+
   function rebuildGround(){
     const totalStarted=nowMs();
 
@@ -1594,6 +1621,7 @@ export function createTerrainService({
     // This includes the start pad and road excavation, so imagery conforms to
     // the same geometry instead of floating above or cutting through it.
     renderHeightAt:renderedTerrainHeight,
+    roadVisualHeightAt,
     rebuildGround,
     rebuildHorizon,
     clearHorizon,
