@@ -1,0 +1,52 @@
+name: Apply Power R2 WRX midrange torque
+
+on:
+  push:
+    branches:
+      - power/v21.31
+    paths:
+      - 'tools/apply-power-r2.mjs'
+      - 'qa-power-wrx-r1.mjs'
+      - 'qa-power-wrx-r2.mjs'
+      - '.github/workflows/power-r2-apply.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install
+        run: npm ci
+      - name: Apply Power R2
+        run: node tools/apply-power-r2.mjs
+      - name: Power R1 architecture QA
+        run: node qa-power-wrx-r1.mjs
+      - name: Power R2 WRX midrange torque QA
+        run: node qa-power-wrx-r2.mjs
+      - name: Existing driving regression gates
+        run: |
+          node qa-grip-braking-r9.mjs
+          node qa-grip-braking-r8.mjs
+          node qa-grip-countersteer-r7.mjs
+          node qa/DEV_DRIVING_SIM_QA.mjs
+          npm run qa:stress
+      - name: Production build
+        run: npm run build
+      - name: Commit Power R2
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/vehicle-system.js
+          git commit -m "Power R2: strengthen WRX midrange torque"
+          git push
