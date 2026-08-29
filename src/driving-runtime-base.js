@@ -1,8 +1,55 @@
 import { createPerWheelShadowSolver } from './physics/per-wheel-shadow-solver.js';
+import { effectiveTireFriction, tireProfileForVehicle } from './physics/tire-model.js';
 
 function smoothstep01(value){
   const t=Math.max(0,Math.min(1,Number(value)||0));
   return t*t*(3-2*t);
+}
+
+const GRAVITY=9.80665;
+
+// Grip R5 — physical off-road sideslip friction. The V21.27 tire/surface model
+// already knows the tire compound and dirt peak/sliding friction; use that same
+// model for the authoritative terrain path instead of a steering-demand proxy.
+export function offroadTireFriction({vehicleId='unknown',vehicle={}}={}){
+  const tire=tireProfileForVehicle(vehicleId,vehicle);
+  const massKg=Math.max(250,Number(vehicle?.massKg)||1500);
+  const normalLoadN=massKg*GRAVITY/4;
+  return effectiveTireFriction({tire,surface:'dirt',normalLoadN});
+}
+
+export function offroadSideslipFriction({
+  speed=0,heading=0,velocityHeading=0,slideMu=.45,airborne=false
+}={}){
+  const signedSpeed=Number(speed)||0;
+  const speedAbs=Math.abs(signedSpeed);
+  if(airborne||speedAbs<.35)return {speedDecel:0,momentumYawRate:0,slideGate:0,sideslipRad:0};
+
+  // velocityHeading parameterizes the signed scalar speed. Convert it to the
+  // actual direction of travel before resolving velocity in the chassis frame.
+  const travelHeading=(Number(velocityHeading)||0)+(signedSpeed<0?Math.PI:0);
+  let delta=travelHeading-(Number(heading)||0);
+  delta=Math.atan2(Math.sin(delta),Math.cos(delta));
+  const lateral=Math.sin(delta);
+  const longitudinal=Math.cos(delta);
+  const sideslip=Math.atan2(Math.abs(lateral),Math.abs(longitudinal));
+
+  // Below the tire's normal slip-angle region there is no sliding work. Once
+  // the tire is genuinely skidding, kinetic dirt friction opposes contact-patch
+  // lateral velocity. This is continuous and has no 90-degree branch.
+  const slideGate=smoothstep01((sideslip-.10)/.32);
+  const speedGate=smoothstep01((speedAbs-.6)/2.4);
+  const frictionAccel=GRAVITY*Math.max(.08,Math.min(1.20,Number(slideMu)||.45))*slideGate*speedGate;
+
+  // Work done by lateral friction removes kinetic energy at a rate proportional
+  // to the lateral fraction of velocity. The perpendicular component bends the
+  // momentum vector toward the nearest chassis travel axis. At exactly 90 deg
+  // it only slows the vehicle — it cannot create an artificial rotation wall.
+  const speedDecel=frictionAccel*Math.abs(lateral);
+  const momentumYawRate=
+    -frictionAccel*Math.sign(lateral||0)*longitudinal/Math.max(.50,speedAbs);
+
+  return {speedDecel,momentumYawRate,slideGate,sideslipRad:sideslip};
 }
 
 export function bodyRelativeLongitudinalSpeed({speed=0,heading=0,velocityHeading=0}={}){
@@ -198,6 +245,12 @@ export function createDrivingRuntime({
     const hand=autopilot?ap.hand:manualHand;
     const onPavement=!!(nr&&nr.d<8.5);
     currentOnPavementForInstruments=onPavement;
+    const offroadFrictionModel=!onPavement&&!airborneNow
+      ?offroadTireFriction({vehicleId:getVehicleId?.()||'unknown',vehicle:VEHICLE})
+      :null;
+    const offroadSlipForce=offroadFrictionModel
+      ?offroadSideslipFriction({speed,heading,velocityHeading,slideMu:offroadFrictionModel.slide,airborne:airborneNow})
+      :{speedDecel:0,momentumYawRate:0,slideGate:0,sideslipRad:0};
     const preDriveBodyLongitudinalSpeed=bodyRelativeLongitudinalSpeed({speed,heading,velocityHeading});
     const driveAxisProjection=bodyAxisDriveProjection({heading,velocityHeading});
     const driveThrottle=updateTransmission(dt,throttle,onPavement);
@@ -261,6 +314,12 @@ export function createDrivingRuntime({
       const resist=rollingAndSurface+VEHICLE.aero*speed*speed+combination.rollingResistanceAccel+combination.aeroDragCoeff*speed*speed;
       accel-=Math.sign(speed)*resist;
     }else if(!throttle&&Math.abs(gradeForce.acceleration)<.04)speed=0;
+
+    // Grip R5: terrain lateral scrub is real dissipative work, independent of
+    // steering input or the legacy fourWheelSlide telemetry.
+    if(!onPavement&&!airborneNow&&offroadSlipForce.speedDecel>1e-5&&Math.abs(speed)>.05){
+      accel-=Math.sign(speed)*offroadSlipForce.speedDecel;
+    }
 
     if(hand&&!airborneNow){
       const handRequest=-Math.sign(speed||gradeForce.acceleration||1)*8.5;
@@ -331,7 +390,7 @@ export function createDrivingRuntime({
     const steeringTravelSpeed=bodyRelativeSteeringSpeed({speed,heading,velocityHeading,handbrake:hand});
     const steeringAuthority=postSpinSteeringAuthority({rearSlipAmount,heading,velocityHeading,handbrake:hand});
     const jTurnYawActive=jTurnTransientYawActive({bodyLongitudinalSpeed,speedAbs,steerAngle,handbrake:hand,airborne:airborneNow,onPavement});
-    const lateralEnvelope=lateralDynamicsEnvelope({vehicle:VEHICLE,speed:steeringTravelSpeed,steerAngle,steerInput:steer,driveThrottle,onPavement,surfaceGrip,awdOffroadGripBonus,rearSlipAmount:0,airborne:airborneNow},dynamicsScratch.lateral);
+    const lateralEnvelope=lateralDynamicsEnvelope({vehicle:VEHICLE,speed:steeringTravelSpeed,steerAngle,steerInput:steer,driveThrottle,onPavement,surfaceGrip,awdOffroadGripBonus,offroadPeakMu:offroadFrictionModel?.peak,rearSlipAmount:0,airborne:airborneNow},dynamicsScratch.lateral);
     let yawRate=lateralEnvelope.yawRate*truckTrailerSystem.tractorYawScale(speedAbs)*steeringAuthority;
     const drivetrain=lateralEnvelope.drivetrain;
     const powerCorneringLoad=lateralEnvelope.powerCorneringLoad;
@@ -428,7 +487,7 @@ export function createDrivingRuntime({
     dynamicYawRate+=(yawRate-dynamicYawRate)*(1-Math.exp(-dt*yawResponse*yawReleaseBoost*yawGripResponseScale));
     heading+=dynamicYawRate*dt;
 
-    if(!airborneNow&&fourWheelSlide>.01&&speedAbs>6){
+    if(onPavement&&!airborneNow&&fourWheelSlide>.01&&speedAbs>6){
       const scrubDecel=1.0+fourWheelSlide*3.2,scrubDelta=scrubDecel*dt;
       if(speed>0)speed=Math.max(0,speed-scrubDelta);else if(speed<0)speed=Math.min(0,speed+scrubDelta);
     }
@@ -458,6 +517,11 @@ export function createDrivingRuntime({
       }
     }else{
       let attemptedTrajectoryDelta=0;
+      // The perpendicular component of real terrain sliding friction bends the
+      // momentum vector. This is force-derived, not a synthetic body-axis lock.
+      if(!onPavement&&!airborneNow){
+        attemptedTrajectoryDelta+=offroadSlipForce.momentumYawRate*dt;
+      }
       const forceDominatedDrift=
         !airborneNow&&
         speedAbs>4&&
