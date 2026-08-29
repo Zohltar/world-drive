@@ -54,12 +54,6 @@ base=replaceOnce(
   `      const nlen=Math.hypot(nx,ny,nz)||1;\n      nx/=nlen;ny/=nlen;nz/=nlen;\n      normals?.setXYZ?.(i,nx,ny,nz);\n\n      const directional=nx*lightX+ny*lightY+nz*lightZ;`,
   'natural DEM normals synchronous'
 );
-base=replaceOnce(
-  base,
-  `    geometry.setAttribute(\n      'color',\n      new THREE.BufferAttribute(colors,3)\n    );\n  }`,
-  `    if(normals)normals.needsUpdate=true;\n    geometry.setAttribute(\n      'color',\n      new THREE.BufferAttribute(colors,3)\n    );\n  }`,
-  'road-bed normal upload'
-);
 
 // 4) P9.27 incremental earthwork no longer spends CPU deriving artificial ribbon normals.
 const normalStart='    const accumulateNormals=async()=>{';
