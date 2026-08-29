@@ -1,5 +1,6 @@
 import { aerodynamicLoad, fitWheelSupportPlane } from './vehicle-dynamics.js';
 import { ackermannSteeringAngles, ackermannAngleForSide } from './physics/steering-geometry.js';
+import { horizontalTravelDirection, crestLaunchDecision, airborneLandingDecision } from './physics/airborne-dynamics.js';
 
 // World Drive V21.21.26 — vehicle presentation + aero-aware vertical dynamics.
 // Multi-wheel suspension support, airborne motion, body pose and projected contact shadow.
@@ -143,7 +144,7 @@ export function createVehiclePresentation({
   }
 
   function updateSuspensionVisuals(dt,onRoad,currentSteerAngle){
-    const {heading,absX,absZ,speed,longitudinalAccel,rearSlipAmount=0,VEHICLE}=getDrivingState();
+    const {heading,velocityHeading,absX,absZ,speed,longitudinalAccel,rearSlipAmount=0,VEHICLE}=getDrivingState();
     const safeDt=Math.max(.001,Math.min(.05,Number(dt)||.016));
     const c=Math.cos(heading);
     const sn=Math.sin(heading);
@@ -205,9 +206,8 @@ export function createVehiclePresentation({
         wheelPlaneRoll+=(targetWheelPlaneRoll-wheelPlaneRoll)*wheelPlaneRate;
       }
     }else{
-      const airAttitudeRate=1-Math.exp(-safeDt*.55);
-      wheelPlanePitch+=(targetWheelPlanePitch-wheelPlanePitch)*airAttitudeRate;
-      wheelPlaneRoll+=(targetWheelPlaneRoll-wheelPlaneRoll)*airAttitudeRate;
+      // Grip R6 — no contact means the terrain underneath cannot torque the
+      // chassis/support plane. Preserve takeoff attitude until contact returns.
     }
 
     const camberAbs=Math.abs(wheelPlaneRoll);
@@ -232,60 +232,63 @@ export function createVehiclePresentation({
     const supportedDownwardAccel=gravity+aeroDownforceAccel*launchAeroScale;
     const airborneDownwardAccel=gravity+aeroDownforceAccel*airborneAeroScale;
 
+    // Grip R6 — momentum-path crest separation. Contact loss follows the
+    // actual horizontal velocity vector and gravity, not chassis heading or a
+    // gameplay minimum-speed threshold.
+    let launchedThisFrame=false;
     if(!airborne){
-      if(Math.abs(speed)<=7.5){
+      const supportYAtCenter=(centerX,centerZ)=>{
+        const ground=groundHeightForWheel(centerX,centerZ);
+        return Number.isFinite(ground)?ground+effectiveWheelRadius+TIRE_VISUAL_CLEARANCE:NaN;
+      };
+      const travel=horizontalTravelDirection({speed,heading,velocityHeading});
+      const launchSlopeProbe=clamp(travel.speedAbs*.035,.35,1.80);
+      const supportAtTravel=distance=>supportYAtCenter(
+        absX+distance*travel.x,
+        absZ+distance*travel.z
+      );
+      const supportBehind=supportAtTravel(-launchSlopeProbe);
+      const supportAhead=supportAtTravel(launchSlopeProbe);
+      const currentCenterSupportY=supportAtTravel(0);
+      const spatialSupportVelocity=
+        Number.isFinite(supportBehind)&&Number.isFinite(supportAhead)
+          ?clamp((supportAhead-supportBehind)/(2*launchSlopeProbe)*travel.speedAbs,-22,22)
+          :filteredSupportVelocity;
+
+      const launchPredictionTime=.075;
+      const futureSupportY=supportAtTravel(travel.speedAbs*launchPredictionTime);
+      const launchOriginY=Number.isFinite(currentCenterSupportY)?currentCenterSupportY:supportY;
+      const separation=crestLaunchDecision({
+        speedAbs:travel.speedAbs,
+        supportOriginY:launchOriginY,
+        futureSupportY,
+        supportVerticalVelocity:spatialSupportVelocity,
+        predictionTime:launchPredictionTime,
+        downwardAccel:supportedDownwardAccel
+      });
+
+      if(separation.canLaunch){
+        airborne=true;
+        airborneTime=0;
+        verticalVelocity=spatialSupportVelocity;
+        launchedThisFrame=true;
+      }else{
         car.position.y=supportY;
         verticalVelocity=filteredSupportVelocity;
-      }else{
-        const supportYAtCenter=(centerX,centerZ)=>{
-          const ground=groundHeightForWheel(centerX,centerZ);
-          return Number.isFinite(ground)?ground+effectiveWheelRadius+TIRE_VISUAL_CLEARANCE:NaN;
-        };
-        const supportAtTravel=travel=>supportYAtCenter(absX+travel*sn,absZ+travel*c);
-        const launchSlopeProbe=clamp(Math.abs(speed)*.035,.70,1.80);
-        const supportBehind=supportAtTravel(-launchSlopeProbe);
-        const supportAhead=supportAtTravel(launchSlopeProbe);
-        const currentCenterSupportY=supportAtTravel(0);
-        const spatialSupportVelocity=
-          Number.isFinite(supportBehind)&&Number.isFinite(supportAhead)
-            ?clamp((supportAhead-supportBehind)/(2*launchSlopeProbe)*speed,-22,22)
-            :filteredSupportVelocity;
-
-        const launchPredictionTime=.075;
-        const futureTravel=speed*launchPredictionTime;
-        const futureSupportY=supportAtTravel(futureTravel);
-        const launchOriginY=Number.isFinite(currentCenterSupportY)?currentCenterSupportY:supportY;
-        const predictedBallisticY=
-          launchOriginY+
-          spatialSupportVelocity*launchPredictionTime-
-          .5*supportedDownwardAccel*launchPredictionTime*launchPredictionTime;
-        const predictedGap=Number.isFinite(futureSupportY)?predictedBallisticY-futureSupportY:0;
-        const requiredSupportAccel=
-          Number.isFinite(futureSupportY)
-            ?2*(futureSupportY-launchOriginY-spatialSupportVelocity*launchPredictionTime)/(launchPredictionTime*launchPredictionTime)
-            :0;
-        const launchAccelMargin=1.25;
-        const canLaunch=
-          Math.abs(speed)>7.5&&
-          predictedGap>.003&&
-          requiredSupportAccel<-(supportedDownwardAccel+launchAccelMargin);
-
-        if(canLaunch){
-          airborne=true;
-          airborneTime=0;
-          verticalVelocity=spatialSupportVelocity;
-        }else{
-          car.position.y=supportY;
-          verticalVelocity=filteredSupportVelocity;
-        }
       }
     }
 
-    if(airborne){
+    if(airborne&&!launchedThisFrame){
       airborneTime+=safeDt;
       verticalVelocity-=airborneDownwardAccel*safeDt;
-      car.position.y+=verticalVelocity*safeDt;
-      if(airborneTime>.025&&car.position.y<=supportY&&verticalVelocity<=filteredSupportVelocity+.8){
+      const nextAirborneY=car.position.y+verticalVelocity*safeDt;
+      car.position.y=nextAirborneY;
+      if(airborneLandingDecision({
+        nextY:nextAirborneY,
+        supportY,
+        verticalVelocity,
+        supportVerticalVelocity:filteredSupportVelocity
+      })){
         const impactSpeed=Math.max(0,filteredSupportVelocity-verticalVelocity);
         car.position.y=supportY;
         verticalVelocity=filteredSupportVelocity;
@@ -378,11 +381,12 @@ export function createVehiclePresentation({
       -.065,.065
     );
     corneringVisualYaw+=(targetCorneringYaw-corneringVisualYaw)*(1-Math.exp(-safeDt*(Math.abs(targetCorneringYaw)>.002?7.5:9.5)));
-    const targetRoll=-wheelPlaneRoll+dynamicRoll+springRoll;
-    const targetPitch=wheelPlanePitch+dynamicPitch+springPitch;
-    const attitudeRate=airborne?2.1:7.0;
-    suspensionRoll+=(targetRoll-suspensionRoll)*(1-Math.exp(-safeDt*attitudeRate));
-    suspensionPitch+=(targetPitch-suspensionPitch)*(1-Math.exp(-safeDt*(airborne?1.8:7.2)));
+    if(!airborne){
+      const targetRoll=-wheelPlaneRoll+dynamicRoll+springRoll;
+      const targetPitch=wheelPlanePitch+dynamicPitch+springPitch;
+      suspensionRoll+=(targetRoll-suspensionRoll)*(1-Math.exp(-safeDt*7.0));
+      suspensionPitch+=(targetPitch-suspensionPitch)*(1-Math.exp(-safeDt*7.2));
+    }
     const avgCompression=wheelCompression.reduce((sum,value)=>sum+value,0)/Math.max(1,wheelCompression.length);
     const targetHeave=-avgCompression*.18-landingCompression;
     suspensionHeave+=(targetHeave-suspensionHeave)*(1-Math.exp(-safeDt*(airborne?3.2:8.5)));

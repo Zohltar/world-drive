@@ -1238,6 +1238,7 @@ const vehiclePresentation=createVehiclePresentation({
       :vehicleVisuals.activeVehicleWheels(),
   getDrivingState:()=>({
     heading,
+    velocityHeading,
     absX,
     absZ,
     speed,
@@ -1685,7 +1686,7 @@ async function loadWaterAround(absx,absz){
   return true;
 }
 
-
+
 // ---------- road furniture facade ----------
 const roadFurniture=createRoadFurnitureSystem({
   THREE,

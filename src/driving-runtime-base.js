@@ -432,6 +432,8 @@ export function createDrivingRuntime({
     const sideslipDrivenRearSlip=rearHandbrakeSlipState*smoothstep01((currentSideslip-.025)/.42)*.90;
     const targetRearSlip=Math.max(perWheelGrip.rearLateral,sideslipDrivenRearSlip);
     let frictionYawAccel=Number.isFinite(perWheelGrip.frictionYawAccel)?perWheelGrip.frictionYawAccel:0;
+    // Grip R6 — no tire contact means no residual tire yaw impulse.
+    if(airborneNow)frictionYawAccel=0;
     const netLateralAccel=Number.isFinite(perWheelGrip.netLateralAccel)?perWheelGrip.netLateralAccel:physicalSignedLatAccel;
     const rearLateralForceScale=Number.isFinite(perWheelGrip.rearLateralForceScale)?physicsClamp(perWheelGrip.rearLateralForceScale,0,1):1;
     const rearLateralForceLoss=Math.abs(physicalSignedLatAccel)>.15?1-rearLateralForceScale:0;
@@ -482,7 +484,7 @@ export function createDrivingRuntime({
       driftKinematicScale>.82&&Math.abs(yawRate)<Math.abs(dynamicYawRate)
         ?1.35
         :1;
-    const yawGripResponseScale=driftKinematicScale;
+    const yawGripResponseScale=airborneNow?0:driftKinematicScale;
     dynamicYawRate+=frictionYawAccel*dt;
     dynamicYawRate+=(yawRate-dynamicYawRate)*(1-Math.exp(-dt*yawResponse*yawReleaseBoost*yawGripResponseScale));
     heading+=dynamicYawRate*dt;
