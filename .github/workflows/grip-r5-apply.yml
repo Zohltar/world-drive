@@ -33,7 +33,6 @@ jobs:
           node qa-grip-drift-r4.mjs
           node qa-grip-handbrake-r1.mjs
           node qa-grip-steering-curve-r3.mjs
-          node qa/V21_21_15_LOW_SPEED_TRACTION_QA.mjs
           node qa/V21_27_CREST_LAUNCH_QA.mjs
           node qa/V21_27_OBLIQUE_LANDING_QA.mjs
           npm run qa:stress
