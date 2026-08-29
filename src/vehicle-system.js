@@ -126,19 +126,23 @@ const PROFILES={
       powertrainModel:'torque',
       peakPowerHp:271,
       peakPowerRpm:5600,
-      peakTorqueNm:350,
+      // Power R2 — broaden the low/mid-rpm torque band for the requested WRX
+      // punch while keeping the 4600-5600 rpm power plateau near ~202 kW
+      // (~271 hp). This improves in-gear response without raising road top speed.
+      peakTorqueNm:420,
       torqueCurveNm:[
-        [850,180],
-        [1200,230],
-        [1600,300],
-        [2000,350],
-        [5200,350],
+        [850,200],
+        [1200,280],
+        [1600,370],
+        [1800,420],
+        [4600,420],
+        [5200,372],
         [5600,345],
         [6100,300]
       ],
       finalDriveRatio:4.111,
       driveWheelRadiusM:0.3265,
-      drivetrainEfficiency:0.82,
+      drivetrainEfficiency:0.86,
       launchClutchRpm:2000,
       launchClutchFadeMps:5.5,
 
