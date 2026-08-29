@@ -7,6 +7,7 @@ on:
     paths:
       - 'tools/apply-grip-r7.mjs'
       - 'qa-grip-countersteer-r7.mjs'
+      - 'qa-grip-jump-r6.mjs'
       - 'src/physics/drift-force-coupling.js'
       - '.github/workflows/grip-r7-apply.yml'
   workflow_dispatch:
