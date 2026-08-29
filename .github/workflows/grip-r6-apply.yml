@@ -1,0 +1,48 @@
+name: Apply Grip R6 airborne physics
+
+on:
+  push:
+    branches:
+      - grip/v21.31
+    paths:
+      - 'tools/apply-grip-r6.mjs'
+      - 'qa-grip-jump-r6.mjs'
+      - 'src/physics/airborne-dynamics.js'
+      - '.github/workflows/grip-r6-apply.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install
+        run: npm ci
+      - name: Apply Grip R6
+        run: node tools/apply-grip-r6.mjs
+      - name: Validate Grip R6 and prior grip work
+        run: |
+          node qa-grip-jump-r6.mjs
+          node qa-grip-offroad-r5.mjs
+          node qa-grip-drift-r4.mjs
+          node qa-grip-handbrake-r1.mjs
+          node qa-grip-steering-curve-r3.mjs
+          node qa/V21_27_CREST_LAUNCH_QA.mjs
+          node qa/V21_27_OBLIQUE_LANDING_QA.mjs
+          node qa/V21_31_AIRBORNE_TIRE_STATE_QA.mjs
+          npm run qa:stress
+      - name: Commit Grip R6
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/main.js src/driving-runtime-base.js src/vehicle-presentation-v21.29.js
+          git commit -m "Grip R6: remove legacy airborne constraints"
+          git push
