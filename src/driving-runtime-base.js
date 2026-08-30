@@ -354,7 +354,7 @@ export function createDrivingRuntime({
       maxBrakeAccel:VEHICLE.brake,
       airborne:airborneNow
     });
-    requestedDriveAccel*=truckTrailerSystem.active?truckTrailerSystem.driveAccelScaleForSpeed(Math.abs(speed)):combination.driveAccelScale;
+    requestedBodyDriveAccel*=truckTrailerSystem.active?truckTrailerSystem.driveAccelScaleForSpeed(Math.abs(speed)):combination.driveAccelScale;
     requestedBrakeAccel*=combination.serviceBrakeScale;
     const longitudinalSpeedAbs=Math.abs(speed);
     const offroadStaticTractionT=1-physicsClamp(Math.abs(speed)/7,0,1);
