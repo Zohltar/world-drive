@@ -3,7 +3,7 @@
   "productName": "World Drive",
   "private": true,
   "version": "21.31.0",
-  "worldDriveChannel": "stable",
+  "worldDriveChannel": "dev",
   "description": "World Drive - conduite sur routes réelles avec relief et monde dynamique.",
   "author": "World Drive",
   "type": "module",
