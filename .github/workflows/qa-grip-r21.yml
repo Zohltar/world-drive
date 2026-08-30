@@ -1,0 +1,27 @@
+name: Grip R21 F1 Front-Slip QA
+
+on:
+  push:
+    branches: ['dev']
+    paths:
+      - 'src/driving-runtime-base.js'
+      - 'qa-grip-f1-front-slip-r21.mjs'
+      - '.github/workflows/qa-grip-r21.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  qa:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: F1 high-speed front-slip counter-yaw regression
+        run: node qa-grip-f1-front-slip-r21.mjs
