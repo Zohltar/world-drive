@@ -1,0 +1,26 @@
+name: Add R21 CI gate
+on:
+  push:
+    branches: ['audit/r21-ci-gate']
+    paths:
+      - 'qa/add-r21-ci-gate-temp.mjs'
+      - '.github/workflows/r21-ci-gate-temp.yml'
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: node qa/add-r21-ci-gate-temp.mjs
+      - run: node qa-grip-f1-front-slip-r21.mjs
+      - name: Commit CI gate
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add .github/workflows/qa-dev-integration.yml
+          git diff --cached --quiet || git commit -m 'Grip R21: add F1 front-slip CI gate'
+          git push
