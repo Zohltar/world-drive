@@ -1,34 +1,17 @@
 // World Drive application/build branding.
-//
-// Keep the visible runtime version in one place. Development branches use an
-// explicit "dev" channel so local testing cannot be confused with the current
-// stable baseline. Stable releases use the explicit "stable" channel.
+// package.json is the authoritative machine version + release channel source.
+import packageInfo from '../package.json' with {type:'json'};
 
-export const WORLD_DRIVE_VERSION='21.31';
-export const WORLD_DRIVE_CHANNEL='stable';
+export const WORLD_DRIVE_PACKAGE_VERSION=String(packageInfo?.version||'0.0.0');
+export const WORLD_DRIVE_CHANNEL=String(packageInfo?.worldDriveChannel||'dev');
+export const WORLD_DRIVE_VERSION=WORLD_DRIVE_PACKAGE_VERSION.replace(/\.0$/,'');
 export const WORLD_DRIVE_VERSION_LABEL=`V${WORLD_DRIVE_VERSION} ${WORLD_DRIVE_CHANNEL}`;
 export const WORLD_DRIVE_TITLE=`World Drive ${WORLD_DRIVE_VERSION_LABEL}`;
 
-const LEGACY_VERSION_PATTERNS=[
-  /V21\.29\s+dev/g,
-  /V21\.29/g,
-  /V21\.28\s+dev/g,
-  /V21\.28/g,
-  /V21\.27\s+stable/g,
-  /V21\.27/g,
-  /V21\.21\.26\s+alpha/g,
-  /V21\.21\.26/g,
-  /V21\.7\s+alpha/g,
-  /V21\.7/g
-];
+const VERSION_TEXT_PATTERN=/\bV\d+(?:\.\d+){1,2}(?:\s+(?:alpha|beta|dev|stable|cleanup))?\b/g;
 
 function normalizeVersionText(value){
-  let text=String(value??'');
-  for(const pattern of LEGACY_VERSION_PATTERNS){
-    pattern.lastIndex=0;
-    text=text.replace(pattern,WORLD_DRIVE_VERSION_LABEL);
-  }
-  return text;
+  return String(value??'').replace(VERSION_TEXT_PATTERN,WORLD_DRIVE_VERSION_LABEL);
 }
 
 function normalizeTextNode(node){
@@ -54,14 +37,25 @@ function normalizeSubtree(root){
   }
 }
 
+function applyVersionPlaceholders(){
+  for(const node of document.querySelectorAll('[data-world-drive-version-label]')){
+    node.textContent=WORLD_DRIVE_VERSION_LABEL;
+  }
+  for(const node of document.querySelectorAll('[data-world-drive-title]')){
+    node.textContent=WORLD_DRIVE_TITLE;
+  }
+}
+
 export function applyWorldDriveVersionBranding(){
   if(typeof document==='undefined')return;
   document.title=WORLD_DRIVE_TITLE;
+  applyVersionPlaceholders();
   normalizeSubtree(document.documentElement);
 }
 
 if(typeof window!=='undefined'&&typeof document!=='undefined'){
   window.worldDriveBuild=Object.freeze({
+    packageVersion:WORLD_DRIVE_PACKAGE_VERSION,
     version:WORLD_DRIVE_VERSION,
     channel:WORLD_DRIVE_CHANNEL,
     label:WORLD_DRIVE_VERSION_LABEL,
@@ -79,6 +73,7 @@ if(typeof window!=='undefined'&&typeof document!=='undefined'){
       for(const node of mutation.addedNodes)normalizeSubtree(node);
     }
 
+    applyVersionPlaceholders();
     if(document.title!==WORLD_DRIVE_TITLE)document.title=WORLD_DRIVE_TITLE;
   });
 
