@@ -1,0 +1,48 @@
+name: Apply B3 maneuver state extraction
+on:
+  push:
+    branches: ['audit/code-debt-b3']
+    paths:
+      - 'qa/apply-b3-temp.mjs'
+      - '.github/workflows/apply-b3-temp.yml'
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: node qa/apply-b3-temp.mjs
+      - name: B3 maneuver state ownership QA
+        run: node qa-maneuver-state-b3.mjs
+      - name: Maneuver regression slice
+        run: |
+          node qa-grip-handbrake-r1.mjs
+          node qa/V21_27_HANDRAKE_180_LOW_SPEED_QA.mjs
+          node qa/V21_27_J_TURN_PORTLAND_QA.mjs
+          node qa-grip-braking-r9.mjs
+          node qa-grip-countersteer-r7.mjs
+          node qa-grip-ev-jturn-r17.mjs
+          node qa-grip-ev-maneuver-r18.mjs
+          node qa-grip-jturn-legacy-r19.mjs
+          node qa-grip-handbrake-lateral-r20.mjs
+          node qa-grip-full-runtime-180-probe-r20.mjs
+      - name: Full stress and driving matrix
+        run: |
+          npm run qa:stress
+          node qa/DEV_DRIVING_SIM_QA.mjs
+      - name: Production build
+        run: npm run build
+      - name: Commit B3 candidate
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add src/physics/maneuver-state.js src/driving-runtime-base.js qa-maneuver-state-b3.mjs qa-grip-jturn-legacy-r19.mjs qa-grip-handbrake-r1.mjs qa/V21_27_HANDRAKE_180_LOW_SPEED_QA.mjs qa/V21_27_J_TURN_PORTLAND_QA.mjs
+          git diff --cached --quiet || git commit -m 'Cleanup B3: extract maneuver state from driving runtime'
+          git push
