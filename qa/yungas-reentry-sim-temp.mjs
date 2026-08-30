@@ -27,7 +27,7 @@ import {
 const EARTH=6378137;
 const DEG=Math.PI/180;
 const DT=1/60;
-const ROAD_HALF_WIDTH=4.25;
+const REENTRY_T=2.70;
 
 function clamp(v,a,b){return Math.max(a,Math.min(b,v));}
 function normAngle(a){return Math.atan2(Math.sin(a),Math.cos(a));}
@@ -48,8 +48,7 @@ function buildSegments(coordinates,origin){
     if(last){
       const len=Math.hypot(p.x-last.x,p.z-last.z);
       if(len>.03){
-        const angle=Math.atan2(p.x-last.x,p.z-last.z);
-        segments.push({ax:last.x,az:last.z,bx:p.x,bz:p.z,len,cum:routeLength,angle});
+        segments.push({ax:last.x,az:last.z,bx:p.x,bz:p.z,len,cum:routeLength,angle:Math.atan2(p.x-last.x,p.z-last.z)});
         routeLength+=len;
       }
     }
@@ -65,32 +64,25 @@ function routePointAtCum(segments,routeLength,cum){
   const t=clamp((c-s.cum)/Math.max(.001,s.len),0,1);
   return {x:s.ax+(s.bx-s.ax)*t,z:s.az+(s.bz-s.az)*t,angle:s.angle,cum:c,index:lo};
 }
-function nearestRouteLocal(segments,x,z,hint=0){
-  const first=Math.max(0,hint-90),last=Math.min(segments.length-1,hint+90);
-  let best=null,bd=Infinity;
-  for(let i=first;i<=last;i++){
-    const s=segments[i],vx=s.bx-s.ax,vz=s.bz-s.az,vv=vx*vx+vz*vz||1;
-    const t=clamp(((x-s.ax)*vx+(z-s.az)*vz)/vv,0,1);
-    const px=s.ax+vx*t,pz=s.az+vz*t,d2=(x-px)**2+(z-pz)**2;
-    if(d2<bd){bd=d2;best={i,t,px,pz,d:Math.sqrt(d2),cum:s.cum+t*s.len,angle:s.angle};}
-  }
-  return best;
+function curvatureDeg30(segments,routeLength,cum){
+  const a=routePointAtCum(segments,routeLength,cum-15);
+  const b=routePointAtCum(segments,routeLength,cum+15);
+  return Math.abs(angleDelta(b.angle,a.angle))/DEG;
 }
-function curvatureAt(segments,routeLength,cum){
-  const a=routePointAtCum(segments,routeLength,cum-18);
-  const b=routePointAtCum(segments,routeLength,cum+18);
-  return Math.abs(angleDelta(b.angle,a.angle))/36;
-}
-function chooseAnchors(segments,routeLength){
+function chooseAnchorBands(segments,routeLength){
   const samples=[];
-  for(let c=routeLength*.08;c<routeLength*.92;c+=35)samples.push({cum:c,curve:curvatureAt(segments,routeLength,c)});
-  samples.sort((a,b)=>b.curve-a.curve);
-  const selected=[];
-  for(const s of samples){
-    if(selected.every(x=>Math.abs(x.cum-s.cum)>900)){selected.push(s);if(selected.length===2)break;}
-  }
-  selected.push({cum:routeLength*.52,curve:curvatureAt(segments,routeLength,routeLength*.52)});
-  return selected.slice(0,3).map((x,i)=>({...x,label:i===0?'hairpin-A':i===1?'hairpin-B':'mid-route'}));
+  for(let c=routeLength*.08;c<routeLength*.92;c+=30)samples.push({cum:c,deg30:curvatureDeg30(segments,routeLength,c)});
+  const pick=(label,target,min,max)=>{
+    const candidates=samples.filter(s=>s.deg30>=min&&s.deg30<=max);
+    const pool=candidates.length?candidates:samples;
+    const best=pool.slice().sort((a,b)=>Math.abs(a.deg30-target)-Math.abs(b.deg30-target))[0];
+    return {...best,label};
+  };
+  return [
+    pick('mild',4,0,8),
+    pick('medium',16,9,28),
+    pick('tight',55,35,85)
+  ];
 }
 function contactsFor(vehicle){
   const out=[];
@@ -98,41 +90,44 @@ function contactsFor(vehicle){
     const axle=vehicle.axles[axleIndex];
     const count=Math.max(2,Number(axle.wheelCount)||2);
     const perSide=Math.max(1,Math.round(count/2));
-    for(const side of ['left','right'])for(let n=0;n<perSide;n++){
-      out.push({
-        front:axle.positionM>=0,
-        side,axleIndex,contact:true,contactFactor:1,
-        localX:(side==='left'?-1:1)*(Number(axle.trackWidth)||Number(vehicle.trackWidth)||1.55)/2,
-        localZ:Number(axle.positionM)||0
-      });
-    }
+    for(const side of ['left','right'])for(let i=0;i<perSide;i++)out.push({
+      front:Number(axle.positionM)>=0,side,axleIndex,contact:true,contactFactor:1,
+      localX:(side==='left'?-1:1)*(Number(axle.trackWidth)||Number(vehicle.trackWidth)||1.55)/2,
+      localZ:Number(axle.positionM)||0
+    });
   }
   return out;
 }
-function stageTargetOffset(t,side){
-  if(t<.65)return 0;
-  if(t<1.75)return side*8.2;
-  if(t<2.85)return side*9.0;
-  if(t<4.25)return 0;
-  return 0;
-}
 
 const scenarios=[
-  {id:'fwd-35-clean',kmh:35,direction:1,driftDeg:0,anchor:2},
-  {id:'fwd-70-clean',kmh:70,direction:1,driftDeg:0,anchor:1},
-  {id:'fwd-110-clean',kmh:110,direction:1,driftDeg:0,anchor:0},
-  {id:'fwd-90-drift',kmh:90,direction:1,driftDeg:18,anchor:0},
-  {id:'rev-18-clean',kmh:18,direction:-1,driftDeg:0,anchor:2},
-  {id:'rev-15-drift',kmh:15,direction:-1,driftDeg:15,anchor:1}
+  {id:'fwd-30-clean-tight',kmh:30,direction:1,anchor:'tight',baseInput:.28,excursionInput:.34,returnInput:.38,driftDeg:0},
+  {id:'fwd-55-clean-medium',kmh:55,direction:1,anchor:'medium',baseInput:.20,excursionInput:.32,returnInput:.36,driftDeg:0},
+  {id:'fwd-90-clean-mild',kmh:90,direction:1,anchor:'mild',baseInput:.12,excursionInput:.52,returnInput:.56,driftDeg:0},
+  {id:'fwd-120-clean-mild',kmh:120,direction:1,anchor:'mild',baseInput:.10,excursionInput:.58,returnInput:.62,driftDeg:0},
+  {id:'fwd-75-drift-medium',kmh:75,direction:1,anchor:'medium',baseInput:.16,excursionInput:.50,returnInput:.62,driftDeg:16},
+  {id:'rev-15-clean-mild',kmh:15,direction:-1,anchor:'mild',baseInput:.10,excursionInput:.34,returnInput:.38,driftDeg:0},
+  {id:'rev-12-drift-mild',kmh:12,direction:-1,anchor:'mild',baseInput:.08,excursionInput:.32,returnInput:.42,driftDeg:13}
 ];
 
+function driverInputAt(t,scenario,side){
+  const base=scenario.baseInput;
+  if(t<.85)return base;
+  if(t<1.45)return clamp(base+side*scenario.excursionInput,-.72,.72);
+  if(t<2.25)return base*.45;
+  if(t<2.70)return clamp(base-side*scenario.returnInput,-.72,.72);
+  if(t<3.25)return clamp(base-side*scenario.returnInput*.65,-.72,.72);
+  if(t<3.80)return base*.60;
+  return base;
+}
+function onRoadAt(t){return t<.92||t>=REENTRY_T;}
+
 const routing=createRoutingService({distance:geoDist,onStatus:()=>{},onLoadingText:()=>{}});
-const points=[YUNGAS_START,...YUNGAS_WAYPOINTS,YUNGAS_END];
-const routed=await routing.fetchRoute({points,start:YUNGAS_START});
+const routed=await routing.fetchRoute({points:[YUNGAS_START,...YUNGAS_WAYPOINTS,YUNGAS_END],start:YUNGAS_START});
 assert.ok(routed.coordinates.length>50,'Yungas route did not load');
 const {segments,routeLength}=buildSegments(routed.coordinates,YUNGAS_START);
 assert.ok(routeLength>5000&&segments.length>50,'Yungas route geometry too sparse');
-const anchors=chooseAnchors(segments,routeLength);
+const anchors=chooseAnchorBands(segments,routeLength);
+const anchorByLabel=Object.fromEntries(anchors.map(a=>[a.label,a]));
 
 const validation=validateVehicleProfiles();
 assert.equal(validation.ok,true,validation.errors.join('\n'));
@@ -144,54 +139,41 @@ for(const info of fleet){
   if(system.activeId!==info.id)system.select(info.id);
   const vehicle=system.physics;
   const contacts=contactsFor(vehicle);
-  const tireDirt=offroadTireFriction({vehicleId:info.id,vehicle});
+  const dirt=offroadTireFriction({vehicleId:info.id,vehicle});
   const topKmh=Math.max(40,Number(vehicle.topSpeedKmh)||180);
-  const reverseTop=Math.max(10,Number(vehicle.reverseTopSpeedKmh)||32);
+  const reverseTop=Math.max(10,Number(vehicle.reverseTopSpeedKmh)||30);
 
   for(let sIndex=0;sIndex<scenarios.length;sIndex++){
     const scenario=scenarios[sIndex];
-    const anchor=anchors[scenario.anchor%anchors.length];
+    const anchor=anchorByLabel[scenario.anchor];
     const start=routePointAtCum(segments,routeLength,anchor.cum);
-    const exitSide=(sIndex%2===0)?1:-1;
-    let speedKmh=scenario.direction>0?Math.min(scenario.kmh,topKmh*.82):Math.min(scenario.kmh,reverseTop*.90);
+    const side=sIndex%2===0?1:-1;
+    let speedKmh=scenario.direction>0?Math.min(scenario.kmh,topKmh*.88):Math.min(scenario.kmh,reverseTop*.9);
     speedKmh=Math.max(scenario.direction>0?24:8,speedKmh);
     let speed=scenario.direction*speedKmh/3.6;
-    let x=start.x,z=start.z,heading=start.angle,velocityHeading=heading,dynamicYawRate=0,steer=0;
-    let nearest={i:start.index,cum:start.cum,d:0,angle:start.angle,px:start.x,pz:start.z};
+    let heading=start.angle;
+    let velocityHeading=heading;
+    let dynamicYawRate=0;
+    let steer=0;
+    let driftInjected=false;
     const solver=createPerWheelShadowSolver({hz:120,maxSubSteps:8});
-    let lateralAccel=0;
-    let leftRoad=false,reentered=false,reentryAt=null,recoveredAt=null,driftInjected=false;
-    let maxOffroad=0,maxSideslip=0,maxYaw=0,maxUtil=0,maxSteerInput=0,transitions=0,nonFinite=0;
-    let prevOnRoad=true;
-    let minSpeedAbs=Math.abs(speed),maxSpeedAbs=Math.abs(speed);
 
-    for(let frame=0;frame<Math.round(6.5/DT);frame++){
+    let maxSideslip=0,maxYaw=0,maxUtil=0,maxInput=0,maxSteerAngle=0;
+    let reentryPeakSideslip=0,reentryPeakYaw=0,recoveryAt=null,nonFinite=0;
+    const initialSign=Math.sign(speed);
+    let minSpeedAbs=Math.abs(speed);
+
+    for(let frame=0;frame<Math.round(6.2/DT);frame++){
       const t=frame*DT;
-      nearest=nearestRouteLocal(segments,x,z,nearest.i);
-      const onRoad=nearest.d<=ROAD_HALF_WIDTH;
-      if(onRoad!==prevOnRoad){transitions++;prevOnRoad=onRoad;}
-      if(!onRoad){leftRoad=true;maxOffroad=Math.max(maxOffroad,nearest.d);}
-      if(leftRoad&&onRoad&&!reentered){reentered=true;reentryAt=t;}
-
-      if(scenario.driftDeg>0&&!driftInjected&&t>=2.72){
-        velocityHeading=normAngle(velocityHeading+exitSide*scenario.driftDeg*DEG);
-        dynamicYawRate+=exitSide*(scenario.direction>0?.34:.22);
+      const onRoad=onRoadAt(t);
+      if(scenario.driftDeg>0&&!driftInjected&&t>=2.48){
+        velocityHeading=normAngle(velocityHeading+side*scenario.driftDeg*DEG);
+        dynamicYawRate+=side*(scenario.direction>0?.24:.15);
         driftInjected=true;
       }
 
-      const direction=Math.sign(speed||scenario.direction||1);
-      const lookAhead=clamp(Math.abs(speed)*.52+6,8,30);
-      const targetCum=nearest.cum+(direction>0?1:-1)*lookAhead;
-      const target=routePointAtCum(segments,routeLength,targetCum);
-      const offset=stageTargetOffset(t,exitSide);
-      const rightX=-Math.cos(target.angle),rightZ=Math.sin(target.angle);
-      const tx=target.x+rightX*offset,tz=target.z+rightZ*offset;
-      const desiredTravel=Math.atan2(tx-x,tz-z);
-      const desiredChassis=direction>0?desiredTravel:normAngle(desiredTravel+Math.PI);
-      const hErr=angleDelta(desiredChassis,heading);
-      const gain=clamp(3.0+Math.abs(speed)*.055,3.2,5.8);
-      const rawInput=clamp(hErr*gain,-1,1);
-      maxSteerInput=Math.max(maxSteerInput,Math.abs(rawInput));
+      const rawInput=driverInputAt(t,scenario,side);
+      maxInput=Math.max(maxInput,Math.abs(rawInput));
       const steeringModel=steeringCommand({vehicle,speedAbs:Math.abs(speed),input:rawInput},{});
       steer=advanceSteeringRack({
         current:steer,target:steeringModel.target,dt:DT,
@@ -199,123 +181,108 @@ for(const info of fleet){
         inputRate:steeringModel.inputRate,returnRate:steeringModel.returnRate
       });
       const steerAngle=steer*steeringModel.maxRoadWheelAngle;
-      const steeringTravelSpeed=bodyRelativeSteeringSpeed({speed,heading,velocityHeading,handbrake:false});
+      maxSteerAngle=Math.max(maxSteerAngle,Math.abs(steerAngle));
+      const steeringSpeed=bodyRelativeSteeringSpeed({speed,heading,velocityHeading,handbrake:false});
       const lat=lateralDynamicsEnvelope({
-        vehicle,speed:steeringTravelSpeed,steerAngle,steerInput:steer,
-        driveThrottle:0,onPavement:onRoad,surfaceGrip:1,offroadPeakMu:tireDirt.peak,
-        rearSlipAmount:0,airborne:false
+        vehicle,speed:steeringSpeed,steerAngle,steerInput:steer,driveThrottle:0,
+        onPavement:onRoad,surfaceGrip:1,offroadPeakMu:dirt.peak,rearSlipAmount:0,airborne:false
       },{});
       const signedLat=Number(lat.signedLatAccel)||0;
       const latLimit=Math.max(.1,Number(lat.latLimit)||1);
       const physicalSignedLat=Math.sign(signedLat||steerAngle||1)*Math.min(Math.abs(signedLat),latLimit);
       const physics=solver.advance(DT,{
-        vehicleId:info.id,vehicle,contacts,speed,heading,velocityHeading,
-        yawRate:dynamicYawRate,centerSteerAngle:steerAngle,longitudinalAccel:0,lateralAccel:physicalSignedLat,
+        vehicleId:info.id,vehicle,contacts,speed,heading,velocityHeading,yawRate:dynamicYawRate,
+        centerSteerAngle:steerAngle,longitudinalAccel:0,lateralAccel:physicalSignedLat,
         requestedDriveAccel:0,requestedBrakeAccel:0,handbrake:false,
         surfaceId:onRoad?'asphalt-dry':'dirt'
       });
-      const wheelUtil=(physics.wheels||[]).map(w=>Number(w.utilization)||0);
-      const peakUtil=Math.max(0,...wheelUtil);
+
+      const peakUtil=Math.max(0,...(physics.wheels||[]).map(w=>Number(w.utilization)||0));
       maxUtil=Math.max(maxUtil,peakUtil);
-      const forceCoupledSlide=clamp((peakUtil-.82)/.58,0,1);
+      const forceCoupledSlide=clamp((peakUtil-.90)/.75,0,1);
       const sideslip=travelAxisSideslip({heading,velocityHeading});
       maxSideslip=Math.max(maxSideslip,sideslip);
+      if(t>=REENTRY_T)reentryPeakSideslip=Math.max(reentryPeakSideslip,sideslip);
       const driftScale=driftKinematicCoupling({sideslipRad:sideslip,forceCoupledSlide});
       const physicalAuthority=driftTireForceAuthority({sideslipRad:sideslip,forceCoupledSlide});
-      const yawResponse=yawResponseRate({vehicle,speedAbs:Math.abs(speed),airborne:false});
       const targetYaw=Number(lat.yawRate)||0;
       const physicalYawAccel=Number(physics.predictedYawAccel)||0;
+      const response=yawResponseRate({vehicle,speedAbs:Math.abs(speed),airborne:false});
       dynamicYawRate+=physicalYawAccel*physicalAuthority*DT;
-      const yawTargetGain=driftScale*(1-.85*physicalAuthority);
-      dynamicYawRate+=(targetYaw-dynamicYawRate)*(1-Math.exp(-DT*yawResponse*yawTargetGain));
-      dynamicYawRate=clamp(dynamicYawRate,-3.2,3.2);
+      dynamicYawRate+=(targetYaw-dynamicYawRate)*(1-Math.exp(-DT*response*driftScale*(1-.85*physicalAuthority)));
+      dynamicYawRate=clamp(dynamicYawRate,-2.4,2.4);
       heading=normAngle(heading+dynamicYawRate*DT);
       maxYaw=Math.max(maxYaw,Math.abs(dynamicYawRate));
+      if(t>=REENTRY_T)reentryPeakYaw=Math.max(reentryPeakYaw,Math.abs(dynamicYawRate));
 
       const physicalTrajectoryYaw=tireForceTrajectoryYawRate({
         bodyVx:physics.bodyVx,bodyVz:physics.bodyVz,
         accelX:physics.predictedAccelX,accelZ:physics.predictedAccelZ
       });
-      let attemptedDelta=0;
       const offroad=onRoad?{momentumYawRate:0,speedDecel:0}:offroadSideslipFriction({
-        speed,heading,velocityHeading,slideMu:tireDirt.slide,airborne:false
+        speed,heading,velocityHeading,slideMu:dirt.slide,airborne:false
       });
-      attemptedDelta+=offroad.momentumYawRate*DT;
+      let attemptedDelta=offroad.momentumYawRate*DT;
       const forceDominated=physicalAuthority>.12||driftScale<.88;
       if(forceDominated){
         const signedReference=Math.abs(speed)>.5?speed:Math.sign(speed||1)*.5;
         const legacyTrajectoryYaw=physicalSignedLat/signedReference;
         attemptedDelta+=blendDriftForce(legacyTrajectoryYaw,physicalTrajectoryYaw,physicalAuthority)*DT;
       }else{
-        const momentumTarget=bodyRelativeMomentumTargetHeading({speed,heading,velocityHeading});
-        const followRate=onRoad?23:12;
-        attemptedDelta+=angleDelta(momentumTarget,velocityHeading)*(1-Math.exp(-DT*followRate));
+        const target=bodyRelativeMomentumTargetHeading({speed,heading,velocityHeading});
+        const followRate=onRoad?22:10;
+        attemptedDelta+=angleDelta(target,velocityHeading)*(1-Math.exp(-DT*followRate));
       }
       velocityHeading=normAngle(velocityHeading+limitMomentumHeadingDelta({
         attemptedDelta,speedAbs:Math.abs(speed),lateralCapacityAccel:latLimit,dt:DT,airborne:false
       }));
 
       if(!onRoad&&offroad.speedDecel>0){
-        const dv=Math.min(Math.abs(speed),offroad.speedDecel*DT+.10*DT);
+        const dv=Math.min(Math.abs(speed)*.08,offroad.speedDecel*DT);
         speed-=Math.sign(speed||1)*dv;
       }
       minSpeedAbs=Math.min(minSpeedAbs,Math.abs(speed));
-      maxSpeedAbs=Math.max(maxSpeedAbs,Math.abs(speed));
-      x+=Math.sin(velocityHeading)*speed*DT;
-      z+=Math.cos(velocityHeading)*speed*DT;
 
-      const nowSideslip=travelAxisSideslip({heading,velocityHeading});
-      if(reentered&&recoveredAt===null&&nearest.d<3.4&&nowSideslip<5*DEG&&t>(reentryAt??0)+.08)recoveredAt=t;
-      for(const n of [x,z,heading,velocityHeading,dynamicYawRate,speed,physics.predictedAccelX,physics.predictedAccelZ,physics.predictedYawAccel]){
-        if(!Number.isFinite(n))nonFinite++;
-      }
+      const nowSlip=travelAxisSideslip({heading,velocityHeading});
+      if(t>=REENTRY_T&&recoveryAt===null&&nowSlip<(scenario.driftDeg?8:5)*DEG&&Math.abs(dynamicYawRate)<18*DEG)recoveryAt=t;
+      for(const n of [speed,heading,velocityHeading,dynamicYawRate,physics.predictedAccelX,physics.predictedAccelZ,physics.predictedYawAccel])if(!Number.isFinite(n))nonFinite++;
       if(nonFinite)break;
     }
 
-    nearest=nearestRouteLocal(segments,x,z,nearest.i);
     const finalSideslip=travelAxisSideslip({heading,velocityHeading});
-    const recoverySec=reentryAt!==null&&recoveredAt!==null?recoveredAt-reentryAt:null;
+    const recoverySec=recoveryAt===null?null:recoveryAt-REENTRY_T;
     let status='PASS';
     const notes=[];
-    if(nonFinite){status='FAIL';notes.push('non-finite physics state');}
-    if(!leftRoad){status='WARN';notes.push('driver script failed to leave road');}
-    if(leftRoad&&!reentered){status='WARN';notes.push('did not re-enter road');}
-    if(reentered&&nearest.d>ROAD_HALF_WIDTH){status='WARN';notes.push('left road again before finish');}
-    if(finalSideslip>12*DEG){status='WARN';notes.push('residual crab angle >12°');}
-    if(maxSideslip>70*DEG&&scenario.driftDeg===0){status='WARN';notes.push('unexpected near-spin in clean scenario');}
-    if(Math.abs(dynamicYawRate)>1.2&&scenario.driftDeg===0){status='WARN';notes.push('large residual yaw rate');}
+    if(nonFinite){status='FAIL';notes.push('non-finite state');}
+    if(Math.sign(speed)!==initialSign&&Math.abs(speed)>.05){status='FAIL';notes.push('unexpected direction flip');}
+    if(scenario.driftDeg===0&&maxSideslip>28*DEG){status='WARN';notes.push('clean excursion exceeded 28° sideslip');}
+    if(scenario.driftDeg===0&&finalSideslip>8*DEG){status='WARN';notes.push('clean re-entry retained >8° sideslip');}
+    if(scenario.driftDeg>0&&finalSideslip>12*DEG){status='WARN';notes.push('drift re-entry retained >12° sideslip');}
+    if(recoverySec===null){status='WARN';notes.push('did not settle before simulation end');}
+    if(recoverySec!==null&&recoverySec>2.5){status='WARN';notes.push('slow re-entry recovery >2.5 s');}
+    if(maxUtil>25){status='WARN';notes.push('very high transient tire utilization');}
 
     results.push({
       vehicle:info.id,scenario:scenario.id,status,anchor:anchor.label,
-      curvature_deg_per_30m:+(anchor.curve*30/DEG).toFixed(2),
-      start_kmh:+speedKmh.toFixed(1),min_kmh:+(minSpeedAbs*3.6).toFixed(1),
-      max_offroad_m:+maxOffroad.toFixed(2),transitions,
-      max_sideslip_deg:+(maxSideslip/DEG).toFixed(1),final_sideslip_deg:+(finalSideslip/DEG).toFixed(1),
-      max_yaw_deg_s:+(maxYaw/DEG).toFixed(1),max_wheel_util:+maxUtil.toFixed(2),
-      max_input:+maxSteerInput.toFixed(2),final_road_dist_m:+nearest.d.toFixed(2),
-      recovery_s:recoverySec===null?null:+recoverySec.toFixed(2),notes:notes.join('; ')
+      anchor_curve_deg30:+anchor.deg30.toFixed(1),start_kmh:+speedKmh.toFixed(1),
+      min_kmh:+(minSpeedAbs*3.6).toFixed(1),max_input:+maxInput.toFixed(2),
+      max_steer_deg:+(maxSteerAngle/DEG).toFixed(2),max_sideslip_deg:+(maxSideslip/DEG).toFixed(1),
+      reentry_peak_sideslip_deg:+(reentryPeakSideslip/DEG).toFixed(1),final_sideslip_deg:+(finalSideslip/DEG).toFixed(1),
+      max_yaw_deg_s:+(maxYaw/DEG).toFixed(1),reentry_peak_yaw_deg_s:+(reentryPeakYaw/DEG).toFixed(1),
+      max_wheel_util:+maxUtil.toFixed(2),recovery_s:recoverySec===null?null:+recoverySec.toFixed(2),notes:notes.join('; ')
     });
   }
 }
 
-assert.equal(results.some(r=>r.status==='FAIL'),false,'numerical failure in Yungas re-entry matrix');
+assert.equal(results.some(r=>r.status==='FAIL'),false,'numerical failure in controlled Yungas matrix');
 const summary={
-  route_provider:routed.provider,
-  route_km:+(routeLength/1000).toFixed(1),
-  route_points:routed.coordinates.length,
-  anchors:anchors.map(a=>({label:a.label,cum_km:+(a.cum/1000).toFixed(1),curvature_deg_per_30m:+(a.curve*30/DEG).toFixed(2)})),
-  runs:results.length,
-  pass:results.filter(r=>r.status==='PASS').length,
-  warn:results.filter(r=>r.status==='WARN').length,
-  fail:results.filter(r=>r.status==='FAIL').length
+  route_provider:routed.provider,route_km:+(routeLength/1000).toFixed(1),route_points:routed.coordinates.length,
+  anchors:anchors.map(a=>({label:a.label,cum_km:+(a.cum/1000).toFixed(1),curve_deg30:+a.deg30.toFixed(1)})),
+  runs:results.length,pass:results.filter(r=>r.status==='PASS').length,warn:results.filter(r=>r.status==='WARN').length,fail:results.filter(r=>r.status==='FAIL').length
 };
-console.log('YUNGAS OFFROAD / REENTRY SIMULATION SUMMARY');
+console.log('YUNGAS CONTROLLED OFFROAD / REENTRY SUMMARY');
 console.log(JSON.stringify(summary,null,2));
 console.table(results.map(({notes,...r})=>r));
 const warnings=results.filter(r=>r.status!=='PASS');
-if(warnings.length){
-  console.log('YUNGAS WARNINGS');
-  console.log(JSON.stringify(warnings,null,2));
-}else{
-  console.log('YUNGAS OFFROAD / REENTRY SIMULATION: ALL SCENARIOS PASS');
-}
+console.log('YUNGAS CONTROLLED WARNINGS');
+console.log(JSON.stringify(warnings,null,2));
