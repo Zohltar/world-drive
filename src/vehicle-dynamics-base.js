@@ -488,7 +488,10 @@ export function lateralDynamicsEnvelope({vehicle,speed=0,steerAngle=0,steerInput
   let yawRate=(speedValue/layout.wheelbase)*Math.tan(safeNumber(steerAngle,0))*effectiveGrip;
   if(airborne)yawRate*=.06;
   if(drivetrain==='FWD')yawRate*=1-.20*powerCorneringLoad;
-  const powerOversteerGripLoss=drivetrain==='RWD'?safeNumber(vehicle?.powerOversteerGripLoss,.07):0;
+  const powerOversteerGripLoss=
+    drivetrain==='RWD'&&vehicle?.legacyDriftAssist!==false
+      ?safeNumber(vehicle?.powerOversteerGripLoss,.07)
+      :0;
   const requestedLatAccel=Math.abs(speedValue*yawRate);
   // Grip R5: continuous Coulomb-style lateral ceiling. The old 7.0 -> 3.8
   // m/s^2 branch at 10 m/s created a nonphysical handling discontinuity.

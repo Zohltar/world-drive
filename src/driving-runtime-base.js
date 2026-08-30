@@ -570,7 +570,8 @@ export function createDrivingRuntime({
     const fourWheelSlide=Math.min(frontSlipAmount,rearSlipAmount);
     if(!airborneNow)yawRate*=Math.max(.46,1-frontDominance*.54-fourWheelSlide*.24);
 
-    if(drivetrain==='RWD'&&powerCorneringLoad>.05&&!airborneNow){
+    const useLegacyDriftAssist=VEHICLE?.legacyDriftAssist!==false;
+    if(useLegacyDriftAssist&&drivetrain==='RWD'&&powerCorneringLoad>.05&&!airborneNow){
       const powerOversteerYaw=VEHICLE.powerOversteerYaw??.035;
       const rearSlipYaw=Math.sign(steer||1)*powerOversteerYaw*powerCorneringLoad*(.30+rearDominance*.70)*Math.min(1,speedAbs/18);
       yawRate+=rearSlipYaw*Math.sign((hand?speed:steeringTravelSpeed)||speed||1);
@@ -610,14 +611,16 @@ export function createDrivingRuntime({
     const yawGripResponseScale=airborneNow
       ?0
       :driftKinematicScale*(1-.85*driftPhysicalAuthority);
-    const legacyYawAccel=legacyGripYawAcceleration({
-      frictionYawAccel,
-      yawRate,
-      frontSlip:targetFrontSlip,
-      rearSlip:targetRearSlip,
-      frontForceScale:frontLateralForceScale,
-      rearForceScale:rearLateralForceScale
-    });
+    const legacyYawAccel=useLegacyDriftAssist
+      ?legacyGripYawAcceleration({
+        frictionYawAccel,
+        yawRate,
+        frontSlip:targetFrontSlip,
+        rearSlip:targetRearSlip,
+        frontForceScale:frontLateralForceScale,
+        rearForceScale:rearLateralForceScale
+      })
+      :0;
     const authoritativeYawAccel=blendDriftForce(
       legacyYawAccel,
       physicalTireYawAccel,
@@ -669,14 +672,17 @@ export function createDrivingRuntime({
       if(forceDominatedDrift){
         const signedSpeedForCurvature=Math.abs(speed)>.5?speed:Math.sign(speed||1)*.5;
         const legacyForceTrajectoryYawRate=netLateralAccel/signedSpeedForCurvature;
-        // Grip R7: once sideslip is real, the momentum vector follows the SUM of
-        // the four actual tire-force vectors. Countersteer can therefore rotate
-        // the chassis and bend momentum in different directions, as it should.
-        const forceTrajectoryYawRate=blendDriftForce(
-          legacyForceTrajectoryYawRate,
-          physicalTrajectoryYawRate,
-          driftPhysicalAuthority
-        );
+        // Grip R7/R23: once sideslip is real, the momentum vector follows the SUM
+        // of the four actual tire-force vectors. Vehicles that explicitly opt out
+        // of legacy drift assist (currently the F1) use that physical trajectory
+        // directly instead of blending back toward the pre-R7 curvature estimate.
+        const forceTrajectoryYawRate=useLegacyDriftAssist
+          ?blendDriftForce(
+            legacyForceTrajectoryYawRate,
+            physicalTrajectoryYawRate,
+            driftPhysicalAuthority
+          )
+          :physicalTrajectoryYawRate;
         attemptedTrajectoryDelta+=forceTrajectoryYawRate*dt;
       }else{
         const velocityFollowRate=airborneNow?0:((2.8-1.45*frictionTrajectoryLoss)+27.2*Math.pow(1-physicsClamp(trajectoryRearSlip,0,1),2));

@@ -292,6 +292,10 @@ const PROFILES={
     physics:{
       drivetrain:'RWD',
       vehicleClass:'racecar',
+      // Grip R23 — F1 yaw/drift is owned by bicycle response near no-slip and
+      // the physical per-wheel solver once slip develops. Do not mix in the
+      // historical synthetic RWD/legacy yaw helpers.
+      legacyDriftAssist:false,
       // FIA 2010 minimum was 620 kg. World Drive uses 740 kg as a
       // representative running mass (driver + substantial race fuel), rather
       // than pretending a fuel-loaded race car always sits at minimum weight.
@@ -340,9 +344,7 @@ const PROFILES={
       // the road-car rack mapping. A keyboard/gamepad full-lock request must
       // not instantly ask the tires for 4–8 g at neighbourhood speed.
       maxSteerLow:0.34,
-      maxSteerHigh:0.115,
       parkingSteerBoost:0.06,
-      steeringInputExponent:1.72,
 
       // Grip R22.1 — human-tuned F1 gamepad curve. Keep R13 unchanged through
       // 150 km/h, then strongly compress mid-stick travel as aerodynamic grip
@@ -364,27 +366,15 @@ const PROFILES={
       steeringCenterToFullTimeSec:0.42,
       steeringReturnToCenterTimeSec:0.30,
 
-      // Cap full-lock road-wheel angle to a fraction of the tire+aero lateral
-      // envelope. This keeps steering alone below breakaway while still
-      // allowing throttle, braking, curbs or loose surfaces to consume the
-      // remaining friction circle and create real slip.
-      // The V21.21.24 0.66 reserve made long fast bends unnecessarily hard.
-      // With finite rack travel we can safely use more of the real aero/tire
-      // envelope while still retaining margin for bumps, braking and throttle.
-      steeringGripEnvelopeFraction:0.82,
       yawResponseMultiplier:0.86,
 
       // Grip belongs in the tire/aero envelope below, not in the geometric
-      // bicycle yaw equation. The previous 1.72 multiplier made the chassis
-      // request 72% more yaw than the wheel angle geometrically implied.
+      // bicycle yaw equation. Historical steering multipliers are intentionally
+      // absent; R13/R22.1 own analog input shaping.
       roadGripMultiplier:1.00,
       lateralAccelLimit:20.5,
       frontTireGripScale:1.20,
       rearTireGripScale:1.20,
-
-      // High-downforce RWD: only subtle throttle-on rear slip.
-      powerOversteerGripLoss:0.018,
-      powerOversteerYaw:0.010,
 
       suspensionTravel:0.075,
       suspensionResponse:22.0,
