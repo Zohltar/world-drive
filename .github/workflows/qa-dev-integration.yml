@@ -36,6 +36,8 @@ jobs:
         run: node qa-version-branding-a6.mjs
       - name: Cleanup A7 repository hygiene QA
         run: node qa-repo-hygiene-a7.mjs
+      - name: Cleanup B3 maneuver-state ownership QA
+        run: node qa-maneuver-state-b3.mjs
       - name: Full V21.31 regression stress
         run: npm run qa:stress
       - name: Driving dynamics simulation matrix
