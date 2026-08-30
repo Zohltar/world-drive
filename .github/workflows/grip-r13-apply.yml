@@ -1,0 +1,55 @@
+name: Apply Grip R13 progressive steering input
+
+on:
+  push:
+    branches:
+      - dev
+    paths:
+      - 'tools/apply-grip-r13-steering-input.mjs'
+      - 'qa-grip-steering-input-r13.mjs'
+      - '.github/workflows/grip-r13-apply.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: "github.event_name == 'workflow_dispatch' || github.event.head_commit.message == 'CI Grip R13: prepare progressive high-speed steering fix'"
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install
+        run: npm ci
+      - name: Apply Grip R13
+        run: node tools/apply-grip-r13-steering-input.mjs
+      - name: Grip R13 steering input QA
+        run: node qa-grip-steering-input-r13.mjs
+      - name: Existing steering and grip regressions
+        run: |
+          node qa-grip-steering-curve-r3.mjs
+          node qa-grip-high-speed-r11.mjs
+          node qa-grip-fleet-high-speed-r12.mjs
+          node qa-grip-countersteer-r7.mjs
+          node qa-grip-braking-r8.mjs
+          node qa-grip-braking-r9.mjs
+          node qa-grip-uphill-r10.mjs
+          node qa/V21_28_HIGH_SPEED_STEERING_QA.mjs
+          node qa/DEV_DRIVING_SIM_QA.mjs
+          npm run qa:stress
+      - name: Production build
+        run: npm run build
+      - name: Commit Grip R13
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/vehicle-dynamics-base.js
+          git commit -m "Grip R13: soften fine steering inputs at high speed"
+          git push
