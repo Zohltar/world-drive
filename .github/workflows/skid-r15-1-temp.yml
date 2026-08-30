@@ -1,0 +1,52 @@
+name: Skid R15.1 temporary patch
+
+on:
+  push:
+    branches: [dev]
+    paths:
+      - 'qa/apply-skid-r15-1-temp.mjs'
+      - 'qa-skid-contact-alignment-r15.mjs'
+      - '.github/workflows/skid-r15-1-temp.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch-test-commit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: dev
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Apply Skid R15.1
+        run: node qa/apply-skid-r15-1-temp.mjs
+      - name: Focused QA
+        run: |
+          node --check src/skidmarks.js
+          node qa-skid-contact-alignment-r15.mjs
+      - name: Driving and regression QA
+        run: |
+          node qa/DEV_DRIVING_SIM_QA.mjs
+          node qa-grip-drift-r4.mjs
+          node qa-grip-countersteer-r7.mjs
+          npm run qa:stress
+          npm run build
+      - name: Commit source changes
+        shell: bash
+        run: |
+          if git diff --quiet -- src/skidmarks.js; then
+            echo 'No source change to commit'
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add src/skidmarks.js
+          git commit -m 'Skid R15.1: move marks onto authored tire centers'
+          git push origin HEAD:dev
