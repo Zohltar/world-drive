@@ -15,7 +15,7 @@ permissions:
 
 jobs:
   apply:
-    if: github.event_name == 'workflow_dispatch' || github.event.head_commit.message == 'CI Grip R10: prepare uphill load-transfer fix'
+    if: "github.event_name == 'workflow_dispatch' || github.event.head_commit.message == 'CI Grip R10: fix apply workflow guard'"
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
