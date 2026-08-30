@@ -1,0 +1,25 @@
+name: Audit A6 version branding
+on:
+  push:
+    branches: ['audit/code-debt-a6']
+permissions:
+  contents: read
+jobs:
+  qa:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Version/build branding consistency QA
+        run: node qa-version-branding-a6.mjs
+      - name: Electron syntax QA
+        run: node --check electron/main.cjs
+      - name: Production build
+        run: npm run build
+      - name: Production code split QA
+        run: node qa/BUILD_V21_31_CODE_SPLIT_QA.mjs
