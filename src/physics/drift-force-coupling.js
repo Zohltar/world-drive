@@ -19,21 +19,24 @@ function smoothstep01(value){
 
 export function driftForceSideslipGate(sideslipRad=0){
   const beta=Math.abs(finite(sideslipRad,0));
-  // Grip R11 — tire saturation alone is not a drift. A normal high-speed lane
-  // correction can momentarily consume most of the friction circle while the
-  // chassis is still aligned with its momentum. Do not promote the drift solver
-  // until body sideslip has clearly left the normal road-car region.
-  return smoothstep01((beta-.07)/.09);
+  // Grip R12 — ordinary high-speed cornering may legitimately reach the tire's
+  // peak slip angle (roughly 5.5-9.5 degrees across the fleet) without becoming
+  // a chassis drift. R11 started this gate near 4 degrees, so lower-grip cars
+  // could switch to the force-dominated trajectory path while still in normal
+  // cornering and then travel visibly "crabbed" relative to the body. Keep the
+  // drift gate closed through the normal tire-peak region; open it progressively
+  // from ~8 degrees and make it fully authoritative around ~16 degrees.
+  return smoothstep01((beta-.14)/.14);
 }
 
 export function driftTireForceAuthority({sideslipRad=0,forceCoupledSlide=0}={}){
   const beta=Math.abs(finite(sideslipRad,0));
 
-  // A bicycle model is a small-slip approximation. Begin handing authority to
-  // per-wheel forces around 5.7 degrees of chassis sideslip and make them fully
-  // authoritative by roughly 25 degrees. Existing axle saturation can bring the
-  // physical solver in slightly earlier without creating an on/off transition.
-  const sideslipAuthority=smoothstep01((beta-.10)/.34);
+  // A bicycle model is a small-slip approximation. Grip R12 deliberately waits
+  // until chassis sideslip is beyond the fleet's ordinary peak-slip region before
+  // handing authority to the drift solver. By ~25 degrees the per-wheel tire
+  // force path is fully authoritative, preserving R7 countersteer and J-turns.
+  const sideslipAuthority=smoothstep01((beta-.14)/.30);
   const saturationAuthority=
     smoothstep01((finite(forceCoupledSlide,0)-.08)/.58)*
     .82*
