@@ -1,0 +1,17 @@
+import fs from 'node:fs';
+const path='docs/WORLD_DRIVE_TECH_DEBT_PLAN.md';
+let s=fs.readFileSync(path,'utf8');
+const status='### A4 — Review/remove fully unreferenced orphan modules **[P1]**\n\nStatus: **TODO**';
+if(!s.includes(status))throw new Error('A4 status anchor not found');
+s=s.replace(status,'### A4 — Review/remove fully unreferenced orphan modules **[P1]**\n\nStatus: **DONE — 2026-08-30**');
+const completion='Completion record:\n- Commit: _pending_\n- QA: _pending_\n\n---\n\n### A5 — Retire old forest P9.12 / P9.28 implementations';
+if(!s.includes(completion))throw new Error('A4 completion anchor not found');
+s=s.replace(completion,`Completion record:\n- Exact-reference audit branch: \`audit/code-debt-a4\`; strict scanner commit \`47a06cf8\` verified no exact runtime/QA/tooling imports and no convention-based dynamic loader for the four candidates.\n- Removal commits: \`5f6e4c98\` forest pack; \`661cbcc2\` obsolete forest terrain sampler; \`40c5329d\` embedded pine runtime; \`ddf40364\` unused road metadata service.\n- Important audit correction: the first scanner pass produced a false positive because \`forest-terrain-sampler\` is a substring of the active \`forest-terrain-sampler-p912.js\` name and \`createForestTerrainSampler\` is a prefix of \`createForestTerrainSamplerP912\`. Exact matching confirmed the deleted sampler was not used. The active P9.29 streamer still imports \`forest-terrain-sampler-p912.js\`, which remains intact.\n- QA: Dev Integration run \`33330678552\` PASS end-to-end: V21.31 stress, 288 driving cases, Grip R2–R20, terrain/road banking, all active forest startup/prefetch/frame-pacing checks, M4.14/M4.15 WebGL, live route smoke, dependency audit, production build and code split.\n- Result: all four A4 orphan modules are removed without changing active forest, road or physics behavior.\n\n---\n\n### A5 — Retire old forest P9.12 / P9.28 implementations`);
+const nextRe=/# 6\. Recommended next task[\s\S]*?(?=\n---\n\n# 7\. Work log)/;
+if(!nextRe.test(s))throw new Error('recommended next block not found');
+s=s.replace(nextRe,`# 6. Recommended next task\n\n**Next: A5 — retire the runtime-orphan P9.12/P9.28 forest streamer implementations after migrating any still-useful QA invariants to the active P9.29/P9.40/P9.41 path.**\n\nDo not remove \`forest-terrain-sampler-p912.js\`: despite the historical name, it is still imported by the active P9.29 streamer. Audit exact file/symbol references before deleting the old streamer modules.\n`);
+const log='# 7. Work log\n\n';
+if(!s.includes(log))throw new Error('work log anchor not found');
+s=s.replace(log,`${log}## 2026-08-30 — A4 completed: fully unreferenced orphan modules removed\n\n- Audited exact imports, symbol references, build/tool references and dynamic loaders on a separate audit branch.\n- Tightened the scanner after a substring false positive involving the active \`forest-terrain-sampler-p912.js\`.\n- Removed the unused forest runtime pack, obsolete generic terrain sampler, embedded pine runtime payload and road metadata service.\n- Full Dev Integration QA passed after all four deletions, including forest/frame pacing, roads, WebGL and production build/code split.\n- Next focus: A5 historical P9.12/P9.28 forest streamer implementations and stale QA.\n\n`);
+fs.writeFileSync(path,s);
+console.log('TECH DEBT PLAN A4 UPDATE: PASS');
