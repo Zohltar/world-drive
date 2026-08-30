@@ -1,0 +1,20 @@
+name: Code debt R20 audit
+on:
+  push:
+    branches: [audit/code-debt-r20]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Static code debt audit
+        run: node qa/audit-code-debt-r20.mjs
+      - name: Existing integration audit
+        run: node qa/DEV_INTEGRATION_AUDIT.mjs
