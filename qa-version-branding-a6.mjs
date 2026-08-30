@@ -24,6 +24,9 @@ assert.equal(branding.WORLD_DRIVE_TITLE,expectedTitle,'web title diverged');
 assert.ok(versionSource.includes("from '../package.json' with {type:'json'}"),'web branding must import authoritative package metadata');
 assert.ok(!/WORLD_DRIVE_VERSION\s*=\s*['"]\d/.test(versionSource),'web version must not return to a hard-coded numeric constant');
 assert.ok(!/WORLD_DRIVE_CHANNEL\s*=\s*['"](?:dev|stable)/.test(versionSource),'web channel must not return to a hard-coded constant');
+assert.ok(!versionSource.includes('MutationObserver'),'legacy DOM-wide branding observer must remain removed');
+assert.ok(!versionSource.includes('VERSION_TEXT_PATTERN'),'legacy global version-text rewriting must remain removed');
+assert.ok(!versionSource.includes('createTreeWalker'),'branding must not scan/rewrite arbitrary DOM text');
 
 assert.ok(electronSource.includes("require('../package.json')"),'Electron must read the authoritative package metadata');
 assert.ok(electronSource.includes('DESKTOP_PACKAGE_VERSION'),'Electron package-version derivation missing');
@@ -37,14 +40,16 @@ const staticVersions=[...indexSource.matchAll(/\bV\d+(?:\.\d+){1,2}(?:\s+(?:alph
 assert.deepEqual(staticVersions,[],'index.html must not own an application version');
 assert.ok(indexSource.includes('data-world-drive-title'),'static loading title placeholder missing');
 assert.ok(indexSource.includes('data-world-drive-version-label'),'static version-label placeholder missing');
+assert.ok(indexSource.includes('<script type="module" src="/src/version.js"></script>'),'static page must load branding module after DOM markup exists');
 
-assert.equal(pkg.version,'21.31.0','A6 must align the current package build with the V21.31 stable baseline');
-assert.equal(pkg.worldDriveChannel,'stable','A6 current baseline must remain the stable channel');
+assert.equal(pkg.version,'21.31.0','A6 must align the package build with the V21.31 baseline');
+assert.equal(pkg.worldDriveChannel,'dev','the development branch must identify itself as dev; stable is reserved for release promotion');
 
 console.log('CLEANUP A6 VERSION / BUILD BRANDING QA: PASS',{
   packageVersion:pkg.version,
   displayVersion:branding.WORLD_DRIVE_VERSION,
   channel:pkg.worldDriveChannel,
   label:branding.WORLD_DRIVE_VERSION_LABEL,
-  title:branding.WORLD_DRIVE_TITLE
+  title:branding.WORLD_DRIVE_TITLE,
+  legacyDomRewrite:false
 });
