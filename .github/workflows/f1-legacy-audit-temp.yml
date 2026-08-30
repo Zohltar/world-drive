@@ -6,6 +6,7 @@ on:
       - audit/f1-steering-r22-1
     paths:
       - 'qa/f1-legacy-audit-temp.mjs'
+      - 'qa/f1-field-usage-temp.mjs'
       - '.github/workflows/f1-legacy-audit-temp.yml'
   workflow_dispatch:
 
@@ -18,3 +19,4 @@ jobs:
         with:
           node-version: 22
       - run: node qa/f1-legacy-audit-temp.mjs
+      - run: node qa/f1-field-usage-temp.mjs
