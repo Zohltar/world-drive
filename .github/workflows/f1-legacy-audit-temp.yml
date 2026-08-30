@@ -1,0 +1,20 @@
+name: F1 legacy audit
+
+on:
+  push:
+    branches:
+      - audit/f1-steering-r22-1
+    paths:
+      - 'qa/f1-legacy-audit-temp.mjs'
+      - '.github/workflows/f1-legacy-audit-temp.yml'
+  workflow_dispatch:
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: node qa/f1-legacy-audit-temp.mjs
