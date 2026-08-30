@@ -1,0 +1,18 @@
+name: Audit B2 J-turn semantics
+on:
+  push:
+    branches: ['audit/code-debt-b2']
+    paths:
+      - 'qa/b2-jturn-reference-audit.mjs'
+      - '.github/workflows/audit-b2-jturn.yml'
+permissions:
+  contents: read
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: node qa/b2-jturn-reference-audit.mjs
