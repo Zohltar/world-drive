@@ -5,7 +5,7 @@ import {
   limitMomentumHeadingDelta
 } from '../src/vehicle-dynamics.js';
 import {
-  jTurnTransientYawActive,
+  jTurnEntryEligible,
   bodyRelativeLongitudinalSpeed
 } from '../src/driving-runtime.js';
 
@@ -66,7 +66,7 @@ function sample(mph){
     airborne:false
   });
 
-  const active=jTurnTransientYawActive({
+  const entryEligible=jTurnEntryEligible({
     bodyLongitudinalSpeed:bodyLong,
     speedAbs,
     steerAngle,
@@ -74,7 +74,7 @@ function sample(mph){
     airborne:false,
     onPavement:true
   });
-  assert(active,`${mph} mph should enter transient J-turn yaw regime`);
+  assert(entryEligible,`${mph} mph should be eligible to enter the J-turn transient regime`);
 
   const yawDegPerSec=Math.abs(env.yawRate)*DEG;
   const latLimit=env.latLimit;
