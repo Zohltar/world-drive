@@ -1,11 +1,13 @@
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
 import {createVehicleSystem} from './src/vehicle-system.js';
 import {
   bodyRelativeLongitudinalSpeed,
   bodyRelativeSteeringSpeed,
   travelAxisSideslip,
-  jTurnTransientYawActive,
-  advanceJTurnTransientYawState,
+  jTurnEntryEligible,
+  jTurnExitEligible,
+  advanceJTurnLatchedState,
   jTurnTransientSteeringSpeed
 } from './src/driving-runtime-base.js';
 import {steeringCommand,lateralDynamicsEnvelope} from './src/vehicle-dynamics.js';
@@ -21,7 +23,7 @@ for(const angleDeg of [0,40,60,70,75,85,88,90,92,105,120,150,170,178,180]){
   const velocityHeading=0;
   const bodyLong=bodyRelativeLongitudinalSpeed({speed,heading,velocityHeading});
   const sideslip=travelAxisSideslip({heading,velocityHeading});
-  const entry=jTurnTransientYawActive({
+  const entryEligible=jTurnEntryEligible({
     bodyLongitudinalSpeed:bodyLong,
     speedAbs:Math.abs(speed),
     steerAngle,
@@ -29,7 +31,16 @@ for(const angleDeg of [0,40,60,70,75,85,88,90,92,105,120,150,170,178,180]){
     airborne:false,
     onPavement:true
   });
-  active=advanceJTurnTransientYawState({
+  const exitEligible=jTurnExitEligible({
+    bodyLongitudinalSpeed:bodyLong,
+    speedAbs:Math.abs(speed),
+    steerAngle,
+    handbrake:false,
+    airborne:false,
+    onPavement:true,
+    sideslipRad:sideslip
+  });
+  active=advanceJTurnLatchedState({
     active,
     bodyLongitudinalSpeed:bodyLong,
     speedAbs:Math.abs(speed),
@@ -41,7 +52,7 @@ for(const angleDeg of [0,40,60,70,75,85,88,90,92,105,120,150,170,178,180]){
   });
   const legacySpeed=bodyRelativeSteeringSpeed({speed,heading,velocityHeading,handbrake:false});
   const maneuverSpeed=jTurnTransientSteeringSpeed({speed,fallbackSpeed:legacySpeed,active});
-  rows.push({angleDeg,bodyLong,entry,active,legacySpeed,maneuverSpeed,sideslipDeg:sideslip/DEG});
+  rows.push({angleDeg,bodyLong,entryEligible,exitEligible,active,legacySpeed,maneuverSpeed,sideslipDeg:sideslip/DEG});
 }
 
 const at90=rows.find(r=>r.angleDeg===90);
@@ -49,7 +60,8 @@ const at120=rows.find(r=>r.angleDeg===120);
 const at170=rows.find(r=>r.angleDeg===170);
 const at178=rows.find(r=>r.angleDeg===178);
 assert.ok(Math.abs(at90.legacySpeed)<1e-8,`pre-R19 legacy steering projection should collapse at 90 deg: ${at90.legacySpeed}`);
-assert.equal(at90.entry,false,'old instantaneous P10 gate must already be off at 90 deg');
+assert.equal(at90.entryEligible,false,'J-turn entry eligibility must already be false at 90 deg');
+assert.equal(at90.exitEligible,false,'J-turn exit eligibility must remain false through the 90-degree region');
 assert.equal(at90.active,true,'R19 transient latch must survive the 90-degree region');
 assert.ok(Math.abs(at90.maneuverSpeed+12)<1e-9,`R19 must preserve reverse-entry steering magnitude at 90 deg: ${at90.maneuverSpeed}`);
 assert.equal(at120.active,true,'R19 J-turn state must remain active after crossing 90 deg');
@@ -77,11 +89,11 @@ for(const id of ['id4','i3_2017']){
 }
 
 // Ordinary forward driving or a released wheel must never latch the maneuver.
-assert.equal(advanceJTurnTransientYawState({
+assert.equal(advanceJTurnLatchedState({
   active:false,bodyLongitudinalSpeed:12,speedAbs:12,steerAngle:.30,
   handbrake:false,airborne:false,onPavement:true,sideslipRad:0
 }),false,'forward driving must not enter J-turn transient mode');
-assert.equal(advanceJTurnTransientYawState({
+assert.equal(advanceJTurnLatchedState({
   active:true,bodyLongitudinalSpeed:0,speedAbs:12,steerAngle:.01,
   handbrake:false,airborne:false,onPavement:true,sideslipRad:Math.PI/2
 }),false,'releasing the steering wheel must end the transient latch');
@@ -89,10 +101,19 @@ assert.equal(advanceJTurnTransientYawState({
 console.table(rows.map(r=>({
   deg:r.angleDeg,
   body:+r.bodyLong.toFixed(2),
-  old_entry:r.entry,
+  entry_eligible:r.entryEligible,
+  exit_eligible:r.exitEligible,
   latched:r.active,
   legacy_steer:+r.legacySpeed.toFixed(2),
   r19_steer:+r.maneuverSpeed.toFixed(2),
   sideslip:+r.sideslipDeg.toFixed(1)
 })));
+const source=fs.readFileSync(new URL('./src/driving-runtime-base.js',import.meta.url),'utf8');
+assert.ok(!source.includes('jTurnTransientYawActive'),'B2 old entry-predicate name must remain removed');
+assert.ok(!source.includes('advanceJTurnTransientYawState'),'B2 old latch-state helper name must remain removed');
+assert.ok(!source.includes('jTurnYawActive'),'B2 ambiguous active alias must remain removed');
+for(const name of ['jTurnEntryEligible','jTurnExitEligible','advanceJTurnLatchedState']){
+  assert.ok(source.includes(`export function ${name}`),`B2 explicit J-turn helper missing: ${name}`);
+}
+
 console.log('GRIP R19 LEGACY J-TURN ROTATION-WALL QA: PASS');

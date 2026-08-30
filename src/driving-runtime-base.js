@@ -141,7 +141,7 @@ export function legacyGripYawAcceleration({frictionYawAccel=0,yawRate=0,frontSli
   return accel;
 }
 
-export function jTurnTransientYawActive({
+export function jTurnEntryEligible({
   bodyLongitudinalSpeed=0,
   speedAbs=0,
   steerAngle=0,
@@ -166,7 +166,25 @@ export function jTurnTransientYawActive({
 // predicate and therefore switched itself off before the chassis reached 90°.
 // Latch only a genuine reverse-entry J-turn, carry it through the sideways
 // region, then release near the forward-aligned exit axis.
-export function advanceJTurnTransientYawState({
+export function jTurnExitEligible({
+  bodyLongitudinalSpeed=0,
+  speedAbs=0,
+  steerAngle=0,
+  handbrake=false,
+  airborne=false,
+  onPavement=true,
+  sideslipRad=0
+}={}){
+  if(handbrake||airborne||!onPavement)return true;
+  if(Math.abs(Number(speedAbs)||0)<2.5)return true;
+  if(Math.abs(Number(steerAngle)||0)<.05)return true;
+  return (
+    Number(bodyLongitudinalSpeed)>2.0&&
+    Math.abs(Number(sideslipRad)||0)<.10
+  );
+}
+
+export function advanceJTurnLatchedState({
   active=false,
   bodyLongitudinalSpeed=0,
   speedAbs=0,
@@ -176,17 +194,13 @@ export function advanceJTurnTransientYawState({
   onPavement=true,
   sideslipRad=0
 }={}){
-  const entry=jTurnTransientYawActive({
+  const entryEligible=jTurnEntryEligible({
     bodyLongitudinalSpeed,speedAbs,steerAngle,handbrake,airborne,onPavement
   });
-  if(!active)return entry;
-  if(handbrake||airborne||!onPavement)return false;
-  if(Math.abs(Number(speedAbs)||0)<2.5)return false;
-  if(Math.abs(Number(steerAngle)||0)<.05)return false;
-  const alignedExit=
-    Number(bodyLongitudinalSpeed)>2.0&&
-    Math.abs(Number(sideslipRad)||0)<.10;
-  return !alignedExit;
+  if(!active)return entryEligible;
+  return !jTurnExitEligible({
+    bodyLongitudinalSpeed,speedAbs,steerAngle,handbrake,airborne,onPavement,sideslipRad
+  });
 }
 
 export function jTurnTransientSteeringSpeed({speed=0,fallbackSpeed=0,active=false}={}){
@@ -311,7 +325,7 @@ export function createDrivingRuntime({
   const physicsShadow=createPerWheelShadowSolver({hz:120,maxSubSteps:8});
   let wasAirborne=false;
   let rearHandbrakeSlipState=0;
-  let jTurnTransientLatched=false;
+  let jTurnLatchedActive=false;
 
   function update(dt){
     const initialState=getState();
@@ -539,8 +553,8 @@ export function createDrivingRuntime({
     currentSteerAngle=steerAngle;
 
     const bodyLongitudinalSpeed=bodyRelativeLongitudinalSpeed({speed,heading,velocityHeading});
-    jTurnTransientLatched=advanceJTurnTransientYawState({
-      active:jTurnTransientLatched,
+    jTurnLatchedActive=advanceJTurnLatchedState({
+      active:jTurnLatchedActive,
       bodyLongitudinalSpeed,
       speedAbs,
       steerAngle,
@@ -553,9 +567,8 @@ export function createDrivingRuntime({
     const steeringTravelSpeed=jTurnTransientSteeringSpeed({
       speed,
       fallbackSpeed:baseSteeringTravelSpeed,
-      active:jTurnTransientLatched
+      active:jTurnLatchedActive
     });
-    const jTurnYawActive=jTurnTransientLatched;
     const lateralEnvelope=lateralDynamicsEnvelope({vehicle:VEHICLE,speed:steeringTravelSpeed,steerAngle,steerInput:steer,driveThrottle,onPavement,surfaceGrip,awdOffroadGripBonus,offroadPeakMu:offroadFrictionModel?.peak,rearSlipAmount:0,airborne:airborneNow},dynamicsScratch.lateral);
     let yawRate=lateralEnvelope.yawRate*truckTrailerSystem.tractorYawScale(speedAbs);
     const drivetrain=lateralEnvelope.drivetrain;
@@ -624,7 +637,7 @@ export function createDrivingRuntime({
     const gripResponse=rawGripUsage>lateralGripUsage?12:18;
     lateralGripUsage+=(rawGripUsage-lateralGripUsage)*(1-Math.exp(-dt*gripResponse));
     if(lateralGripUsage<.002&&rawGripUsage===0)lateralGripUsage=0;
-    if(!jTurnYawActive&&requestedLatAccel>latLimit&&requestedLatAccel>0)yawRate*=latLimit/requestedLatAccel;
+    if(!jTurnLatchedActive&&requestedLatAccel>latLimit&&requestedLatAccel>0)yawRate*=latLimit/requestedLatAccel;
 
     const frontDominance=Math.max(0,frontSlipAmount-rearSlipAmount*.55);
     const rearDominance=Math.max(0,rearSlipAmount-frontSlipAmount*.55);
