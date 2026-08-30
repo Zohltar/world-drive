@@ -1,0 +1,19 @@
+name: F1 front-slip R21 probe
+on:
+  push:
+    branches: ['audit/f1-front-slip-r21']
+    paths:
+      - 'qa-f1-front-slip-probe-r21.mjs'
+      - '.github/workflows/f1-front-slip-r21-probe.yml'
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: node qa-f1-front-slip-probe-r21.mjs
