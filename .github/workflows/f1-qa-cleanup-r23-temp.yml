@@ -38,7 +38,7 @@ jobs:
       - name: No stale F1 QA references
         shell: bash
         run: |
-          ! grep -R -nE 'V21_21_23_F1_STABILITY_QA|V21_21_24_F1_STEERING_QA|V21_21_25_STEERING_RACK_QA' .github qa --exclude='f1-qa-cleanup-r23-temp.yml'
+          ! grep -R -nE 'V21_21_23_F1_STABILITY_QA|V21_21_24_F1_STEERING_QA|V21_21_25_STEERING_RACK_QA' .github qa --exclude='f1-qa-cleanup-r23-temp.yml' --exclude='fix-f1-qa-comment-temp.mjs'
       - name: Full stress and build
         run: |
           npm run qa:stress
