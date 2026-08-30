@@ -7,23 +7,29 @@ permissions:
 jobs:
   audit:
     runs-on: ubuntu-latest
+    timeout-minutes: 12
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+          cache: npm
+      - run: npm ci
       - run: node qa/a5-forest-reference-audit.mjs
-      - name: Legacy P9.12 stress truth check
-        continue-on-error: true
-        run: node qa-forest-p912-stress.mjs
-      - name: Legacy P9.28 instrumentation truth check
-        continue-on-error: true
-        run: node qa-forest-p928-instrumentation.mjs
-      - name: Active P9.29 frame-budget QA
+      - name: Active forest policy/stress QA
+        run: node qa-forest-active-stress.mjs
+      - name: Active forest runtime mock
+        run: node qa-forest-active-runtime.mjs
+      - name: Active P9.29 frame-budget and diagnostics QA
         run: node qa-forest-p929-frame-budget.mjs
-      - name: Active P9.35/P9.36/P9.40/P9.41 QA
+      - name: Active P9.35/P9.36/P9.39/P9.40/P9.41 QA
         run: |
           node qa-forest-p935-front-startup.mjs
           node qa-forest-p936-rolling-prefetch.mjs
+          node qa-p939-hitch-attribution.mjs
           node qa-forest-p940-maintenance.mjs
           node qa-p941-frame-runtime-attribution.mjs
+      - name: Runtime import/debt audit
+        run: node qa/DEV_INTEGRATION_AUDIT.mjs
+      - name: Production build
+        run: npm run build
