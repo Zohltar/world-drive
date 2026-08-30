@@ -41,6 +41,9 @@ assert.ok(rear3.utilization<.90,'rear WRX tire uses too much friction at 3 degre
 assert.ok(Math.abs(front3.utilization-rear3.utilization)<.03,
   `static load creates mismatched breakaway timing: front=${front3.utilization} rear=${rear3.utilization}`);
 
+// The current tire curve must build progressively through its declared peak and
+// retain realistic sliding force afterward. This is the useful physics invariant
+// from the old V21.27 corner test; it does not depend on the retired WRX bridge.
 const progression=[1,3,5,7,10,15].map(deg=>{
   const sample=lateralSample(rearFz,deg);
   return {deg,force:Math.abs(sample.fyWheel),utilization:sample.utilization,saturated:sample.saturated};
@@ -52,9 +55,9 @@ for(let i=1;i<=3;i++){
 assert.ok(progression[4].force>progression[3].force*.88,'tire force falls off too abruptly just after peak slip');
 assert.ok(progression[5].force>progression[3].force*.70,'sliding tire loses unrealistic lateral force');
 
-// Common R7+ per-wheel solver must remain symmetric in straight travel and must
-// still lock both rear wheels under the handbrake. These are now fleet physics,
-// not WRX-special authority behavior.
+// Common R7+ per-wheel solver must remain symmetric in straight travel. Handbrake
+// lock itself is deliberately NOT duplicated here: R2/R18/R20 test the current
+// handbrake path more accurately, including drivetrain torque and runtime state.
 const wheelbase=Number(vehicle.wheelbase)||2.65;
 const track=Number(vehicle.trackWidth)||1.56;
 const frontZ=(1-frontWeight)*wheelbase;
@@ -78,19 +81,5 @@ for(let i=0;i<20;i++){
 }
 assert.ok(Math.abs(straight.predictedYawAccel)<1e-8,'common solver invents yaw in straight WRX travel');
 assert.ok(Math.abs(straight.predictedAccelX)<1e-8,'common solver invents lateral acceleration in straight WRX travel');
-
-let handbrake=null;
-for(let i=0;i<20;i++){
-  handbrake=solver.advance(1/120,{
-    vehicleId:'wrx',vehicle,contacts,speed:15,
-    heading:0,velocityHeading:0,yawRate:0,centerSteerAngle:7*DEG,
-    longitudinalAccel:0,lateralAccel:0,requestedDriveAccel:0,requestedBrakeAccel:0,
-    handbrake:true,surfaceId:'asphalt-dry'
-  });
-}
-const rear=handbrake.wheels.filter(w=>!w.front);
-assert.equal(rear.length,2,'WRX common solver should expose two rear wheels');
-assert.ok(rear.every(w=>w.locked),'common handbrake physics failed to lock both WRX rear wheels');
-assert.ok(Number.isFinite(handbrake.predictedYawAccel),'handbrake yaw result became non-finite');
 
 console.log('CLEANUP A2 WRX COMMON TIRE STABILITY QA: PASS',{progression});
