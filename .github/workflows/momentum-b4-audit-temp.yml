@@ -1,0 +1,20 @@
+name: Momentum B4 ownership audit
+
+on:
+  push:
+    branches:
+      - audit/momentum-b4
+    paths:
+      - 'qa/momentum-b4-audit-temp.mjs'
+      - '.github/workflows/momentum-b4-audit-temp.yml'
+  workflow_dispatch:
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: node qa/momentum-b4-audit-temp.mjs
