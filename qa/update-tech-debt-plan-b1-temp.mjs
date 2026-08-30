@@ -1,0 +1,17 @@
+import fs from 'node:fs';
+const path='docs/WORLD_DRIVE_TECH_DEBT_PLAN.md';
+let s=fs.readFileSync(path,'utf8');
+const status='### B1 — Remove dead `postSpinSteeringAuthority` indirection **[P0/P1]**\n\nStatus: **TODO**';
+if(!s.includes(status))throw new Error('B1 status anchor not found');
+s=s.replace(status,'### B1 — Remove dead `postSpinSteeringAuthority` indirection **[P0/P1]**\n\nStatus: **DONE — 2026-08-30**');
+const completion='Completion record:\n- Commit: _pending_\n- QA: _pending_\n\n---\n\n### B2 — Rename/refactor J-turn entry semantics';
+if(!s.includes(completion))throw new Error('B1 completion anchor not found');
+s=s.replace(completion,`Completion record:\n- Final dev commit: \`3c38bdf6\` — removed the no-op \`postSpinSteeringAuthority()\` helper, its runtime variable and all four ×1 multipliers from bicycle yaw, requested/signed lateral acceleration and RWD power-oversteer yaw.\n- QA migration: \`qa-grip-drift-r4.mjs\` now forbids the legacy helper/indirection from returning; stale V21.28 fleet and ID.4 QA were migrated to verify full reverse-relative steering speed directly instead of importing the removed helper.\n- Candidate run \`33335148086\`: PASS R4/R7/R11/R12/R19/R20 runtime 180°, full V21.31 stress, driving simulation matrix and production build.\n- Final Dev Integration run \`33335226308\`: PASS all 59 steps including R2–R20, 288 driving cases, forest/frame pacing, M4.14/M4.15 WebGL, live route smoke and production build/code split.\n- Validation history: targeted B1 testing exposed every hidden consumer before merge (requested/signed lateral acceleration, RWD power-oversteer and two stale V21.28 QA), so no compatibility shim was retained.\n- Human test: not required; B1 removes only multiplications by an exact constant \`1\` and the complete runtime/regression suite is unchanged.\n- Result: no hidden post-spin steering-authority cap or compatibility API remains in the active runtime.\n\n---\n\n### B2 — Rename/refactor J-turn entry semantics`);
+const nextRe=/# 6\. Recommended next task[\s\S]*?(?=\n---\n\n# 7\. Work log)/;
+if(!nextRe.test(s))throw new Error('recommended next block not found');
+s=s.replace(nextRe,`# 6. Recommended next task\n\n**Next: B2 — make J-turn semantics explicit by separating entry eligibility, latched active state and exit conditions while preserving R19 behavior exactly.**\n\nStart as a behavior-neutral refactor: rename \`jTurnTransientYawActive()\` to \`jTurnEntryEligible()\`, move the active-state exit checks into a clearly named helper, migrate R19 QA, and run R9/R17/R18/R19/R20 plus the complete Dev Integration suite before any later extraction into B3.\n`);
+const log='# 7. Work log\n\n';
+if(!s.includes(log))throw new Error('work log anchor not found');
+s=s.replace(log,`${log}## 2026-08-30 — B1 completed: dead post-spin steering authority removed\n\n- Removed the V21.27-era no-op authority helper and four remaining ×1 runtime multipliers.\n- Migrated two stale V21.28 QA that still imported the obsolete helper.\n- Targeted runtime tests caught all hidden consumers before transfer to dev.\n- Candidate run \`33335148086\` and final Dev Integration \`33335226308\` both passed.\n- No human test required because B1 is numerically behavior-neutral.\n- Next focus: B2 J-turn entry/latched/exit semantics.\n\n`);
+fs.writeFileSync(path,s);
+console.log('TECH DEBT PLAN B1 UPDATE: PASS');
