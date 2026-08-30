@@ -41,13 +41,14 @@ assert.ok(drift.authority>.45,'20 degree drift must retain substantial R7 tire-f
 assert.ok(drift.kinematicScale<.88,'real drift must suppress bicycle-model trajectory locking');
 assert.equal(drift.forceDominated,true,'real drift must remain force dominated');
 
-const runtime=fs.readFileSync('src/driving-runtime-base.js','utf8');
+// Cleanup B4 moved trajectory/momentum switching into its single physical owner.
+const momentum=fs.readFileSync('src/physics/momentum-direction.js','utf8');
 assert.ok(
-  runtime.includes('(driftPhysicalAuthority>.12||driftKinematicScale<.88)'),
-  'runtime drift switch must depend on gated drift authority, not tire saturation alone'
+  momentum.includes('(finite(driftPhysicalAuthority)>.12||finite(driftKinematicScale,1)<.88)'),
+  'momentum owner drift switch must depend on gated drift authority, not tire saturation alone'
 );
 assert.ok(
-  !runtime.includes('driftPhysicalAuthority>.12||forceCoupledSlide>.10||driftKinematicScale<.88'),
+  !momentum.includes('driftPhysicalAuthority>.12||forceCoupledSlide>.10||driftKinematicScale<.88'),
   'legacy saturation-only drift switch must be removed'
 );
 

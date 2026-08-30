@@ -18,11 +18,19 @@ assert.ok(half220.target<.007,'R23 restored excessive F1 sensitivity above 150 k
 assert.ok(Math.abs(full300.target-1)<1e-12,'R23 must preserve full-stick mechanical authority');
 
 const runtime=fs.readFileSync('src/driving-runtime-base.js','utf8');
+const momentum=fs.readFileSync('src/physics/momentum-direction.js','utf8');
 const dynamicsBase=fs.readFileSync('src/vehicle-dynamics-base.js','utf8');
 assert.match(runtime,/const useLegacyDriftAssist=VEHICLE\?\.legacyDriftAssist!==false;/,'runtime lacks explicit legacy-drift ownership switch');
 assert.match(runtime,/if\(useLegacyDriftAssist&&drivetrain==='RWD'/,'synthetic RWD yaw is not gated');
 assert.match(runtime,/const legacyYawAccel=useLegacyDriftAssist/,'legacy grip yaw is not gated');
-assert.match(runtime,/\?blendDriftForce\([\s\S]*legacyForceTrajectoryYawRate,[\s\S]*physicalTrajectoryYawRate,[\s\S]*driftPhysicalAuthority[\s\S]*\)[\s\S]*:physicalTrajectoryYawRate;/,'legacy trajectory blend is not bypassed for physical-only profiles');
+// Cleanup B4 moved physical trajectory ownership out of the runtime. R23 still
+// requires physical-only profiles (currently the F1) to bypass the pre-R7
+// trajectory estimate entirely once force-derived momentum rotation is active.
+assert.match(
+  momentum,
+  /const forceTrajectoryYawRate=useLegacyDriftAssist[\s\S]*\?blendDriftForce\([\s\S]*legacyForceTrajectoryYawRate,[\s\S]*finite\(physicalTrajectoryYawRate\),[\s\S]*finite\(driftPhysicalAuthority\)[\s\S]*\)[\s\S]*:finite\(physicalTrajectoryYawRate\);/,
+  'legacy trajectory blend is not bypassed for physical-only profiles'
+);
 assert.match(dynamicsBase,/drivetrain==='RWD'&&vehicle\?\.legacyDriftAssist!==false/,'heuristic power-oversteer grip loss is not gated');
 
 const contacts=[

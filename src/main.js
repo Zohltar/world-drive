@@ -84,7 +84,6 @@ import {
   lateralDynamicsEnvelope,
   estimateWheelGripUsage,
   yawResponseRate,
-  limitMomentumHeadingDelta,
   laneKeepAssistCommand
 } from './vehicle-dynamics.js';
 
@@ -2814,7 +2813,6 @@ drivingRuntime=createDrivingRuntime({
   lateralDynamicsEnvelope,
   estimateWheelGripUsage,
   yawResponseRate,
-  limitMomentumHeadingDelta,
   recenterIfNeeded,
   updateRunChallenge,
   terrainFrameAt,
