@@ -214,7 +214,7 @@ Completion record:
 
 ### A5 — Retire old forest P9.12 / P9.28 implementations **[P1]**
 
-Status: **TODO**
+Status: **DONE — 2026-08-30**
 
 Problem:
 - active runtime path is currently approximately:
@@ -235,8 +235,14 @@ Required correction:
 Do not disturb current forest frame-pacing behavior just to simplify names.
 
 Completion record:
-- Commit: _pending_
-- QA: _pending_
+- Audit branch: `audit/code-debt-a5`; strict active-path/reference audit confirmed `forest-chunk-streamer.js -> forest-chunk-streamer-p929-wrapper.js -> forest-chunk-streamer-p929.js` and no active import of the historical P9.12/P9.28 streamers.
+- Historical truth check: the old P9.28 QA was already stale and failed because it still required the public entry point to route through P9.28. The old P9.12 stress QA still contained useful generic invariants, so those were migrated instead of discarded.
+- Migrated coverage: new `qa-forest-active-stress.mjs` preserves chunk-ring/burst/refresh/matrix-memory/StaticDrawUsage/double-buffer invariants against the active P9.29/P9.40 implementation; `qa-forest-active-runtime.mjs` replaces the misleading P9.12-named runtime mock; `qa-forest-p929-frame-budget.mjs` now also owns the useful zero-polling, policy-neutral and >20 ms hitch-feed diagnostics invariants.
+- Final atomic cleanup commit on `dev`: `8e903c1a` — added active QA and permanent CI gates, updated forest workflows, removed `src/forest-chunk-streamer-p912.js`, `src/forest-chunk-streamer-p928.js`, `qa-forest-p912-stress.mjs`, `qa-forest-p928-instrumentation.mjs` and the stale `qa-forest-p912-runtime.mjs` filename.
+- Important exception: `src/forest-terrain-sampler-p912.js` remains ACTIVE and intentionally retained; the current P9.29/P9.40 streamer imports its optimized terrain sampler despite the historical filename.
+- Candidate audit run `33332587396`: PASS including strict reference audit, active stress/runtime/P9.29 diagnostics, P935/P936/P939/P940/P941, runtime debt audit and build.
+- Final Dev Integration run `33332675790`: PASS all 57 steps including V21.31 stress, 288 driving cases, Grip R2–R20, active forest policy/stress/runtime/P9.29, frame-pacing stack, M4.14/M4.15 WebGL, live route smoke, dependency audit, production build and code split.
+- Result: historical streamer ownership is gone; active forest behavior and frame-pacing policy are unchanged and now covered by accurately named current-path QA.
 
 ---
 
@@ -631,13 +637,28 @@ These rules are mandatory while working this plan:
 
 # 6. Recommended next task
 
-**Next: A5 — retire the runtime-orphan P9.12/P9.28 forest streamer implementations after migrating any still-useful QA invariants to the active P9.29/P9.40/P9.41 path.**
+**Next: A6 — unify application/build branding.**
 
-Do not remove `forest-terrain-sampler-p912.js`: despite the historical name, it is still imported by the active P9.29 streamer. Audit exact file/symbol references before deleting the old streamer modules.
+Current confirmed mismatch:
+- `src/version.js`: V21.31 stable
+- `package.json`: 21.24.94
+- `electron/main.cjs`: hard-coded 21.21.12 in desktop title and Overpass User-Agent
+
+Make one source authoritative where practical, align package/desktop branding to the current V21.31 stable baseline, and add a regression gate so future releases cannot silently diverge.
 
 ---
 
 # 7. Work log
+
+## 2026-08-30 — A5 completed: historical forest streamers retired
+
+- Confirmed the live path is P9.29/P9.40/P9.41 and old P9.12/P9.28 streamers had no runtime ownership.
+- Proved the P9.28 QA was stale, while migrating the still-useful P9.12 stress invariants to current-path tests.
+- Renamed the active forest runtime mock so its filename now reflects what it really tests.
+- Removed both historical streamer implementations and obsolete QA references in one atomic dev commit.
+- Kept `forest-terrain-sampler-p912.js` because it remains an intentional active optimization dependency.
+- Final Dev Integration QA passed all 57 steps.
+- Next focus: A6 version/build branding consistency.
 
 ## 2026-08-30 — A4 completed: fully unreferenced orphan modules removed
 
