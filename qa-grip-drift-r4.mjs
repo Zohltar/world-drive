@@ -2,7 +2,6 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import {
   bodyRelativeSteeringSpeed,
-  postSpinSteeringAuthority,
   travelAxisSideslip,
   driftKinematicCoupling
 } from './src/driving-runtime.js';
@@ -25,13 +24,6 @@ assert.equal(bodyRelativeSteeringSpeed({speed:-20,heading:0,velocityHeading:0}),
 assert.equal(bodyRelativeSteeringSpeed({speed:20,heading:Math.PI,velocityHeading:0}),-20,'post-180 travel must become true body-relative reverse');
 assert.equal(bodyRelativeSteeringSpeed({speed:20,heading:Math.PI/2,velocityHeading:0,handbrake:true}),20,'held handbrake must preserve spin-direction yaw request');
 
-for(const angle of [0,45,80,90,100,135,180]){
-  for(const rearSlipAmount of [0,.4,.8,1]){
-    const authority=postSpinSteeringAuthority({rearSlipAmount,heading:angle*DEG,velocityHeading:0,handbrake:false});
-    assert.equal(authority,1,'steering command must not have an artificial 90-degree authority valley');
-  }
-}
-
 const coupling=[];
 for(const angle of [0,10,20,30,45,60,75,90,120,150,180]){
   const sideslip=travelAxisSideslip({heading:angle*DEG,velocityHeading:0});
@@ -49,6 +41,8 @@ assert.ok(coupling.find(x=>x.angle===180).value>.999,'aligned post-180 reverse m
 assert.ok(driftKinematicCoupling({sideslipRad:0,forceCoupledSlide:1})>.999,'aligned saturated travel must keep normal kinematic yaw coupling');
 
 const source=fs.readFileSync('src/driving-runtime-base.js','utf8');
+assert.ok(!source.includes('postSpinSteeringAuthority'),'B1 no-op steering authority helper must remain removed');
+assert.ok(!/\bsteeringAuthority\b/.test(source),'B1 hidden steering-authority indirection must remain removed');
 assert.ok(!source.includes('projectionDeadband=speedAbs*.06'),'legacy 90-degree steering sign deadband still present');
 assert.ok(!source.includes('return 1-.72*suppression'),'legacy post-spin 28% authority valley still present');
 assert.ok(!source.includes('Math.max(.34,1-forceCoupledSlide*.66)'),'legacy minimum 34% yaw-target pull still present');

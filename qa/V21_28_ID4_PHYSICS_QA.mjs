@@ -6,10 +6,7 @@ import {
   lateralDynamicsEnvelope,
   estimateWheelGripUsage
 } from '../src/vehicle-dynamics.js';
-import {
-  bodyRelativeSteeringSpeed,
-  postSpinSteeringAuthority
-} from '../src/driving-runtime.js';
+import {bodyRelativeSteeringSpeed} from '../src/driving-runtime.js';
 
 const DEG=180/Math.PI;
 
@@ -81,12 +78,10 @@ assert(id4Steer.maxRoadWheelAngle<wrxSteer.maxRoadWheelAngle,'ID.4 rack should b
 assert(Math.abs(id4Lat.yawRate)<Math.abs(wrxLat.yawRate),'ID.4 should rotate more slowly than WRX at same speed/input');
 assert(id4Lat.latLimit<wrxLat.latLimit,'ID.4 lateral envelope must remain below WRX');
 
-// 4) V21.27 reverse-axis corrections are generic: a clean 180 must behave like
-// reverse steering, while full authority returns once aligned on that axis.
+// 4) Reverse-axis correction is generic: once cleanly aligned after 180°,
+// body-relative steering must retain the full reverse travel magnitude.
 const reverseSteerSpeed=bodyRelativeSteeringSpeed({speed:15,heading:Math.PI,velocityHeading:0,handbrake:false});
-const reverseAuthority=postSpinSteeringAuthority({rearSlipAmount:.8,heading:Math.PI,velocityHeading:0,handbrake:false});
-assert(reverseSteerSpeed<0,'ID.4 post-180 steering direction must be reverse-relative');
-assert(reverseAuthority>.98,'clean reverse-axis travel must retain full front steering authority');
+assert.equal(reverseSteerSpeed,-15,'ID.4 clean post-180 steering must retain full reverse-relative speed');
 
 console.table({
   id4:{front_load_08g:+id4Loads[0].toFixed(3),steer_deg:+(id4Steer.maxRoadWheelAngle*DEG).toFixed(1),yaw_deg_s:+(Math.abs(id4Lat.yawRate)*DEG).toFixed(1),lat_g:+(id4Lat.latLimit/GRAVITY).toFixed(2)},

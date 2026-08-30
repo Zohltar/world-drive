@@ -110,14 +110,6 @@ export function rearContactPatchSideslip({speed=0,heading=0,velocityHeading=0,ya
   return Math.atan2(rearLat,Math.max(.50,Math.abs(bodyLong)));
 }
 
-export function postSpinSteeringAuthority(){
-  // Grip R4 — steering input itself is never artificially removed in a spin.
-  // Tire force and body-relative contact velocity decide how much authority the
-  // front axle can physically produce. The old 28% valley around 90 degrees was
-  // a numerical anti-spin aid and created a perceptible rotation wall.
-  return 1;
-}
-
 export function driftKinematicCoupling({sideslipRad=0,forceCoupledSlide=0}={}){
   const sideslip=Math.max(0,Math.min(Math.PI*.5,Math.abs(Number(sideslipRad)||0)));
   const slide=Math.max(0,Math.min(1,Number(forceCoupledSlide)||0));
@@ -563,15 +555,14 @@ export function createDrivingRuntime({
       fallbackSpeed:baseSteeringTravelSpeed,
       active:jTurnTransientLatched
     });
-    const steeringAuthority=postSpinSteeringAuthority({rearSlipAmount,heading,velocityHeading,handbrake:hand});
     const jTurnYawActive=jTurnTransientLatched;
     const lateralEnvelope=lateralDynamicsEnvelope({vehicle:VEHICLE,speed:steeringTravelSpeed,steerAngle,steerInput:steer,driveThrottle,onPavement,surfaceGrip,awdOffroadGripBonus,offroadPeakMu:offroadFrictionModel?.peak,rearSlipAmount:0,airborne:airborneNow},dynamicsScratch.lateral);
-    let yawRate=lateralEnvelope.yawRate*truckTrailerSystem.tractorYawScale(speedAbs)*steeringAuthority;
+    let yawRate=lateralEnvelope.yawRate*truckTrailerSystem.tractorYawScale(speedAbs);
     const drivetrain=lateralEnvelope.drivetrain;
     const powerCorneringLoad=lateralEnvelope.powerCorneringLoad;
-    const requestedLatAccel=lateralEnvelope.requestedLatAccel*steeringAuthority;
+    const requestedLatAccel=lateralEnvelope.requestedLatAccel;
     const latLimit=lateralEnvelope.latLimit;
-    const signedLatAccel=lateralEnvelope.signedLatAccel*steeringAuthority;
+    const signedLatAccel=lateralEnvelope.signedLatAccel;
     const physicalSignedLatAccel=Math.sign(signedLatAccel||steerAngle||1)*Math.min(Math.abs(signedLatAccel),Math.max(0,latLimit));
 
     gripSolverAccumulator+=dt;
@@ -643,7 +634,7 @@ export function createDrivingRuntime({
     if(drivetrain==='RWD'&&powerCorneringLoad>.05&&!airborneNow){
       const powerOversteerYaw=VEHICLE.powerOversteerYaw??.035;
       const rearSlipYaw=Math.sign(steer||1)*powerOversteerYaw*powerCorneringLoad*(.30+rearDominance*.70)*Math.min(1,speedAbs/18);
-      yawRate+=rearSlipYaw*Math.sign((hand?speed:steeringTravelSpeed)||speed||1)*steeringAuthority;
+      yawRate+=rearSlipYaw*Math.sign((hand?speed:steeringTravelSpeed)||speed||1);
     }
 
     // Grip R7 — per-wheel tire forces become authoritative outside the small-
