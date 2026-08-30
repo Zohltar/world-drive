@@ -4,12 +4,14 @@ import {createVehicleSystem} from './src/vehicle-system.js';
 import {
   bodyRelativeLongitudinalSpeed,
   bodyRelativeSteeringSpeed,
-  travelAxisSideslip,
+  travelAxisSideslip
+} from './src/driving-runtime-base.js';
+import {
   jTurnEntryEligible,
   jTurnExitEligible,
   advanceJTurnLatchedState,
   jTurnTransientSteeringSpeed
-} from './src/driving-runtime-base.js';
+} from './src/physics/maneuver-state.js';
 import {steeringCommand,lateralDynamicsEnvelope} from './src/vehicle-dynamics.js';
 
 const DEG=Math.PI/180;
@@ -108,12 +110,15 @@ console.table(rows.map(r=>({
   r19_steer:+r.maneuverSpeed.toFixed(2),
   sideslip:+r.sideslipDeg.toFixed(1)
 })));
-const source=fs.readFileSync(new URL('./src/driving-runtime-base.js',import.meta.url),'utf8');
-assert.ok(!source.includes('jTurnTransientYawActive'),'B2 old entry-predicate name must remain removed');
-assert.ok(!source.includes('advanceJTurnTransientYawState'),'B2 old latch-state helper name must remain removed');
-assert.ok(!source.includes('jTurnYawActive'),'B2 ambiguous active alias must remain removed');
+const runtimeSource=fs.readFileSync(new URL('./src/driving-runtime-base.js',import.meta.url),'utf8');
+const maneuverSource=fs.readFileSync(new URL('./src/physics/maneuver-state.js',import.meta.url),'utf8');
+assert.ok(!runtimeSource.includes('jTurnTransientYawActive'),'B2 old entry-predicate name must remain removed');
+assert.ok(!runtimeSource.includes('advanceJTurnTransientYawState'),'B2 old latch-state helper name must remain removed');
+assert.ok(!runtimeSource.includes('jTurnYawActive'),'B2 ambiguous active alias must remain removed');
 for(const name of ['jTurnEntryEligible','jTurnExitEligible','advanceJTurnLatchedState']){
-  assert.ok(source.includes(`export function ${name}`),`B2 explicit J-turn helper missing: ${name}`);
+  assert.ok(maneuverSource.includes(`export function ${name}`),`B3 maneuver helper missing from maneuver-state: ${name}`);
+  assert.ok(!runtimeSource.includes(`export function ${name}`),`B3 runtime must not own maneuver helper: ${name}`);
 }
+assert.ok(runtimeSource.includes('createManeuverState'),'B3 runtime must consume maneuver-state owner');
 
 console.log('GRIP R19 LEGACY J-TURN ROTATION-WALL QA: PASS');
