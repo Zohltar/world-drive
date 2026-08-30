@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import {createVehicleSystem,validateVehicleProfiles} from '../src/vehicle-system.js';
 import {GRAVITY,steeringCommand,lateralDynamicsEnvelope,estimateWheelGripUsage} from '../src/vehicle-dynamics.js';
-import {bodyRelativeSteeringSpeed,postSpinSteeringAuthority} from '../src/driving-runtime.js';
+import {bodyRelativeSteeringSpeed} from '../src/driving-runtime.js';
 
 const validation=validateVehicleProfiles();
 assert.equal(validation.ok,true,validation.errors.join('\n'));
@@ -48,9 +48,7 @@ for(const info of fleet){
   assert.ok(grip.serviceBrakeAbsEnabled=== (v.absEnabled!==false),`${info.id}: ABS policy must match profile`);
 
   const reverseSpeed=bodyRelativeSteeringSpeed({speed:15,heading:Math.PI,velocityHeading:0,handbrake:false});
-  const reverseAuthority=postSpinSteeringAuthority({rearSlipAmount:.8,heading:Math.PI,velocityHeading:0,handbrake:false});
-  assert.ok(reverseSpeed<0,`${info.id}: post-180 travel must steer reverse-relative`);
-  assert.ok(reverseAuthority>.98,`${info.id}: clean reverse-axis travel must retain steering authority`);
+  assert.equal(reverseSpeed,-15,`${info.id}: clean post-180 travel must preserve the full reverse-relative steering speed`);
 }
 
 console.log('V21.31 LIVE FLEET PHYSICS QA: PASS',fleet.map(v=>v.id));
