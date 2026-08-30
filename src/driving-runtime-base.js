@@ -135,13 +135,26 @@ export function driftKinematicCoupling({sideslipRad=0,forceCoupledSlide=0}={}){
 // zero yaw and point opposite the steering command. The already-scaled bicycle
 // yaw target owns ordinary understeer; genuine drift/countersteer remains owned
 // by the per-wheel physical solver blended later.
-export function legacyGripYawAcceleration({frictionYawAccel=0,yawRate=0,frontSlip=0,rearSlip=0}={}){
+export function legacyGripYawAcceleration({
+  frictionYawAccel=0,yawRate=0,frontSlip=0,rearSlip=0,
+  frontForceScale=1,rearForceScale=1
+}={}){
   const accel=Number(frictionYawAccel)||0;
   const targetYaw=Number(yawRate)||0;
   const front=Math.max(0,Number(frontSlip)||0);
   const rear=Math.max(0,Number(rearSlip)||0);
-  const frontDominated=front>rear+.06;
-  if(frontDominated&&Math.abs(targetYaw)>.01&&accel*targetYaw<0)return 0;
+  const frontScale=Number.isFinite(Number(frontForceScale))?Math.max(0,Math.min(1,Number(frontForceScale))):1;
+  const rearScale=Number.isFinite(Number(rearForceScale))?Math.max(0,Math.min(1,Number(rearForceScale))):1;
+  // Grip R21 — axle slip telemetry can saturate equally even while the front
+  // axle retains materially less lateral force than the rear. That happens on
+  // the high-downforce F1 and previously let the legacy front-loss moment act
+  // as an independent counter-yaw. Ordinary understeer already reduces the
+  // bicycle yaw target; real drift/countersteer remains owned by the per-wheel
+  // physical solver. Therefore a front-force-dominated opposing legacy moment
+  // may reduce authority, but must not reverse the steering direction.
+  const frontSlipDominated=front>rear+.06;
+  const frontForceDominated=frontScale<rearScale-.015;
+  if((frontSlipDominated||frontForceDominated)&&Math.abs(targetYaw)>.01&&accel*targetYaw<0)return 0;
   return accel;
 }
 
@@ -528,6 +541,7 @@ export function createDrivingRuntime({
     // Grip R6 — no tire contact means no residual tire yaw impulse.
     if(airborneNow)frictionYawAccel=0;
     const netLateralAccel=Number.isFinite(perWheelGrip.netLateralAccel)?perWheelGrip.netLateralAccel:physicalSignedLatAccel;
+    const frontLateralForceScale=Number.isFinite(perWheelGrip.frontLateralForceScale)?physicsClamp(perWheelGrip.frontLateralForceScale,0,1):1;
     const rearLateralForceScale=Number.isFinite(perWheelGrip.rearLateralForceScale)?physicsClamp(perWheelGrip.rearLateralForceScale,0,1):1;
     const rearLateralForceLoss=Math.abs(physicalSignedLatAccel)>.15?1-rearLateralForceScale:0;
     const slipDt=Math.min(.05,dt);
@@ -600,7 +614,9 @@ export function createDrivingRuntime({
       frictionYawAccel,
       yawRate,
       frontSlip:targetFrontSlip,
-      rearSlip:targetRearSlip
+      rearSlip:targetRearSlip,
+      frontForceScale:frontLateralForceScale,
+      rearForceScale:rearLateralForceScale
     });
     const authoritativeYawAccel=blendDriftForce(
       legacyYawAccel,
