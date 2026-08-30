@@ -4,8 +4,10 @@ import {createPerWheelShadowSolver} from './src/physics/per-wheel-shadow-solver.
 import {
   handbrakeDriveRetentionScale,
   handbrakeLongitudinalDecelCapacity,
-  shouldCanonicalizeMomentumHeading
+  shouldCanonicalizeMomentumHeading,
+  bodyRelativeSteeringSpeed
 } from './src/driving-runtime-base.js';
+import {steeringCommand,lateralDynamicsEnvelope} from './src/vehicle-dynamics.js';
 
 function contactsFor(vehicle){
   const half=(Number(vehicle.trackWidth)||1.55)*.5;
@@ -56,14 +58,22 @@ const locks=[handbrakeLock('id4'),handbrakeLock('i3_2017')];
 
 function jTurnAt90(id){
   const v=vehicle(id),solver=createPerWheelShadowSolver({hz:120,maxSubSteps:8});
+  const speed=-12,heading=Math.PI/2,velocityHeading=0,speedAbs=Math.abs(speed),steerInput=-1;
+  const steering=steeringCommand({vehicle:v,speedAbs,input:steerInput});
+  const steerAngle=steering.maxRoadWheelAngle*steerInput;
+  const steeringSpeed=bodyRelativeSteeringSpeed({speed,heading,velocityHeading,handbrake:false});
+  const env=lateralDynamicsEnvelope({
+    vehicle:v,speed:steeringSpeed,steerAngle,steerInput,driveThrottle:0,
+    onPavement:true,surfaceGrip:1,rearSlipAmount:0,airborne:false
+  },{});
   let r;
   for(let i=0;i<30;i++)r=solver.advance(1/120,{
-    vehicleId:id,vehicle:v,contacts:contactsFor(v),speed:-12,heading:Math.PI/2,velocityHeading:0,yawRate:1.2,
-    centerSteerAngle:-.30,longitudinalAccel:0,lateralAccel:0,
+    vehicleId:id,vehicle:v,contacts:contactsFor(v),speed,heading,velocityHeading,yawRate:1.2,
+    centerSteerAngle:steerAngle,longitudinalAccel:0,lateralAccel:env.signedLatAccel,
     requestedDriveAccel:0,requestedBrakeAccel:0,handbrake:false,surfaceId:'asphalt-dry'
   });
   assert.ok(r.predictedYawAccel>.2,`${id}: physical front-tire yaw must continue through 90-degree J-turn`);
-  return {id,yawAccel:r.predictedYawAccel};
+  return {id,yawAccel:r.predictedYawAccel,steerAngle,steeringSpeed};
 }
 const jturn=[jTurnAt90('id4'),jTurnAt90('i3_2017')];
 
