@@ -147,7 +147,7 @@ const scenarios=[
   },
   {
     name:'HB_HELD_60KPH',initialSpeed:60/3.6,duration:5,
-    steer:()=>true,handbrake:t=>t>=.18&&t<1.8,accelerate:()=>false
+    steer:()=>true,handbrake:t=>t>=.18&&t<3.0,accelerate:()=>false
   },
   {
     name:'HB_RELEASE_THROTTLE_60KPH',initialSpeed:60/3.6,duration:5,
@@ -163,6 +163,19 @@ const ids=['id4','i3_2017','wrx','civic','sonata','countach_80'];
 for(const scenario of scenarios){
   console.log(`\n=== ${scenario.name} ===`);
   const rows=ids.map(id=>run(id,scenario));
+  if(scenario.name==='HB_HELD_60KPH'){
+    for(const targetId of ['id4','i3_2017']){
+      const row=rows.find(r=>r.id===targetId);
+      const cross=row?.milestones?.[120];
+      if(!cross||cross.t>=3.0){
+        throw new Error(`${targetId} failed to cross 120deg while handbrake remained applied: ${JSON.stringify(row)}`);
+      }
+      const at90=row?.milestones?.[90];
+      if(!at90||Math.abs(at90.yaw)<75){
+        throw new Error(`${targetId} yaw collapsed near 90deg: ${JSON.stringify(row)}`);
+      }
+    }
+  }
   console.table(rows.map(r=>({id:r.id,maxHeading:r.maxHeading,maxSlip:r.maxSlip,finalSpeedKmh:r.finalSpeedKmh,finalYawDegS:r.finalYawDegS,reversalCount:r.reversalCount})));
   for(const r of rows)console.log(r.id,JSON.stringify(r.milestones));
 }
