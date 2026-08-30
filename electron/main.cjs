@@ -8,6 +8,13 @@ const { URL } = require('node:url');
 
 const squirrelStartup = require('electron-squirrel-startup');
 const { createMultiplayerRuntime } = require('./multiplayer-runtime.cjs');
+const packageInfo = require('../package.json');
+
+const DESKTOP_PACKAGE_VERSION=String(packageInfo.version||'0.0.0');
+const DESKTOP_CHANNEL=String(packageInfo.worldDriveChannel||'dev');
+const DESKTOP_DISPLAY_VERSION=DESKTOP_PACKAGE_VERSION.replace(/\.0$/,'');
+const DESKTOP_VERSION_LABEL=`V${DESKTOP_DISPLAY_VERSION} ${DESKTOP_CHANNEL}`;
+const DESKTOP_TITLE=`World Drive ${DESKTOP_VERSION_LABEL}`;
 
 let staticServer = null;
 let mainWindow = null;
@@ -122,7 +129,7 @@ async function proxyOverpassRequest(req,res,requestUrl){
 
     const headers={
       'Accept':'application/json',
-      'User-Agent':'WorldDrive/21.21.12 (Windows; Electron Overpass proxy)'
+      'User-Agent':`WorldDrive/${DESKTOP_PACKAGE_VERSION} (Windows; Electron Overpass proxy)`
     };
 
     if(req.headers['content-type']){
@@ -292,7 +299,7 @@ function createWindow(){
     show:false,
     autoHideMenuBar:true,
     backgroundColor:'#08111c',
-    title:'World Drive V21.21.12',
+    title:DESKTOP_TITLE,
     webPreferences:{
       preload:path.join(__dirname,'preload.cjs'),
       nodeIntegration:false,

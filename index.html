@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
-<title>World Drive V21.25 cleanup</title>
+<title>World Drive</title>
 <link rel="stylesheet" href="/src/styles.css">
 <script type="importmap">
 {"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.179.1/build/three.module.js"}}
@@ -16,16 +16,16 @@
   <div id="compassPointer"></div>
   <div id="compassHeading">N · 000°</div>
 </div>
-<div id="loading"><div class="box"><div class="spin"></div><h1>World Drive V21.25 cleanup</h1><p id="loadingText">Récupération de la géométrie réelle de la route…</p></div></div>
+<div id="loading"><div class="box"><div class="spin"></div><h1 data-world-drive-title>World Drive</h1><p id="loadingText">Récupération de la géométrie réelle de la route…</p></div></div>
 <div id="hud">
  <div class="panelHeader">
-   <div id="brand"><b>V21.25</b> WORLD DRIVE</div>
+   <div id="brand"><b data-world-drive-version-label></b> WORLD DRIVE</div>
    <button id="hudToggle" class="panelToggle" aria-label="Minimiser les détails" title="Minimiser">−</button>
  </div>
 
  <div id="hudBody">
    <div id="status">Chargement de la route…</div>
-   <div style="font-size:10px;color:#8fa6bf;margin-top:4px">V21.25 cleanup · nouvelle interface</div>
+   <div style="font-size:10px;color:#8fa6bf;margin-top:4px"><span data-world-drive-version-label></span> · nouvelle interface</div>
 
    <div class="compactStats">
      <div class="card">
