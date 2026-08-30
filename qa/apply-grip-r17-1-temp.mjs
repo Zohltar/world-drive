@@ -1,0 +1,10 @@
+import fs from 'node:fs';
+const path='src/driving-runtime-base.js';
+let source=fs.readFileSync(path,'utf8');
+const old=`    requestedDriveAccel*=truckTrailerSystem.active?truckTrailerSystem.driveAccelScaleForSpeed(Math.abs(speed)):combination.driveAccelScale;`;
+const replacement=`    requestedBodyDriveAccel*=truckTrailerSystem.active?truckTrailerSystem.driveAccelScaleForSpeed(Math.abs(speed)):combination.driveAccelScale;`;
+if(!source.includes(old))throw new Error('R17.1 legacy drive scaling anchor missing');
+source=source.replace(old,replacement);
+if(/\brequestedDriveAccel\s*\*=/.test(source))throw new Error('R17.1 legacy projected drive scaling remains');
+fs.writeFileSync(path,source);
+console.log('Applied Grip R17.1 runtime drive scaling fix');
