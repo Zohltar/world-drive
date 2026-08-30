@@ -205,6 +205,33 @@ export function bodyAxisDriveProjection({heading=0,velocityHeading=0}={}){
   return Math.cos(delta);
 }
 
+// Grip R17 — when body-axis propulsion opposes the current momentum strongly
+// enough to cross zero in the scalar speed integrator, reconstruct that one
+// step as a 2-D vector impulse. Away from an exact 180-degree cancellation the
+// body force still has a perpendicular component, so the vehicle must retain
+// momentum instead of snapping velocityHeading onto the chassis at ~90 deg.
+export function resolveOpposingDriveMomentumCrossing({
+  previousSpeed=0,velocityHeading=0,heading=0,nonDriveDeltaSpeed=0,
+  bodyDriveAccel=0,dt=0
+}={}){
+  const previous=Number(previousSpeed)||0;
+  const vh=Number(velocityHeading)||0;
+  const bodyHeading=Number(heading)||0;
+  const step=Math.max(0,Number(dt)||0);
+  const baseSpeed=previous+(Number(nonDriveDeltaSpeed)||0);
+  const driveImpulse=(Number(bodyDriveAccel)||0)*step;
+  const vx=Math.sin(vh)*baseSpeed+Math.sin(bodyHeading)*driveImpulse;
+  const vz=Math.cos(vh)*baseSpeed+Math.cos(bodyHeading)*driveImpulse;
+  const magnitude=Math.hypot(vx,vz);
+  if(magnitude<1e-7)return {speed:0,velocityHeading:bodyHeading,stopped:true};
+  const representationSign=Math.sign(previous||bodyDriveAccel||1);
+  return {
+    speed:representationSign*magnitude,
+    velocityHeading:Math.atan2(vx*representationSign,vz*representationSign),
+    stopped:false
+  };
+}
+
 export function createDrivingRuntime({
   getState,setState,getFlags,getRouteLength,getWorldOffset,nearestRouteForVehicle,
   autopilotControl,keyboardActionDown,gamepadState,updateTransmission,getServiceBrakeInput,
@@ -301,24 +328,24 @@ export function createDrivingRuntime({
     const surfaceGrip=onPavement?roadSurfaceGrip():1;
     const isAWD=VEHICLE.drivetrain==='AWD';
     const awdOffroadGripBonus=!onPavement&&isAWD?1.18:1;
-    let requestedDriveAccel=0,requestedBrakeAccel=0;
+    let requestedBodyDriveAccel=0,requestedBrakeAccel=0;
 
     if(driveThrottle>0){
       const performanceTop=vehicleTopSpeedKmh()/3.6;
       const speedRatio=Math.min(1,Math.max(0,Math.abs(speed)/performanceTop));
       const powerTaper=truckTrailerSystem.active?1:1-.38*speedRatio;
-      requestedDriveAccel=
+      // Grip R17: selector D always requests forward BODY-axis tire force.
+      // Projection onto the current momentum is applied only after traction is
+      // resolved; it must never reverse wheel torque beyond 90 degrees.
+      requestedBodyDriveAccel=
         VEHICLE.accel*
         driveThrottle*
-        powerTaper*
-        driveAxisProjection;
+        powerTaper;
     }else if(driveThrottle<0){
-      // Negative drivetrain command now means reverse propulsion only. Service
-      // braking never enters this branch.
-      requestedDriveAccel=
+      // Negative drivetrain command means reverse BODY-axis propulsion only.
+      requestedBodyDriveAccel=
         VEHICLE.reverseAccel*
-        driveThrottle*
-        driveAxisProjection;
+        driveThrottle;
     }
 
     requestedBrakeAccel=serviceBrakeAcceleration({
@@ -336,9 +363,11 @@ export function createDrivingRuntime({
       ?Math.max(.25,((VEHICLE.longitudinalAccelLimit??VEHICLE.brake??9.8)/9.80665)*surfaceGrip)
       :Math.max(.22,(VEHICLE.offroadGrip??.60)*awdOffroadGripBonus*offroadStaticTractionBoost);
 
-    const driveForce=longitudinalTractionLimit({vehicle:VEHICLE,requestedAccel:requestedDriveAccel,surfaceMu:longitudinalMu,mode:'drive',airborne:airborneNow,speedAbs:longitudinalSpeedAbs},dynamicsScratch.drive);
+    const driveForce=longitudinalTractionLimit({vehicle:VEHICLE,requestedAccel:requestedBodyDriveAccel,surfaceMu:longitudinalMu,mode:'drive',airborne:airborneNow,speedAbs:longitudinalSpeedAbs},dynamicsScratch.drive);
     const brakeForce=longitudinalTractionLimit({vehicle:VEHICLE,requestedAccel:requestedBrakeAccel,surfaceMu:longitudinalMu,mode:'brake',airborne:airborneNow,speedAbs:longitudinalSpeedAbs},dynamicsScratch.brake);
-    let accel=driveForce.acceleration+brakeForce.acceleration;
+    const appliedBodyDriveAccel=driveForce.acceleration;
+    const driveMomentumAccel=appliedBodyDriveAccel*driveAxisProjection;
+    let accel=driveMomentumAccel+brakeForce.acceleration;
 
     let physicsRoadFrame=onPavement&&nr?roadProfileFrameAtCum(nr.cum,physicsRoadFrameScratch):null;
     if(onPavement&&!physicsRoadFrame){
@@ -377,15 +406,24 @@ export function createDrivingRuntime({
       nextSpeed:speed,
       serviceBrake:serviceBrakeInput
     });
-    if(
-      (opposingBodyTravel||serviceBrakeCrossedZero)&&
+    const crossedSignedSpeed=
       Math.abs(previousSpeed)>.02&&
-      Math.sign(speed)!==Math.sign(previousSpeed)
-    ){
-      // Neither engine opposition nor a service brake can teleport through zero
-      // into motion in the opposite direction during one integration step.
+      Math.sign(speed)!==Math.sign(previousSpeed);
+    if(serviceBrakeCrossedZero&&crossedSignedSpeed){
+      // A service brake can genuinely remove all translational momentum.
       speed=0;
       velocityHeading=heading;
+    }else if(opposingBodyTravel&&crossedSignedSpeed){
+      // Grip R17: drivetrain force is a BODY-axis vector. Near a J-turn's
+      // 90-degree region its perpendicular impulse survives even when the old
+      // scalar projection crosses zero, so preserve that vector momentum.
+      const resolved=resolveOpposingDriveMomentumCrossing({
+        previousSpeed,velocityHeading,heading,
+        nonDriveDeltaSpeed:(accel-driveMomentumAccel)*dt,
+        bodyDriveAccel:appliedBodyDriveAccel,dt
+      });
+      speed=resolved.speed;
+      velocityHeading=resolved.velocityHeading;
     }
 
     // V21.31 stress: no separate off-road speed governor. Terrain performance is
@@ -455,7 +493,7 @@ export function createDrivingRuntime({
       const tireSolverSignedLatAccel=Math.sign(signedLatAccel||steerAngle||1)*tireSolverLatAccel;
       perWheelGrip=estimateWheelGripUsage({
         requestedLatAccel:tireSolverLatAccel,signedLatAccel:tireSolverSignedLatAccel,latLimit,longitudinalAccel,
-        propulsionAccel:driveForce.acceleration,serviceBrakeAccel:brakeForce.acceleration,
+        propulsionAccel:appliedBodyDriveAccel,serviceBrakeAccel:brakeForce.acceleration,
         surfaceMu:longitudinalMu,throttle:driveThrottle,handbrake:hand,
         handbrakeSlipState:rearHandbrakeSlipState,sideslipRad:rearTireSideslip,
         airborne:airborneNow,vehicle:VEHICLE,speedAbs,
@@ -466,7 +504,7 @@ export function createDrivingRuntime({
     const physicalTireForces=physicsShadow.advance(dt,{
       vehicleId:getVehicleId?.()||'unknown',vehicle:VEHICLE,contacts:vehiclePresentation?.wheelContacts||[],speed,heading,velocityHeading,
       yawRate:dynamicYawRate,centerSteerAngle:steerAngle,longitudinalAccel,lateralAccel:physicalSignedLatAccel,
-      requestedDriveAccel,requestedBrakeAccel,handbrake:hand,surfaceId:onPavement?'asphalt-dry':'dirt'
+      requestedDriveAccel:appliedBodyDriveAccel,requestedBrakeAccel,handbrake:hand,surfaceId:onPavement?'asphalt-dry':'dirt'
     });
 
     wheelGripUsage=perWheelGrip.smoothed;
