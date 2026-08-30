@@ -1,0 +1,30 @@
+name: Grip R22 F1 Steering QA
+
+on:
+  push:
+    branches:
+      - dev
+    paths:
+      - 'src/vehicle-dynamics-v21.29.js'
+      - 'qa-grip-f1-steering-r22.mjs'
+      - '.github/workflows/qa-grip-r22.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  qa:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: F1 ultra-high-speed steering curve regression
+        run: |
+          node qa-grip-f1-steering-r22.mjs
+          node qa-grip-steering-input-r13.mjs
+          node qa-grip-f1-front-slip-r21.mjs
