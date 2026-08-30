@@ -1,0 +1,17 @@
+import fs from 'node:fs';
+const path='docs/WORLD_DRIVE_TECH_DEBT_PLAN.md';
+let s=fs.readFileSync(path,'utf8');
+const status='### A2 — Remove dead WRX authority bridge **[P0/P1]**\n\nStatus: **TODO**';
+if(!s.includes(status))throw new Error('A2 status anchor not found');
+s=s.replace(status,'### A2 — Remove dead WRX authority bridge **[P0/P1]**\n\nStatus: **DONE — 2026-08-30**');
+const completion='Completion record:\n- Commit: _pending_\n- QA: _pending_\n\n---\n\n### A3 — Remove duplicate vehicle presentation wrapper';
+if(!s.includes(completion))throw new Error('A2 completion anchor not found');
+s=s.replace(completion,`Completion record:\n- Modern retained invariant QA: \`f18b888c\` initial A2 test, refined in \`5615091e\` to preserve only valid current invariants; permanent CI gate added in \`9d46f81b\`.\n- Removal commits: \`43559bf5\` retired WRX authority bridge; \`cc533e07\` old authority QA; \`0dd47840\` old breakaway-recovery QA; \`8607ab15\` old corner-stability QA.\n- QA: full V21.31 stress PASS; 288-case driving matrix PASS; Grip R2–R20 PASS; Cleanup A2 common WRX tire stability PASS; terrain/traffic/forest PASS; M4.14/M4.15 WebGL PASS; live route smoke PASS; production build and code split PASS.\n- Retained modern invariants: WRX front/rear tire utilization remains balanced at ordinary slip, lateral force rises progressively through tire peak, post-peak sliding force remains bounded, and the common per-wheel solver does not invent straight-line yaw/lateral acceleration.\n- Deliberately rejected obsolete duplicate: the first A2 draft tried to assert rear handbrake lock in an isolated solver setup. That assertion was removed rather than tuning physics to satisfy it because current handbrake drivetrain/runtime behavior is authoritatively covered by R18/R20.\n- Result: no runtime or QA dependency remains on \`src/physics/wrx-authority-controller.js\`; the WRX now has no hidden special chassis-authority implementation.\n\n---\n\n### A3 — Remove duplicate vehicle presentation wrapper`);
+const nextRe=/# 6\. Recommended next task[\s\S]*?(?=\n---\n\n# 7\. Work log)/;
+if(!nextRe.test(s))throw new Error('recommended next block not found');
+s=s.replace(nextRe,`# 6. Recommended next task\n\n**Next: A3 — remove the duplicate dead \`src/vehicle-presentation-wrapper.js\`.**\n\nReason:\n- it is not runtime-reachable;\n- its anti-roll presentation behavior already exists in the active \`src/vehicle-presentation.js\`;\n- removing it eliminates an ambiguous second ownership path with very low implementation risk.\n\nAfter A3, proceed to A4/A5 before deeper B-series physics architecture changes.\n`);
+const log='# 7. Work log\n\n';
+if(!s.includes(log))throw new Error('work log anchor not found');
+s=s.replace(log,`${log}## 2026-08-30 — A2 completed: retired WRX-only authority bridge\n\n- Confirmed the V21.27 WRX authority bridge was absent from the runtime graph and its three QA files validated abandoned WRX-only architecture.\n- Added a permanent modern WRX tire-stability test against the common R7+ tire/per-wheel path.\n- Preserved useful tire progression/load-balance invariants without recreating obsolete handbrake assumptions already superseded by R18/R20.\n- Deleted the old WRX authority controller and all three authority-specific QA files.\n- Full Dev Integration QA passed after deletion, including R2–R20, WebGL, live route smoke and production build/code split.\n- Next focus: A3 duplicate vehicle presentation wrapper.\n\n`);
+fs.writeFileSync(path,s);
+console.log('TECH DEBT PLAN A2 UPDATE: PASS');
