@@ -1,0 +1,37 @@
+name: Cleanup B4 Momentum Ownership QA
+
+on:
+  push:
+    branches:
+      - dev
+    paths:
+      - 'src/physics/momentum-direction.js'
+      - 'src/driving-runtime-base.js'
+      - 'src/vehicle-dynamics-base.js'
+      - 'src/main.js'
+      - 'qa-momentum-direction-b4.mjs'
+      - 'qa-grip-high-speed-r11.mjs'
+      - 'qa-grip-f1-legacy-r23.mjs'
+      - '.github/workflows/qa-cleanup-b4.yml'
+  workflow_dispatch:
+
+jobs:
+  qa:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+      - name: Momentum ownership and numerical equivalence
+        run: node qa-momentum-direction-b4.mjs
+      - name: Momentum critical regressions
+        run: |
+          node qa-grip-braking-r9.mjs
+          node qa-grip-high-speed-r11.mjs
+          node qa-grip-ev-jturn-r17.mjs
+          node qa-grip-jturn-legacy-r19.mjs
+          node qa-grip-full-runtime-180-probe-r20.mjs
+          node qa-grip-f1-legacy-r23.mjs
+          node qa/V21_29_BODY_RELATIVE_TRANSMISSION_QA.mjs
