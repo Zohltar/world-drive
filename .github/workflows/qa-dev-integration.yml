@@ -80,6 +80,8 @@ jobs:
         run: |
           node qa-grip-handbrake-lateral-r20.mjs
           node qa-grip-full-runtime-180-probe-r20.mjs
+      - name: Cleanup A2 common WRX tire stability QA
+        run: node qa-grip-wrx-tire-stability-a2.mjs
       - name: Terrain R1 visual ownership QA
         run: node qa-terrain-r1-legacy-ownership.mjs
       - name: Terrain R2 road imagery alignment QA
