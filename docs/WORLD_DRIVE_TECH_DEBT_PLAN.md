@@ -130,7 +130,7 @@ Completion record:
 
 ### A2 — Remove dead WRX authority bridge **[P0/P1]**
 
-Status: **TODO**
+Status: **DONE — 2026-08-30**
 
 Problem:
 - `src/physics/wrx-authority-controller.js` is no longer in the runtime graph;
@@ -154,8 +154,12 @@ Acceptance:
 - equivalent modern stability/breakaway coverage retained where useful.
 
 Completion record:
-- Commit: _pending_
-- QA: _pending_
+- Modern retained invariant QA: `f18b888c` initial A2 test, refined in `5615091e` to preserve only valid current invariants; permanent CI gate added in `9d46f81b`.
+- Removal commits: `43559bf5` retired WRX authority bridge; `cc533e07` old authority QA; `0dd47840` old breakaway-recovery QA; `8607ab15` old corner-stability QA.
+- QA: full V21.31 stress PASS; 288-case driving matrix PASS; Grip R2–R20 PASS; Cleanup A2 common WRX tire stability PASS; terrain/traffic/forest PASS; M4.14/M4.15 WebGL PASS; live route smoke PASS; production build and code split PASS.
+- Retained modern invariants: WRX front/rear tire utilization remains balanced at ordinary slip, lateral force rises progressively through tire peak, post-peak sliding force remains bounded, and the common per-wheel solver does not invent straight-line yaw/lateral acceleration.
+- Deliberately rejected obsolete duplicate: the first A2 draft tried to assert rear handbrake lock in an isolated solver setup. That assertion was removed rather than tuning physics to satisfy it because current handbrake drivetrain/runtime behavior is authoritatively covered by R18/R20.
+- Result: no runtime or QA dependency remains on `src/physics/wrx-authority-controller.js`; the WRX now has no hidden special chassis-authority implementation.
 
 ---
 
@@ -622,18 +626,27 @@ These rules are mandatory while working this plan:
 
 # 6. Recommended next task
 
-**Next: A2 — remove the dead V21.27 WRX authority bridge after migrating any still-useful invariants to current R7–R20 coverage.**
+**Next: A3 — remove the duplicate dead `src/vehicle-presentation-wrapper.js`.**
 
 Reason:
-- the module is no longer reachable from the game runtime;
-- three historical QA files still keep it alive;
-- it contains WRX-only transitional caps/semantics that can mislead future physics work.
+- it is not runtime-reachable;
+- its anti-roll presentation behavior already exists in the active `src/vehicle-presentation.js`;
+- removing it eliminates an ambiguous second ownership path with very low implementation risk.
 
-After A2, proceed to A3/A4/A5 before deeper B-series physics architecture changes.
+After A3, proceed to A4/A5 before deeper B-series physics architecture changes.
 
 ---
 
 # 7. Work log
+
+## 2026-08-30 — A2 completed: retired WRX-only authority bridge
+
+- Confirmed the V21.27 WRX authority bridge was absent from the runtime graph and its three QA files validated abandoned WRX-only architecture.
+- Added a permanent modern WRX tire-stability test against the common R7+ tire/per-wheel path.
+- Preserved useful tire progression/load-balance invariants without recreating obsolete handbrake assumptions already superseded by R18/R20.
+- Deleted the old WRX authority controller and all three authority-specific QA files.
+- Full Dev Integration QA passed after deletion, including R2–R20, WebGL, live route smoke and production build/code split.
+- Next focus: A3 duplicate vehicle presentation wrapper.
 
 ## 2026-08-30 — A1 completed: active road QA truthfulness
 
