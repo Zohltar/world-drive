@@ -11,6 +11,27 @@ import {
   createManeuverState,
   jTurnTransientSteeringSpeed
 } from './physics/maneuver-state.js';
+import {
+  advanceMomentumDirection,
+  bodyAxisDriveProjection,
+  bodyRelativeLateralSpeed,
+  bodyRelativeLongitudinalSpeed,
+  bodyRelativeMomentumTargetHeading,
+  bodyRelativeSteeringSpeed,
+  resolveOpposingDriveMomentumCrossing,
+  shouldCanonicalizeMomentumHeading,
+  travelAxisSideslip
+} from './physics/momentum-direction.js';
+export {
+  bodyAxisDriveProjection,
+  bodyRelativeLateralSpeed,
+  bodyRelativeLongitudinalSpeed,
+  bodyRelativeMomentumTargetHeading,
+  bodyRelativeSteeringSpeed,
+  resolveOpposingDriveMomentumCrossing,
+  shouldCanonicalizeMomentumHeading,
+  travelAxisSideslip
+};
 
 function smoothstep01(value){
   const t=Math.max(0,Math.min(1,Number(value)||0));
@@ -63,43 +84,6 @@ export function offroadSideslipFriction({
   return {speedDecel,momentumYawRate,slideGate,sideslipRad:sideslip};
 }
 
-export function bodyRelativeLongitudinalSpeed({speed=0,heading=0,velocityHeading=0}={}){
-  const v=Number(speed)||0;
-  const bodyDelta=(Number(velocityHeading)||0)-(Number(heading)||0);
-  return v*Math.cos(bodyDelta);
-}
-
-export function bodyRelativeMomentumTargetHeading({speed=0,heading=0,velocityHeading=0}={}){
-  const v=Number(speed)||0;
-  const h=Number(heading)||0;
-  const vh=Number(velocityHeading)||0;
-  if(Math.abs(v)<1e-8)return h;
-  const bodyLong=bodyRelativeLongitudinalSpeed({speed:v,heading:h,velocityHeading:vh});
-  const speedSign=Math.sign(v||1);
-  const bodySign=Math.sign(bodyLong||v||1);
-  if(bodySign===speedSign)return h;
-  return h+Math.PI;
-}
-
-export function bodyRelativeSteeringSpeed({speed=0,heading=0,velocityHeading=0,handbrake=false}={}){
-  const v=Number(speed)||0;
-  const speedAbs=Math.abs(v);
-  if(speedAbs<1e-8)return 0;
-  if(handbrake)return Math.sign(v||1)*speedAbs;
-
-  // Grip R4 — use the actual longitudinal velocity seen by the chassis instead
-  // of snapping the full speed magnitude from +v to -v around 90 degrees.
-  // The bicycle steering model therefore fades continuously to zero as travel
-  // becomes sideways, then naturally becomes reverse steering beyond 90 deg.
-  return bodyRelativeLongitudinalSpeed({speed:v,heading,velocityHeading});
-}
-
-export function travelAxisSideslip({heading=0,velocityHeading=0}={}){
-  let delta=(Number(velocityHeading)||0)-(Number(heading)||0);
-  delta=Math.atan2(Math.sin(delta),Math.cos(delta));
-  return Math.atan2(Math.abs(Math.sin(delta)),Math.abs(Math.cos(delta)));
-}
-
 // Grip R2 — locked-tire friction must follow the slip velocity at the rear
 // contact patch, not the sideslip measured at the chassis centre of mass.
 // Yaw contributes an opposite lateral velocity at an axle behind the CG.
@@ -107,8 +91,8 @@ export function rearContactPatchSideslip({speed=0,heading=0,velocityHeading=0,ya
   let delta=(Number(velocityHeading)||0)-(Number(heading)||0);
   delta=Math.atan2(Math.sin(delta),Math.cos(delta));
   const v=Number(speed)||0;
-  const bodyLong=v*Math.cos(delta);
-  const bodyLat=v*Math.sin(delta);
+  const bodyLong=bodyRelativeLongitudinalSpeed({speed:v,heading,velocityHeading});
+  const bodyLat=bodyRelativeLateralSpeed({speed:v,heading,velocityHeading});
   const rearDistance=Math.max(.35,(Number(wheelbase)||2.7)*Math.max(.30,Math.min(.75,Number(frontWeightBias)||.55)));
   const rearLat=bodyLat-(Number(yawRate)||0)*rearDistance;
   return Math.atan2(rearLat,Math.max(.50,Math.abs(bodyLong)));
@@ -182,13 +166,6 @@ export function handbrakeLongitudinalDecelCapacity({vehicle={},longitudinalMu=1,
   return GRAVITY*rearLoad*mu*slide;
 }
 
-export function shouldCanonicalizeMomentumHeading({speedAbs=0}={}){
-  // Momentum direction is still physically meaningful at walking speed during
-  // a spin/J-turn. Only collapse the heading once translation is essentially
-  // stopped; the old 1.2 m/s snap created a hard ~90-degree rotation wall.
-  return Math.max(0,Math.abs(Number(speedAbs)||0))<.12;
-}
-
 // Grip R1 — wheel lock/recovery is continuous, not tied to the button edge.
 export function landingSideslipGripSeed({sideslipRad=0,speedAbs=0}={}){
   const slip=Math.abs(Number(sideslipRad)||0);
@@ -196,42 +173,6 @@ export function landingSideslipGripSeed({sideslipRad=0,speedAbs=0}={}){
   const slipT=smoothstep01((slip-.035)/.19);
   const speedT=smoothstep01((speed-3.5)/7.5);
   return Math.min(.92,slipT*speedT*.92);
-}
-
-// P11 — propulsion is a force along the vehicle's longitudinal body axis, not
-// automatically along the current momentum vector. This matters after a J-turn:
-// the chassis may already point forward while residual momentum is still rearward.
-// Positive throttle must then REMOVE rearward speed before building forward speed.
-export function bodyAxisDriveProjection({heading=0,velocityHeading=0}={}){
-  const delta=(Number(velocityHeading)||0)-(Number(heading)||0);
-  return Math.cos(delta);
-}
-
-// Grip R17 — when body-axis propulsion opposes the current momentum strongly
-// enough to cross zero in the scalar speed integrator, reconstruct that one
-// step as a 2-D vector impulse. Away from an exact 180-degree cancellation the
-// body force still has a perpendicular component, so the vehicle must retain
-// momentum instead of snapping velocityHeading onto the chassis at ~90 deg.
-export function resolveOpposingDriveMomentumCrossing({
-  previousSpeed=0,velocityHeading=0,heading=0,nonDriveDeltaSpeed=0,
-  bodyDriveAccel=0,dt=0
-}={}){
-  const previous=Number(previousSpeed)||0;
-  const vh=Number(velocityHeading)||0;
-  const bodyHeading=Number(heading)||0;
-  const step=Math.max(0,Number(dt)||0);
-  const baseSpeed=previous+(Number(nonDriveDeltaSpeed)||0);
-  const driveImpulse=(Number(bodyDriveAccel)||0)*step;
-  const vx=Math.sin(vh)*baseSpeed+Math.sin(bodyHeading)*driveImpulse;
-  const vz=Math.cos(vh)*baseSpeed+Math.cos(bodyHeading)*driveImpulse;
-  const magnitude=Math.hypot(vx,vz);
-  if(magnitude<1e-7)return {speed:0,velocityHeading:bodyHeading,stopped:true};
-  const representationSign=Math.sign(previous||bodyDriveAccel||1);
-  return {
-    speed:representationSign*magnitude,
-    velocityHeading:Math.atan2(vx*representationSign,vz*representationSign),
-    stopped:false
-  };
 }
 
 export function createDrivingRuntime({
@@ -243,7 +184,7 @@ export function createDrivingRuntime({
   longitudinalTractionLimit,computeGradeAcceleration,physicsRoadFrameScratch,
   dynamicsScratch,roadProfileFrameAtCum,ensureRoadProfileNear,roadFrameAt,terrainAbs,
   routePointAtCum,laneKeepAssistCommand,angleDelta,steeringCommand,advanceSteeringRack,
-  lateralDynamicsEnvelope,estimateWheelGripUsage,yawResponseRate,limitMomentumHeadingDelta,
+  lateralDynamicsEnvelope,estimateWheelGripUsage,yawResponseRate,
   recenterIfNeeded,updateRunChallenge,terrainFrameAt,ROAD_SURFACE_OFFSET,
   TIRE_VISUAL_CLEARANCE,setFastWheelRoadSupport,car,skidMarks,xzToLL,elevationService,
   altitudeEl,updatePassedSignReadout,drawMap,worldStreaming,$,DRIVE_HUD_INTERVAL,
@@ -645,53 +586,18 @@ export function createDrivingRuntime({
       }
     }
 
-    if(!Number.isFinite(velocityHeading)||shouldCanonicalizeMomentumHeading({speedAbs}))velocityHeading=heading;
-    const trajectoryRearSlip=Math.max(0,rearSlipAmount-frontSlipAmount*.45);
-    const frictionTrajectoryLoss=frictionYawLoss;
-    const lowSpeedNoSlip=!airborneNow&&speedAbs<8.5&&forceCoupledSlide<.18&&frontSlipAmount<.16&&rearSlipAmount<.16;
-    const momentumTargetHeading=bodyRelativeMomentumTargetHeading({speed,heading,velocityHeading});
-
-    if(lowSpeedNoSlip){
-      if(speedAbs<2.5)velocityHeading=momentumTargetHeading;
-      else{
-        const lowSpeedLockT=1-physicsClamp((speedAbs-2.5)/6.0,0,1);
-        const lowSpeedFollowRate=34+lowSpeedLockT*48;
-        velocityHeading+=angleDelta(momentumTargetHeading,velocityHeading)*(1-Math.exp(-dt*lowSpeedFollowRate));
-      }
-    }else{
-      let attemptedTrajectoryDelta=0;
-      // The perpendicular component of real terrain sliding friction bends the
-      // momentum vector. This is force-derived, not a synthetic body-axis lock.
-      if(!onPavement&&!airborneNow){
-        attemptedTrajectoryDelta+=offroadSlipForce.momentumYawRate*dt;
-      }
-      const forceDominatedDrift=
-        !airborneNow&&
-        speedAbs>4&&
-        (driftPhysicalAuthority>.12||driftKinematicScale<.88);
-      if(forceDominatedDrift){
-        const signedSpeedForCurvature=Math.abs(speed)>.5?speed:Math.sign(speed||1)*.5;
-        const legacyForceTrajectoryYawRate=netLateralAccel/signedSpeedForCurvature;
-        // Grip R7/R23: once sideslip is real, the momentum vector follows the SUM
-        // of the four actual tire-force vectors. Vehicles that explicitly opt out
-        // of legacy drift assist (currently the F1) use that physical trajectory
-        // directly instead of blending back toward the pre-R7 curvature estimate.
-        const forceTrajectoryYawRate=useLegacyDriftAssist
-          ?blendDriftForce(
-            legacyForceTrajectoryYawRate,
-            physicalTrajectoryYawRate,
-            driftPhysicalAuthority
-          )
-          :physicalTrajectoryYawRate;
-        attemptedTrajectoryDelta+=forceTrajectoryYawRate*dt;
-      }else{
-        const velocityFollowRate=airborneNow?0:((2.8-1.45*frictionTrajectoryLoss)+27.2*Math.pow(1-physicsClamp(trajectoryRearSlip,0,1),2));
-        attemptedTrajectoryDelta+=angleDelta(momentumTargetHeading,velocityHeading)*(1-Math.exp(-dt*velocityFollowRate));
-      }
-      const rawTrajectoryLateralCapacityAccel=Number.isFinite(perWheelGrip.trajectoryLateralCapacityAccel)?Math.max(0,perWheelGrip.trajectoryLateralCapacityAccel):Math.max(0,latLimit);
-      const trajectoryLateralCapacityAccel=rawTrajectoryLateralCapacityAccel;
-      velocityHeading+=limitMomentumHeadingDelta({attemptedDelta:attemptedTrajectoryDelta,speedAbs,lateralCapacityAccel:trajectoryLateralCapacityAccel,dt,airborne:airborneNow});
-    }
+    const rawTrajectoryLateralCapacityAccel=Number.isFinite(perWheelGrip.trajectoryLateralCapacityAccel)
+      ?Math.max(0,perWheelGrip.trajectoryLateralCapacityAccel)
+      :Math.max(0,latLimit);
+    velocityHeading=advanceMomentumDirection({
+      velocityHeading,heading,speed,speedAbs,dt,airborne:airborneNow,
+      frontSlipAmount,rearSlipAmount,forceCoupledSlide,
+      frictionTrajectoryLoss:frictionYawLoss,
+      offroadMomentumYawRate:offroadSlipForce.momentumYawRate,
+      onPavement,driftPhysicalAuthority,driftKinematicScale,useLegacyDriftAssist,
+      netLateralAccel,physicalTrajectoryYawRate,
+      trajectoryLateralCapacityAccel:rawTrajectoryLateralCapacityAccel
+    });
 
     absX+=Math.sin(velocityHeading)*speed*dt;absZ+=Math.cos(velocityHeading)*speed*dt;
     syncState();recenterIfNeeded(absX,absZ);

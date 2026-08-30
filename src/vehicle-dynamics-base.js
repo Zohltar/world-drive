@@ -4,6 +4,8 @@
 // pure math so it can be stress-tested outside the renderer and reused later
 // by trucks, multi-axle vehicles and articulated combinations.
 
+export {limitMomentumHeadingDelta} from './physics/momentum-direction.js';
+
 export const GRAVITY=9.80665;
 
 export function clampDynamics(value,min,max){
@@ -807,28 +809,6 @@ export function estimateWheelGripUsage({requestedLatAccel,signedLatAccel,latLimi
   return result;
 }
 
-
-// V21.21.17 — limit how quickly tire forces are allowed to rotate the
-// vehicle's momentum vector. The old trajectory-follow heuristic could rotate
-// velocity by many radians/second after a sideways landing; worse, service
-// braking could still use that synthetic alignment and feel like extra grip.
-// A tire can only bend the velocity vector at a_lat / v.
-export function limitMomentumHeadingDelta({
-  attemptedDelta=0,
-  speedAbs=0,
-  lateralCapacityAccel=0,
-  dt=0,
-  airborne=false
-}={}){
-  const desired=safeNumber(attemptedDelta,0);
-  if(airborne||Math.abs(desired)<1e-12)return 0;
-  const step=Math.max(0,safeNumber(dt,0));
-  if(step<=0)return 0;
-  const v=Math.max(1.25,Math.abs(safeNumber(speedAbs,0)));
-  const aLat=Math.max(0,safeNumber(lateralCapacityAccel,0));
-  const maxDelta=(aLat/v)*step;
-  return clampDynamics(desired,-maxDelta,maxDelta);
-}
 
 
 // V21.21.19 — lane keeping expressed as a steering request, never as a
