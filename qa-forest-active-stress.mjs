@@ -44,30 +44,35 @@ function stress(path){
 const line=stress(straight());
 const bends=stress(serpentine());
 const legacyMatrixMultiplier=1+.88+.55+.20;
-const oldBytes=candidatesPerChunk*16*4*legacyMatrixMultiplier*P.chunkCacheLimit;
-const newBytes=candidatesPerChunk*16*4*P.chunkCacheLimit;
-const sliceBudget=P.candidatesPerCell*P.cellsPerBuildSlice;
-const streamer=fs.readFileSync(new URL('./src/forest-chunk-streamer-p912.js',import.meta.url),'utf8');
+const legacyBytes=candidatesPerChunk*16*4*legacyMatrixMultiplier*P.chunkCacheLimit;
+const activeBytes=candidatesPerChunk*16*4*P.chunkCacheLimit;
+const impl=fs.readFileSync(new URL('./src/forest-chunk-streamer-p929.js',import.meta.url),'utf8');
 
 assert.ok(required({x:0,z:0}).length>=50&&required({x:0,z:0}).length<=70,'active chunk ring regression');
 assert.ok(line.maxEnteringAfterBoot<=4,'straight-line chunk burst regression');
 assert.ok(bends.maxEnteringAfterBoot<=6,'serpentine chunk burst regression');
 assert.ok(line.maxRefreshChunks<=12&&bends.maxRefreshChunks<=12,'terrain refresh ring is too large');
-assert.ok(sliceBudget<=200,'idle slice candidate budget is too large');
-assert.ok(newBytes/oldBytes<.40,'matrix cache regression');
-assert.equal((streamer.match(/instanceMatrix\.needsUpdate\s*=\s*true/g)||[]).length,1,
-  'P9.12 should upload an instance matrix only when a chunk mesh is created');
-assert.ok(streamer.includes('THREE.StaticDrawUsage'),'forest matrices should be immutable GPU buffers');
-assert.ok(streamer.includes('replaceActive'),'terrain refresh must double-buffer replacement chunks');
+assert.ok(P.candidatesPerBuildSlice<=16,'normal active candidate batch is too large');
+assert.ok(P.forestSliceBudgetMs<=1.10,'normal active forest slice budget is too large');
+assert.ok(P.forestCatchupCandidatesPerSlice<=24,'catch-up candidate batch is too large');
+assert.ok(P.forestCatchupSliceBudgetMs<=1.75,'catch-up forest slice budget is too large');
+assert.ok(activeBytes/legacyBytes<.40,'single-matrix chunk cache memory regression');
+assert.equal((impl.match(/instanceMatrix\.needsUpdate\s*=\s*true/g)||[]).length,1,
+  'active streamer should upload an instance matrix only when a chunk mesh is created');
+assert.ok(impl.includes('THREE.StaticDrawUsage'),'active forest matrices should remain immutable GPU buffers');
+assert.ok(impl.includes('replaceActive'),'terrain refresh must retain double-buffer replacement chunks');
+assert.ok(impl.includes('preparePrefetchMesh'),'active streamer must retain detached rolling prefetch preparation');
 
-console.log('Foret P9.12 stress QA passed');
+console.log('ACTIVE FOREST STRESS QA: PASS');
 console.log({
   candidatesPerChunk,
-  idleSliceCandidateBudget:sliceBudget,
+  normalCandidateBatch:P.candidatesPerBuildSlice,
+  normalSliceBudgetMs:P.forestSliceBudgetMs,
+  catchupCandidateBatch:P.forestCatchupCandidatesPerSlice,
+  catchupSliceBudgetMs:P.forestCatchupSliceBudgetMs,
   straight20km:line,
   serpentine20km:bends,
-  legacyWorstCaseMatrixCacheMB:Number((oldBytes/1e6).toFixed(1)),
-  p912WorstCaseMatrixCacheMB:Number((newBytes/1e6).toFixed(1)),
-  matrixMemoryReductionPct:Number(((1-newBytes/oldBytes)*100).toFixed(1)),
-  transitionMatrixUploadsP912:0
+  legacyWorstCaseMatrixCacheMB:Number((legacyBytes/1e6).toFixed(1)),
+  activeWorstCaseMatrixCacheMB:Number((activeBytes/1e6).toFixed(1)),
+  matrixMemoryReductionPct:Number(((1-activeBytes/legacyBytes)*100).toFixed(1))
 });

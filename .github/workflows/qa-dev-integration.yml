@@ -106,6 +106,12 @@ jobs:
         run: node qa/V21_27_CREST_LAUNCH_QA.mjs
       - name: Oblique landing regression
         run: node qa/V21_27_OBLIQUE_LANDING_QA.mjs
+      - name: Active forest policy/stress QA
+        run: node qa-forest-active-stress.mjs
+      - name: Active forest runtime mock
+        run: node qa-forest-active-runtime.mjs
+      - name: Active P9.29 forest frame-budget and diagnostics QA
+        run: node qa-forest-p929-frame-budget.mjs
       - name: Forest startup/front-load QA
         run: node qa-forest-p935-front-startup.mjs
       - name: Forest rolling prefetch QA

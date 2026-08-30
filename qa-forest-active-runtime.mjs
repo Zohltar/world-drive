@@ -85,7 +85,7 @@ await new Promise(resolve=>setTimeout(resolve,40));
 const after=streamer.stats();
 if(after.activeChunks<activeBefore-2)throw new Error('double-buffer replacement created a visible forest gap');
 
-console.log('Foret P9.12 runtime mock passed');
+console.log('ACTIVE FOREST RUNTIME MOCK: PASS');
 console.log({
   activeBeforeRefresh:activeBefore,
   requestedReplacements:replacements,
