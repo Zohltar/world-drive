@@ -41,7 +41,12 @@ assert.ok(coupling.find(x=>x.angle===0).value>.999,'aligned travel must keep nor
 assert.ok(coupling.find(x=>x.angle===20).value>.94,'ordinary cornering must remain nearly unchanged');
 assert.ok(coupling.find(x=>x.angle===90).value<.07,'90-degree drift must be inertia/force dominated');
 assert.ok(coupling.find(x=>x.angle===180).value>.999,'aligned post-180 reverse must recover normal yaw response');
-assert.ok(driftKinematicCoupling({sideslipRad:0,forceCoupledSlide:1})<.07,'full tire slide must suppress kinematic yaw damping');
+// Grip R11: tire saturation by itself is not evidence of a chassis drift. The
+// old assertion forced the normal trajectory coupling off even at zero body
+// sideslip, which could make a small high-speed correction preserve the old
+// momentum heading and then feel like an elastic snapback. Genuine drift is
+// still covered above by the 20–90 degree sideslip cases.
+assert.ok(driftKinematicCoupling({sideslipRad:0,forceCoupledSlide:1})>.999,'aligned saturated travel must keep normal kinematic yaw coupling');
 
 const source=fs.readFileSync('src/driving-runtime-base.js','utf8');
 assert.ok(!source.includes('projectionDeadband=speedAbs*.06'),'legacy 90-degree steering sign deadband still present');
