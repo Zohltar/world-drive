@@ -26,8 +26,10 @@ jobs:
           cache: npm
       - name: Install
         run: npm ci
-      - name: Forest runtime QA
-        run: node qa-forest-p912-runtime.mjs
+      - name: Active forest policy/stress QA
+        run: node qa-forest-active-stress.mjs
+      - name: Active forest runtime QA
+        run: node qa-forest-active-runtime.mjs
       - name: P9.17 load smoothing QA
         run: node qa-streaming-p917-load-smoothing.mjs
       - name: P9.18 loading QA
