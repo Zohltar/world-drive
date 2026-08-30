@@ -56,6 +56,8 @@ jobs:
         run: node qa-grip-uphill-r10.mjs
       - name: Grip R11 high-speed trajectory stability QA
         run: node qa-grip-high-speed-r11.mjs
+      - name: Grip R12 fleet high-speed crab-drift QA
+        run: node qa-grip-fleet-high-speed-r12.mjs
       - name: Terrain R1 visual ownership QA
         run: node qa-terrain-r1-legacy-ownership.mjs
       - name: Terrain R2 road imagery alignment QA
