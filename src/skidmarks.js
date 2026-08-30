@@ -14,6 +14,26 @@ const AUTHORED_SKID_MODEL_SCALE=Object.freeze({
   i3_2017:1
 });
 
+// Skid R15.1 — after matching the GLB footprint, the authored wheel centres
+// still sit a few centimetres forward of the legacy suspension probes. Keep
+// this as a body-fixed geometric correction (not a speed/travel-direction
+// compensation) so forward and reverse leave rubber under the same tire.
+const AUTHORED_SKID_LONGITUDINAL_OFFSET_M=Object.freeze({
+  id4:.12,
+  wrx:.11,
+  civic:.10,
+  sonata:.11,
+  f1_2010:.10,
+  countach_80:.11,
+  i3_2017:.10
+});
+
+export function skidVisualLongitudinalOffset(vehicle={}){
+  const id=String(vehicle?.vehicleId||'');
+  const offset=AUTHORED_SKID_LONGITUDINAL_OFFSET_M[id];
+  return Number.isFinite(offset)?offset:0;
+}
+
 export function skidVisualFootprintScale(vehicle={}){
   const id=String(vehicle?.vehicleId||'');
   const authoredScale=AUTHORED_SKID_MODEL_SCALE[id];
@@ -51,13 +71,15 @@ function inferVehicleFrameFromContacts(contacts){
 export function alignSkidContactsToVisuals(contacts,vehicle={},getRoadSurface=null){
   if(!Array.isArray(contacts)||contacts.length!==4)return contacts;
   const scale=skidVisualFootprintScale(vehicle);
-  if(Math.abs(scale-1)<1e-9)return contacts;
+  const longitudinalOffset=skidVisualLongitudinalOffset(vehicle);
+  if(Math.abs(scale-1)<1e-9&&Math.abs(longitudinalOffset)<1e-9)return contacts;
   const frame=inferVehicleFrameFromContacts(contacts);
   if(!frame)return contacts;
   return contacts.map((contact,index)=>{
     const localX=Number(contact?.localX),localZ=Number(contact?.localZ);
     if(!Number.isFinite(localX)||!Number.isFinite(localZ))return contact;
-    const visualX=localX*scale,visualZ=localZ*scale;
+    const visualX=localX*scale;
+    const visualZ=localZ*scale+longitudinalOffset;
     const absX=frame.centerX+visualX*frame.c+visualZ*frame.s;
     const absZ=frame.centerZ-visualX*frame.s+visualZ*frame.c;
     const surface=typeof getRoadSurface==='function'?getRoadSurface(absX,absZ):null;
@@ -68,7 +90,8 @@ export function alignSkidContactsToVisuals(contacts,vehicle={},getRoadSurface=nu
       absZ,
       ground:Number.isFinite(surfaceY)?surfaceY:Number(contact?.ground),
       skidSourceIndex:index,
-      skidVisualScale:scale
+      skidVisualScale:scale,
+      skidVisualLongitudinalOffset:longitudinalOffset
     };
   });
 }
