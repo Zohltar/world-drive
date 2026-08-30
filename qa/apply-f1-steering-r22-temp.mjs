@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 
+// Touch marker: triggers the temporary R22 workflow after workflow creation.
 const path='src/vehicle-dynamics-v21.29.js';
 let s=fs.readFileSync(path,'utf8');
 const old=`  const steeringCurveT=smoothstep01(v/steeringCurveFullSpeedMps);\n  const steeringInputExponent=\n    1+(steeringCurveMaxExponent-1)*steeringCurveT;\n`;
