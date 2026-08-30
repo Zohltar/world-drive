@@ -334,7 +334,7 @@ Completion record:
 
 ### B2 — Rename/refactor J-turn entry semantics **[P0]**
 
-Status: **TODO**
+Status: **DONE — 2026-08-30**
 
 Problem:
 - `jTurnTransientYawActive()` historically sounded like an active-state predicate;
@@ -347,8 +347,13 @@ Required correction:
 - preserve R19 full rotation regression.
 
 Completion record:
-- Commit: _pending_
-- QA: _pending_
+- Final dev commit: `ec03c889` — renamed the old instantaneous predicate to `jTurnEntryEligible()`, extracted `jTurnExitEligible()`, renamed the latched transition helper to `advanceJTurnLatchedState()`, renamed runtime state to `jTurnLatchedActive`, and removed the ambiguous `jTurnYawActive` alias.
+- Thresholds and behavior are unchanged: entry remains reverse body speed < -4 m/s, speed >= 8.5 m/s and steering >= .12; exit remains handbrake/airborne/off-pavement, speed < 2.5 m/s, steering < .05, or forward realignment (body speed > 2 m/s with sideslip < .10 rad).
+- R19 QA now explicitly proves that at 90 degrees entry eligibility is false, exit eligibility is false, while the latched maneuver remains active; Portland QA now tests entry eligibility rather than calling it active state.
+- Candidate run `33335558761`: PASS Portland, R9/R17/R18/R19/R20 runtime 180, full V21.31 stress, driving matrix and production build.
+- Final Dev Integration run `33335628553`: PASS all 59 steps including Grip R2–R20, 288 driving cases, forest/frame pacing, WebGL, live route smoke and production build/code split.
+- Human test: not required for B2 because this is a semantic/state naming refactor with identical thresholds and equations.
+- Result: entry, latched active state and exit are now distinct concepts in code, closing the naming trap that previously helped reintroduce the 90-degree J-turn wall.
 
 ---
 
@@ -650,13 +655,22 @@ These rules are mandatory while working this plan:
 
 # 6. Recommended next task
 
-**Next: B2 — make J-turn semantics explicit by separating entry eligibility, latched active state and exit conditions while preserving R19 behavior exactly.**
+**Next: B3 — extract maneuver-specific state from `driving-runtime-base.js` into `src/physics/maneuver-state.js` without changing tire-force or yaw equations.**
 
-Start as a behavior-neutral refactor: rename `jTurnTransientYawActive()` to `jTurnEntryEligible()`, move the active-state exit checks into a clearly named helper, migrate R19 QA, and run R9/R17/R18/R19/R20 plus the complete Dev Integration suite before any later extraction into B3.
+Start with J-turn latched state and rear-handbrake transient/slip state only. Preserve exact call order and thresholds. Run R1/R2/R7/R9/R17/R18/R19/R20 plus the complete Dev Integration suite. After B3 passes automation, require a short human maneuver check on ID.4/i3 J-turn and handbrake 180 plus a WRX/Civic comparison before considering B3 fully closed.
 
 ---
 
 # 7. Work log
+
+## 2026-08-30 — B2 completed: J-turn entry/latch/exit semantics made explicit
+
+- Replaced the misleading instantaneous `jTurnTransientYawActive` naming with explicit entry, exit and latched-state helpers.
+- Preserved all R19 thresholds and full-rotation behavior.
+- Migrated R19 and Portland QA to distinguish entry eligibility from active maneuver state.
+- Candidate run `33335558761` and final Dev Integration `33335628553` passed.
+- No human test required for B2; B3 will require targeted human maneuver validation after automation.
+- Next focus: B3 maneuver-state extraction.
 
 ## 2026-08-30 — B1 completed: dead post-spin steering authority removed
 
