@@ -849,6 +849,10 @@ function normalizePhysics(raw){
 function normalizedProfile(profile){
   const copy=clone(profile);
   copy.physics=normalizePhysics(copy.physics);
+  // Skid R15 — keep a stable profile identifier on the shared mutable physics
+  // object. Rendering systems can then apply authored-model presentation
+  // transforms without guessing the active vehicle from dimensions.
+  copy.physics.vehicleId=copy.id;
   return copy;
 }
 
