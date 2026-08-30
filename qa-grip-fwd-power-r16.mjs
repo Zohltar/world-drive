@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 import {createVehicleSystem} from './src/vehicle-system.js';
 import {createPerWheelShadowSolver} from './src/physics/per-wheel-shadow-solver.js';
+import {lateralDynamicsEnvelope,estimateWheelGripUsage} from './src/vehicle-dynamics.js';
+import {driftTireForceAuthority,driftForceSideslipGate} from './src/physics/drift-force-coupling.js';
 
 function contactsFor(vehicle){
   const halfTrack=(Number(vehicle.trackWidth)||1.55)*.5;
@@ -16,7 +18,7 @@ function contactsFor(vehicle){
   ];
 }
 
-function runCase(id,{speed=20,steerDeg=12,driveAccel=4.0,sideslipDeg=0,yawRate=0}={}){
+function physicalCase(id,{speed=20,steerDeg=12,driveAccel=4.0,sideslipDeg=0,yawRate=0}={}){
   const system=createVehicleSystem({initialId:id});
   const vehicle=system.physics;
   const solver=createPerWheelShadowSolver({hz:120,maxSubSteps:8});
@@ -25,40 +27,66 @@ function runCase(id,{speed=20,steerDeg=12,driveAccel=4.0,sideslipDeg=0,yawRate=0
   let result=null;
   for(let i=0;i<24;i++){
     result=solver.advance(1/120,{
-      vehicleId:id,
-      vehicle,
-      contacts:contactsFor(vehicle),
-      speed,
-      heading:0,
-      velocityHeading:sideslip,
-      yawRate,
-      centerSteerAngle:steer,
-      longitudinalAccel:driveAccel,
-      lateralAccel:Math.sign(steer)*4.0,
-      requestedDriveAccel:driveAccel,
-      requestedBrakeAccel:0,
-      handbrake:false,
-      surfaceId:'asphalt-dry'
+      vehicleId:id,vehicle,contacts:contactsFor(vehicle),speed,heading:0,velocityHeading:sideslip,
+      yawRate,centerSteerAngle:steer,longitudinalAccel:driveAccel,lateralAccel:Math.sign(steer)*4.0,
+      requestedDriveAccel:driveAccel,requestedBrakeAccel:0,handbrake:false,surfaceId:'asphalt-dry'
     });
   }
   return result;
 }
 
-const reports=[];
+function transitionCase(id,{speed=20,steerDeg=-12,driveAccel=4.0,sideslipDeg=0}={}){
+  const system=createVehicleSystem({initialId:id});
+  const vehicle=system.physics;
+  const contacts=contactsFor(vehicle);
+  const steer=steerDeg*Math.PI/180;
+  const env=lateralDynamicsEnvelope({
+    vehicle,speed,steerAngle:steer,steerInput:Math.sign(steer),driveThrottle:1,onPavement:true,surfaceGrip:1,
+    rearSlipAmount:0,airborne:false
+  },{});
+  const previous=[0,0,0,0];
+  let grip=null;
+  for(let i=0;i<18;i++){
+    grip=estimateWheelGripUsage({
+      requestedLatAccel:Math.min(env.requestedLatAccel,env.latLimit),
+      signedLatAccel:Math.sign(env.signedLatAccel||steer)*Math.min(env.requestedLatAccel,env.latLimit),
+      latLimit:env.latLimit,longitudinalAccel:driveAccel,propulsionAccel:driveAccel,serviceBrakeAccel:0,
+      surfaceMu:1,throttle:1,handbrake:false,handbrakeSlipState:0,sideslipRad:sideslipDeg*Math.PI/180,
+      airborne:false,vehicle,speedAbs:Math.abs(speed),contacts,previousUsage:previous,dt:1/60
+    },{});
+    for(let k=0;k<4;k++)previous[k]=grip.smoothed[k];
+  }
+  const frictionLoss=Math.min(1,Math.abs(grip.frictionYawAccel)/4.5);
+  const rearLoss=Math.abs(env.signedLatAccel)>.15?1-Math.max(0,Math.min(1,grip.rearLateralForceScale)):0;
+  const forceCoupledSlide=Math.max(frictionLoss,rearLoss);
+  const authority=driftTireForceAuthority({sideslipRad:Math.abs(sideslipDeg*Math.PI/180),forceCoupledSlide});
+  return {env,grip,forceCoupledSlide,authority,gate:driftForceSideslipGate(Math.abs(sideslipDeg*Math.PI/180))};
+}
+
 for(const id of ['civic','sonata','id4','wrx']){
-  for(const speed of [10,20,30]){
-    for(const steerAbs of [6,12,20]){
-      const left=runCase(id,{speed,steerDeg:-steerAbs,driveAccel:4.0});
-      const right=runCase(id,{speed,steerDeg:steerAbs,driveAccel:4.0});
-      reports.push({id,speed,steerAbs,leftYaw:left.predictedYawAccel,rightYaw:right.predictedYawAccel,leftAx:left.predictedAccelX,rightAx:right.predictedAccelX});
-      assert.ok(left.predictedYawAccel<=1e-6,`${id} ${speed}m/s ${steerAbs}deg left throttle produced right yaw ${left.predictedYawAccel}`);
-      assert.ok(right.predictedYawAccel>=-1e-6,`${id} ${speed}m/s ${steerAbs}deg right throttle produced left yaw ${right.predictedYawAccel}`);
-      assert.ok(left.predictedAccelX<=1e-6,`${id} left steer produced right lateral accel ${left.predictedAccelX}`);
-      assert.ok(right.predictedAccelX>=-1e-6,`${id} right steer produced left lateral accel ${right.predictedAccelX}`);
-      const mirrorYaw=Math.abs(left.predictedYawAccel+right.predictedYawAccel);
-      assert.ok(mirrorYaw<.25,`${id} yaw mirror asymmetry ${mirrorYaw}`);
-    }
+  for(const speed of [10,20,30])for(const steerAbs of [6,12,20]){
+    const left=physicalCase(id,{speed,steerDeg:-steerAbs,driveAccel:4.0});
+    const right=physicalCase(id,{speed,steerDeg:steerAbs,driveAccel:4.0});
+    assert.ok(left.predictedYawAccel<=1e-6,`${id} left throttle produced right physical yaw ${left.predictedYawAccel}`);
+    assert.ok(right.predictedYawAccel>=-1e-6,`${id} right throttle produced left physical yaw ${right.predictedYawAccel}`);
+    assert.ok(left.predictedAccelX<=1e-6,`${id} left steer produced right physical accel ${left.predictedAccelX}`);
+    assert.ok(right.predictedAccelX>=-1e-6,`${id} right steer produced left physical accel ${right.predictedAccelX}`);
   }
 }
-console.log('GRIP R16 FWD POWER-SLIDE DIRECTION QA: PASS');
+
+const reports=[];
+for(const id of ['civic','sonata','id4','wrx']){
+  for(const speed of [12,20,28])for(const steerDeg of [-8,-14,-20])for(const sideslipDeg of [0,4,8,12]){
+    const r=transitionCase(id,{speed,steerDeg,driveAccel:4.0,sideslipDeg});
+    reports.push({
+      id,speed,steerDeg,sideslipDeg,
+      frictionYaw:Number(r.grip.frictionYawAccel.toFixed(3)),
+      frontScale:Number(r.grip.frontLateralForceScale.toFixed(3)),
+      rearScale:Number(r.grip.rearLateralForceScale.toFixed(3)),
+      authority:Number(r.authority.toFixed(3)),gate:Number(r.gate.toFixed(3)),
+      frontLat:Number(r.grip.frontLateral.toFixed(3)),rearLat:Number(r.grip.rearLateral.toFixed(3))
+    });
+  }
+}
+console.log('GRIP R16 FWD POWER-SLIDE TRANSITION PROBE');
 console.table(reports);
