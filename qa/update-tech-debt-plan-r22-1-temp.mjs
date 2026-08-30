@@ -1,4 +1,5 @@
 import fs from 'node:fs';
+// Trigger marker: apply R22.1 plan update.
 const path='docs/WORLD_DRIVE_TECH_DEBT_PLAN.md';
 let s=fs.readFileSync(path,'utf8');
 
