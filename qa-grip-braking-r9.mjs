@@ -8,6 +8,7 @@ import {
 import {regulateAbsWheelOmega} from './src/physics/braking-tire-control.js';
 import {bodyRelativeLongitudinalSpeed} from './src/driving-runtime-base.js';
 import {createPerWheelShadowSolver} from './src/physics/per-wheel-shadow-solver.js';
+import {createVehicleSystem,validateVehicleProfiles} from './src/vehicle-system.js';
 
 const DEG=Math.PI/180;
 const BRAKE=8.8;
@@ -57,57 +58,125 @@ assert.equal(brakeWouldCrossZero({previousSpeed:1,nextSpeed:-.1,serviceBrake:0})
   assert.ok(Math.abs(slip-.11)<1e-9,`reverse ABS target should be +0.11, got ${slip}`);
 }
 
-// Reverse braking must enter the physical service-brake path, not be disguised
-// as positive engine torque. ABS does not need to cycle on every frame if the
-// requested torque stays below the lock threshold; the force direction and lack
-// of wheel lock are the authoritative integration checks here.
-const vehicle={
-  id:'wrx',massKg:1510,wheelbase:2.65,trackWidth:1.56,
-  frontWeightBias:.58,cgHeight:.50,yawInertiaScale:.96,
-  drivetrain:'AWD',driveBiasFront:.45,brakeBiasFront:.62,
-  absEnabled:true,tireProfile:'performance-summer'
-};
-const frontZ=(1-vehicle.frontWeightBias)*vehicle.wheelbase;
-const rearZ=-vehicle.frontWeightBias*vehicle.wheelbase;
-const halfTrack=vehicle.trackWidth/2;
-const contacts=[
-  {front:false,axleIndex:1,side:'left',localX:-halfTrack,localZ:rearZ,contact:true,contactFactor:1},
-  {front:true,axleIndex:0,side:'left',localX:-halfTrack,localZ:frontZ,contact:true,contactFactor:1},
-  {front:false,axleIndex:1,side:'right',localX:halfTrack,localZ:rearZ,contact:true,contactFactor:1},
-  {front:true,axleIndex:0,side:'right',localX:halfTrack,localZ:frontZ,contact:true,contactFactor:1}
-];
-const solver=createPerWheelShadowSolver({hz:120,maxSubSteps:8});
-let reverse=null;
-for(let i=0;i<24;i++){
-  reverse=solver.advance(1/120,{
-    vehicleId:'wrx',vehicle,contacts,
-    speed:-20,heading:0,velocityHeading:0,yawRate:0,
-    centerSteerAngle:0,longitudinalAccel:BRAKE,lateralAccel:0,
-    requestedDriveAccel:0,requestedBrakeAccel:BRAKE,
-    handbrake:false,surfaceId:'asphalt-dry'
+function contactsFor(vehicle){
+  const contacts=[];
+  const axles=Array.isArray(vehicle?.axles)?vehicle.axles:[];
+  for(let axleIndex=0;axleIndex<axles.length;axleIndex++){
+    const axle=axles[axleIndex];
+    const wheelCount=Math.max(2,Math.round(Number(axle?.wheelCount)||2));
+    const wheelsPerSide=Math.max(1,Math.round(wheelCount/2));
+    const halfTrack=Math.max(.25,Number(axle?.trackWidth||vehicle?.trackWidth||1.55)/2);
+    const localZ=Number(axle?.positionM)||0;
+    for(const side of ['left','right']){
+      for(let wheel=0;wheel<wheelsPerSide;wheel++){
+        const dualOffset=wheelsPerSide>1?(wheel-(wheelsPerSide-1)/2)*.08:0;
+        contacts.push({
+          front:localZ>=0,
+          axleIndex,
+          side,
+          localX:(side==='left'?-halfTrack:halfTrack)+(side==='left'?-dualOffset:dualOffset),
+          localZ,
+          contact:true,
+          contactFactor:1
+        });
+      }
+    }
+  }
+  return contacts;
+}
+
+function simulateStraightServiceBrake({vehicleId,vehicle,speed}){
+  const solver=createPerWheelShadowSolver({hz:120,maxSubSteps:8});
+  const contacts=contactsFor(vehicle);
+  const requestedBrakeAccel=serviceBrakeAcceleration({
+    serviceBrake:1,
+    speed,
+    maxBrakeAccel:vehicle.brake
+  });
+  let result=null;
+  for(let i=0;i<36;i++){
+    result=solver.advance(1/120,{
+      vehicleId,vehicle,contacts,
+      speed,heading:0,velocityHeading:0,yawRate:0,
+      centerSteerAngle:0,longitudinalAccel:requestedBrakeAccel,lateralAccel:0,
+      requestedDriveAccel:0,requestedBrakeAccel,
+      handbrake:false,surfaceId:'asphalt-dry'
+    });
+  }
+  return result;
+}
+
+// Grip R9 fleet promotion. The runtime brake path is shared by every selectable
+// vehicle, so validate the invariant against every profile instead of proving it
+// only with the WRX calibration. Each car keeps its own brake capacity, axle
+// bias, ABS policy, tire profile, mass and wheel layout. The articulated tractor
+// is included as well so future shared-runtime changes cannot silently regress it.
+const profileValidation=validateVehicleProfiles();
+assert.equal(profileValidation.ok,true,profileValidation.errors.join('\n'));
+const vehicleSystem=createVehicleSystem({initialId:'wrx'});
+const fleetBrakeResults=[];
+
+for(const info of vehicleSystem.list()){
+  if(vehicleSystem.activeId!==info.id)vehicleSystem.select(info.id);
+  const vehicle=vehicleSystem.physics;
+  const brakeCapacity=Math.max(0,Number(vehicle.brake)||0);
+  assert.ok(brakeCapacity>0,`${info.id}: brake capacity must be positive`);
+
+  const forwardCommand=serviceBrakeAcceleration({serviceBrake:1,speed:20,maxBrakeAccel:brakeCapacity});
+  const reverseCommand=serviceBrakeAcceleration({serviceBrake:1,speed:-20,maxBrakeAccel:brakeCapacity});
+  assert.equal(forwardCommand,-brakeCapacity,`${info.id}: forward service brake must use this vehicle's own brake capacity`);
+  assert.equal(reverseCommand,brakeCapacity,`${info.id}: reverse service brake must use this vehicle's own brake capacity`);
+
+  const forward=simulateStraightServiceBrake({vehicleId:info.id,vehicle,speed:20});
+  const reverse=simulateStraightServiceBrake({vehicleId:info.id,vehicle,speed:-20});
+
+  assert.ok(forward.wheelCount>=4,`${info.id}: braking solver needs physical wheel contacts`);
+  assert.equal(reverse.wheelCount,forward.wheelCount,`${info.id}: reverse braking must preserve wheel layout`);
+  assert.ok(forward.bodyVz>0,`${info.id}: forward scenario must travel forward in body frame`);
+  assert.ok(reverse.bodyVz<0,`${info.id}: reverse scenario must travel rearward in body frame`);
+  assert.ok(forward.predictedAccelZ<-.05,`${info.id}: forward tire force must oppose forward travel (${forward.predictedAccelZ})`);
+  assert.ok(reverse.predictedAccelZ>.05,`${info.id}: reverse tire force must oppose rearward travel (${reverse.predictedAccelZ})`);
+  assert.ok(Math.abs(forward.predictedYawAccel)<.08,`${info.id}: symmetric forward braking invented yaw ${forward.predictedYawAccel}`);
+  assert.ok(Math.abs(reverse.predictedYawAccel)<.08,`${info.id}: symmetric reverse braking invented yaw ${reverse.predictedYawAccel}`);
+
+  const forwardShareTotal=(forward.serviceBrakeShares||[]).reduce((sum,value)=>sum+Number(value||0),0);
+  const reverseShareTotal=(reverse.serviceBrakeShares||[]).reduce((sum,value)=>sum+Number(value||0),0);
+  assert.ok(Math.abs(forwardShareTotal-1)<1e-9,`${info.id}: forward brake distribution must sum to 1`);
+  assert.ok(Math.abs(reverseShareTotal-1)<1e-9,`${info.id}: reverse brake distribution must sum to 1`);
+
+  if(vehicle.absEnabled!==false){
+    assert.ok(forward.wheels.every(w=>!w.locked),`${info.id}: ABS-equipped vehicle locked a wheel in forward service braking`);
+    assert.ok(reverse.wheels.every(w=>!w.locked),`${info.id}: ABS-equipped vehicle locked a wheel in reverse service braking`);
+  }
+
+  fleetBrakeResults.push({
+    id:info.id,
+    brake:brakeCapacity,
+    abs:vehicle.absEnabled!==false,
+    wheels:forward.wheelCount,
+    forwardTireAccelZ:forward.predictedAccelZ,
+    reverseTireAccelZ:reverse.predictedAccelZ
   });
 }
-assert.ok(reverse.bodyVz<0,'reverse scenario must travel rearward in body frame');
-assert.ok(reverse.predictedAccelZ>0,'reverse service-brake tire force must oppose rearward travel');
-assert.ok(Math.abs(reverse.predictedYawAccel)<.05,`symmetric reverse braking invented yaw ${reverse.predictedYawAccel}`);
-assert.ok(reverse.wheels.every(w=>!w.locked),'ABS-equipped WRX must not lock during straight reverse service braking');
 
 // Integration contract: wrapper keeps brake independent, base consumes that
-// channel, and no body-speed sign branch may translate the brake into throttle.
+// channel for the active vehicle profile, and no body-speed sign branch may
+// translate the brake into throttle. This is what makes R9 fleet-wide rather
+// than a WRX-only behavior patch.
 const wrapper=fs.readFileSync(new URL('./src/driving-runtime.js',import.meta.url),'utf8').replace(/\r\n/g,'\n');
 const base=fs.readFileSync(new URL('./src/driving-runtime-base.js',import.meta.url),'utf8').replace(/\r\n/g,'\n');
 assert.match(wrapper,/getServiceBrakeInput:/,'wrapper must expose independent service brake to base runtime');
 assert.doesNotMatch(wrapper,/if\(bodySpeed<-\.15\)[\s\S]{0,220}return serviceBrake/,'legacy reverse-brake-as-throttle adapter remains');
 assert.match(wrapper,/shouldAutoClutchForServiceBrake\(/,'stationary clutch must use real speed helper');
 assert.match(base,/serviceBrakeAcceleration\(/,'base runtime must compute signed brake force independently');
+assert.match(base,/maxBrakeAccel:VEHICLE\.brake/,'base runtime must use the selected vehicle brake capacity');
+assert.match(base,/requestedBrakeAccel\*=combination\.serviceBrakeScale/,'truck/trailer service-brake scaling must remain on the shared R9 channel');
 assert.match(base,/getServiceBrakeInput/,'base runtime must consume service brake channel');
 assert.doesNotMatch(base,/if\(driveThrottle<0\)[\s\S]{0,160}preDriveBodyLongitudinalSpeed>.15/,'negative drivetrain command still doubles as service brake');
 
-console.log('GRIP R9 BRAKE / REVERSE / J-TURN QA: PASS',{
+console.log('GRIP R9 FULL-FLEET BRAKE / REVERSE / J-TURN QA: PASS',{
   jTurnBodySpeed:jBody,
   forwardBrake:serviceBrakeAcceleration({serviceBrake:1,speed:20,maxBrakeAccel:BRAKE}),
   reverseBrake:serviceBrakeAcceleration({serviceBrake:1,speed:-20,maxBrakeAccel:BRAKE}),
-  reverseTireAccelZ:reverse.predictedAccelZ,
-  reverseYawAccel:reverse.predictedYawAccel,
-  reverseAbsWheels:reverse.wheels.filter(w=>w.absActive).length
+  fleet:fleetBrakeResults
 });
