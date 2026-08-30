@@ -1,3 +1,4 @@
+// R11 retry after aligning the legacy R4 regression with sideslip-gated drift semantics.
 import fs from 'node:fs';
 import {spawnSync} from 'node:child_process';
 
