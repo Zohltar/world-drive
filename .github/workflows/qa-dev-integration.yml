@@ -52,6 +52,8 @@ jobs:
         run: node qa-grip-braking-r8.mjs
       - name: Grip R9 reverse and J-turn braking QA
         run: node qa-grip-braking-r9.mjs
+      - name: Grip R10 uphill load-transfer stability QA
+        run: node qa-grip-uphill-r10.mjs
       - name: Terrain R1 visual ownership QA
         run: node qa-terrain-r1-legacy-ownership.mjs
       - name: Terrain R2 road imagery alignment QA
