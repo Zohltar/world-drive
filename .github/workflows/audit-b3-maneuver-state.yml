@@ -1,0 +1,16 @@
+name: Audit B3 maneuver state
+on:
+  push:
+    branches: ['audit/code-debt-b3']
+    paths:
+      - 'qa/b3-maneuver-state-reference-audit.mjs'
+      - '.github/workflows/audit-b3-maneuver-state.yml'
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: node qa/b3-maneuver-state-reference-audit.mjs
