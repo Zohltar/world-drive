@@ -1,0 +1,40 @@
+name: Validate F1 QA cleanup R23
+
+on:
+  push:
+    branches:
+      - audit/f1-qa-cleanup-r23
+    paths:
+      - 'qa-steering-rack-current.mjs'
+      - 'qa/V21_21_23_F1_STABILITY_QA.mjs'
+      - 'qa/V21_21_24_F1_STEERING_QA.mjs'
+      - 'qa/V21_21_25_STEERING_RACK_QA.mjs'
+      - '.github/workflows/f1-qa-cleanup-r23-temp.yml'
+  workflow_dispatch:
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+      - name: Current F1 / rack coverage
+        run: |
+          node qa-steering-rack-current.mjs
+          node qa-grip-f1-legacy-r23.mjs
+          node qa-grip-f1-front-slip-r21.mjs
+          node qa-grip-f1-steering-r22.mjs
+          node qa/V21_21_21_REAL_MASS_AERO_QA.mjs
+          node qa-grip-jump-r6.mjs
+      - name: No stale F1 QA references
+        shell: bash
+        run: |
+          ! grep -R -nE 'V21_21_23_F1_STABILITY_QA|V21_21_24_F1_STEERING_QA|V21_21_25_STEERING_RACK_QA' .github qa --exclude='f1-qa-cleanup-r23-temp.yml'
+      - name: Full stress and build
+        run: |
+          npm run qa:stress
+          node qa/DEV_DRIVING_SIM_QA.mjs
+          npm run build
