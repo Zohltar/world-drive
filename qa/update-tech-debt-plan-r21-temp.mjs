@@ -1,0 +1,14 @@
+import fs from 'node:fs';
+const path='docs/WORLD_DRIVE_TECH_DEBT_PLAN.md';
+let s=fs.readFileSync(path,'utf8');
+const chain='- R20: reduce rear locked-tire lateral force during handbrake drift\n';
+if(!s.includes(chain))throw new Error('physics chain R20 anchor missing');
+s=s.replace(chain,chain+'- R21: prevent high-downforce F1 front-slip loss from creating an opposing legacy counter-yaw\n');
+const b3='- Human validation: **pending** — ID.4/i3 handbrake-turn and J-turn continuity plus WRX/Civic comparison must be checked in-game before B3 is marked DONE.\n';
+if(!s.includes(b3))throw new Error('B3 human validation anchor missing');
+s=s.replace(b3,b3+'- Human-validation interruption: F1 high-speed front-slip exposed a separate counter-yaw defect; fixed as Grip R21 on `dev` (`97e73d7d`) with permanent QA workflow commit `434dd0bc`. B3 remains pending until the requested in-game maneuver checks, now including F1 high-speed understeer feel, are confirmed.\n');
+const log='# 7. Work log\n\n';
+if(!s.includes(log))throw new Error('work log anchor missing');
+s=s.replace(log,`${log}## 2026-08-30 — Grip R21: F1 high-speed front-slip counter-yaw\n\n- Human validation of B3 exposed abnormal F1 behavior at high speed when the front axle lost grip: the chassis could appear to turn away from the intended trajectory.\n- Full-runtime probe showed the F1 legacy front-force-loss yaw term reaching roughly -72 deg/s² at 220 km/h, -110 deg/s² at 260 km/h and -131 deg/s² near 300 km/h, versus only about +/-3–4 deg/s² on WRX/Countach.\n- Root cause: R16 detected front saturation only from axle slip telemetry. On the F1 both axle slip values could saturate equally while the front retained materially less lateral force, letting the large opposing legacy yaw moment re-enter.\n- R21 extends the R16 semantic filter with actual front/rear lateral-force retention scales. When the front axle is materially more force-limited and legacy yaw opposes the bicycle steering direction, that legacy counter-yaw is suppressed; real drift/countersteer remains owned by the per-wheel physical solver.\n- Source commit on dev: \`97e73d7d\`; permanent R21 QA workflow commit/current validated code HEAD before this docs update: \`434dd0bc\`.\n- Candidate run \`33340074664\`: PASS R21 full-runtime 180/220/260/300 km/h probe, R4/R7/R11/R12/R16/R19/R20, V21.31 stress, 288 driving cases and build.\n- Permanent R21 workflow run \`33340235290\`: PASS. Final Dev Integration run \`33340235275\`: PASS all 60 steps.\n- Required human check: F1 at roughly 220–300 km/h, provoke front understeer. It should plow/widen the line while continuing to yaw in the commanded direction; it must not pull/rotate opposite the steering/trajectory. Compare to WRX/Countach.\n- B3 remains HUMAN VALIDATION PENDING.\n\n`);
+fs.writeFileSync(path,s);
+console.log('TECH DEBT PLAN R21 UPDATE: PASS');
