@@ -66,6 +66,12 @@ jobs:
         run: node qa-skid-contact-alignment-r15.mjs
       - name: Grip R16 FWD power-understeer counter-yaw QA
         run: node qa-grip-fwd-power-r16.mjs
+      - name: Grip R17 EV handbrake and J-turn momentum QA
+        shell: bash
+        run: |
+          node qa-grip-ev-jturn-r17.mjs
+          ! grep -nE '\brequestedDriveAccel\s*\*=' src/driving-runtime-base.js
+          grep -n 'requestedBodyDriveAccel\*=' src/driving-runtime-base.js
       - name: Terrain R1 visual ownership QA
         run: node qa-terrain-r1-legacy-ownership.mjs
       - name: Terrain R2 road imagery alignment QA
