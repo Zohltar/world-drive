@@ -1,3 +1,4 @@
+import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
@@ -7,7 +8,8 @@ const targets=[
   'src/forest-chunk-streamer-p912.js',
   'src/forest-chunk-streamer-p928.js',
   'qa-forest-p912-stress.mjs',
-  'qa-forest-p928-instrumentation.mjs'
+  'qa-forest-p928-instrumentation.mjs',
+  'qa-forest-p912-runtime.mjs'
 ];
 const roots=['src','qa','tools','.github','server','electron'].map(p=>path.join(ROOT,p)).filter(fs.existsSync);
 const rootFiles=fs.readdirSync(ROOT,{withFileTypes:true})
@@ -40,7 +42,7 @@ for(const target of targets){
       hits.push({file:rel,lines});
     }
   }
-  reports.push({target,hits});
+  reports.push({target,hits,exists:fs.existsSync(path.join(ROOT,target))});
 }
 const entry=fs.readFileSync(path.join(ROOT,'src/forest-chunk-streamer.js'),'utf8');
 const wrapper=fs.readFileSync(path.join(ROOT,'src/forest-chunk-streamer-p929-wrapper.js'),'utf8');
@@ -54,8 +56,15 @@ const activeChain={
   wrapperImportsP928:wrapper.includes('forest-chunk-streamer-p928')
 };
 console.log('A5 FOREST REFERENCE AUDIT',JSON.stringify({activeChain,reports},null,2));
-if(!activeChain.entryToP929Wrapper||!activeChain.wrapperToP929)throw new Error('active P9.29 entry chain is not as expected');
-if(activeChain.activeImportsP912||activeChain.activeImportsP928||activeChain.wrapperImportsP912||activeChain.wrapperImportsP928){
-  throw new Error('active P9.29 path still imports historical P9.12/P9.28 streamer');
+assert.ok(activeChain.entryToP929Wrapper&&activeChain.wrapperToP929,'active P9.29 entry chain is not as expected');
+assert.ok(!activeChain.activeImportsP912&&!activeChain.activeImportsP928&&!activeChain.wrapperImportsP912&&!activeChain.wrapperImportsP928,
+  'active P9.29 path still imports historical P9.12/P9.28 streamer');
+for(const report of reports){
+  assert.equal(report.exists,false,`${report.target} should be removed after A5`);
+  assert.deepEqual(report.hits,[],`${report.target} still has repository references`);
 }
+assert.ok(fs.existsSync(path.join(ROOT,'src/forest-terrain-sampler-p912.js')),
+  'active optimized forest terrain sampler must remain present');
+assert.ok(active.includes("from './forest-terrain-sampler-p912.js'"),
+  'active P9.29 streamer must retain the optimized P9.12 terrain sampler dependency');
 console.log('A5 FOREST REFERENCE AUDIT: PASS');
