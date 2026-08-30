@@ -132,6 +132,23 @@ export function driftKinematicCoupling({sideslipRad=0,forceCoupledSlide=0}={}){
   return 1-.94*Math.max(sideT,forceT);
 }
 
+// Grip R16 — front-axle saturation is understeer, not reverse steering.
+// The legacy grip estimator expresses lost front lateral force as an opposing
+// yaw moment. In the near/bicycle transition that moment was integrated as an
+// independent yaw acceleration, so a FWD car on throttle could cross through
+// zero yaw and point opposite the steering command. The already-scaled bicycle
+// yaw target owns ordinary understeer; genuine drift/countersteer remains owned
+// by the per-wheel physical solver blended later.
+export function legacyGripYawAcceleration({frictionYawAccel=0,yawRate=0,frontSlip=0,rearSlip=0}={}){
+  const accel=Number(frictionYawAccel)||0;
+  const targetYaw=Number(yawRate)||0;
+  const front=Math.max(0,Number(frontSlip)||0);
+  const rear=Math.max(0,Number(rearSlip)||0);
+  const frontDominated=front>rear+.06;
+  if(frontDominated&&Math.abs(targetYaw)>.01&&accel*targetYaw<0)return 0;
+  return accel;
+}
+
 export function jTurnTransientYawActive({
   bodyLongitudinalSpeed=0,
   speedAbs=0,
@@ -533,8 +550,14 @@ export function createDrivingRuntime({
     const yawGripResponseScale=airborneNow
       ?0
       :driftKinematicScale*(1-.85*driftPhysicalAuthority);
-    const authoritativeYawAccel=blendDriftForce(
+    const legacyYawAccel=legacyGripYawAcceleration({
       frictionYawAccel,
+      yawRate,
+      frontSlip:targetFrontSlip,
+      rearSlip:targetRearSlip
+    });
+    const authoritativeYawAccel=blendDriftForce(
+      legacyYawAccel,
       physicalTireYawAccel,
       driftPhysicalAuthority
     );
