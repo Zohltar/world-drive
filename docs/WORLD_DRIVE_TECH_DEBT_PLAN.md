@@ -53,6 +53,7 @@ Do **not** assume old conversation memory is more current than this file + GitHu
 - R19: remove legacy 90° J-turn steering/yaw wall
 - R20: reduce rear locked-tire lateral force during handbrake drift
 - R21: prevent high-downforce F1 front-slip loss from creating an opposing legacy counter-yaw
+- R22: progressively soften F1 analog steering above ~145 km/h while preserving full-stick mechanical lock
 
 ---
 
@@ -385,6 +386,7 @@ Completion record:
 - Final Dev Integration run `33337214381`: PASS all 60 steps including the permanent B3 gate, Grip R2–R20, forest/frame pacing, WebGL, live route smoke and production build/code split.
 - Human validation: **pending** — ID.4/i3 handbrake-turn and J-turn continuity plus WRX/Civic comparison must be checked in-game before B3 is marked DONE.
 - Human-validation interruption: F1 high-speed front-slip exposed a separate counter-yaw defect; fixed as Grip R21 on `dev` (`97e73d7d`) with permanent QA workflow commit `434dd0bc`. B3 remains pending until the requested in-game maneuver checks, now including F1 high-speed understeer feel, are confirmed.
+- Follow-up steering calibration: F1 remained too reactive at high speed even after R21. Grip R22 source commit `49223ab` adds a racecar-only second input-exponent stage from ~145 km/h to ~324 km/h; permanent QA workflow commit `2d3274ac`; clean post-temp HEAD `39fe2d36`. Half-stick mapping: ~6.2% rack at 150 km/h, 2.8% at 220, 1.7% at 250, 0.86% at 300; 100% stick remains 100% rack. R22 targeted run `33340583498`, permanent R22 run `33340620476`, final clean Dev Integration run `33340642930` all PASS. Human validation pending for F1 steering feel at 180–300+ km/h.
 - Result so far: automated equivalence and ownership boundaries are validated; final acceptance awaits driver feel/continuous-rotation confirmation.
 
 ---
