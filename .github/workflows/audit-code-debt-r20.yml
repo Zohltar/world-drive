@@ -20,3 +20,5 @@ jobs:
         run: node qa/DEV_INTEGRATION_AUDIT.mjs
       - name: A1 active road semantics probe
         run: node qa/probe-a1-active-road.mjs
+      - name: A1 migrated deterministic road QA
+        run: node qa/A1_ACTIVE_ROAD_QA.mjs
