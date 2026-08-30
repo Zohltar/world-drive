@@ -12,7 +12,12 @@ const yawOld='    let yawRate=lateralEnvelope.yawRate*truckTrailerSystem.tractor
 const yawNew='    let yawRate=lateralEnvelope.yawRate*truckTrailerSystem.tractorYawScale(speedAbs);';
 if(!runtime.includes(yawOld))throw new Error('yaw multiplier anchor missing');
 runtime=runtime.replace(yawOld,yawNew);
+const latOld='    const requestedLatAccel=lateralEnvelope.requestedLatAccel*steeringAuthority;';
+const latNew='    const requestedLatAccel=lateralEnvelope.requestedLatAccel;';
+if(!runtime.includes(latOld))throw new Error('lateral acceleration authority multiplier anchor missing');
+runtime=runtime.replace(latOld,latNew);
 if(runtime.includes('postSpinSteeringAuthority'))throw new Error('postSpinSteeringAuthority still present in runtime');
+if(/\bsteeringAuthority\b/.test(runtime))throw new Error('legacy steeringAuthority indirection still present in runtime');
 fs.writeFileSync(runtimePath,runtime);
 
 const qaPath='qa-grip-drift-r4.mjs';
@@ -23,7 +28,7 @@ if(!qa.includes(loop))throw new Error('R4 authority loop anchor missing');
 qa=qa.replace(loop,'');
 const sourceAnchor="assert.ok(!source.includes('projectionDeadband=speedAbs*.06'),'legacy 90-degree steering sign deadband still present');";
 if(!qa.includes(sourceAnchor))throw new Error('R4 source assertion anchor missing');
-qa=qa.replace(sourceAnchor,`assert.ok(!source.includes('postSpinSteeringAuthority'),'B1 no-op steering authority helper must remain removed');\nassert.ok(!source.includes('steeringAuthority=postSpin'),'B1 hidden steering-authority variable must remain removed');\n${sourceAnchor}`);
+qa=qa.replace(sourceAnchor,`assert.ok(!source.includes('postSpinSteeringAuthority'),'B1 no-op steering authority helper must remain removed');\nassert.ok(!/\\bsteeringAuthority\\b/.test(source),'B1 hidden steering-authority indirection must remain removed');\n${sourceAnchor}`);
 if(qa.includes('postSpinSteeringAuthority,'))throw new Error('R4 import still references helper');
 fs.writeFileSync(qaPath,qa);
 
