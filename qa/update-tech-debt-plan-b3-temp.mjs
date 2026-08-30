@@ -1,0 +1,17 @@
+import fs from 'node:fs';
+const path='docs/WORLD_DRIVE_TECH_DEBT_PLAN.md';
+let s=fs.readFileSync(path,'utf8');
+const status='### B3 — Extract maneuver state from `driving-runtime-base.js` **[P0/P1]**\n\nStatus: **TODO**';
+if(!s.includes(status))throw new Error('B3 status anchor missing');
+s=s.replace(status,'### B3 — Extract maneuver state from `driving-runtime-base.js` **[P0/P1]**\n\nStatus: **AUTOMATION COMPLETE — HUMAN VALIDATION PENDING (2026-08-30)**');
+const completion='Completion record:\n- Commit: _pending_\n- QA: _pending_';
+if(!s.includes(completion))throw new Error('B3 completion anchor missing');
+s=s.replace(completion,`Completion record:\n- Runtime extraction commit: \`d619c505\` — added \`src/physics/maneuver-state.js\`, moved J-turn entry/exit/latch helpers plus rear-handbrake slip transient state out of \`driving-runtime-base.js\`, and preserved their original frame ordering.\n- Permanent CI gate commit / current validated HEAD: \`c01b0c7f\` — added \`qa-maneuver-state-b3.mjs\` to Dev Integration.\n- Ownership boundary: maneuver-state owns only J-turn latch memory and rear-handbrake slip memory/transitions; tire-force solver, general yaw physics, momentum direction and vehicle calibration remain outside this module.\n- Historical QA cleanup: \`V21_27_HANDRAKE_180_LOW_SPEED_QA.mjs\` was updated to current R4 semantics (handbrake-held spin keeps steering-speed magnitude; released steering follows body-longitudinal cosine through 90 degrees) and its brittle 20 km/h transition bound was widened around the unchanged current formula.\n- Candidate validation run \`33337076416\`: PASS B3 ownership QA, maneuver regressions, full V21.31 stress, 288-case driving matrix and production build.\n- Final Dev Integration run \`33337214381\`: PASS all 60 steps including the permanent B3 gate, Grip R2–R20, forest/frame pacing, WebGL, live route smoke and production build/code split.\n- Human validation: **pending** — ID.4/i3 handbrake-turn and J-turn continuity plus WRX/Civic comparison must be checked in-game before B3 is marked DONE.\n- Result so far: automated equivalence and ownership boundaries are validated; final acceptance awaits driver feel/continuous-rotation confirmation.`);
+const nextRe=/# 6\. Recommended next task[\s\S]*?(?=\n---\n\n# 7\. Work log)/;
+if(nextRe.test(s)){
+  s=s.replace(nextRe,`# 6. Recommended next task\n\n**Next: complete B3 human validation before starting B4.**\n\nRun the four targeted in-game maneuver checks recorded in the B3 completion record. If they pass, mark B3 DONE and proceed to B4 momentum-direction ownership. If any maneuver feels different, investigate B3 before further architectural cleanup.\n`);
+}
+const log='# 7. Work log\n\n';
+if(s.includes(log))s=s.replace(log,`${log}## 2026-08-30 — B3 automation complete; human maneuver validation pending\n\n- Extracted maneuver-specific transient state into \`src/physics/maneuver-state.js\` while preserving exact frame-order update points in the runtime.\n- Added permanent ownership QA preventing maneuver-state from absorbing tire/yaw physics.\n- Modernized one stale V21.27 handbrake QA to the current R4 semantics without changing runtime formulas.\n- Candidate \`33337076416\` PASS; final Dev Integration \`33337214381\` PASS 60 steps.\n- Hold B4 until ID.4/i3 handbrake/J-turn and WRX/Civic comparison are manually validated.\n\n`);
+fs.writeFileSync(path,s);
+console.log('TECH DEBT PLAN B3 PENDING-HUMAN UPDATE: PASS');
