@@ -72,6 +72,8 @@ jobs:
           node qa-grip-ev-jturn-r17.mjs
           ! grep -nE '\brequestedDriveAccel\s*\*=' src/driving-runtime-base.js
           grep -n 'requestedBodyDriveAccel\*=' src/driving-runtime-base.js
+      - name: Grip R18 EV handbrake and J-turn rotation QA
+        run: node qa-grip-ev-maneuver-r18.mjs
       - name: Terrain R1 visual ownership QA
         run: node qa-terrain-r1-legacy-ownership.mjs
       - name: Terrain R2 road imagery alignment QA
