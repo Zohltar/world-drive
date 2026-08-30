@@ -1,0 +1,43 @@
+name: Validate F1 steering R22.1
+
+on:
+  push:
+    branches:
+      - audit/f1-steering-r22-1
+    paths:
+      - 'qa/apply-f1-steering-r22-1-temp.mjs'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Apply R22.1
+        run: node qa/apply-f1-steering-r22-1-temp.mjs
+      - name: Steering regression
+        run: |
+          node qa-grip-f1-steering-r22.mjs
+          node qa-grip-steering-input-r13.mjs
+          node qa-grip-f1-front-slip-r21.mjs
+      - name: Full driving and stress regression
+        run: |
+          node qa/DEV_DRIVING_SIM_QA.mjs
+          npm run qa:stress
+      - name: Production build
+        run: npm run build
+      - name: Commit R22.1 candidate
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add src/vehicle-dynamics-v21.29.js src/vehicle-system.js qa-grip-f1-steering-r22.mjs
+          git diff --cached --quiet || git commit -m 'Grip R22.1: further soften F1 steering above 150 kmh'
+          git push
