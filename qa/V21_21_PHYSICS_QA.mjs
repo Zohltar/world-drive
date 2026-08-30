@@ -92,9 +92,9 @@ for(const id of ids){
 
 // Refactor regression: road-car steering target shaping and the pre-slip lateral
 // envelope remain numerically identical to V21.20.1 outside deliberate changes.
-// V21.21.24 deliberately gives the F1 its own progressive rack/envelope mapping;
-// that profile is covered by V21_21_24_F1_STEERING_QA.mjs below instead of this
-// historical road-car equivalence check.
+// The F1 now has its own current steering / physical-drift ownership coverage;
+// this historical equivalence block therefore only checks finite/bounded F1
+// outputs rather than enforcing abandoned V21.21 rack/envelope semantics.
 for(const [id,v] of Object.entries(profiles)){
   for(const speed of [0,3,9,18,25,32,55,90]){
     for(const input of [-1,-.55,-.15,.15,.55,1]){
