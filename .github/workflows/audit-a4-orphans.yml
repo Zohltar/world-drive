@@ -1,0 +1,18 @@
+name: Audit A4 orphan modules
+on:
+  push:
+    branches: [audit/code-debt-a4]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: node qa/a4-orphan-reference-scan.mjs
+      - run: node qa/DEV_INTEGRATION_AUDIT.mjs
