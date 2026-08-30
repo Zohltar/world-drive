@@ -424,7 +424,22 @@ export function createPerWheelShadowSolver({hz=120,maxSubSteps=8}={}){
       )
     );
     const body=bodyVelocityFromWorldMotion(input);
-    const axleLoads=axleLoadFractions(vehicle,axles,input?.longitudinalAccel);
+    // Grip R10 — slope gravity must not masquerade as tire-force load transfer.
+    // The chassis net acceleration includes grade, rolling resistance and aero.
+    // Feeding that net value into axle loading unloaded the rear on climbs, so a
+    // small steering correction at speed could provoke artificial oversteer.
+    // Use only longitudinal force requested through the contact patches here.
+    const requestedTireForceAccel=
+      finite(input?.requestedDriveAccel,0)+
+      finite(input?.requestedBrakeAccel,0);
+    const explicitLoadTransferAccel=Number(input?.longitudinalLoadTransferAccel);
+    const transferLimit=Math.max(3,Math.abs(finite(vehicle?.longitudinalAccelLimit,9.80665)));
+    const longitudinalLoadTransferAccel=clamp(
+      Number.isFinite(explicitLoadTransferAccel)?explicitLoadTransferAccel:requestedTireForceAccel,
+      -transferLimit,
+      transferLimit
+    );
+    const axleLoads=axleLoadFractions(vehicle,axles,longitudinalLoadTransferAccel);
     const counts=contactCounts(contacts,axles.length);
     const tire=tireProfileForVehicle(key,vehicle);
     const geometry=ackermannSteeringAngles({
@@ -571,6 +586,8 @@ export function createPerWheelShadowSolver({hz=120,maxSubSteps=8}={}){
       bodyVx:body.vx,
       bodyVz:body.vz,
       bodySideslipRad:body.sideslipRad,
+      longitudinalLoadTransferAccel,
+      axleLoads:[...axleLoads],
       centerSteerAngle:finite(input?.centerSteerAngle),
       ackermann:{...geometry},
       serviceBrakeShares:[...effectiveBrakeShares],
