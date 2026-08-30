@@ -54,6 +54,8 @@ jobs:
         run: node qa-grip-braking-r9.mjs
       - name: Grip R10 uphill load-transfer stability QA
         run: node qa-grip-uphill-r10.mjs
+      - name: Grip R11 high-speed trajectory stability QA
+        run: node qa-grip-high-speed-r11.mjs
       - name: Terrain R1 visual ownership QA
         run: node qa-terrain-r1-legacy-ownership.mjs
       - name: Terrain R2 road imagery alignment QA
