@@ -17,6 +17,15 @@ function smoothstep01(value){
   return t*t*(3-2*t);
 }
 
+export function driftForceSideslipGate(sideslipRad=0){
+  const beta=Math.abs(finite(sideslipRad,0));
+  // Grip R11 — tire saturation alone is not a drift. A normal high-speed lane
+  // correction can momentarily consume most of the friction circle while the
+  // chassis is still aligned with its momentum. Do not promote the drift solver
+  // until body sideslip has clearly left the normal road-car region.
+  return smoothstep01((beta-.07)/.09);
+}
+
 export function driftTireForceAuthority({sideslipRad=0,forceCoupledSlide=0}={}){
   const beta=Math.abs(finite(sideslipRad,0));
 
@@ -25,7 +34,10 @@ export function driftTireForceAuthority({sideslipRad=0,forceCoupledSlide=0}={}){
   // authoritative by roughly 25 degrees. Existing axle saturation can bring the
   // physical solver in slightly earlier without creating an on/off transition.
   const sideslipAuthority=smoothstep01((beta-.10)/.34);
-  const saturationAuthority=smoothstep01((finite(forceCoupledSlide,0)-.08)/.58)*.82;
+  const saturationAuthority=
+    smoothstep01((finite(forceCoupledSlide,0)-.08)/.58)*
+    .82*
+    driftForceSideslipGate(beta);
   return Math.max(sideslipAuthority,saturationAuthority);
 }
 

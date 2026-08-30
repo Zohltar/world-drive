@@ -2,6 +2,7 @@ import { createPerWheelShadowSolver } from './physics/per-wheel-shadow-solver.js
 import { effectiveTireFriction, tireProfileForVehicle } from './physics/tire-model.js';
 import {
   driftTireForceAuthority,
+  driftForceSideslipGate,
   tireForceTrajectoryYawRate,
   blendDriftForce
 } from './physics/drift-force-coupling.js';
@@ -125,7 +126,9 @@ export function driftKinematicCoupling({sideslipRad=0,forceCoupledSlide=0}={}){
   // Near 90 degrees only 6% of the kinematic yaw target remains; angular inertia
   // and measured tire-force imbalance dominate instead.
   const sideT=smoothstep01((sideslip-.30)/.85);
-  const forceT=smoothstep01((slide-.12)/.68);
+  const forceT=
+    smoothstep01((slide-.12)/.68)*
+    driftForceSideslipGate(sideslip);
   return 1-.94*Math.max(sideT,forceT);
 }
 
@@ -577,7 +580,7 @@ export function createDrivingRuntime({
       const forceDominatedDrift=
         !airborneNow&&
         speedAbs>4&&
-        (driftPhysicalAuthority>.12||forceCoupledSlide>.10||driftKinematicScale<.88);
+        (driftPhysicalAuthority>.12||driftKinematicScale<.88);
       if(forceDominatedDrift){
         const signedSpeedForCurvature=Math.abs(speed)>.5?speed:Math.sign(speed||1)*.5;
         const legacyForceTrajectoryYawRate=netLateralAccel/signedSpeedForCurvature;
