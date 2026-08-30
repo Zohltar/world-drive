@@ -174,9 +174,13 @@ export function steeringCommand({vehicle,speedAbs=0,input=0}={},out=null){
     18,
     safeNumber(vehicle?.steeringCurveFullSpeedMps,40)
   );
+  // Grip R13 — progressive highway steering. V21.29 owns the active steering
+  // curve, so tune it here rather than in the frozen base implementation. Keep
+  // low-speed steering unchanged and preserve 100% input = 100% mechanical lock.
+  // At full speed: 25% stick ~= 0.39% rack, 50% ~= 6.25%, 85% ~= 52%.
   const steeringCurveMaxExponent=Math.max(
-    1.4,
-    safeNumber(vehicle?.steeringInputExponentHigh,3.2)
+    4.0,
+    safeNumber(vehicle?.steeringInputExponentHigh,4.0)
   );
   const steeringCurveT=smoothstep01(v/steeringCurveFullSpeedMps);
   const steeringInputExponent=
