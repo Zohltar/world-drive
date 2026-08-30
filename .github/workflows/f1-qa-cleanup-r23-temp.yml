@@ -6,11 +6,15 @@ on:
       - audit/f1-qa-cleanup-r23
     paths:
       - 'qa-steering-rack-current.mjs'
+      - 'qa/fix-f1-qa-comment-temp.mjs'
       - 'qa/V21_21_23_F1_STABILITY_QA.mjs'
       - 'qa/V21_21_24_F1_STEERING_QA.mjs'
       - 'qa/V21_21_25_STEERING_RACK_QA.mjs'
       - '.github/workflows/f1-qa-cleanup-r23-temp.yml'
   workflow_dispatch:
+
+permissions:
+  contents: write
 
 jobs:
   validate:
@@ -21,6 +25,8 @@ jobs:
         with:
           node-version: 22
       - run: npm ci
+      - name: Remove final stale F1 QA reference
+        run: node qa/fix-f1-qa-comment-temp.mjs
       - name: Current F1 / rack coverage
         run: |
           node qa-steering-rack-current.mjs
@@ -38,3 +44,10 @@ jobs:
           npm run qa:stress
           node qa/DEV_DRIVING_SIM_QA.mjs
           npm run build
+      - name: Commit current QA cleanup
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add qa/V21_21_PHYSICS_QA.mjs
+          git diff --cached --quiet || git commit -m 'QA: remove stale F1 steering-test reference'
+          git push
