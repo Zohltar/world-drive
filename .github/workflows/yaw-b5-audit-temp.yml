@@ -1,0 +1,20 @@
+name: Cleanup B5 yaw ownership audit
+
+on:
+  push:
+    branches:
+      - audit/yaw-b5
+    paths:
+      - 'qa/yaw-b5-audit-temp.mjs'
+      - '.github/workflows/yaw-b5-audit-temp.yml'
+  workflow_dispatch:
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: node qa/yaw-b5-audit-temp.mjs
