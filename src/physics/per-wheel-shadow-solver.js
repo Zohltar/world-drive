@@ -542,11 +542,16 @@ export function createPerWheelShadowSolver({hz=120,maxSubSteps=8}={}){
         // actual contact-patch velocity in the chassis frame. The old wheel-
         // axis brush calculation could rotate a large braking force sideways
         // with steering lock and yaw the car opposite the driver's command.
+        const handbrakeLockedLateralScale=
+          handbrake&&rear
+            ?clamp(finite(vehicle?.handbrakeLockedLateralScale,.46),.25,1)
+            :1;
         const groundSlide=lockedTireGroundForce({
           bodyX:patch.bodyX,
           bodyZ:patch.bodyZ,
           normalLoadN,
           slideMu:force?.slideMu,
+          lateralScale:handbrakeLockedLateralScale,
           steerAngle,
           localX,
           localZ

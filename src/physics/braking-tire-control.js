@@ -54,6 +54,7 @@ export function lockedTireGroundForce({
   bodyZ=0,
   normalLoadN=0,
   slideMu=.75,
+  lateralScale=1,
   steerAngle=0,
   localX=0,
   localZ=0
@@ -63,21 +64,26 @@ export function lockedTireGroundForce({
   const speed=Math.hypot(vx,vz);
   const fz=Math.max(0,finite(normalLoadN,0));
   if(speed<.20||fz<=1){
-    return {forceX:0,forceZ:0,fxWheel:0,fyWheel:0,yawMomentNm:0,mu:0};
+    return {forceX:0,forceZ:0,fxWheel:0,fyWheel:0,yawMomentNm:0,mu:0,lateralScale:1};
   }
 
   const mu=clamp(Math.abs(finite(slideMu,.75)),.05,2.5);
+  const crossScale=clamp(Math.abs(finite(lateralScale,1)),.05,1);
   const magnitude=mu*fz;
-  const forceX=-magnitude*vx/speed;
-  const forceZ=-magnitude*vz/speed;
-
-  // Convert the physical body-frame force back to wheel coordinates only for
-  // diagnostics. The body-frame vector above is the authoritative direction.
   const delta=finite(steerAngle,0);
-  const s=Math.sin(delta),c=Math.cos(delta);
-  const fxWheel=forceX*s+forceZ*c;
-  const fyWheel=forceX*c-forceZ*s;
+  const sinD=Math.sin(delta),cosD=Math.cos(delta);
+
+  // Grip R20 — a fully locked tire still has directional tread/carcass friction.
+  // Preserve full kinetic braking along the tire's rolling axis, while allowing
+  // a handbrake-locked rear tire to have lower cross-tread sliding authority.
+  // lateralScale=1 reproduces the previous isotropic R8 force exactly.
+  const vLong=vx*sinD+vz*cosD;
+  const vLat=vx*cosD-vz*sinD;
+  const fxWheel=-magnitude*(vLong/speed);
+  const fyWheel=-magnitude*crossScale*(vLat/speed);
+  const forceX=fxWheel*sinD+fyWheel*cosD;
+  const forceZ=fxWheel*cosD-fyWheel*sinD;
   const yawMomentNm=finite(localZ,0)*forceX-finite(localX,0)*forceZ;
 
-  return {forceX,forceZ,fxWheel,fyWheel,yawMomentNm,mu};
+  return {forceX,forceZ,fxWheel,fyWheel,yawMomentNm,mu,lateralScale:crossScale};
 }
