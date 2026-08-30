@@ -1,0 +1,11 @@
+import fs from 'node:fs';
+const path='qa-grip-full-runtime-180-probe-r20.mjs';
+let s=fs.readFileSync(path,'utf8');
+if(!s.includes("handbrake:t=>t>=.18&&t<1.8"))throw new Error('R20 probe duration anchor not found');
+s=s.replace("handbrake:t=>t>=.18&&t<1.8","handbrake:t=>t>=.18&&t<3.0");
+const anchor=`  const rows=ids.map(id=>run(id,scenario));\n  console.table(rows.map(r=>({id:r.id,maxHeading:r.maxHeading,maxSlip:r.maxSlip,finalSpeedKmh:r.finalSpeedKmh,finalYawDegS:r.finalYawDegS,reversalCount:r.reversalCount})));`;
+const repl=`  const rows=ids.map(id=>run(id,scenario));\n  if(scenario.name==='HB_HELD_60KPH'){\n    for(const targetId of ['id4','i3_2017']){\n      const row=rows.find(r=>r.id===targetId);\n      const cross=row?.milestones?.[120];\n      if(!cross||cross.t>=3.0){\n        throw new Error(\`${'${targetId}'} failed to cross 120deg while handbrake remained applied: ${'${JSON.stringify(row)}'}\`);\n      }\n      const at90=row?.milestones?.[90];\n      if(!at90||Math.abs(at90.yaw)<75){\n        throw new Error(\`${'${targetId}'} yaw collapsed near 90deg: ${'${JSON.stringify(row)}'}\`);\n      }\n    }\n  }\n  console.table(rows.map(r=>({id:r.id,maxHeading:r.maxHeading,maxSlip:r.maxSlip,finalSpeedKmh:r.finalSpeedKmh,finalYawDegS:r.finalYawDegS,reversalCount:r.reversalCount})));`;
+if(!s.includes(anchor))throw new Error('R20 probe assertion anchor not found');
+s=s.replace(anchor,repl);
+fs.writeFileSync(path,s);
+console.log('Finalized permanent R20 full-runtime handbrake regression');
