@@ -187,7 +187,7 @@ Completion record:
 
 ### A4 — Review/remove fully unreferenced orphan modules **[P1]**
 
-Status: **TODO**
+Status: **DONE — 2026-08-30**
 
 Candidates with no runtime and no QA references at audit time:
 - `src/forest-runtime-data/forest-pack-00.js`
@@ -204,8 +204,11 @@ Special note:
 - `pine-tree-runtime.js` embeds a large base64 geometry payload; removing it is useful for repository clarity if genuinely unused.
 
 Completion record:
-- Commit: _pending_
-- QA: _pending_
+- Exact-reference audit branch: `audit/code-debt-a4`; strict scanner commit `47a06cf8` verified no exact runtime/QA/tooling imports and no convention-based dynamic loader for the four candidates.
+- Removal commits: `5f6e4c98` forest pack; `661cbcc2` obsolete forest terrain sampler; `40c5329d` embedded pine runtime; `ddf40364` unused road metadata service.
+- Important audit correction: the first scanner pass produced a false positive because `forest-terrain-sampler` is a substring of the active `forest-terrain-sampler-p912.js` name and `createForestTerrainSampler` is a prefix of `createForestTerrainSamplerP912`. Exact matching confirmed the deleted sampler was not used. The active P9.29 streamer still imports `forest-terrain-sampler-p912.js`, which remains intact.
+- QA: Dev Integration run `33330678552` PASS end-to-end: V21.31 stress, 288 driving cases, Grip R2–R20, terrain/road banking, all active forest startup/prefetch/frame-pacing checks, M4.14/M4.15 WebGL, live route smoke, dependency audit, production build and code split.
+- Result: all four A4 orphan modules are removed without changing active forest, road or physics behavior.
 
 ---
 
@@ -628,19 +631,21 @@ These rules are mandatory while working this plan:
 
 # 6. Recommended next task
 
-**Next: A4 — verify and remove the four fully unreferenced orphan modules.**
+**Next: A5 — retire the runtime-orphan P9.12/P9.28 forest streamer implementations after migrating any still-useful QA invariants to the active P9.29/P9.40/P9.41 path.**
 
-Candidates:
-- `src/forest-runtime-data/forest-pack-00.js`
-- `src/forest-terrain-sampler.js`
-- `src/pine-tree-runtime.js`
-- `src/road-metadata.js`
-
-Before deletion, explicitly verify runtime, QA, dynamic-loader and build-tool references. After A4, proceed to A5 historical forest implementations.
+Do not remove `forest-terrain-sampler-p912.js`: despite the historical name, it is still imported by the active P9.29 streamer. Audit exact file/symbol references before deleting the old streamer modules.
 
 ---
 
 # 7. Work log
+
+## 2026-08-30 — A4 completed: fully unreferenced orphan modules removed
+
+- Audited exact imports, symbol references, build/tool references and dynamic loaders on a separate audit branch.
+- Tightened the scanner after a substring false positive involving the active `forest-terrain-sampler-p912.js`.
+- Removed the unused forest runtime pack, obsolete generic terrain sampler, embedded pine runtime payload and road metadata service.
+- Full Dev Integration QA passed after all four deletions, including forest/frame pacing, roads, WebGL and production build/code split.
+- Next focus: A5 historical P9.12/P9.28 forest streamer implementations and stale QA.
 
 ## 2026-08-30 — A3 completed: duplicate presentation wrapper removed
 
