@@ -359,7 +359,7 @@ Completion record:
 
 ### B3 — Extract maneuver state from `driving-runtime-base.js` **[P0/P1]**
 
-Status: **TODO**
+Status: **AUTOMATION COMPLETE — HUMAN VALIDATION PENDING (2026-08-30)**
 
 Proposed module:
 - `src/physics/maneuver-state.js`
@@ -376,8 +376,14 @@ Reason:
 - `driving-runtime-base.js` currently contains too many historical P/R guards and is a conflict hotspot.
 
 Completion record:
-- Commit: _pending_
-- QA: _pending_
+- Runtime extraction commit: `d619c505` — added `src/physics/maneuver-state.js`, moved J-turn entry/exit/latch helpers plus rear-handbrake slip transient state out of `driving-runtime-base.js`, and preserved their original frame ordering.
+- Permanent CI gate commit / current validated HEAD: `c01b0c7f` — added `qa-maneuver-state-b3.mjs` to Dev Integration.
+- Ownership boundary: maneuver-state owns only J-turn latch memory and rear-handbrake slip memory/transitions; tire-force solver, general yaw physics, momentum direction and vehicle calibration remain outside this module.
+- Historical QA cleanup: `V21_27_HANDRAKE_180_LOW_SPEED_QA.mjs` was updated to current R4 semantics (handbrake-held spin keeps steering-speed magnitude; released steering follows body-longitudinal cosine through 90 degrees) and its brittle 20 km/h transition bound was widened around the unchanged current formula.
+- Candidate validation run `33337076416`: PASS B3 ownership QA, maneuver regressions, full V21.31 stress, 288-case driving matrix and production build.
+- Final Dev Integration run `33337214381`: PASS all 60 steps including the permanent B3 gate, Grip R2–R20, forest/frame pacing, WebGL, live route smoke and production build/code split.
+- Human validation: **pending** — ID.4/i3 handbrake-turn and J-turn continuity plus WRX/Civic comparison must be checked in-game before B3 is marked DONE.
+- Result so far: automated equivalence and ownership boundaries are validated; final acceptance awaits driver feel/continuous-rotation confirmation.
 
 ---
 
@@ -655,13 +661,21 @@ These rules are mandatory while working this plan:
 
 # 6. Recommended next task
 
-**Next: B3 — extract maneuver-specific state from `driving-runtime-base.js` into `src/physics/maneuver-state.js` without changing tire-force or yaw equations.**
+**Next: complete B3 human validation before starting B4.**
 
-Start with J-turn latched state and rear-handbrake transient/slip state only. Preserve exact call order and thresholds. Run R1/R2/R7/R9/R17/R18/R19/R20 plus the complete Dev Integration suite. After B3 passes automation, require a short human maneuver check on ID.4/i3 J-turn and handbrake 180 plus a WRX/Civic comparison before considering B3 fully closed.
+Run the four targeted in-game maneuver checks recorded in the B3 completion record. If they pass, mark B3 DONE and proceed to B4 momentum-direction ownership. If any maneuver feels different, investigate B3 before further architectural cleanup.
 
 ---
 
 # 7. Work log
+
+## 2026-08-30 — B3 automation complete; human maneuver validation pending
+
+- Extracted maneuver-specific transient state into `src/physics/maneuver-state.js` while preserving exact frame-order update points in the runtime.
+- Added permanent ownership QA preventing maneuver-state from absorbing tire/yaw physics.
+- Modernized one stale V21.27 handbrake QA to the current R4 semantics without changing runtime formulas.
+- Candidate `33337076416` PASS; final Dev Integration `33337214381` PASS 60 steps.
+- Hold B4 until ID.4/i3 handbrake/J-turn and WRX/Civic comparison are manually validated.
 
 ## 2026-08-30 — B2 completed: J-turn entry/latch/exit semantics made explicit
 
