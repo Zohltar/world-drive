@@ -4,6 +4,7 @@ on:
     branches: ['audit/code-debt-b2']
     paths:
       - 'qa/apply-b2-temp.mjs'
+      - 'qa/fix-b2-r19-temp.mjs'
       - '.github/workflows/apply-b2-temp.yml'
 permissions:
   contents: write
@@ -19,6 +20,7 @@ jobs:
           cache: npm
       - run: npm ci
       - run: node qa/apply-b2-temp.mjs
+      - run: node qa/fix-b2-r19-temp.mjs
       - name: J-turn semantic regressions
         run: |
           node qa/V21_27_J_TURN_PORTLAND_QA.mjs
