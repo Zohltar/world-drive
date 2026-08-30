@@ -1,0 +1,25 @@
+name: Apply A6 branding candidate
+on:
+  push:
+    branches: ['audit/code-debt-a6']
+    paths:
+      - 'qa/apply-a6-branding-temp.mjs'
+      - '.github/workflows/apply-a6-branding-temp.yml'
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: node qa/apply-a6-branding-temp.mjs
+      - name: Commit aligned branding surfaces
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add package-lock.json electron/main.cjs index.html
+          git diff --cached --quiet || git commit -m 'A6 candidate: align package desktop and HTML branding'
+          git push
