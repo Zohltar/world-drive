@@ -57,8 +57,31 @@ const serverEntry=path.join(ROOT,'server/multiplayer-server.mjs');
 const browserReach=reachableFrom([browserEntry]);
 const allReach=reachableFrom([browserEntry,electronEntry,serverEntry]);
 const srcFiles=files.filter(f=>rel(f).startsWith('src/'));
-const browserOrphans=srcFiles.filter(f=>!browserReach.has(f)).map(rel).sort();
+const browserOrphanFiles=srcFiles.filter(f=>!browserReach.has(f));
+const browserOrphans=browserOrphanFiles.map(rel).sort();
 const totalOrphans=files.filter(f=>!allReach.has(f)).map(rel).sort();
+
+// QA-only usage matters: a runtime orphan may still be intentionally retained as
+// a regression fixture. Scan both qa/ and root-level qa-*.mjs files before
+// recommending deletion.
+const qaDir=path.join(ROOT,'qa');
+const qaFiles=[
+  ...(existsSync(qaDir)?walk(qaDir):[]),
+  ...readdirSync(ROOT,{withFileTypes:true})
+    .filter(e=>e.isFile()&&/^qa-.*\.(?:mjs|js|cjs)$/i.test(e.name))
+    .map(e=>path.join(ROOT,e.name))
+];
+const qaSource=new Map(qaFiles.map(f=>[f,readFileSync(f,'utf8')]));
+const orphanQaRefs=browserOrphanFiles.map(f=>{
+  const targetRel=rel(f);
+  const base=path.basename(f);
+  const stem=base.replace(/\.(?:js|mjs|cjs)$/,'');
+  const refs=[];
+  for(const [q,s] of qaSource){
+    if(s.includes(base)||s.includes(stem)||s.includes(targetRel))refs.push(rel(q));
+  }
+  return {file:targetRel,qaRefs:[...new Set(refs)].sort()};
+});
 
 const facades=[];
 for(const f of files){
@@ -118,6 +141,6 @@ const largest=files.map(f=>({file:rel(f),lines:source.get(f).split(/\r?\n/).leng
 const lowIncoming=srcFiles.filter(f=>browserReach.has(f)&&(incoming.get(f)||[]).length===1).map(f=>({file:rel(f),importedBy:rel(incoming.get(f)[0])})).slice(0,80);
 
 console.log('CODE_DEBT_AUDIT_R20 '+JSON.stringify({
-  counts:{allSourceFiles:files.length,srcFiles:srcFiles.length,browserReachable:browserReach.size,browserOrphans:browserOrphans.length,totalOrphans:totalOrphans.length,unusedExportCandidates:exportCandidates.length},
-  browserOrphans,totalOrphans,unresolved,facades,unusedExportCandidates:exportCandidates.slice(0,120),hotspots:hotspots.slice(0,30),riskSymbolMap,globals,duplicates,rootLegacy,largest,lowIncoming
+  counts:{allSourceFiles:files.length,srcFiles:srcFiles.length,browserReachable:browserReach.size,browserOrphans:browserOrphans.length,totalOrphans:totalOrphans.length,unusedExportCandidates:exportCandidates.length,qaFiles:qaFiles.length},
+  browserOrphans,totalOrphans,orphanQaRefs,unresolved,facades,unusedExportCandidates:exportCandidates.slice(0,120),hotspots:hotspots.slice(0,30),riskSymbolMap,globals,duplicates,rootLegacy,largest,lowIncoming
 },null,2));
