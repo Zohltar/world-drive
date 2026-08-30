@@ -1,0 +1,43 @@
+name: Apply B2 explicit J-turn semantics
+on:
+  push:
+    branches: ['audit/code-debt-b2']
+    paths:
+      - 'qa/apply-b2-temp.mjs'
+      - '.github/workflows/apply-b2-temp.yml'
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: node qa/apply-b2-temp.mjs
+      - name: J-turn semantic regressions
+        run: |
+          node qa/V21_27_J_TURN_PORTLAND_QA.mjs
+          node qa-grip-braking-r9.mjs
+          node qa-grip-ev-jturn-r17.mjs
+          node qa-grip-ev-maneuver-r18.mjs
+          node qa-grip-jturn-legacy-r19.mjs
+          node qa-grip-handbrake-lateral-r20.mjs
+          node qa-grip-full-runtime-180-probe-r20.mjs
+      - name: Full stress and driving matrix
+        run: |
+          npm run qa:stress
+          node qa/DEV_DRIVING_SIM_QA.mjs
+      - name: Production build
+        run: npm run build
+      - name: Commit B2 candidate
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add src/driving-runtime-base.js qa-grip-jturn-legacy-r19.mjs qa/V21_27_J_TURN_PORTLAND_QA.mjs
+          git diff --cached --quiet || git commit -m 'Cleanup B2: make J-turn entry latch and exit semantics explicit'
+          git push
