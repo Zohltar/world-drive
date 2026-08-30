@@ -1,0 +1,53 @@
+name: Validate Cleanup B4 momentum ownership
+
+on:
+  push:
+    branches:
+      - cleanup/momentum-b4
+    paths:
+      - 'qa/apply-momentum-b4-temp.mjs'
+      - 'qa-momentum-direction-b4.mjs'
+      - '.github/workflows/momentum-b4-validate-temp.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+      - name: Apply B4 extraction
+        run: node qa/apply-momentum-b4-temp.mjs
+      - name: B4 ownership and numerical equivalence
+        run: node qa-momentum-direction-b4.mjs
+      - name: Momentum / maneuver regressions
+        run: |
+          node qa-grip-braking-r9.mjs
+          node qa-grip-high-speed-r11.mjs
+          node qa-grip-ev-jturn-r17.mjs
+          node qa-grip-ev-maneuver-r18.mjs
+          node qa-grip-jturn-legacy-r19.mjs
+          node qa-grip-handbrake-lateral-r20.mjs
+          node qa-grip-full-runtime-180-probe-r20.mjs
+          node qa-grip-f1-front-slip-r21.mjs
+          node qa-grip-f1-legacy-r23.mjs
+          node qa/V21_29_BODY_RELATIVE_TRANSMISSION_QA.mjs
+      - name: Fleet stress / driving matrix
+        run: |
+          node qa/DEV_DRIVING_SIM_QA.mjs
+          npm run qa:stress
+      - name: Production build
+        run: npm run build
+      - name: Commit B4 candidate
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add src/physics/momentum-direction.js src/driving-runtime-base.js src/vehicle-dynamics-base.js src/main.js qa-momentum-direction-b4.mjs
+          git diff --cached --quiet || git commit -m 'Cleanup B4: extract momentum-direction ownership'
+          git push
