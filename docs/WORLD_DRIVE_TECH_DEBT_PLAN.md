@@ -248,7 +248,7 @@ Completion record:
 
 ### A6 — Unify version/build branding **[P1]**
 
-Status: **TODO**
+Status: **DONE — 2026-08-30**
 
 Current mismatch found during audit:
 - `src/version.js`: `21.31 stable`
@@ -268,14 +268,18 @@ Acceptance:
 - no stale hard-coded V21.xx strings in runtime branding code except intentional migration docs/tests.
 
 Completion record:
-- Commit: _pending_
-- QA: _pending_
+- Initial atomic branding commit: `9ab5ed8c` — aligned package/lock to semver `21.31.0`, made web branding and Electron title/User-Agent derive from `package.json`, removed hard-coded V21.25 HTML labels, and added permanent `qa-version-branding-a6.mjs`.
+- Final semantic cleanup: `7f757ca5` — development channel is explicitly `dev` on `dev`, and the legacy DOM-wide MutationObserver/version-text rewrite was removed. Static HTML now exposes only explicit branding placeholders.
+- Source of truth: `package.json` owns `version` + `worldDriveChannel`; `package-lock.json` mirrors the machine version; `src/version.js` and Electron derive from the package metadata.
+- QA: candidate branding audit `33333279610` PASS; initial Dev Integration `33333169584` PASS 58 steps; final Dev Integration `33334578131` PASS 58 steps with `V21.31 dev`, Grip R2–R20, forest, WebGL, live route smoke and production build/code split.
+- Release rule: `stable` is reserved for explicit release promotion; development builds identify themselves as `dev`.
+- Result: one authoritative version/build metadata source and no global DOM text-rewriting fallback remain.
 
 ---
 
 ### A7 — Root-level legacy file cleanup **[P3]**
 
-Status: **TODO**
+Status: **DONE — 2026-08-30**
 
 Audit candidates:
 - `FIX_VERSION_DISPLAY_V20_13.ps1`
@@ -289,8 +293,12 @@ Required correction:
 - remove obsolete executable patch scripts/backups from repo root.
 
 Completion record:
-- Commit: _pending_
-- QA: _pending_
+- Final commit: `7f2320ef` — removed obsolete V20.13 PowerShell version patchers and `index.html.encoding-backup`; archived historical V21.25 cleanup and V21.24 packaging notes under `docs/archive/`; replaced stale root `README_PACKAGING.md` with current A6-based packaging instructions.
+- Additional audit finding: the unversioned root `README_PACKAGING.md` was itself a V21.24.64 snapshot, so it was archived as `docs/archive/README_PACKAGING_V21_24_64.md` rather than retained as current guidance.
+- Permanent gate: `qa-repo-hygiene-a7.mjs` prevents the removed root debris/version patchers from returning and verifies current packaging documentation.
+- Audit run `33334758106`: PASS A6 branding, A7 hygiene, runtime debt audit, production build and code split.
+- Final Dev Integration run `33334825498`: PASS all 59 steps including A6/A7 gates, V21.31 stress, 288 driving cases, Grip R2–R20, forest/frame pacing, WebGL, live route smoke and build/code split.
+- Result: repository root now contains current entry points/docs only; historical notes are clearly marked as archives.
 
 ---
 
@@ -637,18 +645,22 @@ These rules are mandatory while working this plan:
 
 # 6. Recommended next task
 
-**Next: A6 — unify application/build branding.**
+**Next: B1 — remove the dead `postSpinSteeringAuthority` indirection from the active physics runtime while preserving the R4 guarantee that no hidden steering authority valley can return.**
 
-Current confirmed mismatch:
-- `src/version.js`: V21.31 stable
-- `package.json`: 21.24.94
-- `electron/main.cjs`: hard-coded 21.21.12 in desktop title and Overpass User-Agent
-
-Make one source authoritative where practical, align package/desktop branding to the current V21.31 stable baseline, and add a regression gate so future releases cannot silently diverge.
+B1 should be behavior-neutral: the helper currently returns exactly 1 and has one active call site. Update R4/B1 QA to assert the legacy helper and multiplier are absent, then run the complete R2–R20 regression suite before proceeding to B2.
 
 ---
 
 # 7. Work log
+
+## 2026-08-30 — A6/A7 completed: branding source unified and repository root cleaned
+
+- Unified web, Electron, Squirrel/package and displayed branding around package metadata; development builds now identify as `V21.31 dev`.
+- Removed the legacy DOM-wide version MutationObserver and all static application version labels from `index.html`.
+- Archived historical cleanup/packaging notes and deleted obsolete version patch scripts plus the encoding backup.
+- Added permanent A6 branding and A7 repository-hygiene gates to Dev Integration.
+- Final A6 QA: `33334578131` PASS 58 steps. Final A7 QA: `33334825498` PASS 59 steps.
+- Next focus: B1 physics architecture cleanup, starting with the no-op `postSpinSteeringAuthority`.
 
 ## 2026-08-30 — A5 completed: historical forest streamers retired
 
