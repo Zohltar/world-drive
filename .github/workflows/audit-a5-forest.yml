@@ -1,0 +1,29 @@
+name: Audit A5 historical forest
+on:
+  push:
+    branches: ['audit/code-debt-a5']
+permissions:
+  contents: read
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: node qa/a5-forest-reference-audit.mjs
+      - name: Legacy P9.12 stress truth check
+        continue-on-error: true
+        run: node qa-forest-p912-stress.mjs
+      - name: Legacy P9.28 instrumentation truth check
+        continue-on-error: true
+        run: node qa-forest-p928-instrumentation.mjs
+      - name: Active P9.29 frame-budget QA
+        run: node qa-forest-p929-frame-budget.mjs
+      - name: Active P9.35/P9.36/P9.40/P9.41 QA
+        run: |
+          node qa-forest-p935-front-startup.mjs
+          node qa-forest-p936-rolling-prefetch.mjs
+          node qa-forest-p940-maintenance.mjs
+          node qa-p941-frame-runtime-attribution.mjs
