@@ -167,6 +167,44 @@ export function jTurnTransientYawActive({
   );
 }
 
+// Grip R19 — V21.27 P6.1 originally existed because body-longitudinal speed
+// collapses to zero at 90 degrees even while translational momentum remains
+// large. Later drift cleanup correctly removed that full-speed shortcut from
+// ordinary driving, but the J-turn P10 exception remained an instantaneous
+// predicate and therefore switched itself off before the chassis reached 90°.
+// Latch only a genuine reverse-entry J-turn, carry it through the sideways
+// region, then release near the forward-aligned exit axis.
+export function advanceJTurnTransientYawState({
+  active=false,
+  bodyLongitudinalSpeed=0,
+  speedAbs=0,
+  steerAngle=0,
+  handbrake=false,
+  airborne=false,
+  onPavement=true,
+  sideslipRad=0
+}={}){
+  const entry=jTurnTransientYawActive({
+    bodyLongitudinalSpeed,speedAbs,steerAngle,handbrake,airborne,onPavement
+  });
+  if(!active)return entry;
+  if(handbrake||airborne||!onPavement)return false;
+  if(Math.abs(Number(speedAbs)||0)<2.5)return false;
+  if(Math.abs(Number(steerAngle)||0)<.05)return false;
+  const alignedExit=
+    Number(bodyLongitudinalSpeed)>2.0&&
+    Math.abs(Number(sideslipRad)||0)<.10;
+  return !alignedExit;
+}
+
+export function jTurnTransientSteeringSpeed({speed=0,fallbackSpeed=0,active=false}={}){
+  if(!active)return Number(fallbackSpeed)||0;
+  // A latched J-turn entered in reverse. Preserve that steering travel sign
+  // through 90 degrees instead of letting cos(beta) drive it to zero and then
+  // reverse the bicycle yaw target while the chassis is still rotating.
+  return -Math.abs(Number(speed)||0);
+}
+
 export function handbrakeLateralEffectForSpeed(speedAbs=0){
   return smoothstep01((Math.max(0,Number(speedAbs)||0)-2.5)/6.5);
 }
@@ -281,6 +319,7 @@ export function createDrivingRuntime({
   const physicsShadow=createPerWheelShadowSolver({hz:120,maxSubSteps:8});
   let wasAirborne=false;
   let rearHandbrakeSlipState=0;
+  let jTurnTransientLatched=false;
 
   function update(dt){
     const initialState=getState();
@@ -508,9 +547,24 @@ export function createDrivingRuntime({
     currentSteerAngle=steerAngle;
 
     const bodyLongitudinalSpeed=bodyRelativeLongitudinalSpeed({speed,heading,velocityHeading});
-    const steeringTravelSpeed=bodyRelativeSteeringSpeed({speed,heading,velocityHeading,handbrake:hand});
+    jTurnTransientLatched=advanceJTurnTransientYawState({
+      active:jTurnTransientLatched,
+      bodyLongitudinalSpeed,
+      speedAbs,
+      steerAngle,
+      handbrake:hand,
+      airborne:airborneNow,
+      onPavement,
+      sideslipRad:currentSideslip
+    });
+    const baseSteeringTravelSpeed=bodyRelativeSteeringSpeed({speed,heading,velocityHeading,handbrake:hand});
+    const steeringTravelSpeed=jTurnTransientSteeringSpeed({
+      speed,
+      fallbackSpeed:baseSteeringTravelSpeed,
+      active:jTurnTransientLatched
+    });
     const steeringAuthority=postSpinSteeringAuthority({rearSlipAmount,heading,velocityHeading,handbrake:hand});
-    const jTurnYawActive=jTurnTransientYawActive({bodyLongitudinalSpeed,speedAbs,steerAngle,handbrake:hand,airborne:airborneNow,onPavement});
+    const jTurnYawActive=jTurnTransientLatched;
     const lateralEnvelope=lateralDynamicsEnvelope({vehicle:VEHICLE,speed:steeringTravelSpeed,steerAngle,steerInput:steer,driveThrottle,onPavement,surfaceGrip,awdOffroadGripBonus,offroadPeakMu:offroadFrictionModel?.peak,rearSlipAmount:0,airborne:airborneNow},dynamicsScratch.lateral);
     let yawRate=lateralEnvelope.yawRate*truckTrailerSystem.tractorYawScale(speedAbs)*steeringAuthority;
     const drivetrain=lateralEnvelope.drivetrain;
