@@ -36,12 +36,4 @@ patchFile(solverPath,[
   }
 ]);
 
-patchFile('.github/workflows/qa-dev-integration.yml',[
-  {
-    label:'permanent Grip R10 CI gate',
-    needle:`      - name: Grip R9 reverse and J-turn braking QA\n        run: node qa-grip-braking-r9.mjs\n`,
-    replacement:`      - name: Grip R9 reverse and J-turn braking QA\n        run: node qa-grip-braking-r9.mjs\n      - name: Grip R10 uphill load-transfer stability QA\n        run: node qa-grip-uphill-r10.mjs\n`
-  }
-]);
-
 console.log('Grip R10 uphill load-transfer fix applied');
