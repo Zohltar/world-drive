@@ -1,0 +1,44 @@
+name: Apply B1 steering authority cleanup
+on:
+  push:
+    branches: ['audit/code-debt-b1']
+    paths:
+      - 'qa/apply-b1-temp.mjs'
+      - '.github/workflows/apply-b1-temp.yml'
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: node qa/apply-b1-temp.mjs
+      - name: B1/R4 anti-spin cleanup QA
+        run: node qa-grip-drift-r4.mjs
+      - name: Drift/trajectory regression slice
+        run: |
+          node qa-grip-countersteer-r7.mjs
+          node qa-grip-high-speed-r11.mjs
+          node qa-grip-fleet-high-speed-r12.mjs
+          node qa-grip-jturn-legacy-r19.mjs
+          node qa-grip-handbrake-lateral-r20.mjs
+          node qa-grip-full-runtime-180-probe-r20.mjs
+      - name: Full stress and driving matrix
+        run: |
+          npm run qa:stress
+          node qa/DEV_DRIVING_SIM_QA.mjs
+      - name: Production build
+        run: npm run build
+      - name: Commit B1 candidate
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add src/driving-runtime-base.js qa-grip-drift-r4.mjs
+          git diff --cached --quiet || git commit -m 'Cleanup B1: remove no-op post-spin steering authority'
+          git push
