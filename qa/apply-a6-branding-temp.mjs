@@ -38,7 +38,8 @@ let html=fs.readFileSync(indexPath,'utf8');
 const replacements=[
   ['<title>World Drive V21.25 cleanup</title>','<title>World Drive</title>'],
   ['<h1>World Drive V21.25 cleanup</h1>','<h1 data-world-drive-title>World Drive</h1>'],
-  ['<div id="brand"><b>V21.25</b> WORLD DRIVE</div>','<div id="brand"><b data-world-drive-version-label></b> WORLD DRIVE</div>']
+  ['<div id="brand"><b>V21.25</b> WORLD DRIVE</div>','<div id="brand"><b data-world-drive-version-label></b> WORLD DRIVE</div>'],
+  ['<div style="font-size:10px;color:#8fa6bf;margin-top:4px">V21.25 cleanup · nouvelle interface</div>','<div style="font-size:10px;color:#8fa6bf;margin-top:4px"><span data-world-drive-version-label></span> · nouvelle interface</div>']
 ];
 for(const [from,to] of replacements){
   assert.ok(html.includes(from),`index branding anchor missing: ${from}`);
