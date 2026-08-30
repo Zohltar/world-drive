@@ -8,14 +8,33 @@ runtime=runtime.replace(helper,'');
 const authorityLine='    const steeringAuthority=postSpinSteeringAuthority({rearSlipAmount,heading,velocityHeading,handbrake:hand});\n';
 if(!runtime.includes(authorityLine))throw new Error('steeringAuthority call anchor missing');
 runtime=runtime.replace(authorityLine,'');
-const yawOld='    let yawRate=lateralEnvelope.yawRate*truckTrailerSystem.tractorYawScale(speedAbs)*steeringAuthority;';
-const yawNew='    let yawRate=lateralEnvelope.yawRate*truckTrailerSystem.tractorYawScale(speedAbs);';
-if(!runtime.includes(yawOld))throw new Error('yaw multiplier anchor missing');
-runtime=runtime.replace(yawOld,yawNew);
-const latOld='    const requestedLatAccel=lateralEnvelope.requestedLatAccel*steeringAuthority;';
-const latNew='    const requestedLatAccel=lateralEnvelope.requestedLatAccel;';
-if(!runtime.includes(latOld))throw new Error('lateral acceleration authority multiplier anchor missing');
-runtime=runtime.replace(latOld,latNew);
+
+const replacements=[
+  [
+    '    let yawRate=lateralEnvelope.yawRate*truckTrailerSystem.tractorYawScale(speedAbs)*steeringAuthority;',
+    '    let yawRate=lateralEnvelope.yawRate*truckTrailerSystem.tractorYawScale(speedAbs);',
+    'yaw multiplier'
+  ],
+  [
+    '    const requestedLatAccel=lateralEnvelope.requestedLatAccel*steeringAuthority;',
+    '    const requestedLatAccel=lateralEnvelope.requestedLatAccel;',
+    'requested lateral acceleration multiplier'
+  ],
+  [
+    '    const signedLatAccel=lateralEnvelope.signedLatAccel*steeringAuthority;',
+    '    const signedLatAccel=lateralEnvelope.signedLatAccel;',
+    'signed lateral acceleration multiplier'
+  ],
+  [
+    '      yawRate+=rearSlipYaw*Math.sign((hand?speed:steeringTravelSpeed)||speed||1)*steeringAuthority;',
+    '      yawRate+=rearSlipYaw*Math.sign((hand?speed:steeringTravelSpeed)||speed||1);',
+    'RWD power-oversteer multiplier'
+  ]
+];
+for(const [from,to,label] of replacements){
+  if(!runtime.includes(from))throw new Error(`${label} anchor missing`);
+  runtime=runtime.replace(from,to);
+}
 if(runtime.includes('postSpinSteeringAuthority'))throw new Error('postSpinSteeringAuthority still present in runtime');
 if(/\bsteeringAuthority\b/.test(runtime))throw new Error('legacy steeringAuthority indirection still present in runtime');
 fs.writeFileSync(runtimePath,runtime);
