@@ -53,6 +53,7 @@ Do **not** assume old conversation memory is more current than this file + GitHu
 - R19: remove legacy 90° J-turn steering/yaw wall
 - R20: reduce rear locked-tire lateral force during handbrake drift
 - R21: prevent high-downforce F1 front-slip loss from creating an opposing legacy counter-yaw
+- R22/R22.1: F1-specific ultra-high-speed stick curve; 0–150 km/h preserves accepted R13 behavior, >150 km/h progressively compresses analog input
 - R22: progressively soften F1 analog steering above ~145 km/h while preserving full-stick mechanical lock
 
 ---
@@ -386,6 +387,7 @@ Completion record:
 - Final Dev Integration run `33337214381`: PASS all 60 steps including the permanent B3 gate, Grip R2–R20, forest/frame pacing, WebGL, live route smoke and production build/code split.
 - Human validation: **pending** — ID.4/i3 handbrake-turn and J-turn continuity plus WRX/Civic comparison must be checked in-game before B3 is marked DONE.
 - Human-validation interruption: F1 high-speed front-slip exposed a separate counter-yaw defect; fixed as Grip R21 on `dev` (`97e73d7d`) with permanent QA workflow commit `434dd0bc`. B3 remains pending until the requested in-game maneuver checks, now including F1 high-speed understeer feel, are confirmed.
+- Steering human-feedback record: initial R22 was accepted from 0–150 km/h but remained **much too sensitive above 150 km/h**. R22.1 therefore freezes the accepted R13 mapping through 150 km/h, moves ultra-high-speed tuning into the explicit F1 profile, ramps exponent 4→9 from 150→260 km/h, and plateaus thereafter. Final source/QA commit on `dev`: `132c5bf2`; audit validation run `33341044464`; permanent R22 gate run `33341109576`; final Dev Integration run `33341109581` PASS 60/60. Representative half-stick mapping: 150=6.25%, 170=4.62%, 180=3.32%, 200=1.40%, 220=0.55%, 250=0.21%, 260+=0.195%; 85% stick at 300 km/h=23.2%; full stick remains 100%. Human validation remains pending for >150 km/h steering feel.
 - Follow-up steering calibration: F1 remained too reactive at high speed even after R21. Grip R22 source commit `49223ab` adds a racecar-only second input-exponent stage from ~145 km/h to ~324 km/h; permanent QA workflow commit `2d3274ac`; clean post-temp HEAD `39fe2d36`. Half-stick mapping: ~6.2% rack at 150 km/h, 2.8% at 220, 1.7% at 250, 0.86% at 300; 100% stick remains 100% rack. R22 targeted run `33340583498`, permanent R22 run `33340620476`, final clean Dev Integration run `33340642930` all PASS. Human validation pending for F1 steering feel at 180–300+ km/h.
 - Result so far: automated equivalence and ownership boundaries are validated; final acceptance awaits driver feel/continuous-rotation confirmation.
 
