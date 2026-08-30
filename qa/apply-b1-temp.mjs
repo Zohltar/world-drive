@@ -1,0 +1,30 @@
+import fs from 'node:fs';
+
+const runtimePath='src/driving-runtime-base.js';
+let runtime=fs.readFileSync(runtimePath,'utf8');
+const helper=`export function postSpinSteeringAuthority(){\n  // Grip R4 — steering input itself is never artificially removed in a spin.\n  // Tire force and body-relative contact velocity decide how much authority the\n  // front axle can physically produce. The old 28% valley around 90 degrees was\n  // a numerical anti-spin aid and created a perceptible rotation wall.\n  return 1;\n}\n\n`;
+if(!runtime.includes(helper))throw new Error('postSpinSteeringAuthority helper anchor missing');
+runtime=runtime.replace(helper,'');
+const authorityLine='    const steeringAuthority=postSpinSteeringAuthority({rearSlipAmount,heading,velocityHeading,handbrake:hand});\n';
+if(!runtime.includes(authorityLine))throw new Error('steeringAuthority call anchor missing');
+runtime=runtime.replace(authorityLine,'');
+const yawOld='    let yawRate=lateralEnvelope.yawRate*truckTrailerSystem.tractorYawScale(speedAbs)*steeringAuthority;';
+const yawNew='    let yawRate=lateralEnvelope.yawRate*truckTrailerSystem.tractorYawScale(speedAbs);';
+if(!runtime.includes(yawOld))throw new Error('yaw multiplier anchor missing');
+runtime=runtime.replace(yawOld,yawNew);
+if(runtime.includes('postSpinSteeringAuthority'))throw new Error('postSpinSteeringAuthority still present in runtime');
+fs.writeFileSync(runtimePath,runtime);
+
+const qaPath='qa-grip-drift-r4.mjs';
+let qa=fs.readFileSync(qaPath,'utf8');
+qa=qa.replace('  postSpinSteeringAuthority,\n','');
+const loop=`for(const angle of [0,45,80,90,100,135,180]){\n  for(const rearSlipAmount of [0,.4,.8,1]){\n    const authority=postSpinSteeringAuthority({rearSlipAmount,heading:angle*DEG,velocityHeading:0,handbrake:false});\n    assert.equal(authority,1,'steering command must not have an artificial 90-degree authority valley');\n  }\n}\n\n`;
+if(!qa.includes(loop))throw new Error('R4 authority loop anchor missing');
+qa=qa.replace(loop,'');
+const sourceAnchor="assert.ok(!source.includes('projectionDeadband=speedAbs*.06'),'legacy 90-degree steering sign deadband still present');";
+if(!qa.includes(sourceAnchor))throw new Error('R4 source assertion anchor missing');
+qa=qa.replace(sourceAnchor,`assert.ok(!source.includes('postSpinSteeringAuthority'),'B1 no-op steering authority helper must remain removed');\nassert.ok(!source.includes('steeringAuthority=postSpin'),'B1 hidden steering-authority variable must remain removed');\n${sourceAnchor}`);
+if(qa.includes('postSpinSteeringAuthority,'))throw new Error('R4 import still references helper');
+fs.writeFileSync(qaPath,qa);
+
+console.log('CLEANUP B1 PATCH: PASS');
