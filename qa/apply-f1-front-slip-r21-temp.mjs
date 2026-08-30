@@ -1,0 +1,17 @@
+import fs from 'node:fs';
+const path='src/driving-runtime-base.js';
+let s=fs.readFileSync(path,'utf8');
+const old=`export function legacyGripYawAcceleration({frictionYawAccel=0,yawRate=0,frontSlip=0,rearSlip=0}={}){\n  const accel=Number(frictionYawAccel)||0;\n  const targetYaw=Number(yawRate)||0;\n  const front=Math.max(0,Number(frontSlip)||0);\n  const rear=Math.max(0,Number(rearSlip)||0);\n  const frontDominated=front>rear+.06;\n  if(frontDominated&&Math.abs(targetYaw)>.01&&accel*targetYaw<0)return 0;\n  return accel;\n}`;
+const neu=`export function legacyGripYawAcceleration({\n  frictionYawAccel=0,yawRate=0,frontSlip=0,rearSlip=0,\n  frontForceScale=1,rearForceScale=1\n}={}){\n  const accel=Number(frictionYawAccel)||0;\n  const targetYaw=Number(yawRate)||0;\n  const front=Math.max(0,Number(frontSlip)||0);\n  const rear=Math.max(0,Number(rearSlip)||0);\n  const frontScale=Number.isFinite(Number(frontForceScale))?Math.max(0,Math.min(1,Number(frontForceScale))):1;\n  const rearScale=Number.isFinite(Number(rearForceScale))?Math.max(0,Math.min(1,Number(rearForceScale))):1;\n  // Grip R21 — axle slip telemetry can saturate equally even while the front\n  // axle retains materially less lateral force than the rear. That happens on\n  // the high-downforce F1 and previously let the legacy front-loss moment act\n  // as an independent counter-yaw. Ordinary understeer already reduces the\n  // bicycle yaw target; real drift/countersteer remains owned by the per-wheel\n  // physical solver. Therefore a front-force-dominated opposing legacy moment\n  // may reduce authority, but must not reverse the steering direction.\n  const frontSlipDominated=front>rear+.06;\n  const frontForceDominated=frontScale<rearScale-.015;\n  if((frontSlipDominated||frontForceDominated)&&Math.abs(targetYaw)>.01&&accel*targetYaw<0)return 0;\n  return accel;\n}`;
+if(!s.includes(old))throw new Error('R21 legacy yaw helper anchor missing');
+s=s.replace(old,neu);
+const scaleOld=`    const rearLateralForceScale=Number.isFinite(perWheelGrip.rearLateralForceScale)?physicsClamp(perWheelGrip.rearLateralForceScale,0,1):1;\n    const rearLateralForceLoss=Math.abs(physicalSignedLatAccel)>.15?1-rearLateralForceScale:0;`;
+const scaleNew=`    const frontLateralForceScale=Number.isFinite(perWheelGrip.frontLateralForceScale)?physicsClamp(perWheelGrip.frontLateralForceScale,0,1):1;\n    const rearLateralForceScale=Number.isFinite(perWheelGrip.rearLateralForceScale)?physicsClamp(perWheelGrip.rearLateralForceScale,0,1):1;\n    const rearLateralForceLoss=Math.abs(physicalSignedLatAccel)>.15?1-rearLateralForceScale:0;`;
+if(!s.includes(scaleOld))throw new Error('R21 axle force-scale anchor missing');
+s=s.replace(scaleOld,scaleNew);
+const callOld=`      frontSlip:targetFrontSlip,\n      rearSlip:targetRearSlip\n    });`;
+const callNew=`      frontSlip:targetFrontSlip,\n      rearSlip:targetRearSlip,\n      frontForceScale:frontLateralForceScale,\n      rearForceScale:rearLateralForceScale\n    });`;
+if(!s.includes(callOld))throw new Error('R21 legacy yaw call anchor missing');
+s=s.replace(callOld,callNew);
+fs.writeFileSync(path,s);
+console.log('GRIP R21 F1 FRONT-SLIP PATCH: PASS');
