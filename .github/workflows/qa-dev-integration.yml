@@ -62,6 +62,8 @@ jobs:
         run: node qa-grip-steering-input-r13.mjs
       - name: Grip R14 road reentry vertical support QA
         run: node qa-wheel-ground-reentry-r14.mjs
+      - name: Skid R15 per-vehicle tire-mark alignment QA
+        run: node qa-skid-contact-alignment-r15.mjs
       - name: Terrain R1 visual ownership QA
         run: node qa-terrain-r1-legacy-ownership.mjs
       - name: Terrain R2 road imagery alignment QA
