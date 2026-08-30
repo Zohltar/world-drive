@@ -33,7 +33,7 @@ jobs:
           node qa-grip-fleet-high-speed-r12.mjs
           node qa-grip-fwd-power-r16.mjs
           node qa/V21_27_J_TURN_PORTLAND_QA.mjs
-          node qa/V21_27_HANDRAKE_180_LOW_SPEED_QA.mjs
+          node qa/V21_27_WRX_HANDBRAKE_180_COMPLETION_QA.mjs
           node qa/V21_29_BODY_RELATIVE_TRANSMISSION_QA.mjs
       - name: Full driving and stress QA
         run: |
