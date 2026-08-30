@@ -1,0 +1,25 @@
+name: Update A5 technical debt plan
+on:
+  push:
+    branches: [dev]
+    paths:
+      - 'qa/update-tech-debt-plan-a5-temp.mjs'
+      - '.github/workflows/update-tech-debt-plan-a5-temp.yml'
+permissions:
+  contents: write
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: node qa/update-tech-debt-plan-a5-temp.mjs
+      - name: Commit plan update
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add docs/WORLD_DRIVE_TECH_DEBT_PLAN.md
+          git diff --cached --quiet || git commit -m 'Docs: mark Cleanup A5 complete'
+          git push
