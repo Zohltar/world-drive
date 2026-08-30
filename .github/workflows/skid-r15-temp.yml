@@ -1,0 +1,53 @@
+name: Skid R15 temporary patch
+
+on:
+  push:
+    branches: [dev]
+    paths:
+      - 'qa/apply-skid-r15-temp.mjs'
+      - 'qa-skid-contact-alignment-r15.mjs'
+      - '.github/workflows/skid-r15-temp.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch-test-commit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: dev
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Apply Skid R15
+        run: node qa/apply-skid-r15-temp.mjs
+      - name: Syntax and focused QA
+        run: |
+          node --check src/skidmarks.js
+          node --check src/vehicle-system.js
+          node qa-skid-contact-alignment-r15.mjs
+          node qa-grip-drift-r4.mjs
+          node qa-grip-countersteer-r7.mjs
+          node qa-grip-steering-input-r13.mjs
+      - name: Full driving and stress QA
+        run: |
+          node qa/DEV_DRIVING_SIM_QA.mjs
+          npm run qa:stress
+          npm run build
+      - name: Commit source changes
+        shell: bash
+        run: |
+          if git diff --quiet -- src/skidmarks.js src/vehicle-system.js; then
+            echo 'No source changes to commit.'
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add src/skidmarks.js src/vehicle-system.js
+          git commit -m 'Skid R15: align tire marks with authored wheel footprints'
+          git push origin HEAD:dev
