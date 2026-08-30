@@ -1,0 +1,31 @@
+name: Grip R23 F1 Legacy Ownership QA
+
+on:
+  push:
+    branches:
+      - dev
+    paths:
+      - 'src/driving-runtime-base.js'
+      - 'src/vehicle-dynamics-base.js'
+      - 'src/vehicle-system.js'
+      - 'qa-grip-f1-legacy-r23.mjs'
+      - 'qa-grip-f1-front-slip-r21.mjs'
+      - 'qa-grip-f1-steering-r22.mjs'
+      - '.github/workflows/qa-grip-r23.yml'
+  workflow_dispatch:
+
+jobs:
+  qa:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+      - name: F1 legacy ownership regression
+        run: node qa-grip-f1-legacy-r23.mjs
+      - name: F1 front-slip regression
+        run: node qa-grip-f1-front-slip-r21.mjs
+      - name: F1 ultra-high-speed steering regression
+        run: node qa-grip-f1-steering-r22.mjs
