@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
-import {advanceHandbrakeRearSlipState,rearContactPatchSideslip} from "./src/driving-runtime-base.js";
+import {rearContactPatchSideslip} from "./src/driving-runtime-base.js";
+import {advanceHandbrakeRearSlipState} from "./src/physics/maneuver-state.js";
 import {estimateWheelGripUsage} from "./src/vehicle-dynamics-base.js";
 
 function evolve({state=0,handbrake=false,speedAbs=20,sideslipRad=0,seconds=.1,dt=.01}={}){let v=state;for(let t=0;t<seconds-1e-9;t+=dt)v=advanceHandbrakeRearSlipState({previous:v,handbrake,airborne:false,speedAbs,sideslipRad,dt});return v;}

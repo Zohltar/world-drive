@@ -7,6 +7,10 @@ import {
   blendDriftForce
 } from './physics/drift-force-coupling.js';
 import { serviceBrakeAcceleration, brakeWouldCrossZero } from './physics/longitudinal-control.js';
+import {
+  createManeuverState,
+  jTurnTransientSteeringSpeed
+} from './physics/maneuver-state.js';
 
 function smoothstep01(value){
   const t=Math.max(0,Math.min(1,Number(value)||0));
@@ -141,80 +145,6 @@ export function legacyGripYawAcceleration({frictionYawAccel=0,yawRate=0,frontSli
   return accel;
 }
 
-export function jTurnEntryEligible({
-  bodyLongitudinalSpeed=0,
-  speedAbs=0,
-  steerAngle=0,
-  handbrake=false,
-  airborne=false,
-  onPavement=true
-}={}){
-  return !!(
-    !handbrake&&
-    !airborne&&
-    onPavement&&
-    Number(bodyLongitudinalSpeed)<-4.0&&
-    Math.abs(Number(speedAbs)||0)>=8.5&&
-    Math.abs(Number(steerAngle)||0)>=.12
-  );
-}
-
-// Grip R19 — V21.27 P6.1 originally existed because body-longitudinal speed
-// collapses to zero at 90 degrees even while translational momentum remains
-// large. Later drift cleanup correctly removed that full-speed shortcut from
-// ordinary driving, but the J-turn P10 exception remained an instantaneous
-// predicate and therefore switched itself off before the chassis reached 90°.
-// Latch only a genuine reverse-entry J-turn, carry it through the sideways
-// region, then release near the forward-aligned exit axis.
-export function jTurnExitEligible({
-  bodyLongitudinalSpeed=0,
-  speedAbs=0,
-  steerAngle=0,
-  handbrake=false,
-  airborne=false,
-  onPavement=true,
-  sideslipRad=0
-}={}){
-  if(handbrake||airborne||!onPavement)return true;
-  if(Math.abs(Number(speedAbs)||0)<2.5)return true;
-  if(Math.abs(Number(steerAngle)||0)<.05)return true;
-  return (
-    Number(bodyLongitudinalSpeed)>2.0&&
-    Math.abs(Number(sideslipRad)||0)<.10
-  );
-}
-
-export function advanceJTurnLatchedState({
-  active=false,
-  bodyLongitudinalSpeed=0,
-  speedAbs=0,
-  steerAngle=0,
-  handbrake=false,
-  airborne=false,
-  onPavement=true,
-  sideslipRad=0
-}={}){
-  const entryEligible=jTurnEntryEligible({
-    bodyLongitudinalSpeed,speedAbs,steerAngle,handbrake,airborne,onPavement
-  });
-  if(!active)return entryEligible;
-  return !jTurnExitEligible({
-    bodyLongitudinalSpeed,speedAbs,steerAngle,handbrake,airborne,onPavement,sideslipRad
-  });
-}
-
-export function jTurnTransientSteeringSpeed({speed=0,fallbackSpeed=0,active=false}={}){
-  if(!active)return Number(fallbackSpeed)||0;
-  // A latched J-turn entered in reverse. Preserve that steering travel sign
-  // through 90 degrees instead of letting cos(beta) drive it to zero and then
-  // reverse the bicycle yaw target while the chassis is still rotating.
-  return -Math.abs(Number(speed)||0);
-}
-
-export function handbrakeLateralEffectForSpeed(speedAbs=0){
-  return smoothstep01((Math.max(0,Number(speedAbs)||0)-2.5)/6.5);
-}
-
 export function rearAxleStaticLoadFraction(vehicle={}){
   const axles=Array.isArray(vehicle?.axles)?vehicle.axles:[];
   if(axles.length>=2){
@@ -247,22 +177,6 @@ export function shouldCanonicalizeMomentumHeading({speedAbs=0}={}){
 }
 
 // Grip R1 — wheel lock/recovery is continuous, not tied to the button edge.
-export function advanceHandbrakeRearSlipState({previous=0,handbrake=false,airborne=false,speedAbs=0,sideslipRad=0,dt=0}={}){
-  const prev=Math.max(0,Math.min(1,Number(previous)||0));
-  const step=Math.min(.05,Math.max(0,Number(dt)||0));
-  if(step<=0)return prev;
-  if(airborne)return prev*Math.exp(-step/.08);
-  const speed=Math.max(0,Math.abs(Number(speedAbs)||0));
-  const beta=Math.min(Math.PI*.5,Math.abs(Number(sideslipRad)||0));
-  const target=handbrake?handbrakeLateralEffectForSpeed(speed):0;
-  const engageTau=.045;
-  const speedT=smoothstep01(speed/30);
-  const sideslipT=smoothstep01(beta/.55);
-  const releaseTau=.11+.09*speedT+.24*sideslipT;
-  const tau=target>prev?engageTau:releaseTau;
-  return prev+(target-prev)*(1-Math.exp(-step/Math.max(.02,tau)));
-}
-
 export function landingSideslipGripSeed({sideslipRad=0,speedAbs=0}={}){
   const slip=Math.abs(Number(sideslipRad)||0);
   const speed=Math.max(0,Math.abs(Number(speedAbs)||0));
@@ -324,8 +238,7 @@ export function createDrivingRuntime({
 }){
   const physicsShadow=createPerWheelShadowSolver({hz:120,maxSubSteps:8});
   let wasAirborne=false;
-  let rearHandbrakeSlipState=0;
-  let jTurnLatchedActive=false;
+  const maneuverState=createManeuverState();
 
   function update(dt){
     const initialState=getState();
@@ -526,7 +439,7 @@ export function createDrivingRuntime({
       speed,heading,velocityHeading,yawRate:dynamicYawRate,
       wheelbase:VEHICLE.wheelbase,frontWeightBias:VEHICLE.frontWeightBias
     });
-    rearHandbrakeSlipState=advanceHandbrakeRearSlipState({previous:rearHandbrakeSlipState,handbrake:hand,airborne:airborneNow,speedAbs,sideslipRad:currentSideslip,dt});
+    const rearHandbrakeSlipState=maneuverState.advanceRearHandbrakeSlip({handbrake:hand,airborne:airborneNow,speedAbs,sideslipRad:currentSideslip,dt});
     let assistedTurn=turn;
     if(assist&&!autopilot&&!airborneNow&&!hand&&nr&&routeLength&&nr.d<9.5&&speed>2){
       let routeHeading=nr.angle,routeDirection=1;
@@ -553,8 +466,7 @@ export function createDrivingRuntime({
     currentSteerAngle=steerAngle;
 
     const bodyLongitudinalSpeed=bodyRelativeLongitudinalSpeed({speed,heading,velocityHeading});
-    jTurnLatchedActive=advanceJTurnLatchedState({
-      active:jTurnLatchedActive,
+    const jTurnLatchedActive=maneuverState.advanceJTurn({
       bodyLongitudinalSpeed,
       speedAbs,
       steerAngle,

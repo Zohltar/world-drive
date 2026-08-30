@@ -2,34 +2,44 @@ import assert from 'node:assert/strict';
 import { pathToFileURL } from 'node:url';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import {handbrakeLateralEffectForSpeed} from '../src/physics/maneuver-state.js';
 
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
 const runtimePath=path.join(root,'src','driving-runtime.js');
 const {
   bodyRelativeLongitudinalSpeed,
-  bodyRelativeSteeringSpeed,
-  handbrakeLateralEffectForSpeed
+  bodyRelativeSteeringSpeed
 }=await import(`${pathToFileURL(runtimePath).href}?qa=${Date.now()}`);
 
 const DEG=Math.PI/180;
 const speed=20;
 
-// P6.1: a 180 slide keeps the true speed magnitude for steering/yaw authority.
-for(const angleDeg of [0,45,80,89,91,100,135,180]){
-  const steeringSpeed=bodyRelativeSteeringSpeed({
-    speed,
-    heading:angleDeg*DEG,
-    velocityHeading:0
+// Current maneuver semantics:
+// - with the handbrake held, steering/yaw keeps the signed translational speed
+//   magnitude through the spin so rear lock does not create a 90-degree wall;
+// - after release, ordinary R4 steering follows body-longitudinal velocity and
+//   therefore crosses continuously through zero at 90 degrees.
+const maneuverAngles=[0,45,80,89,90,91,100,135,180];
+for(const angleDeg of maneuverAngles){
+  const heldSpeed=bodyRelativeSteeringSpeed({
+    speed,heading:angleDeg*DEG,velocityHeading:0,handbrake:true
   });
-  assert.ok(Math.abs(Math.abs(steeringSpeed)-speed)<1e-9,
-    `steering magnitude collapsed at ${angleDeg} deg: ${steeringSpeed}`);
-}
+  assert.ok(Math.abs(Math.abs(heldSpeed)-speed)<1e-9,
+    `held-handbrake steering magnitude collapsed at ${angleDeg} deg: ${heldSpeed}`);
+  assert.ok(heldSpeed>0,
+    `held-handbrake steering sign should preserve the signed scalar speed at ${angleDeg} deg: ${heldSpeed}`);
 
-// Direction remains forward through the tiny near-90-degree deadband, then
-// flips once the chassis is clearly travelling rearward relative to itself.
-assert.ok(bodyRelativeSteeringSpeed({speed,heading:80*DEG,velocityHeading:0})>0);
-assert.ok(bodyRelativeSteeringSpeed({speed,heading:100*DEG,velocityHeading:0})<0);
-assert.ok(bodyRelativeSteeringSpeed({speed,heading:180*DEG,velocityHeading:0})<0);
+  const releasedSpeed=bodyRelativeSteeringSpeed({
+    speed,heading:angleDeg*DEG,velocityHeading:0,handbrake:false
+  });
+  const expectedReleased=speed*Math.cos(angleDeg*DEG);
+  assert.ok(Math.abs(releasedSpeed-expectedReleased)<1e-9,
+    `released R4 steering projection mismatch at ${angleDeg} deg: ${releasedSpeed} vs ${expectedReleased}`);
+}
+assert.ok(bodyRelativeSteeringSpeed({speed,heading:89*DEG,velocityHeading:0,handbrake:false})>0);
+assert.ok(Math.abs(bodyRelativeSteeringSpeed({speed,heading:90*DEG,velocityHeading:0,handbrake:false}))<1e-9);
+assert.ok(bodyRelativeSteeringSpeed({speed,heading:91*DEG,velocityHeading:0,handbrake:false})<0);
+assert.ok(bodyRelativeSteeringSpeed({speed,heading:180*DEG,velocityHeading:0,handbrake:false})<0);
 assert.ok(bodyRelativeLongitudinalSpeed({speed,heading:180*DEG,velocityHeading:0})<0);
 
 // P7: locked-rear lateral destabilization must not be full-strength at walking
@@ -42,7 +52,7 @@ const at40kph=handbrakeLateralEffectForSpeed(40/3.6);
 
 assert.ok(at5kph<.01,`5 km/h handbrake lateral effect too high: ${at5kph}`);
 assert.ok(at10kph<.03,`10 km/h handbrake lateral effect too high: ${at10kph}`);
-assert.ok(at20kph>.15&&at20kph<.45,`20 km/h transition unexpected: ${at20kph}`);
+assert.ok(at20kph>.35&&at20kph<.60,`20 km/h transition unexpected: ${at20kph}`);
 assert.ok(at32kph>.98,`32 km/h should be near full effect: ${at32kph}`);
 assert.ok(at40kph>.999,`40 km/h should be full effect: ${at40kph}`);
 

@@ -4,10 +4,8 @@ import {
   lateralDynamicsEnvelope,
   limitMomentumHeadingDelta
 } from '../src/vehicle-dynamics.js';
-import {
-  jTurnEntryEligible,
-  bodyRelativeLongitudinalSpeed
-} from '../src/driving-runtime.js';
+import {bodyRelativeLongitudinalSpeed} from '../src/driving-runtime.js';
+import {jTurnEntryEligible} from '../src/physics/maneuver-state.js';
 
 const DEG=180/Math.PI;
 const MPH_TO_MPS=0.44704;
