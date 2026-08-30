@@ -95,7 +95,7 @@ Goal: remove dead code and ensure green QA actually tests the code the game exec
 
 ### A1 — Fix stale V21.31 road QA **[P0]**
 
-Status: **TODO**
+Status: **DONE — 2026-08-30**
 
 Problem:
 - runtime imports `src/road-geometry.js`;
@@ -121,8 +121,10 @@ Acceptance:
 - active road geometry is what the stress suite validates.
 
 Completion record:
-- Commit: _pending_
-- QA: _pending_
+- Commits: `9a9a38e1` (road smoothing QA), `f1df3bfe` (banking QA), `dd82a92b` (bank envelope QA), `2965001f` (terrain authority QA), `7de31f62` (live preset stress), `1073ffaa` (obsolete implementation removed), `aa266843` (temporary runner cleanup).
+- QA: full V21.31 regression stress PASS; active road deterministic QA PASS; Grip R2–R20 PASS; terrain/road banking PASS; live route preset smoke PASS; WebGL PASS; production build PASS; production code split PASS.
+- Active banking reference measured before migration: R100≈6.00°, R180≈3.96°, R250≈2.95°, R400≈1.98°, R500≈1.65°, R700≈1.28°, R1000≈1.00°, R2000≈0.675°; straight-road crossfall is bounded to 1°.
+- Result: no runtime dependency on `src/road-geometry-v21.31.js`; all migrated QA now exercises `src/road-geometry.js`; obsolete module deleted.
 
 ---
 
@@ -620,18 +622,27 @@ These rules are mandatory while working this plan:
 
 # 6. Recommended next task
 
-**Next: A1 — migrate stale V21.31 road QA to `src/road-geometry.js`.**
+**Next: A2 — remove the dead V21.27 WRX authority bridge after migrating any still-useful invariants to current R7–R20 coverage.**
 
 Reason:
-- lowest implementation risk;
-- highest QA-integrity benefit;
-- current stress suite can report green while validating an obsolete road implementation.
+- the module is no longer reachable from the game runtime;
+- three historical QA files still keep it alive;
+- it contains WRX-only transitional caps/semantics that can mislead future physics work.
 
-After A1, proceed to A2/A3 and the clearly dead modules before touching the deeper B-series physics architecture.
+After A2, proceed to A3/A4/A5 before deeper B-series physics architecture changes.
 
 ---
 
 # 7. Work log
+
+## 2026-08-30 — A1 completed: active road QA truthfulness
+
+- Measured the banking semantics of the active `src/road-geometry.js` implementation before changing tests.
+- Migrated four deterministic V21.31 road QA files plus the live route preset stress test away from obsolete `src/road-geometry-v21.31.js`.
+- Updated obsolete ~1.5°/flat-hairpin expectations to the active engineered banking envelope (up to 6° on persistent tight curves, 1° straight crossfall cap).
+- Deleted `src/road-geometry-v21.31.js`.
+- Full Dev Integration QA passed after deletion, including R2–R20, live route smoke, WebGL, production build and code split.
+- Next focus: A2 dead WRX authority bridge.
 
 ## 2026-08-30 — Plan created
 
