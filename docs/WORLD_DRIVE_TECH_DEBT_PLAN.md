@@ -165,7 +165,7 @@ Completion record:
 
 ### A3 — Remove duplicate vehicle presentation wrapper **[P1]**
 
-Status: **TODO**
+Status: **DONE — 2026-08-30**
 
 Problem:
 - `src/vehicle-presentation-wrapper.js` is not runtime-reachable;
@@ -178,8 +178,10 @@ Required correction:
 - run suspension, anti-roll, jump/landing and full integration QA.
 
 Completion record:
-- Commit: _pending_
-- QA: _pending_
+- Removal commit: `5802aa07` — deleted `src/vehicle-presentation-wrapper.js`.
+- Reference audit: no runtime, QA or tooling references to `vehicle-presentation-wrapper` or `createAntiRollPresentation` remained before deletion.
+- Ownership after cleanup: active anti-roll presentation behavior is solely in `src/vehicle-presentation.js` over `vehicle-presentation-v21.29.js`.
+- QA: full V21.31 stress PASS; 288 driving cases PASS; V21.30 anti-roll visual/balance PASS; Grip R6/R14 and crest/oblique-landing regressions PASS; R2–R20 PASS; forest/frame-pacing PASS; M4.14/M4.15 WebGL PASS; live route smoke PASS; production build and code split PASS.
 
 ---
 
@@ -626,18 +628,26 @@ These rules are mandatory while working this plan:
 
 # 6. Recommended next task
 
-**Next: A3 — remove the duplicate dead `src/vehicle-presentation-wrapper.js`.**
+**Next: A4 — verify and remove the four fully unreferenced orphan modules.**
 
-Reason:
-- it is not runtime-reachable;
-- its anti-roll presentation behavior already exists in the active `src/vehicle-presentation.js`;
-- removing it eliminates an ambiguous second ownership path with very low implementation risk.
+Candidates:
+- `src/forest-runtime-data/forest-pack-00.js`
+- `src/forest-terrain-sampler.js`
+- `src/pine-tree-runtime.js`
+- `src/road-metadata.js`
 
-After A3, proceed to A4/A5 before deeper B-series physics architecture changes.
+Before deletion, explicitly verify runtime, QA, dynamic-loader and build-tool references. After A4, proceed to A5 historical forest implementations.
 
 ---
 
 # 7. Work log
+
+## 2026-08-30 — A3 completed: duplicate presentation wrapper removed
+
+- Confirmed `src/vehicle-presentation-wrapper.js` and its `createAntiRollPresentation` export had no consumers.
+- Deleted the duplicate wrapper; active anti-roll visual ownership remains in `src/vehicle-presentation.js`.
+- Full Dev Integration QA passed after deletion, including anti-roll, suspension/jump/landing, R2–R20, WebGL and production build/code split.
+- Next focus: A4 fully unreferenced orphan modules.
 
 ## 2026-08-30 — A2 completed: retired WRX-only authority bridge
 
