@@ -18,3 +18,5 @@ jobs:
         run: node qa/audit-code-debt-r20.mjs
       - name: Existing integration audit
         run: node qa/DEV_INTEGRATION_AUDIT.mjs
+      - name: A1 active road semantics probe
+        run: node qa/probe-a1-active-road.mjs
