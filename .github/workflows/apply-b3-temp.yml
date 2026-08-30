@@ -4,6 +4,7 @@ on:
     branches: ['audit/code-debt-b3']
     paths:
       - 'qa/apply-b3-temp.mjs'
+      - 'qa/fix-b3-low-speed-temp.mjs'
       - '.github/workflows/apply-b3-temp.yml'
 permissions:
   contents: write
@@ -19,6 +20,7 @@ jobs:
           cache: npm
       - run: npm ci
       - run: node qa/apply-b3-temp.mjs
+      - run: node qa/fix-b3-low-speed-temp.mjs
       - name: B3 maneuver state ownership QA
         run: node qa-maneuver-state-b3.mjs
       - name: Maneuver regression slice
