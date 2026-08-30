@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 
+// Trigger marker: R22.1 validation pass 1.
 const dynamicsPath='src/vehicle-dynamics-v21.29.js';
 let d=fs.readFileSync(dynamicsPath,'utf8');
 const oldDynamics=`  const ultraHighSpeedMaxBoost=Math.max(0,safeNumber(\n    vehicle?.steeringUltraHighExponentBoost,\n    vehicle?.vehicleClass==='racecar'?3.0:0\n  ));\n`;
