@@ -310,7 +310,7 @@ Goal: prevent another R17–R20 situation where old helper semantics silently co
 
 ### B1 — Remove dead `postSpinSteeringAuthority` indirection **[P0/P1]**
 
-Status: **TODO**
+Status: **DONE — 2026-08-30**
 
 Problem:
 - historical anti-spin helper remains in the active runtime;
@@ -322,8 +322,13 @@ Required correction:
 - update QA to explicitly forbid reintroduction of hidden post-spin steering caps.
 
 Completion record:
-- Commit: _pending_
-- QA: _pending_
+- Final dev commit: `3c38bdf6` — removed the no-op `postSpinSteeringAuthority()` helper, its runtime variable and all four ×1 multipliers from bicycle yaw, requested/signed lateral acceleration and RWD power-oversteer yaw.
+- QA migration: `qa-grip-drift-r4.mjs` now forbids the legacy helper/indirection from returning; stale V21.28 fleet and ID.4 QA were migrated to verify full reverse-relative steering speed directly instead of importing the removed helper.
+- Candidate run `33335148086`: PASS R4/R7/R11/R12/R19/R20 runtime 180°, full V21.31 stress, driving simulation matrix and production build.
+- Final Dev Integration run `33335226308`: PASS all 59 steps including R2–R20, 288 driving cases, forest/frame pacing, M4.14/M4.15 WebGL, live route smoke and production build/code split.
+- Validation history: targeted B1 testing exposed every hidden consumer before merge (requested/signed lateral acceleration, RWD power-oversteer and two stale V21.28 QA), so no compatibility shim was retained.
+- Human test: not required; B1 removes only multiplications by an exact constant `1` and the complete runtime/regression suite is unchanged.
+- Result: no hidden post-spin steering-authority cap or compatibility API remains in the active runtime.
 
 ---
 
@@ -645,13 +650,22 @@ These rules are mandatory while working this plan:
 
 # 6. Recommended next task
 
-**Next: B1 — remove the dead `postSpinSteeringAuthority` indirection from the active physics runtime while preserving the R4 guarantee that no hidden steering authority valley can return.**
+**Next: B2 — make J-turn semantics explicit by separating entry eligibility, latched active state and exit conditions while preserving R19 behavior exactly.**
 
-B1 should be behavior-neutral: the helper currently returns exactly 1 and has one active call site. Update R4/B1 QA to assert the legacy helper and multiplier are absent, then run the complete R2–R20 regression suite before proceeding to B2.
+Start as a behavior-neutral refactor: rename `jTurnTransientYawActive()` to `jTurnEntryEligible()`, move the active-state exit checks into a clearly named helper, migrate R19 QA, and run R9/R17/R18/R19/R20 plus the complete Dev Integration suite before any later extraction into B3.
 
 ---
 
 # 7. Work log
+
+## 2026-08-30 — B1 completed: dead post-spin steering authority removed
+
+- Removed the V21.27-era no-op authority helper and four remaining ×1 runtime multipliers.
+- Migrated two stale V21.28 QA that still imported the obsolete helper.
+- Targeted runtime tests caught all hidden consumers before transfer to dev.
+- Candidate run `33335148086` and final Dev Integration `33335226308` both passed.
+- No human test required because B1 is numerically behavior-neutral.
+- Next focus: B2 J-turn entry/latched/exit semantics.
 
 ## 2026-08-30 — A6/A7 completed: branding source unified and repository root cleaned
 
