@@ -186,10 +186,10 @@ export function steeringCommand({vehicle,speedAbs=0,input=0}={},out=null){
   const baseSteeringInputExponent=
     1+(steeringCurveMaxExponent-1)*steeringCurveT;
 
-  // Grip R22 — high-downforce race cars remain extremely sensitive once R13
+  // Grip R22/R22.1 — explicitly opted-in high-downforce cars remain extremely sensitive once R13
   // has already reached its normal highway exponent. Keep the proven R13 curve
-  // through roughly 145 km/h, then progressively add a second analog exponent
-  // stage toward ~324 km/h. This changes stick sensitivity only: full input is
+  // through 150 km/h, then progressively add a second analog exponent stage.
+  // Vehicle profiles own the exact start/full speeds and boost. This changes stick sensitivity only: full input is
   // still pow(1,p)=1 and therefore retains full mechanical steering authority.
   const ultraHighSpeedStartMps=Math.max(20,safeNumber(
     vehicle?.steeringUltraHighStartMps,40
@@ -200,7 +200,7 @@ export function steeringCommand({vehicle,speedAbs=0,input=0}={},out=null){
   );
   const ultraHighSpeedMaxBoost=Math.max(0,safeNumber(
     vehicle?.steeringUltraHighExponentBoost,
-    vehicle?.vehicleClass==='racecar'?3.0:0
+    0
   ));
   const ultraHighSpeedT=ultraHighSpeedMaxBoost>0
     ?smoothstep01((v-ultraHighSpeedStartMps)/(ultraHighSpeedFullMps-ultraHighSpeedStartMps))

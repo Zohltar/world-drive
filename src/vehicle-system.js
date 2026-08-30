@@ -343,6 +343,15 @@ const PROFILES={
       maxSteerHigh:0.115,
       parkingSteerBoost:0.06,
       steeringInputExponent:1.72,
+
+      // Grip R22.1 — human-tuned F1 gamepad curve. Keep R13 unchanged through
+      // 150 km/h, then strongly compress mid-stick travel as aerodynamic grip
+      // makes tiny road-wheel angles increasingly powerful. Full stick remains
+      // full mechanical lock.
+      steeringUltraHighStartMps:41.666667,  // 150 km/h
+      steeringUltraHighFullMps:72.222222,   // 260 km/h
+      steeringUltraHighExponentBoost:5.00,
+
       steeringResponseLow:2.55,
       steeringResponseMid:3.20,
       steeringResponseHigh:4.80,
