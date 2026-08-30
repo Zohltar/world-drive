@@ -491,7 +491,13 @@ export function createPerWheelShadowSolver({hz=120,maxSubSteps=8}={}){
       if(!Number.isFinite(state.omega))state.omega=0;
 
       const axleContactCount=Math.max(1,counts[axleIndex]?.total||1);
-      const driveTorqueNm=driveForceN*wheelShare(axle,'driveShare',axleContactCount)*tire.rollingRadiusM;
+      const rear=axle.positionM<0||contact.front===false;
+      const rawDriveTorqueNm=driveForceN*wheelShare(axle,'driveShare',axleContactCount)*tire.rollingRadiusM;
+      // Grip R18 — a mechanical handbrake owns the rear wheel while applied.
+      // Motor/engine torque cannot simultaneously keep that same wheel driven
+      // and prevent it from entering the locked/sliding state. FWD front drive
+      // remains available; AWD keeps only its front-axle share.
+      const driveTorqueNm=handbrake&&rear?0:rawDriveTorqueNm;
 
       // P2 refinement — with ABS active, left/right service-brake torque follows
       // instantaneous vertical load inside each axle. This keeps a light inside
@@ -508,7 +514,6 @@ export function createPerWheelShadowSolver({hz=120,maxSubSteps=8}={}){
         wheelBrakeFractionWithinAxle*
         tire.rollingRadiusM;
 
-      const rear=axle.positionM<0||contact.front===false;
       let handbrakeTorqueNm=0;
       if(handbrake&&rear&&normalLoadN>0){
         const rollingSign=Math.sign(state.omega||patch.longitudinal||1);

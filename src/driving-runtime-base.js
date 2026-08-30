@@ -171,6 +171,37 @@ export function handbrakeLateralEffectForSpeed(speedAbs=0){
   return smoothstep01((Math.max(0,Number(speedAbs)||0)-2.5)/6.5);
 }
 
+export function rearAxleStaticLoadFraction(vehicle={}){
+  const axles=Array.isArray(vehicle?.axles)?vehicle.axles:[];
+  if(axles.length>=2){
+    const rear=axles.filter(axle=>(Number(axle?.positionM)||0)<0).reduce((sum,axle)=>sum+Math.max(0,Number(axle?.staticLoadFraction)||0),0);
+    if(rear>0)return Math.max(.05,Math.min(.90,rear));
+  }
+  return Math.max(.05,Math.min(.90,1-(Number(vehicle?.frontWeightBias)||.55)));
+}
+
+export function handbrakeDriveRetentionScale({vehicle={},handbrake=false}={}){
+  if(!handbrake)return 1;
+  const drivetrain=String(vehicle?.drivetrain||'AWD');
+  if(drivetrain==='FWD')return 1;
+  if(drivetrain==='RWD')return 0;
+  return Math.max(0,Math.min(1,Number(vehicle?.driveBiasFront)||.5));
+}
+
+export function handbrakeLongitudinalDecelCapacity({vehicle={},longitudinalMu=1,slidingMuRatio=.72}={}){
+  const rearLoad=rearAxleStaticLoadFraction(vehicle);
+  const mu=Math.max(.05,Number(longitudinalMu)||1);
+  const slide=Math.max(.50,Math.min(.95,Number(slidingMuRatio)||.72));
+  return GRAVITY*rearLoad*mu*slide;
+}
+
+export function shouldCanonicalizeMomentumHeading({speedAbs=0}={}){
+  // Momentum direction is still physically meaningful at walking speed during
+  // a spin/J-turn. Only collapse the heading once translation is essentially
+  // stopped; the old 1.2 m/s snap created a hard ~90-degree rotation wall.
+  return Math.max(0,Math.abs(Number(speedAbs)||0))<.12;
+}
+
 // Grip R1 — wheel lock/recovery is continuous, not tied to the button edge.
 export function advanceHandbrakeRearSlipState({previous=0,handbrake=false,airborne=false,speedAbs=0,sideslipRad=0,dt=0}={}){
   const prev=Math.max(0,Math.min(1,Number(previous)||0));
@@ -365,7 +396,9 @@ export function createDrivingRuntime({
 
     const driveForce=longitudinalTractionLimit({vehicle:VEHICLE,requestedAccel:requestedBodyDriveAccel,surfaceMu:longitudinalMu,mode:'drive',airborne:airborneNow,speedAbs:longitudinalSpeedAbs},dynamicsScratch.drive);
     const brakeForce=longitudinalTractionLimit({vehicle:VEHICLE,requestedAccel:requestedBrakeAccel,surfaceMu:longitudinalMu,mode:'brake',airborne:airborneNow,speedAbs:longitudinalSpeedAbs},dynamicsScratch.brake);
-    const appliedBodyDriveAccel=driveForce.acceleration;
+    const appliedBodyDriveAccelRaw=driveForce.acceleration;
+    const handbrakeDriveScale=handbrakeDriveRetentionScale({vehicle:VEHICLE,handbrake:hand});
+    const appliedBodyDriveAccel=appliedBodyDriveAccelRaw*handbrakeDriveScale;
     const driveMomentumAccel=appliedBodyDriveAccel*driveAxisProjection;
     let accel=driveMomentumAccel+brakeForce.acceleration;
 
@@ -391,9 +424,12 @@ export function createDrivingRuntime({
     }
 
     if(hand&&!airborneNow){
-      const handRequest=-Math.sign(speed||gradeForce.acceleration||1)*8.5;
-      // A fully locked tire is on the kinetic/sliding plateau, below peak mu.
+      // Grip R18 — the handbrake acts through the rear axle only. The previous
+      // whole-car 8.5 m/s² request double-counted rear lock and could stop a
+      // slower-rotating chassis before it crossed 90 degrees.
       const handbrakeSlidingMuRatio=physicsClamp(Number(VEHICLE.handbrakeSlidingMuRatio??.72)||.72,.65,.90);
+      const handCapacity=handbrakeLongitudinalDecelCapacity({vehicle:VEHICLE,longitudinalMu,slidingMuRatio:handbrakeSlidingMuRatio});
+      const handRequest=-Math.sign(speed||gradeForce.acceleration||1)*handCapacity;
       accel+=longitudinalTractionLimit({vehicle:VEHICLE,requestedAccel:handRequest,surfaceMu:longitudinalMu*handbrakeSlidingMuRatio,mode:'handbrake',airborne:false,speedAbs:longitudinalSpeedAbs},dynamicsScratch.handbrake).acceleration;
     }
 
@@ -504,7 +540,9 @@ export function createDrivingRuntime({
     const physicalTireForces=physicsShadow.advance(dt,{
       vehicleId:getVehicleId?.()||'unknown',vehicle:VEHICLE,contacts:vehiclePresentation?.wheelContacts||[],speed,heading,velocityHeading,
       yawRate:dynamicYawRate,centerSteerAngle:steerAngle,longitudinalAccel,lateralAccel:physicalSignedLatAccel,
-      requestedDriveAccel:appliedBodyDriveAccel,requestedBrakeAccel,handbrake:hand,surfaceId:onPavement?'asphalt-dry':'dirt'
+      requestedDriveAccel:appliedBodyDriveAccelRaw,requestedBrakeAccel,
+      longitudinalLoadTransferAccel:appliedBodyDriveAccel+requestedBrakeAccel,
+      handbrake:hand,surfaceId:onPavement?'asphalt-dry':'dirt'
     });
 
     wheelGripUsage=perWheelGrip.smoothed;
@@ -618,7 +656,7 @@ export function createDrivingRuntime({
       }
     }
 
-    if(!Number.isFinite(velocityHeading)||Math.abs(speed)<1.2)velocityHeading=heading;
+    if(!Number.isFinite(velocityHeading)||shouldCanonicalizeMomentumHeading({speedAbs}))velocityHeading=heading;
     const trajectoryRearSlip=Math.max(0,rearSlipAmount-frontSlipAmount*.45);
     const frictionTrajectoryLoss=frictionYawLoss;
     const lowSpeedNoSlip=!airborneNow&&speedAbs<8.5&&forceCoupledSlide<.18&&frontSlipAmount<.16&&rearSlipAmount<.16;
