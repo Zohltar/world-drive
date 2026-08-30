@@ -37,10 +37,11 @@ jobs:
         run: |
           node qa/DEV_DRIVING_SIM_QA.mjs
           npm run qa:stress
-      - name: F1 aero and brake-era invariants still useful
+      - name: Current F1 aero / calibration invariants
         run: |
-          node qa/V21_21_23_F1_STABILITY_QA.mjs
+          node qa/V21_21_21_REAL_MASS_AERO_QA.mjs
           node qa/V21_21_26_BEHAVIOR_CALIBRATION_QA.mjs
+          node qa-grip-jump-r6.mjs
       - name: Production build
         run: npm run build
       - name: Commit R23 candidate
