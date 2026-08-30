@@ -55,6 +55,7 @@ Do **not** assume old conversation memory is more current than this file + GitHu
 - R21: prevent high-downforce F1 front-slip loss from creating an opposing legacy counter-yaw
 - R22/R22.1: F1-specific ultra-high-speed stick curve; 0–150 km/h preserves accepted R13 behavior, >150 km/h progressively compresses analog input
 - R22: progressively soften F1 analog steering above ~145 km/h while preserving full-stick mechanical lock
+- R23: remove legacy drift/yaw authority from the F1; real slip trajectory now uses per-wheel physical forces directly, with stale V21.21 F1 steering/stability QA retired
 
 ---
 
@@ -395,7 +396,7 @@ Completion record:
 
 ### B4 — Extract momentum-direction ownership **[P0/P1]**
 
-Status: **TODO**
+Status: **IN PROGRESS — OWNERSHIP AUDIT COMPLETE (2026-08-30)**
 
 Proposed module:
 - `src/physics/momentum-direction.js`
@@ -414,8 +415,12 @@ Acceptance:
 - R9/R11/R17/R19 regressions remain green.
 
 Completion record:
-- Commit: _pending_
-- QA: _pending_
+- Ownership audit branch: `audit/momentum-b4`; audit workflow commit `ef564c30`.
+- Audit run `33342452650`: PASS. All frame-by-frame physical writes to `velocityHeading` remain concentrated in `src/driving-runtime-base.js`; `main.js` only owns storage/init/reset/serialization and `vehicle-placement-controller.js` only realigns momentum on explicit placement/reset. Multiplayer keeps a separate remote/interpolated representation and is outside B4 physical ownership.
+- Planned extraction boundary: body-relative longitudinal/steering projection, true-stop canonicalization, opposing body-drive crossing reconstruction, low-speed momentum following, force-derived trajectory rotation and momentum-heading rotation limiting move into `src/physics/momentum-direction.js` while global state storage remains unchanged.
+- R23 prerequisite completed before extraction: source `ff36b40c`, permanent F1 ownership QA `52023fe9`, stale F1 QA cleanup `c6933883`, current steering-rack gate `acb467ff`; R23 workflow `33342416319` PASS and Dev Integration `33342416332` PASS 60/60.
+- Source commit: _pending_
+- Permanent B4 QA: _pending_
 
 ---
 
