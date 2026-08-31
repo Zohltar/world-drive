@@ -763,9 +763,26 @@ C5.5 completion record:
 - Final C5.5 Dev Integration run `33356240462`: PASS 74/74, with C5.5 explicitly executed plus stress, 288 driving cases, both WebGL reverse tests, build and production code-split QA.
 - Human validation: not required for this identity/persistence correction; the previously stale reference behavior and all affected UI/environment contracts are directly reproduced and protected by QA.
 
+C5.6 audit completed — selected boundary: loaded-settings runtime/UI application:
+- fresh post-C5.5 audit branch `audit/main-c5-6`, run `33382825080`: PASS responsibility inventory, runtime import/debt audit and production build;
+- measured `main.js` at 2752 lines / 85546 bytes, with 58 imports and 86 top-level function declarations; all 114 source modules remain runtime-reachable;
+- audit parser exposed false-large spans for tiny functions followed by facade code (notably `setCollapsed` and `featureCentroid`), so C5.6 selection is based on actual source boundaries rather than raw span counts;
+- frame-performance governor / `animate()`, route loading, hydrography and vehicle-selection remain explicitly deferred because they are behavior/frame-pacing sensitive;
+- the V21 menu facade itself remains only about 41 lines and is not worth extracting alone;
+- selected the cohesive settings-application responsibility deliberately left in `main.js` during C5.5: applying already-loaded settings to transmission mode, assist state, road-speed-limit state, imagery enablement, display distance, display visibility and synchronized runtime UI.
+
+C5.6 required invariants:
+- preserve transmission semantics exactly: only literal `manual` selects manual, otherwise automatic;
+- preserve assist and road-speed-limit defaults: only explicit `false` disables either;
+- imagery toggles only when current enablement differs from the loaded boolean;
+- display distance keeps `high` as fallback;
+- preserve exact assist label `Assist: ON/OFF`, transmission select synchronization, speed-limit UI refresh, display-visibility application and runtime-control synchronization;
+- preserve current startup ordering, including awaiting settings application before the initial route is created;
+- do not move settings persistence/schema ownership out of `application-settings.js`, and do not tune visual, physics, streaming or menu behavior.
+
 Next C5 step:
-- C5.6 begins with a fresh post-C5.5 read-only audit before selecting another boundary;
-- continue to prefer cohesive composition/plumbing cleanup and keep the frame-performance governor, route/hydro/vehicle behavior and C6 diagnostics deferred unless the audit proves a smaller safe boundary.
+- implement C5.6 on an isolated cleanup branch using a small canonical runtime-settings applicator module;
+- validate C5.5 identity/persistence, V21.25 UI, V21.26 environment, imagery/settings behavior, import audit, 288 driving cases, stress and production build before integration.
 
 Completion record:
 - C5 overall remains open until the remaining high-value responsibilities are reduced enough that `main.js` is materially a composition root.
@@ -838,13 +855,21 @@ These rules are mandatory while working this plan:
 
 # 6. Recommended next task
 
-**Next: C5.6 — fresh post-C5.5 responsibility audit of `main.js`.**
+**Next: C5.6 — extract loaded-settings runtime/UI application.**
 
-Re-measure the remaining responsibilities after `main.js` reached 2752 lines. Select the next extraction by cohesion and risk rather than line count. Continue to defer the frame-performance governor, route/hydro/vehicle behavior and C6 diagnostics unless the audit identifies a clearly safer boundary.
+The post-C5.5 audit is complete and selected the settings-application boundary. Move only the application of already-loaded settings into a small canonical runtime applicator while keeping persistence in `application-settings.js` and startup composition/state ownership in `main.js`. Preserve exact UI, imagery, environment and transmission semantics; keep frame governor, route, hydro, vehicle behavior and C6 diagnostics deferred.
 
 ---
 
 # 7. Work log
+
+## 2026-08-31 — C5.6 audit completed; loaded-settings application selected
+
+- Audit branch `audit/main-c5-6`; run `33382825080` PASS inventory, import/debt audit and production build.
+- Post-C5.5 `main.js`: 2752 lines / 85546 bytes / 58 imports / 86 top-level function declarations; 114/114 source modules runtime-reachable.
+- Rejected parser false positives and deferred frame governor/animate, route, hydro and vehicle-selection due higher behavioral risk.
+- Selected the coherent `applyLoadedV21Settings()` responsibility: apply already-loaded settings to runtime/UI without changing persistence, schema, visuals, physics or frame pacing.
+- Next: isolated C5.6 candidate + dedicated exact-semantics QA before any integration.
 
 ## 2026-08-30 — C5.5 completed: stable application settings identity
 
