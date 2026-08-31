@@ -62,8 +62,8 @@ function oldAdvance(args={}){
   return {yawRate,dynamicYawRate,frontDominance,rearDominance,fourWheelSlide,frictionYawLoss,forceCoupledSlide,driftKinematicScale,driftPhysicalAuthority,physicalTireYawAccel:physicalYaw,yawReleaseBoost,yawGripResponseScale,legacyYawAccel,authoritativeYawAccel};
 }
 
-const yaw=await import(`./src/physics/yaw-authority.js?b5=${Date.now()}`);
-const runtime=await import(`./src/driving-runtime-base.js?b5=${Date.now()}`);
+const yaw=await import('./src/physics/yaw-authority.js');
+const runtime=await import('./src/driving-runtime-base.js');
 assert.equal(runtime.driftKinematicCoupling,yaw.driftKinematicCoupling,'runtime compatibility export changed');
 assert.equal(runtime.legacyGripYawAcceleration,yaw.legacyGripYawAcceleration,'legacy yaw compatibility export changed');
 
