@@ -830,7 +830,7 @@ C5 completion record:
 
 ### C6 — Consolidate diagnostic globals **[P2]**
 
-Status: **IN PROGRESS — C6.1/C6.2 DONE; C6.3 wheelspin selected (2026-08-31)**
+Status: **IN PROGRESS — C6.1/C6.2/C6.3 DONE; C6.4 road-sign audit next (2026-08-31)**
 
 Audit baseline:
 - audit branch `audit/diagnostics-c6`; strengthened audit run `33386461640`: PASS diagnostic inventory, import/debt audit, active forest runtime/stress, P9.37 frame pacing, P9.39 hitch attribution, P9.41 frame-runtime attribution and production build;
@@ -951,6 +951,16 @@ C6.3 selected boundary — canonical runtime wheelspin diagnostics:
 - preserve object-allocation/update cadence: one new diagnostic payload per drive-mode traction publication, no eager update on reset/non-drive modes;
 - candidate validation must include C6.3 equivalence, B6, V21.29 runtime/Civic wheelspin, driving simulation matrix, full stress and production build before integration.
 
+C6.3 completion record — canonical runtime wheelspin diagnostics:
+- candidate branch `cleanup/diagnostics-c6-3`; candidate run `33393082870`: PASS C6.3 equivalence, C6.1/C6.2 regressions, B6, V21.29 runtime/Civic wheelspin, Civic clutch-dump slip, 288 driving cases, full V21.31 stress, runtime import/debt audit, production build and diff hygiene;
+- candidate materialized runtime commit `7e775a78` changed only `src/driving-runtime.js` (3 additions / 1 deletion): no wheelspin equations, grip math, clutch timing, skidmark logic or traction behavior changed;
+- permanent C6.3 QA integrated on dev at `cd70bb36`; runtime + permanent gate integrated at `7767d090`; Dev Integration registration commit `8be82fcb`;
+- permanent C6.3 gate run `33396349875`: PASS C6.3, B6, V21.29 runtime wheelspin, Civic clutch wheelspin, 288 driving cases, runtime import/debt audit and production build;
+- final Dev Integration run `33396451688`: PASS **78/78**, including C6.3, full stress, 288 driving cases, R2–R20, forest/frame pacing, M4.14/M4.15 WebGL, live route smoke, production build and code split;
+- legacy `WorldDriveRuntimeWheelspin` removed; the unchanged four-field drive-only payload now publishes at `WorldDriveDiagnostics.wheelspin.runtime`; reset/non-drive publication cadence remains unchanged;
+- human validation: not required because C6.3 is telemetry-only and all mechanical/visual integration regressions remained green;
+- Result: **C6.3 DONE**. Next is C6.4 read-only audit of road-sign diagnostics before any alias migration.
+
 ---
 
 # 4. Items intentionally NOT scheduled for immediate deletion
@@ -991,9 +1001,9 @@ These rules are mandatory while working this plan:
 
 # 6. Recommended next task
 
-**Next: C6.3 — migrate runtime wheelspin diagnostics.**
+**Next: C6.4 — audit road-sign diagnostic globals.**
 
-Implement only the audited diagnostic publication seam in `driving-runtime.js`: same drive-only timing and four-field payload under `WorldDriveDiagnostics.wheelspin`, with B6 remaining the behavioral owner. No traction, grip, clutch, skidmark or wheelspin-equation changes.
+Start read-only: inventory every road-sign diagnostic global, writer, runtime reader and QA/source-string dependency before changing ownership. Preserve the P9.37 compatibility alias until its current consumer/QA contract is explicitly migrated; no road-sign rendering, placement, timing or sign-readout behavior changes during the audit.
 
 ---
 
@@ -1006,6 +1016,16 @@ Implement only the audited diagnostic publication seam in `driving-runtime.js`: 
 - Dev Integration registration `3d721bfa`; final `33392329882` PASS 77/77.
 - Legacy `__WORLD_DRIVE_LOCAL_AUTHORED_PRESENTATION__` removed; canonical `WorldDriveDiagnostics.presentation.localAuthored` uses the unchanged exported snapshot function.
 - C6.3 wheelspin requires read-only physics-adjacent audit before any runtime edit.
+
+## 2026-08-31 — C6.3 completed: canonical runtime wheelspin diagnostics
+
+- Audit `33392775159` PASS after correcting the audit self-reference false positive.
+- Candidate `33393082870` PASS; runtime materialization `7e775a78`.
+- Dev QA `cd70bb36`; runtime/permanent gate `7767d090`; permanent gate `33396349875` PASS.
+- Dev Integration registration `8be82fcb`; final run `33396451688` PASS 78/78.
+- Legacy `WorldDriveRuntimeWheelspin` removed; canonical `WorldDriveDiagnostics.wheelspin.runtime` preserves the exact drive-only four-field payload and cadence.
+- No human validation required; telemetry-only change with B6/mechanical regressions unchanged.
+- C6.4 road-sign diagnostics is next.
 
 ## 2026-08-31 — C6.1 completed: canonical frame-pacing/forest diagnostics root
 
