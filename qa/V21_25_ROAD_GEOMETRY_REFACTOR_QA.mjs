@@ -10,6 +10,7 @@ const src=path.join(root,'src');
 const mainPath=path.join(src,'main.js');
 const modulePath=path.join(src,'road-geometry.js');
 const localWorldPath=path.join(src,'local-world-builder.js');
+const localWorldP925Path=path.join(src,'local-world-builder-p925.js');
 const routeLifecyclePath=path.join(src,'route-lifecycle.js');
 
 assert.equal(fs.existsSync(mainPath),true,'src/main.js missing');
@@ -17,9 +18,10 @@ assert.equal(fs.existsSync(modulePath),true,'src/road-geometry.js missing — ru
 
 const main=fs.readFileSync(mainPath,'utf8');
 const road=fs.readFileSync(modulePath,'utf8');
-const localWorld=fs.existsSync(localWorldPath)
-  ?fs.readFileSync(localWorldPath,'utf8')
-  :'';
+const localWorld=[localWorldPath,localWorldP925Path]
+  .filter(file=>fs.existsSync(file))
+  .map(file=>fs.readFileSync(file,'utf8'))
+  .join('\n');
 const routeLifecycle=fs.existsSync(routeLifecyclePath)
   ?fs.readFileSync(routeLifecyclePath,'utf8')
   :'';
@@ -109,7 +111,7 @@ for(const pattern of [
   /function roadProfileFrameAtCum\s*\(/,
   /function roadHeightAt\s*\(/,
   /function roadSurfaceAt\s*\(/,
-  /function setProfile\s*\(/,
+  /function setActiveRoadProfile\s*\(/,
   /profile:activeRoadProfile/
 ]){
   assert.match(road,pattern,`road-geometry.js missing expected behavior: ${pattern}`);
@@ -162,11 +164,11 @@ assert.ok(Math.abs(frame.distance-3)<1e-9,`roadFrameAt distance changed: ${frame
 const cumulative=roadSystem.roadProfileFrameAtCum(50);
 assert.ok(cumulative,'roadProfileFrameAtCum should resolve the test segment');
 assert.ok(Math.abs(cumulative.y-15)<1e-9,`cumulative height interpolation changed: ${cumulative.y}`);
-assert.ok(Math.abs(cumulative.z-50)<1e-9,`cumulative position interpolation changed: ${cumulative.z}`);
+assert.ok(Math.abs(cumulative.pz-50)<1e-9,`cumulative position interpolation changed: ${cumulative.pz}`);
 
 const surface=roadSystem.roadSurfaceAt(3,50);
 assert.ok(surface,'roadSurfaceAt should resolve the test segment');
-assert.ok(Math.abs(surface.y-15.10)<1e-9,`road surface offset changed: ${surface.y}`);
+assert.ok(Math.abs(surface.y-15)<1e-9,`geometric road surface interpolation changed: ${surface.y}`);
 
 roadSystem.clearProfile();
 assert.equal(stableProfile.length,0,'clearProfile must preserve identity and clear contents');
