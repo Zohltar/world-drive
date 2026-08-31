@@ -1,3 +1,5 @@
+import {ensureWorldDriveDiagnostics} from './diagnostics.js';
+
 // Lightweight async facade used by authored passenger vehicle systems.
 // The heavy per-vehicle module is imported only when that vehicle is selected.
 // Until then the existing procedural visual remains authoritative.
@@ -57,9 +59,8 @@ export function readLocalAuthoredPresentationState(){
   };
 }
 
-try{
-  globalThis.__WORLD_DRIVE_LOCAL_AUTHORED_PRESENTATION__=readLocalAuthoredPresentationState;
-}catch{}
+const presentationDiagnostics=ensureWorldDriveDiagnostics().presentation;
+presentationDiagnostics.localAuthored=readLocalAuthoredPresentationState;
 
 function driverCameraModeFallback(modeLabel=''){
   const label=String(modeLabel||'').toLowerCase();
