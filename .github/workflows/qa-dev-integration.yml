@@ -62,6 +62,8 @@ jobs:
         run: node qa-main-c5-sky-lighting.mjs
       - name: Cleanup C5.3 world scene ownership QA
         run: node qa-main-c5-world-scene.mjs
+      - name: Cleanup C5.4 geographic sign orchestration QA
+        run: node qa-main-c5-geographic-signs.mjs
       - name: Full V21.31 regression stress
         run: npm run qa:stress
       - name: Driving dynamics simulation matrix
