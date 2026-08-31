@@ -830,7 +830,7 @@ C5 completion record:
 
 ### C6 — Consolidate diagnostic globals **[P2]**
 
-Status: **IN PROGRESS — C6.1/C6.2 DONE; C6.3 wheelspin audit next (2026-08-31)**
+Status: **IN PROGRESS — C6.1/C6.2 DONE; C6.3 wheelspin selected (2026-08-31)**
 
 Audit baseline:
 - audit branch `audit/diagnostics-c6`; strengthened audit run `33386461640`: PASS diagnostic inventory, import/debt audit, active forest runtime/stress, P9.37 frame pacing, P9.39 hitch attribution, P9.41 frame-runtime attribution and production build;
@@ -936,6 +936,21 @@ C6.2 completion record:
 - Human validation: not required; C6.2 is diagnostics-only and rendering/network equivalence is covered directly by deterministic, multiplayer and WebGL integration QA.
 - Result: C6.2 is DONE. Wheelspin remains the next lowest-risk category but must start with an exact read-only seam audit because its writer lives in `driving-runtime.js`.
 
+C6.3 read-only audit — runtime wheelspin diagnostic seam:
+- branch `audit/diagnostics-c6-3` from post-C6.2 plan state; first run `33392687723` failed only because the audit counted its own global-name string as a QA consumer; no runtime test executed or failed;
+- corrected audit run `33392775159`: PASS seam audit, B6 wheelspin ownership, V21.29 runtime wheelspin, Civic clutch wheelspin, 288 driving cases, runtime import/debt audit and production build;
+- `WorldDriveRuntimeWheelspin` has exactly one source owner in `src/driving-runtime.js`, one source occurrence, zero runtime readers and zero QA consumers;
+- current publication happens only after the non-drive early return, after `wheelspinState.advance()`, after any wheelspin acceleration/grip mutation, and immediately before returning the drive traction result;
+- exact legacy payload is `{level: wheelspin.level, holdSec: wheelspin.holdSec, drivetrain, wheels: wheelspin.wheels}`; it intentionally does not expose `gripFactor` or `vehicleClass`;
+- wheelspin resets during transmission handling do not eagerly republish diagnostics; the diagnostic refreshes only on the next drive-mode longitudinal traction call. This timing must remain unchanged.
+
+C6.3 selected boundary — canonical runtime wheelspin diagnostics:
+- publish the same four-field payload at the exact existing drive-only point under the stable canonical `WorldDriveDiagnostics.wheelspin` category;
+- preserve B6 `wheelspinState` as the sole behavioral owner; diagnostics must remain a post-calculation observer and must not feed grip, skidmarks, clutch or traction decisions;
+- remove `WorldDriveRuntimeWheelspin` rather than keeping an independent compatibility store because the fresh audit found no runtime or QA consumer;
+- preserve object-allocation/update cadence: one new diagnostic payload per drive-mode traction publication, no eager update on reset/non-drive modes;
+- candidate validation must include C6.3 equivalence, B6, V21.29 runtime/Civic wheelspin, driving simulation matrix, full stress and production build before integration.
+
 ---
 
 # 4. Items intentionally NOT scheduled for immediate deletion
@@ -976,9 +991,9 @@ These rules are mandatory while working this plan:
 
 # 6. Recommended next task
 
-**Next: C6.3 — audit wheelspin diagnostics ownership before migration.**
+**Next: C6.3 — migrate runtime wheelspin diagnostics.**
 
-Start read-only around `WorldDriveRuntimeWheelspin` in `driving-runtime.js`. Confirm exact write timing, payload identity, zero consumers/QA assumptions and interaction with B6/V21.29 wheelspin tests before considering canonical `WorldDriveDiagnostics.wheelspin` publication. Do not change traction behavior during the audit.
+Implement only the audited diagnostic publication seam in `driving-runtime.js`: same drive-only timing and four-field payload under `WorldDriveDiagnostics.wheelspin`, with B6 remaining the behavioral owner. No traction, grip, clutch, skidmark or wheelspin-equation changes.
 
 ---
 
