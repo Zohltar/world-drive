@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import {normalizeMultiplayerVehicleState} from '../src/multiplayer-vehicle-adapter.js';
+import {normalizeMultiplayerVehicleState} from '../src/multiplayer/multiplayer-vehicle-adapter.js';
 import {listAuthoredVehicleDescriptors} from '../src/vehicle-authored-registry.js';
 
 const states={
@@ -23,7 +23,7 @@ assert.equal(normalized['reverse-stopped'].reversing,true,'gear R must force rev
 assert.equal(normalized['reverse+brake+night'].reversing,true);assert.equal(normalized['reverse+brake+night'].braking,true);assert.equal(normalized['reverse+brake+night'].nightLevel,1);
 assert.equal(normalized['left-on'].signalLeft,true);assert.equal(normalized['left-on'].signalBlink,true);assert.equal(normalized['left-off'].signalBlink,false);assert.equal(normalized['right-on'].signalRight,true);
 
-const client=fs.readFileSync('src/multiplayer-client-m3.js','utf8');
+const client=fs.readFileSync('src/multiplayer/multiplayer-client-m3.js','utf8');
 assert(client.includes('readTransmissionRuntimeState'),'network state must read the authoritative transmission bridge');
 assert(client.includes('Number(runtime.serviceBrake)'),'brake replication must originate from service-brake state');
 assert(client.includes('const gear=normalizeGear(state.gear,runtime.selectorGear)'),'network gear must originate from explicit local gear or authoritative selector');
