@@ -42,6 +42,8 @@ jobs:
         run: node qa-momentum-direction-b4.mjs
       - name: Cleanup B5 yaw-authority ownership QA
         run: node qa-yaw-authority-b5.mjs
+      - name: Cleanup B6 wheelspin ownership QA
+        run: node qa-wheelspin-state-b6.mjs
       - name: Full V21.31 regression stress
         run: npm run qa:stress
       - name: Driving dynamics simulation matrix
