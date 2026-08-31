@@ -16,6 +16,7 @@ import {
   wheelspinDynamicGripFactor
 } from './physics/wheelspin-state.js';
 export {drivenWheelSlipLevels,wheelspinDynamicGripFactor};
+import {ensureWorldDriveDiagnostics} from './diagnostics.js';
 
 export function clutchShockDurationSec(profile={},vehicleId=''){
   if(vehicleId==='semi_6x4')return .18;
@@ -60,6 +61,7 @@ export function createDrivingRuntime(args={}){
   let clutchWasHeld=false,clutchReleaseTimer=0,clutchShockMultiplier=1,clutchShockDuration=.095;
   let activeReleaseMultiplier=1,frameDt=1/60,requestedEngineThrottle=0;
   const wheelspinState=createWheelspinState();
+  const wheelspinDiagnostics=ensureWorldDriveDiagnostics().wheelspin;
 
   const lightingState=()=>{
     const bridge=readTransmissionRuntimeState();
@@ -210,7 +212,7 @@ export function createDrivingRuntime(args={}){
       result.runtimeWheelspinLevel=wheelspin.level;
       result.runtimeSlidingGripFactor=factor;
     }
-    if(typeof globalThis!=='undefined')globalThis.WorldDriveRuntimeWheelspin={
+    wheelspinDiagnostics.runtime={
       level:wheelspin.level,
       holdSec:wheelspin.holdSec,
       drivetrain,
