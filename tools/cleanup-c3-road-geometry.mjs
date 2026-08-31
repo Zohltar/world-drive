@@ -39,7 +39,8 @@ fs.writeFileSync(canonicalPath,combined+'\n');
 fs.unlinkSync(basePath);
 
 // The historical V21.25 QA still contains valuable behavioral assertions, but
-// its local-world source-location check predates the P9.25 implementation layer.
+// its source-location details predate both the current profile-owner naming and
+// the P9.25 local-world implementation layer.
 let qa=fs.readFileSync(legacyQaPath,'utf8');
 const oldPath="const localWorldPath=path.join(src,'local-world-builder.js');";
 const newPath="const localWorldPath=path.join(src,'local-world-builder.js');\nconst localWorldP925Path=path.join(src,'local-world-builder-p925.js');";
@@ -47,6 +48,12 @@ if(!qa.includes('localWorldP925Path'))qa=replaceOnce(qa,oldPath,newPath,'add cur
 const oldRead=`const localWorld=fs.existsSync(localWorldPath)\n  ?fs.readFileSync(localWorldPath,'utf8')\n  :'';`;
 const newRead=`const localWorld=[localWorldPath,localWorldP925Path]\n  .filter(file=>fs.existsSync(file))\n  .map(file=>fs.readFileSync(file,'utf8'))\n  .join('\\n');`;
 qa=replaceOnce(qa,oldRead,newRead,'read current local-world ownership layers');
+qa=replaceOnce(
+  qa,
+  '/function setProfile\\s*\\(/,',
+  '/function setActiveRoadProfile\\s*\\(/,',
+  'modernize active profile owner assertion'
+);
 qa=qa.replace(/[ \t]+$/gm,'');
 fs.writeFileSync(legacyQaPath,qa+'\n');
 
