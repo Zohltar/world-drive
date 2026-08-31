@@ -8,6 +8,7 @@ const streaming=read('src/streaming-coordinator-p913.js');
 const worldScene=read('src/world-scene.js');
 const worldMaterials=read('src/world-materials.js');
 const terrain=read('src/terrain.js');
+const distantTerrain=read('src/terrain-p926.js');
 
 function ok(value,message){if(!value)throw new Error(message);}
 function has(source,fragment,message){ok(source.includes(fragment),message);}
@@ -37,9 +38,10 @@ has(main,"'WorldDriveFramePacing'",'frame-pacing compatibility alias missing');
 has(worldScene,'export const NEAR_TERRAIN_SIZE=5600;','near-terrain footprint changed');
 has(worldScene,'export const NEAR_TERRAIN_SEGMENTS=448;','near-terrain density changed');
 has(worldMaterials,'const size=512;','road texture resolution changed');
-has(terrain,'function applyDistantTerrainColors(geometry,{offset,nearHalf,farHalf})','distant terrain colour pass missing');
-has(terrain,'nearHalf+4260','far horizon reach changed');
-has(terrain,'shiftRoadBedOrigin','terrain road-bed soft-origin support missing');
+has(distantTerrain,'function runNormalizeAndColors()','incremental distant-terrain colour pass missing');
+has(distantTerrain,'nearHalf+4260','far horizon reach changed');
+has(distantTerrain,"mesh.name='distant-terrain-seamless-square-lod'",'current distant-terrain LOD owner missing');
+has(terrain,'function shiftRoadBedOrigin(shiftX,shiftZ)','terrain road-bed soft-origin support missing');
 
 console.log('PASS V21.22.3 hitch-free policy — modern ownership');
 console.log('  - streaming thresholds protected in streaming-coordinator-p913');
