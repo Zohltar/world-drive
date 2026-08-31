@@ -5,6 +5,7 @@ import {
   publishTransmissionSelectorGear
 } from './transmission-runtime-bridge.js';
 import {publishTransmissionNetworkGear} from './transmission-network-state.js';
+import {ensureWorldDriveDiagnostics} from './diagnostics.js';
 
 function createTransmissionCore({
   vehicleSystem,
@@ -639,13 +640,14 @@ export function clutchShockMultiplierFromMismatch({freeRpm=0,coupledRpm=0,idleRp
   return Math.min(Math.max(1,Number(maxMultiplier)||1),1+pedal*(.18+Math.max(0,Number(gain)||0)*mismatch+(opposingTravel?Math.max(0,Number(travelBonus)||0):0)));
 }
 
-function publishEngineInput({throttle=0,clutchHeld=false}={}){
-  if(typeof window==='undefined')return;
-  window.WorldDriveEngineInput={throttle:clamp01(Math.max(0,Number(throttle)||0)),clutchHeld:!!clutchHeld};
+function publishEngineInput(diagnostics,{throttle=0,clutchHeld=false}={}){
+  if(!diagnostics)return;
+  diagnostics.engineInput={throttle:clamp01(Math.max(0,Number(throttle)||0)),clutchHeld:!!clutchHeld};
 }
 
 export function createTransmissionController(args={}){
   const rawGetSpeed=typeof args.getSpeed==='function'?args.getSpeed:()=>0;
+  const engineInputDiagnostics=typeof window==='undefined'?null:ensureWorldDriveDiagnostics().physics;
   let bodyLongitudinalSpeed=NaN;
   let selector=1; // 1=D/forward, 0=N, -1=R
   let lastProfileKey='';
@@ -686,7 +688,7 @@ export function createTransmissionController(args={}){
     selector=1;bodyLongitudinalSpeed=NaN;freeRevRpm=NaN;clutchWasHeld=false;
     lastProfileKey=activeProfileKey();
     resetTransmissionRuntimeState();
-    publishEngineInput({throttle:0,clutchHeld:false});
+    publishEngineInput(engineInputDiagnostics,{throttle:0,clutchHeld:false});
     const result=coreResetTransmissionState();
     applySelectorState();
     return result;
@@ -751,7 +753,7 @@ export function createTransmissionController(args={}){
 
       const profile=core.activeTransmissionProfile();
       const combustion=profile?.type==='combustion';
-      publishEngineInput({throttle:combustion?engineThrottle:0,clutchHeld:effectiveClutch});
+      publishEngineInput(engineInputDiagnostics,{throttle:combustion?engineThrottle:0,clutchHeld:effectiveClutch});
 
       if(combustion&&effectiveClutch){
         const idle=Math.max(500,Number(profile.idleRpm)||850);
