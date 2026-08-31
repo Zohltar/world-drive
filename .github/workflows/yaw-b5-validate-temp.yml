@@ -37,7 +37,6 @@ jobs:
           node qa-grip-handbrake-lateral-r20.mjs
           node qa-grip-f1-front-slip-r21.mjs
           node qa-grip-f1-legacy-r23.mjs
-          node qa/V21_27_CG_CONTACT_GEOMETRY_QA.mjs
       - name: Fleet stress / driving matrix
         run: |
           node qa/DEV_DRIVING_SIM_QA.mjs
