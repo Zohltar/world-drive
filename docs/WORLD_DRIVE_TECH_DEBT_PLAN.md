@@ -722,9 +722,27 @@ C5.3 completion record:
 - Final C5.3 Dev Integration run `33354621243`: PASS 72/72, including both WebGL reverse tests and production code-split QA.
 - Human validation: not required for this exact composition extraction; group order, ground visuals, streaming group contract and terrain/road behavior are directly covered.
 
-Next C5 step:
-- C5.4 begins with a fresh post-C5.3 audit before selecting another boundary;
-- continue to prefer low-risk composition/plumbing over the frame-performance governor, physics, terrain rules or C6 diagnostic consolidation.
+C5.4 audit completed — selected boundary: geographic sign orchestration:
+- post-C5.3 audit measured `main.js` at 2859 lines / 88091 bytes, with 57 imports and 93 top-level functions; audit branch `audit/main-c5-4`, run `33354840492` PASS responsibility inventory, import/debt audit and production build;
+- the safest cohesive remaining block is the 106-line contiguous fallback/sign-placement orchestration currently at roughly lines 978–1083;
+- `src/signs.js` already states that 3D rendering/fallback signs remained in `main.js` for its first extraction, so C5.4 completes that existing boundary instead of creating a competing subsystem;
+- extend `signs.js` with a geographic-sign orchestration factory owning fallback city/river/speed selection and calls into the rendering callback;
+- keep `createSignDataService(...)` authoritative for OSM sign/city/river loading/parsing;
+- keep `road-furniture.js` authoritative for 3D sign geometry/materials, atomic sign refresh and face-cache/frame-budget behavior;
+- preserve exact fallback thresholds/distances: route correlation 120 m, speed confidence > .20, nearby-speed suppression 900 m, speed placement +95 m, river -22 m, city -55 m and visible corridor +/-1600 m;
+- preserve endpoint city deduplication, river-name fallback, sign status count, route heights and current left/right placement semantics.
+
+C5.4 required validation:
+- dedicated orchestration QA for endpoint-city, river and speed fallback decisions plus exact distance/threshold constants;
+- existing P9.30 road-sign runtime QA;
+- V21.25 minimap/sign-readout regressions;
+- 288 driving cases, stress and production build;
+- full Dev Integration before C5.4 is declared done.
+
+Explicitly out of scope:
+- performance/frame governor remains deferred;
+- road metadata/hydro/vehicle-selection/route-load ownership remains unchanged;
+- C6 diagnostic-global consolidation remains separate.
 
 Completion record:
 - C5 overall remains open until the remaining high-value responsibilities are reduced enough that `main.js` is materially a composition root.
@@ -797,13 +815,20 @@ These rules are mandatory while working this plan:
 
 # 6. Recommended next task
 
-**Next: C5.4 — perform a fresh post-C5.3 responsibility audit of `main.js` and select the next cohesive low-risk extraction.**
+**Next: C5.4 — complete geographic sign orchestration extraction into `src/signs.js`.**
 
-Start from the 2859-line post-C5.3 source. Prefer composition/configuration plumbing; keep the performance governor deferred unless no safer high-value boundary remains. Do not fold C6 diagnostic-global consolidation into C5.4.
+Move only fallback city/river/speed selection and sign-placement orchestration. Keep OSM loading/parsing in the existing sign data service and keep all 3D sign construction/frame-budget ownership in `road-furniture.js`. Preserve thresholds and placement constants exactly; require dedicated sign orchestration QA, existing sign/minimap regressions, stress and full Dev Integration.
 
 ---
 
 # 7. Work log
+
+## 2026-08-30 — C5.4 audit completed; geographic-sign boundary selected
+
+- Fresh post-C5.3 audit: `main.js` = 2859 lines / 88091 bytes / 57 imports / 93 top-level functions; audit run `33354840492` PASS.
+- Selected the contiguous ~106-line geographic fallback/sign-placement block as lower risk than the frame governor, hydro, route load or vehicle selection.
+- C5.4 will complete the boundary explicitly left in `signs.js`: data loading remains there, fallback orchestration moves there, while `road-furniture.js` retains 3D rendering and P9.30 frame-budget ownership.
+- Exact fallback thresholds/offsets are frozen by the C5.4 contract; no visual, routing or metadata tuning is allowed.
 
 ## 2026-08-30 — C5.3 completed: world render scene composition extracted
 
