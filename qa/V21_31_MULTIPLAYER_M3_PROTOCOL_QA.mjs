@@ -111,7 +111,8 @@ assert(entry.includes('transformOutgoingState:payload=>'),'public entry must inj
 assert(entry.includes('transformIncomingPayload:raw=>'),'public entry must inject legacy/diagnostic transform into owned client');
 assert(!entry.includes('globalThis.WebSocket='),'public entry must never replace global WebSocket');
 assert(!entry.includes('class WorldDriveCompatWebSocket'),'global WebSocket subclass must stay retired');
-assert(entry.includes('__WORLD_DRIVE_MULTIPLAYER_WIRE__'),'wire diagnostics must expose actual outgoing/incoming state');
+assert(entry.includes('multiplayerDiagnostics.wire=()=>({'),'canonical wire diagnostics must expose actual outgoing/incoming state');
+assert(!entry.includes('globalThis.__WORLD_DRIVE_MULTIPLAYER_WIRE__='),'legacy wire diagnostics writer must stay retired');
 
 assert(client.includes('const gear=normalizeGear(state.gear,runtime.selectorGear)'),'maintained sender fallback remains documented behind final boundary enforcement');
 assert(client.includes('const remoteReversing=reverseFromGear(peer.gear,peer.reversing)'),'receiver must derive reverse from network gear');
