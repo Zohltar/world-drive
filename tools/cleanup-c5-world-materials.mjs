@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 
+// C5.1 candidate materializer: composition-only extraction, no material tuning.
 const mainPath='src/main.js';
 let main=fs.readFileSync(mainPath,'utf8');
 const importAnchor="import { createLocalWorldBuilder } from './local-world-builder.js';";
