@@ -1,0 +1,13 @@
+import fs from 'node:fs';
+const path='docs/WORLD_DRIVE_TECH_DEBT_PLAN.md';
+let text=fs.readFileSync(path,'utf8');
+const marker='C6.1 selected boundary — canonical diagnostics root + frame-pacing/forest bridge:';
+const insert=`C6.1 material discovery — stale dormant V21.22.3 hitch-free QA:\n- first C6.1 candidate run passed the new canonical diagnostics QA and C4 forest compatibility QA, then stopped in \`qa/V21_22_3_HITCH_FREE_QA.mjs\` before reaching any C6-specific assertion;\n- that historical QA still pins \`perfConsoleLogging:false\`, streaming distances and visual constants to \`main.js\`, although those responsibilities moved long ago to \`streaming-coordinator-p913.js\`, \`world-scene.js\`, \`world-materials.js\`, road geometry and terrain modules;\n- it also requires historical \`urgentWorldRefreshDistance:2200\`, while the accepted current P9.13 policy is 2350 m;\n- this proves the dormant QA is stale on the untouched current architecture and must be modernized to current owners/accepted values rather than forcing old source locations or old policy back into runtime;\n- C6.1 runtime diagnostics code is not to be changed to satisfy these unrelated historical assertions.\n\n`;
+if(!text.includes(marker))throw new Error('C6.1 marker missing');
+if(!text.includes('C6.1 material discovery — stale dormant V21.22.3'))text=text.replace(marker,insert+marker);
+const logMarker='## 2026-08-31 — C6 diagnostic-global audit completed; C6.1 selected';
+const log=`## 2026-08-31 — C6.1 candidate exposed stale V21.22.3 hitch-free QA\n\n- New C6.1 canonical diagnostics QA and C4 forest compatibility QA both PASS.\n- Historical \`V21_22_3_HITCH_FREE_QA\` then failed on an unrelated source-location assertion before any C6 diagnostic assertion.\n- Current accepted policy owns \`perfConsoleLogging:false\`, soft/hard streaming distances and \`urgentWorldRefreshDistance:2350\` in \`streaming-coordinator-p913.js\`; visual constants have likewise moved out of \`main.js\`.\n- Action: modernize that dormant QA to current ownership/values before trusting it in C6.1 validation; do not regress runtime to V21.22.3 source layout or the old 2200 m urgent threshold.\n\n`;
+if(!text.includes(logMarker))throw new Error('C6 work log marker missing');
+if(!text.includes('## 2026-08-31 — C6.1 candidate exposed stale V21.22.3'))text=text.replace(logMarker,log+logMarker);
+fs.writeFileSync(path,text);
+console.log('C6.1 stale hitch QA discovery recorded');
