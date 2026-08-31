@@ -771,6 +771,12 @@ C5.6 audit completed — selected boundary: loaded-settings runtime/UI applicati
 - the V21 menu facade itself remains only about 41 lines and is not worth extracting alone;
 - selected the cohesive settings-application responsibility deliberately left in `main.js` during C5.5: applying already-loaded settings to transmission mode, assist state, road-speed-limit state, imagery enablement, display distance, display visibility and synchronized runtime UI.
 
+C5.6 material discovery — stale C5.5 implementation-location assertion:
+- first candidate run reached the new C5.6 semantics QA successfully, then `qa-main-c5-settings.mjs` failed only because C5.5 explicitly asserted that `async function applyLoadedV21Settings()` must remain implemented inside `main.js`;
+- that assertion was intentionally valid for C5.5, whose scope stopped before runtime/UI application, but becomes stale when C5.6 deliberately extracts exactly that responsibility;
+- C5.5 must continue protecting stable root/nested identity, in-place IndexedDB load, 120 ms debounce and keyboard/environment shared references, while C5.6 becomes authoritative for runtime/UI settings-application semantics and startup order;
+- do not reintroduce the old implementation into `main.js` merely to satisfy the C5.5 source-location check.
+
 C5.6 required invariants:
 - preserve transmission semantics exactly: only literal `manual` selects manual, otherwise automatic;
 - preserve assist and road-speed-limit defaults: only explicit `false` disables either;
