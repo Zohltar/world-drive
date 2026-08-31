@@ -42,8 +42,13 @@ expect(!wrapper.includes('FOREST_STREAMING_POLICY'),'diagnostics wrapper must no
 expect(!wrapper.includes('candidatesPerCell')&&!wrapper.includes('densityNearFullDistance')&&!wrapper.includes('farDensityFraction'),
   'diagnostics wrapper must not alter density/LOD policy');
 expect(coordinator.includes('if(rawFrameMs>20){'),'forest hitch feed must remain on the >20 ms gameplay hitch threshold');
-expect(coordinator.includes('globalThis.__WORLD_DRIVE_P928_RECORD_HITCH__?.({'),
-  'streaming coordinator must feed the active forest hitch hook');
+expect(
+  coordinator.includes('globalThis.WorldDriveDiagnostics?.forest?.recordHitch||')&&
+  coordinator.includes('globalThis.__WORLD_DRIVE_P928_RECORD_HITCH__'),
+  'streaming coordinator must prefer the canonical forest hitch recorder while preserving P9.28 fallback compatibility'
+);
+expect(coordinator.includes('forestMatched=forestHitchRecorder?.({'),
+  'streaming coordinator must feed every >20 ms gameplay hitch into the resolved forest hitch recorder');
 expect(!impl.includes('cellsPerBuildSlice'),'P9.29 must not process whole cells as its scheduling unit');
 
 console.log('PASS ACTIVE P9.29+ FOREST FRAME-BUDGET / DIAGNOSTICS QA');
@@ -51,4 +56,4 @@ console.log('  - candidate-level resumable generation');
 console.log('  - chunk commit isolated to its own idle slice');
 console.log('  - conservative instance bounds avoid per-commit full scan');
 console.log('  - diagnostics remain zero-polling and policy-neutral');
-console.log('  - >20 ms gameplay hitch feed remains explicit');
+console.log('  - >20 ms gameplay hitch feed remains explicit via canonical-first/fallback hook');
