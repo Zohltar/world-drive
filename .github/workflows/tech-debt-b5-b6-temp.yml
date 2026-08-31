@@ -1,0 +1,30 @@
+name: Sync tech debt B5 B6
+
+on:
+  push:
+    branches:
+      - audit/wheelspin-b6
+    paths:
+      - 'qa/patch-tech-debt-b5-b6-temp.mjs'
+      - '.github/workflows/tech-debt-b5-b6-temp.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: node qa/patch-tech-debt-b5-b6-temp.mjs
+      - name: Commit plan
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add docs/WORLD_DRIVE_TECH_DEBT_PLAN.md
+          git diff --cached --quiet || git commit -m 'Docs: close B5 and record B6 wheelspin audit'
+          git push
