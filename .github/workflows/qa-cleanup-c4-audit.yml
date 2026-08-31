@@ -1,0 +1,47 @@
+name: Cleanup C4 Forest Layer Audit
+
+on:
+  push:
+    branches:
+      - audit/forest-c4
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+      - name: C4 forest layer inventory
+        run: node qa-forest-c4-audit.mjs
+      - name: Active forest policy/stress QA
+        run: node qa-forest-active-stress.mjs
+      - name: Active forest runtime mock
+        run: node qa-forest-active-runtime.mjs
+      - name: P9.29 frame-budget diagnostics QA
+        run: node qa-forest-p929-frame-budget.mjs
+      - name: Startup/front-load QA
+        run: node qa-forest-p935-front-startup.mjs
+      - name: Rolling prefetch QA
+        run: node qa-forest-p936-rolling-prefetch.mjs
+      - name: Combined frame-pacing QA
+        run: node qa-p937-combined-frame-pacing.mjs
+      - name: Prepared forest-retention QA
+        run: node qa-p938-forest-retention.mjs
+      - name: Hitch attribution QA
+        run: node qa-p939-hitch-attribution.mjs
+      - name: Queue maintenance QA
+        run: node qa-forest-p940-maintenance.mjs
+      - name: Frame-runtime attribution QA
+        run: node qa-p941-frame-runtime-attribution.mjs
+      - name: Browser long-frame attribution QA
+        run: node qa-p942-browser-long-frame.mjs
+      - name: Production build
+        run: npm run build
