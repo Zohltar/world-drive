@@ -1,0 +1,40 @@
+name: Source Tree R2 Multiplayer Audit
+
+on:
+  push:
+    branches:
+      - audit/source-tree-r2-multiplayer
+    paths:
+      - 'src/**'
+      - 'qa/**'
+      - 'qa-*.mjs'
+      - '.github/workflows/**'
+  workflow_dispatch:
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Multiplayer source-tree audit
+        run: node qa-source-tree-r2-multiplayer.mjs
+      - name: Runtime import/source-tree audit
+        run: node qa/DEV_INTEGRATION_AUDIT.mjs
+      - name: Multiplayer M3 protocol QA
+        run: node qa/V21_31_MULTIPLAYER_M3_PROTOCOL_QA.mjs
+      - name: Shared multiplayer traffic QA
+        run: node qa/V21_31_MULTIPLAYER_SHARED_TRAFFIC_QA.mjs
+      - name: Live multiplayer traffic QA
+        run: node qa/V21_31_MULTIPLAYER_LIVE_TRAFFIC_QA.mjs
+      - name: Multiplayer vehicle adapter QA
+        run: node qa/V21_31_MULTIPLAYER_M4_ADAPTER_QA.mjs
+      - name: Production build and code split
+        run: |
+          npm ci
+          npm run build
+          node qa/V21_31_PRODUCTION_CODE_SPLIT_QA.mjs
