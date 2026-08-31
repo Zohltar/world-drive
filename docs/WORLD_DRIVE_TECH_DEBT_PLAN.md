@@ -830,7 +830,7 @@ C5 completion record:
 
 ### C6 — Consolidate diagnostic globals **[P2]**
 
-Status: **IN PROGRESS — C6.1/C6.2/C6.3/C6.4/C6.5/C6.6 DONE; C6.7 remaining-global audit next (2026-08-31)**
+Status: **IN PROGRESS — C6.1/C6.2/C6.3/C6.4/C6.5/C6.6 DONE; C6.7 multiplayer local-gear boundary selected (2026-08-31)**
 
 Audit baseline:
 - audit branch `audit/diagnostics-c6`; strengthened audit run `33386461640`: PASS diagnostic inventory, import/debt audit, active forest runtime/stress, P9.37 frame pacing, P9.39 hitch attribution, P9.41 frame-runtime attribution and production build;
@@ -1046,6 +1046,23 @@ C6.6 completion record — canonical physics-shadow diagnostics with DevTools co
 - human validation: not required for C6.6 itself because only diagnostics publication/compatibility ownership changed; user will perform full in-game validation after the entire plan is executed before any main promotion;
 - Result: **C6.6 DONE**. Next is a fresh read-only inventory/risk ranking of remaining diagnostic globals before selecting C6.7.
 
+C6.7 read-only audit — remaining diagnostic globals after C6.6:
+- branch `audit/diagnostics-c6-7`; run `33424801038`: PASS fresh remaining-global inventory, C6.1–C6.6 regressions, runtime import/debt audit and production build;
+- 14 direct global-access surfaces remain in source after C6.1–C6.6: traffic 5, multiplayer 3, streaming 1, forest compatibility 4 and desktop bridge 1; previously removed independent diagnostics did not return;
+- `worldDriveDesktop` is an Electron preload bridge with three real runtime consumers, not a diagnostic-global cleanup target, so it remains explicitly outside C6;
+- forest P9.28/P9.33/P9.34/P9.35 names are already live delegates installed from canonical diagnostics and still have runtime/QA consumers, so they are compatibility surfaces rather than independent stores;
+- streaming `__WORLD_DRIVE_P923_LOCAL_WORLD__` remains high risk: three writers, one runtime reader in the streaming coordinator and one QA contract;
+- traffic remains highest complexity: five globals, seven direct writers, five source readers/overlapping name references, six QA references and two multi-owner surfaces;
+- multiplayer has three globals and no runtime readers; `__WORLD_DRIVE_MULTIPLAYER_HD_VISUALS__` is multi-owner, `__WORLD_DRIVE_MULTIPLAYER_WIRE__` has a protocol QA contract, while `__WORLD_DRIVE_MULTIPLAYER_LOCAL_GEAR__` has exactly one writer, zero runtime readers and zero QA consumers.
+
+C6.7 selected boundary — canonical multiplayer local-gear telemetry:
+- migrate only `__WORLD_DRIVE_MULTIPLAYER_LOCAL_GEAR__` to `WorldDriveDiagnostics.multiplayer.localGear`;
+- preserve the exact callable payload `{gear:normalizeWireGear(readTransmissionNetworkGear()), reversing:normalizeWireGear(readTransmissionNetworkGear())===-1}`, including invocation-only allocation and existing transmission-network gear normalization;
+- remove the legacy local-gear global rather than retaining a compatibility alias because the fresh audit found no runtime or QA consumer;
+- leave `__WORLD_DRIVE_MULTIPLAYER_WIRE__` and `__WORLD_DRIVE_MULTIPLAYER_HD_VISUALS__` untouched for separate later audits;
+- do not change outgoing/incoming packet transformation, exact gear publication, D/N/R semantics, local state composition, authored presentation state, civil traffic sharing or connection lifecycle;
+- candidate validation must include C6.1–C6.7, C2 transmission ownership, D/N/R/exact-gear multiplayer protocol regressions, shared/live traffic networking, 288 driving cases, full stress, M4.15 network-to-WebGL reverse, runtime import/debt audit and production build before integration.
+
 ---
 
 # 4. Items intentionally NOT scheduled for immediate deletion
@@ -1086,9 +1103,9 @@ These rules are mandatory while working this plan:
 
 # 6. Recommended next task
 
-**Next: C6.7 — audit the remaining diagnostic globals.**
+**Next: C6.7 — implement canonical multiplayer local-gear telemetry.**
 
-Start read-only from current `dev`. Recount remaining independent globals after C6.1–C6.6, map writers/runtime readers/QA source-string contracts, and rank the remaining traffic/multiplayer/streaming/forest compatibility surfaces by migration risk before selecting another boundary.
+Move only the unconsumed `__WORLD_DRIVE_MULTIPLAYER_LOCAL_GEAR__` callable to `WorldDriveDiagnostics.multiplayer.localGear`, preserve its exact payload and invocation timing, and leave wire diagnostics / HD visuals / packet behavior untouched.
 
 ---
 
