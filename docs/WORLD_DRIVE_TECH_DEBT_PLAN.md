@@ -670,7 +670,7 @@ Completion record:
 
 ### C5 — Reduce `main.js` size / responsibilities **[P2]**
 
-Status: **IN PROGRESS — C5.1 + C5.2 DONE (2026-08-30)**
+Status: **IN PROGRESS — C5.1 + C5.2 + C5.3 DONE (2026-08-30)**
 
 Audit baseline:
 - `main.js` measured 3245 lines / 100343 bytes, with 54 imports and about 100 top-level functions before C5 extraction work.
@@ -707,19 +707,24 @@ C5.2 completion record:
 - Final C5.2 Dev Integration run `33353966798`: PASS 71/71.
 - Human validation: not required for this exact extraction; accepted light/material constants and the existing environment/night-lighting behavior are directly protected by QA.
 
-C5.3 audit completed — selected boundary: world render scene composition:
+C5.3 completed — world render scene composition:
 - post-C5.2 audit measured `main.js` at 2925 lines / 90703 bytes, with 56 imports and 96 top-level functions; audit branch `audit/main-c5-3`, run `33354173410` PASS source inventory, import/debt audit and production build;
-- defer the ~105-line performance governor despite its cohesion because frame pacing is more behavior-sensitive than the next available composition extraction;
-- C5.3 will introduce canonical `src/world-scene.js` for static Three world-group construction, the near-terrain ground mesh/material, exact near-terrain constants and static matrix/origin helpers;
-- keep mutable `worldOffset` / `toRender` in `main.js`;
-- keep streaming-coordinator ownership, terrain-service rebuild policy and frame/performance-governor logic in `main.js`;
-- preserve exact group order, initial ground geometry/material/stencil settings, 5600 m near-terrain size, 448 terrain-segment policy, initial 88x88 ground plane, matrix-freeze behavior and streamed-origin reset semantics.
+- extracted static Three world-group construction, the near-terrain ground mesh/material, exact near-terrain constants and static matrix/origin helpers into canonical `src/world-scene.js`;
+- preserved exact 10-group order, ground geometry/material/stencil settings, `NEAR_TERRAIN_SIZE=5600`, `NEAR_TERRAIN_SEGMENTS=448`, initial 88x88 ground plane, matrix-freeze behavior and streamed-origin reset semantics;
+- kept mutable `worldOffset` / `toRender`, streaming-coordinator ownership, terrain rebuild policy and frame/performance-governor logic in `main.js`;
+- material discovery: `streamedWorldGroups` is a real public contract consumed by `createStreamingCoordinator(...)`, not an internal helper; C5.3 explicitly returns the exact ordered array and permanent QA protects that contract;
+- candidate materialization reduced `main.js` from 2925 to 2859 lines (66 net lines) without visual or policy tuning.
 
-C5.3 required validation:
-- dedicated ownership/behavior QA for world groups, ground material/geometry and matrix/origin helpers;
-- terrain visual ownership + V21.31 terrain/road regressions;
-- 288 driving cases, stress and production build;
-- full Dev Integration before C5.3 is declared done.
+C5.3 completion record:
+- Integration commit: `b33d7787` — move world scene out of main.
+- Dev Integration registration commit: `bb6511d7`.
+- Permanent C5.3 gate run `33354593277`: PASS world-scene contract, A8 local-world, terrain R1/R2, road smoothing/superelevation, 288 driving cases, stress and production build.
+- Final C5.3 Dev Integration run `33354621243`: PASS 72/72, including both WebGL reverse tests and production code-split QA.
+- Human validation: not required for this exact composition extraction; group order, ground visuals, streaming group contract and terrain/road behavior are directly covered.
+
+Next C5 step:
+- C5.4 begins with a fresh post-C5.3 audit before selecting another boundary;
+- continue to prefer low-risk composition/plumbing over the frame-performance governor, physics, terrain rules or C6 diagnostic consolidation.
 
 Completion record:
 - C5 overall remains open until the remaining high-value responsibilities are reduced enough that `main.js` is materially a composition root.
@@ -792,13 +797,22 @@ These rules are mandatory while working this plan:
 
 # 6. Recommended next task
 
-**Next: C5.3 — extract world render scene composition into `src/world-scene.js`.**
+**Next: C5.4 — perform a fresh post-C5.3 responsibility audit of `main.js` and select the next cohesive low-risk extraction.**
 
-Move only static Three world-group/ground construction plus exact matrix/origin helpers and near-terrain constants. Keep mutable world offset, streaming policy, terrain rebuild policy, diagnostics and frame governor in `main.js`. Preserve all visual constants exactly and require dedicated QA plus full Dev Integration.
+Start from the 2859-line post-C5.3 source. Prefer composition/configuration plumbing; keep the performance governor deferred unless no safer high-value boundary remains. Do not fold C6 diagnostic-global consolidation into C5.4.
 
 ---
 
 # 7. Work log
+
+## 2026-08-30 — C5.3 completed: world render scene composition extracted
+
+- C5.3 audit `33354173410` measured the pre-extraction source at 2925 lines / 90703 bytes.
+- Added canonical `src/world-scene.js` for static world groups, ground construction and matrix/origin helpers; mutable world offset and streaming/terrain policy remain in `main.js`.
+- Discovery preserved: `streamedWorldGroups` is a public streaming-coordinator contract and remains explicitly returned in exact group order.
+- Clean integration `b33d7787`; Dev Integration registration `bb6511d7`; resulting `main.js` = 2859 lines.
+- Permanent C5.3 gate `33354593277` PASS; final Dev Integration `33354621243` PASS 72/72.
+- Next focus: C5.4 fresh post-C5.3 audit; performance governor remains deliberately deferred.
 
 ## 2026-08-30 — C5.3 audit completed; world-scene boundary selected
 
