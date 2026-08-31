@@ -30,8 +30,8 @@ async function runCase(settings,{imageryInitially=false,withUi=true}={}){
     toggleImagery:()=>{imageryEnabled=!imageryEnabled;calls.push(['toggleImagery']);},
     applyDisplayDistanceProfile:value=>calls.push(['displayDistance',value]),
     applyDisplayVisibility:()=>calls.push(['displayVisibility']),
-    assistStatusEl,
-    transmissionModeSelect,
+    getAssistStatusEl:()=>assistStatusEl,
+    getTransmissionModeSelect:()=>transmissionModeSelect,
     syncRuntimeControls:()=>calls.push(['syncRuntimeControls'])
   });
 
@@ -92,6 +92,8 @@ assert.match(main,/import \{ createLoadedSettingsApplication \} from '\.\/loaded
 assert.match(main,/const loadedSettingsApplication=createLoadedSettingsApplication\(\{/,'main missing C5.6 composition');
 assert.match(main,/const applyLoadedV21Settings=\(\)=>loadedSettingsApplication\.apply\(\);/,'main missing thin loaded-settings facade');
 assert.doesNotMatch(main,/async function applyLoadedV21Settings\s*\(/,'old loaded-settings implementation still lives in main');
+assert.match(main,/getAssistStatusEl:\(\)=>\$\('assist'\)/,'assist element must keep dynamic lookup semantics');
+assert.match(main,/getTransmissionModeSelect:\(\)=>transmissionModeSelect/,'transmission select lookup wiring missing');
 
 const loadIndex=main.indexOf('await settingsController.load();');
 const menuIndex=main.indexOf('installV21Menu();',loadIndex);
@@ -99,6 +101,7 @@ const applyIndex=main.indexOf('await applyLoadedV21Settings();',menuIndex);
 const routeIndex=main.indexOf('await createRequestedRoute(',applyIndex);
 assert.ok(loadIndex>=0&&menuIndex>loadIndex&&applyIndex>menuIndex&&routeIndex>applyIndex,'startup settings/menu/apply/route order changed');
 
+const moduleSource=fs.readFileSync(modulePath,'utf8');
 for(const fragment of [
   "settings.transmissionMode==='manual'",
   'settings.assist!==false',
@@ -107,13 +110,14 @@ for(const fragment of [
   "settings.displayDistance||'high'",
   "'Assist: '+(assist?'ON':'OFF')"
 ]){
-  assert.match(fs.readFileSync(modulePath,'utf8'),new RegExp(fragment.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')),`C5.6 invariant missing: ${fragment}`);
+  assert.ok(moduleSource.includes(fragment),`C5.6 invariant missing: ${fragment}`);
 }
 
 console.log('CLEANUP C5.6 LOADED SETTINGS QA: PASS',{
   manualExact:true,
   falseOnlyDisables:true,
   imageryToggleOnlyOnMismatch:true,
+  dynamicUiLookup:true,
   displayFallback:'high',
   startupOrder:'load -> menu -> apply -> route'
 });
