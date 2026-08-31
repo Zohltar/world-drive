@@ -1,6 +1,7 @@
 import {createMultiplayerVisualSystem as createSupportSystem} from './multiplayer-visuals-v18.js';
 import {createRemoteVehicleAdapter} from './multiplayer-vehicle-adapter.js';
 import {VEHICLE_RENDER_ROOT_SCALE} from './vehicle-render-contract.js';
+import {ensureWorldDriveDiagnostics} from './diagnostics.js';
 
 // Multiplayer M4 presentation pipeline:
 // normalized support chassis -> isolated adapter -> exact LOCAL authored controller.
@@ -137,6 +138,6 @@ export function createMultiplayerVisualSystem(options={}){
       adapters:[...adapters].map(adapter=>adapter.diagnostics())
     };
   }
-  try{globalThis.__WORLD_DRIVE_MULTIPLAYER_HD_VISUALS__=diagnostics;}catch{}
+  try{ensureWorldDriveDiagnostics().multiplayer.hdVisuals=diagnostics;}catch{}
   return {...base,createRemoteVehicleVisual,solveRemoteVehicleSupport,diagnostics};
 }
