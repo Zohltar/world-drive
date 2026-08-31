@@ -1,0 +1,36 @@
+name: Cleanup C6.3 Wheelspin Diagnostics Audit
+
+on:
+  push:
+    branches:
+      - audit/diagnostics-c6-3
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: C6.3 wheelspin diagnostics seam audit
+        run: node qa-diagnostics-c6-3-audit.mjs
+      - name: B6 wheelspin ownership QA
+        run: node qa-wheelspin-state-b6.mjs
+      - name: V21.29 runtime wheelspin QA
+        run: node qa/V21_29_RUNTIME_WHEELSPIN_QA.mjs
+      - name: Civic clutch wheelspin QA
+        run: node qa/V21_29_CIVIC_CLUTCH_WHEELSPIN_QA.mjs
+      - name: Driving simulation matrix
+        run: node qa/DEV_DRIVING_SIM_QA.mjs
+      - name: Runtime import/debt audit
+        run: node qa/DEV_INTEGRATION_AUDIT.mjs
+      - name: Production build
+        run: npm run build
