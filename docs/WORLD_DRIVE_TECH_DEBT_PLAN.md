@@ -830,7 +830,7 @@ C5 completion record:
 
 ### C6 — Consolidate diagnostic globals **[P2]**
 
-Status: **IN PROGRESS — C6.1/C6.2/C6.3/C6.4/C6.5/C6.6 DONE; C6.7 multiplayer local-gear boundary selected (2026-08-31)**
+Status: **IN PROGRESS — C6.1/C6.2/C6.3/C6.4/C6.5/C6.6/C6.7 DONE; C6.8 multiplayer wire diagnostics audit next (2026-08-31)**
 
 Audit baseline:
 - audit branch `audit/diagnostics-c6`; strengthened audit run `33386461640`: PASS diagnostic inventory, import/debt audit, active forest runtime/stress, P9.37 frame pacing, P9.39 hitch attribution, P9.41 frame-runtime attribution and production build;
@@ -1061,6 +1061,17 @@ C6.7 selected boundary — canonical multiplayer local-gear telemetry:
 - remove the legacy local-gear global rather than retaining a compatibility alias because the fresh audit found no runtime or QA consumer;
 - leave `__WORLD_DRIVE_MULTIPLAYER_WIRE__` and `__WORLD_DRIVE_MULTIPLAYER_HD_VISUALS__` untouched for separate later audits;
 - do not change outgoing/incoming packet transformation, exact gear publication, D/N/R semantics, local state composition, authored presentation state, civil traffic sharing or connection lifecycle;
+
+C6.7 completed — canonical multiplayer local-gear telemetry:
+- fresh remaining-global audit branch `audit/diagnostics-c6-7`, run `33424801038`: PASS; inventory reduced from the original 31 diagnostic globals to 14 remaining surfaces before C6.7, while confirming `worldDriveDesktop` is an Electron bridge rather than C6 diagnostic debt;
+- C6.7 selected only `__WORLD_DRIVE_MULTIPLAYER_LOCAL_GEAR__`: one writer, zero runtime readers and zero QA consumers; `__WORLD_DRIVE_MULTIPLAYER_WIRE__` and HD visuals were deliberately left untouched;
+- candidate run `33425199708`: PASS canonical local-gear diagnostics, C6.1-C6.6, C2 transmission ownership, D/N/R and direction regressions, M3 exact-gear protocol, shared multiplayer traffic, 288 driving cases, full stress, M4.15 network-to-WebGL reverse, import/debt audit and production build;
+- materialized candidate commit `9f268ff8`; clean dev integration commit `0afd4f83`; permanent C6.7 gate run `33425417927`: PASS;
+- Dev Integration registration commit `a2214bd9`; final Dev Integration run `33425546266`: PASS **82/82**, including C6.7 at step 30, full stress, 288 driving cases, R2-R20, traffic/multiplayer regressions, both WebGL tests, production build and code-split;
+- exact callable payload is unchanged: `{gear, reversing}` derives on demand from `readTransmissionNetworkGear()` through the same wire normalization; no packet transform, transmission publication, reversing semantics or connection lifecycle changed;
+- legacy `__WORLD_DRIVE_MULTIPLAYER_LOCAL_GEAR__` removed; canonical authority is now `WorldDriveDiagnostics.multiplayer.localGear`;
+- human validation: not required; telemetry-only ownership migration with exact-gear/network/WebGL regressions green.
+- Result: **C6.7 DONE**. C6.8 starts read-only on `__WORLD_DRIVE_MULTIPLAYER_WIRE__` before deciding whether its protocol-QA compatibility name can be retired.
 - candidate validation must include C6.1–C6.7, C2 transmission ownership, D/N/R/exact-gear multiplayer protocol regressions, shared/live traffic networking, 288 driving cases, full stress, M4.15 network-to-WebGL reverse, runtime import/debt audit and production build before integration.
 
 ---
@@ -1103,13 +1114,23 @@ These rules are mandatory while working this plan:
 
 # 6. Recommended next task
 
-**Next: C6.7 — implement canonical multiplayer local-gear telemetry.**
+**Next: C6.8 — read-only audit of multiplayer wire diagnostics.**
 
-Move only the unconsumed `__WORLD_DRIVE_MULTIPLAYER_LOCAL_GEAR__` callable to `WorldDriveDiagnostics.multiplayer.localGear`, preserve its exact payload and invocation timing, and leave wire diagnostics / HD visuals / packet behavior untouched.
+Map `__WORLD_DRIVE_MULTIPLAYER_WIRE__` exactly: writer count, QA/source-string contract, outgoing/incoming snapshot payload, publication timing and whether any external DevTools workflow depends on the legacy name. Do not modify packet transforms or network state until that audit proves a safe diagnostics-only boundary. Keep `__WORLD_DRIVE_MULTIPLAYER_HD_VISUALS__`, streaming, forest compatibility aliases and traffic out of scope.
 
 ---
 
 # 7. Work log
+
+## 2026-08-31 — C6.7 completed: canonical multiplayer local-gear telemetry
+
+- Remaining-global audit `33424801038` selected the one-writer/no-reader/no-QA local-gear surface.
+- Candidate `33425199708` PASS including M3 protocol, shared traffic, 288 cases, stress and M4.15 network-to-WebGL reverse; materialized commit `9f268ff8`.
+- Clean dev integration `0afd4f83`; permanent gate `33425417927` PASS.
+- Dev Integration registration `a2214bd9`; final `33425546266` PASS **82/82**.
+- Legacy local-gear global removed; canonical `WorldDriveDiagnostics.multiplayer.localGear` preserves exact on-demand `{gear,reversing}` semantics.
+- C6.8 begins read-only on multiplayer wire diagnostics.
+
 
 ## 2026-08-31 — C6.6 completed: canonical physics-shadow diagnostics
 
