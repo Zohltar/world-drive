@@ -777,6 +777,12 @@ C5.6 material discovery — stale C5.5 implementation-location assertion:
 - C5.5 must continue protecting stable root/nested identity, in-place IndexedDB load, 120 ms debounce and keyboard/environment shared references, while C5.6 becomes authoritative for runtime/UI settings-application semantics and startup order;
 - do not reintroduce the old implementation into `main.js` merely to satisfy the C5.5 source-location check.
 
+C5.6 material discovery — stale V21.25 UI-refactor facade assertion:
+- candidate run `33383639485` passed C5.6 semantics, C5.5 stable settings identity and V21.25 UI init-order, then `qa/V21_25_UI_REFACTOR_QA.mjs` failed because it still required `async function applyLoadedV21Settings()` to be implemented in `main.js`;
+- C5.6 intentionally replaces that implementation body with a thin composition facade delegating to canonical `loaded-settings-application.js`;
+- modernize the V21.25 UI refactor QA to protect the current import/composition/delegation and awaited startup call instead of pinning the historical implementation location;
+- exact loaded-settings semantics remain authoritative in the dedicated C5.6 QA.
+
 C5.6 required invariants:
 - preserve transmission semantics exactly: only literal `manual` selects manual, otherwise automatic;
 - preserve assist and road-speed-limit defaults: only explicit `false` disables either;
