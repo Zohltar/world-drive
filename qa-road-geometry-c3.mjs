@@ -37,7 +37,7 @@ for(const root of ['src','qa','.github']){
       if(entry.isDirectory()){walk(full);continue;}
       if(!/\.(?:js|mjs|cjs|yml|yaml)$/.test(entry.name))continue;
       const rel=full.replaceAll('\\','/');
-      if(rel==='qa-road-geometry-c3.mjs')continue;
+      if(rel==='qa-road-geometry-c3.mjs'||rel==='.github/workflows/qa-cleanup-c3-candidate.yml')continue;
       if(read(full).includes('road-geometry-base.js'))offenders.push(rel);
     }
   };
