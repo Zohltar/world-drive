@@ -1,0 +1,73 @@
+name: Cleanup C4 Forest Naming Candidate
+
+on:
+  push:
+    branches:
+      - cleanup/forest-c4
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  qa:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Materialize C4 naming migration
+        run: |
+          if [ -f src/forest-chunk-streamer-p929.js ]; then
+            node tools/cleanup-c4-forest-names.mjs
+          else
+            echo "C4 already materialized"
+          fi
+      - name: C4 forest ownership gate
+        run: node qa-forest-c4.mjs
+      - name: Active forest policy/stress QA
+        run: node qa-forest-active-stress.mjs
+      - name: Active forest runtime mock
+        run: node qa-forest-active-runtime.mjs
+      - name: P9.29 frame-budget diagnostics QA
+        run: node qa-forest-p929-frame-budget.mjs
+      - name: Startup/front-load QA
+        run: node qa-forest-p935-front-startup.mjs
+      - name: Rolling prefetch QA
+        run: node qa-forest-p936-rolling-prefetch.mjs
+      - name: Combined frame-pacing QA
+        run: node qa-p937-combined-frame-pacing.mjs
+      - name: Prepared forest-retention QA
+        run: node qa-p938-forest-retention.mjs
+      - name: Hitch attribution QA
+        run: node qa-p939-hitch-attribution.mjs
+      - name: Queue maintenance QA
+        run: node qa-forest-p940-maintenance.mjs
+      - name: Frame-runtime attribution QA
+        run: node qa-p941-frame-runtime-attribution.mjs
+      - name: Browser long-frame attribution QA
+        run: node qa-p942-browser-long-frame.mjs
+      - name: Full V21.31 regression stress
+        run: npm run qa:stress
+      - name: Production build
+        run: npm run build
+      - name: Diff hygiene
+        run: git diff --check
+      - name: Commit materialized C4 candidate
+        shell: bash
+        run: |
+          if git diff --quiet; then
+            echo "No materialized changes to commit"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Cleanup C4: modernize forest production names"
+          git push origin HEAD:cleanup/forest-c4
