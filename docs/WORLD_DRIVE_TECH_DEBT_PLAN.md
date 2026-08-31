@@ -1072,6 +1072,13 @@ C6.7 completed — canonical multiplayer local-gear telemetry:
 - legacy `__WORLD_DRIVE_MULTIPLAYER_LOCAL_GEAR__` removed; canonical authority is now `WorldDriveDiagnostics.multiplayer.localGear`;
 - human validation: not required; telemetry-only ownership migration with exact-gear/network/WebGL regressions green.
 - Result: **C6.7 DONE**. C6.8 starts read-only on `__WORLD_DRIVE_MULTIPLAYER_WIRE__` before deciding whether its protocol-QA compatibility name can be retired.
+
+C6.8 material discovery — C6.7 intentionally pins wire compatibility:
+- first C6.8 audit run `33428001193` stopped in the new inventory assertion before subsystem regressions because the audit expected only the historical M3 protocol QA to mention `__WORLD_DRIVE_MULTIPLAYER_WIRE__`;
+- the fresh scan correctly found four QA references across two files: three in `qa-diagnostics-c6-7.mjs` and one in `qa/V21_31_MULTIPLAYER_M3_PROTOCOL_QA.mjs`;
+- this is not a runtime regression: C6.7 deliberately kept wire diagnostics out of scope, so its permanent QA asserts that the legacy wire callable remained unchanged and available while local-gear telemetry moved;
+- C6.8 must therefore modernize both QA contracts if canonical wire ownership is selected. C6.7 should continue protecting local-gear isolation and that C6.7 itself did not alter packet/wire behavior, but it must stop pinning the old global name once C6.8 becomes authoritative for wire diagnostics;
+- do not weaken or bypass either test, and do not change packet transforms, traffic merge order, incoming legacy upgrade order, counters, timestamps or copy semantics merely to satisfy source-location assertions.
 - candidate validation must include C6.1–C6.7, C2 transmission ownership, D/N/R/exact-gear multiplayer protocol regressions, shared/live traffic networking, 288 driving cases, full stress, M4.15 network-to-WebGL reverse, runtime import/debt audit and production build before integration.
 
 ---
@@ -1121,6 +1128,12 @@ Map `__WORLD_DRIVE_MULTIPLAYER_WIRE__` exactly: writer count, QA/source-string c
 ---
 
 # 7. Work log
+
+## 2026-08-31 — C6.8 audit discovery: C6.7 wire-compatibility QA contract
+
+- Audit run `33428001193` exposed two wire-QA owners rather than one: C6.7 permanent diagnostics QA plus V21.31 M3 protocol QA.
+- The failure is audit-expectation-only; no runtime/subsystem QA ran or failed.
+- Action: preserve both useful invariants while migrating source-name ownership only if the completed audit proves wire diagnostics are observer-only.
 
 ## 2026-08-31 — C6.7 completed: canonical multiplayer local-gear telemetry
 
