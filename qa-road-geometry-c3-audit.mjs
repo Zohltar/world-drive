@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
+// C3 audit only: no runtime behavior is changed on this branch.
 const root=process.cwd();
 const skip=new Set(['.git','node_modules','dist']);
 const refs={base:[],canonical:[]};
