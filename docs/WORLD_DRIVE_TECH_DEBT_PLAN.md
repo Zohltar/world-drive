@@ -866,6 +866,13 @@ Migration rule:
 - compatibility aliases may temporarily delegate to the canonical root but may not remain independent stores/writers;
 - do not convert all 31 globals in one commit. Each phase needs identity/equivalence QA and the existing subsystem regressions.
 
+C6.1 material discovery — stale dormant V21.22.3 hitch-free QA:
+- first C6.1 candidate run passed the new canonical diagnostics QA and C4 forest compatibility QA, then stopped in `qa/V21_22_3_HITCH_FREE_QA.mjs` before reaching any C6-specific assertion;
+- that historical QA still pins `perfConsoleLogging:false`, streaming distances and visual constants to `main.js`, although those responsibilities moved long ago to `streaming-coordinator-p913.js`, `world-scene.js`, `world-materials.js`, road geometry and terrain modules;
+- it also requires historical `urgentWorldRefreshDistance:2200`, while the accepted current P9.13 policy is 2350 m;
+- this proves the dormant QA is stale on the untouched current architecture and must be modernized to current owners/accepted values rather than forcing old source locations or old policy back into runtime;
+- C6.1 runtime diagnostics code is not to be changed to satisfy these unrelated historical assertions.
+
 C6.1 selected boundary — canonical diagnostics root + frame-pacing/forest bridge:
 - add a small canonical diagnostics module that creates/returns one stable `WorldDriveDiagnostics` root;
 - make canonical `framePacing` and `forest` accessors authoritative without changing their returned diagnostic payloads, retry cadence, hitch thresholds or forest timing;
@@ -926,6 +933,13 @@ The strengthened C6 audit is complete. Implement the first compatibility-preserv
 ---
 
 # 7. Work log
+
+## 2026-08-31 — C6.1 candidate exposed stale V21.22.3 hitch-free QA
+
+- New C6.1 canonical diagnostics QA and C4 forest compatibility QA both PASS.
+- Historical `V21_22_3_HITCH_FREE_QA` then failed on an unrelated source-location assertion before any C6 diagnostic assertion.
+- Current accepted policy owns `perfConsoleLogging:false`, soft/hard streaming distances and `urgentWorldRefreshDistance:2350` in `streaming-coordinator-p913.js`; visual constants have likewise moved out of `main.js`.
+- Action: modernize that dormant QA to current ownership/values before trusting it in C6.1 validation; do not regress runtime to V21.22.3 source layout or the old 2200 m urgent threshold.
 
 ## 2026-08-31 — C6 diagnostic-global audit completed; C6.1 selected
 
