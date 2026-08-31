@@ -126,13 +126,6 @@ function clearAirborneTireState(result){
   result.frontLateralForceScale=0;
   result.rearLateralForceScale=0;
 
-  // V21.29 publishes this optional diagnostic before the V21.30 wrapper sees
-  // the result. Keep the diagnostic consistent with the authoritative output.
-  if(typeof globalThis!=='undefined'&&globalThis.WorldDriveWheelSpinTelemetry){
-    const telemetry=globalThis.WorldDriveWheelSpinTelemetry;
-    if(Array.isArray(telemetry.levels))telemetry.levels.fill(0);
-    if(Array.isArray(telemetry.longitudinalUsage))telemetry.longitudinalUsage.fill(0);
-  }
   return result;
 }
 
