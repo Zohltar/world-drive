@@ -1,0 +1,41 @@
+name: Cleanup C5.4 Geographic Sign QA
+
+on:
+  push:
+    branches:
+      - dev
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  qa:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install
+        run: npm ci
+      - name: C5.4 geographic sign ownership and behavior QA
+        run: node qa-main-c5-geographic-signs.mjs
+      - name: Road-sign incremental runtime QA
+        run: node qa-road-signs-p930-runtime.mjs
+      - name: Minimap refactor QA
+        run: node qa/V21_25_MINIMAP_REFACTOR_QA.mjs
+      - name: Minimap sign readout QA
+        run: node qa/V21_25_MINIMAP_SIGN_READOUT_QA.mjs
+      - name: Runtime import and debt audit
+        run: node qa/DEV_INTEGRATION_AUDIT.mjs
+      - name: Driving dynamics simulation matrix
+        run: node qa/DEV_DRIVING_SIM_QA.mjs
+      - name: Full V21.31 regression stress
+        run: npm run qa:stress
+      - name: Production build
+        run: npm run build

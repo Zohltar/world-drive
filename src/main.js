@@ -65,7 +65,7 @@ import {
   clearWorldDriveCache
 } from './cache.js';
 import { createOverpassClient } from './overpass.js';
-import { createSignDataService } from './signs.js';
+import { createSignDataService, createGeographicSignOrchestrator } from './signs.js';
 import { createBridgeManager } from './bridges.js';
 import { createImageryService } from './imagery.js';
 import { createElevationService } from './elevation.js';
@@ -975,98 +975,6 @@ async function loadGeographicSignsAround(absx,absz){
   return signData.loadAround(absx,absz);
 }
 
-function nearestRouteCumToFeature(points){
-  let best=null,bd=Infinity;
-  for(const p of points||[]){
-    const n=nearestRoute(p.x,p.z);
-    if(n&&n.d<bd){bd=n.d;best=n}
-  }
-  return best&&bd<120?best:null;
-}
-
-
-function collectEndpointLocalitySigns(){
-  const candidates=[
-    {p:ROUTE_START,cum:0},
-    {p:ROUTE_END,cum:routeLength}
-  ];
-  const known=new Set(geographicSigns.filter(x=>x.kind==='city').map(x=>String(x.label).toLowerCase()));
-  for(const c of candidates){
-    const label=c.p?.name;
-    if(!label||/^(départ|arrivée|waypoint)$/i.test(label)||known.has(String(label).toLowerCase()))continue;
-    geographicSigns.push({
-      key:`city:endpoint:${c.cum}:${label}`,
-      kind:'city',
-      label,
-      maxspeed:null,
-      x:0,z:0,
-      routeCum:c.cum,
-      routeDistance:0,
-      fallback:true
-    });
-    known.add(String(label).toLowerCase());
-  }
-}
-
-function collectFallbackRiverSigns(){
-  const existing=new Set(geographicSigns.filter(x=>x.kind==='river').map(x=>String(x.label).toLowerCase()));
-  for(const f of waterFeatures||[]){
-    const tags=f.tags||{};
-    const label=tags['name:fr']||tags.name||tags.official_name;
-    if(!label||existing.has(String(label).toLowerCase()))continue;
-
-    const n=nearestRouteCumToFeature(f.points);
-    if(!n)continue;
-
-    geographicSigns.push({
-      key:`river:fallback:${f.type||'way'}:${f.id}:${label}`,
-      kind:'river',
-      label,
-      maxspeed:null,
-      x:n.px,z:n.pz,
-      routeCum:n.cum,
-      routeDistance:n.d,
-      fallback:true
-    });
-    existing.add(String(label).toLowerCase());
-  }
-}
-
-function addFallbackSpeedSign(){
-  if(!activeRoadMeta.maxspeed||activeRoadMeta.confidence<=.20)return;
-  const n=nearestRoute(absX,absZ);if(!n)return;
-
-  // If no explicit OSM speed sign is near the vehicle, show one representative
-  // sign for the active road section.
-  const hasNearby=geographicSigns.some(f=>f.kind==='speed'&&Math.abs(f.routeCum-n.cum)<900);
-  if(hasNearby)return;
-
-  const p=routePointAtCum(Math.min(routeLength,n.cum+95));
-  p.y=roadHeightAt(p.x,p.z);
-  addRoadSignAt(p,Math.round(activeRoadMeta.maxspeed),'speed',1);
-}
-
-function addGeographicRoadSigns(){
-  collectFallbackRiverSigns();
-  collectEndpointLocalitySigns();
-  if(!routeLength)return;
-  const n=nearestRoute(absX,absZ);if(!n)return;
-
-  addFallbackSpeedSign();
-
-  signStatus.textContent=String(geographicSigns.length);
-  for(const f of geographicSigns){
-    if(Math.abs(f.routeCum-n.cum)>1600)continue;
-    let cum=f.routeCum,side=1;
-    if(f.kind==='river')cum=Math.max(0,f.routeCum-22);
-    else if(f.kind==='city')cum=Math.max(0,f.routeCum-55);
-
-    const p=routePointAtCum(cum);
-    p.y=roadHeightAt(p.x,p.z);
-    const label=f.kind==='speed'?Math.round(f.maxspeed||Number(f.label)):f.label;
-    addRoadSignAt(p,label,f.kind,side);
-  }
-}
 // ---------- geographic scenery rendering ----------
 
 
@@ -1302,6 +1210,7 @@ async function loadWaterAround(absx,absz){
 
 
 // ---------- road furniture facade ----------
+let geographicSignOrchestrator=null;
 const roadFurniture=createRoadFurnitureSystem({
   THREE,
   signGroup,
@@ -1314,7 +1223,7 @@ const roadFurniture=createRoadFurnitureSystem({
   resetStaticGroupOrigin,
   clearGroup,
   freezeStaticMatrices,
-  addGeographicRoadSigns:()=>addGeographicRoadSigns(),
+  addGeographicRoadSigns:()=>geographicSignOrchestrator?.addGeographicRoadSigns(),
   getState:()=>({
     activeRoadProfile,
     bridgeSpans,
@@ -1329,6 +1238,20 @@ const roadFurniture=createRoadFurnitureSystem({
 const addRoadSignAt=(...args)=>roadFurniture.addRoadSignAt(...args);
 const addEnhancedBridgeFurniture=()=>roadFurniture.addEnhancedBridgeFurniture();
 const refreshRoadSignsOnly=()=>roadFurniture.refreshRoadSignsOnly();
+
+geographicSignOrchestrator=createGeographicSignOrchestrator({
+  signs:geographicSigns,
+  statusEl:signStatus,
+  getWaterFeatures:()=>waterFeatures,
+  getRouteEndpoints:()=>({start:ROUTE_START,end:ROUTE_END}),
+  getRouteLength:()=>routeLength,
+  nearestRoute,
+  routePointAtCum,
+  roadHeightAt,
+  getActiveRoadMeta:()=>activeRoadMeta,
+  getVehiclePosition:()=>({x:absX,z:absZ}),
+  addRoadSignAt
+});
 
 // Build only a corridor around the current location, preserving every source polyline curve.
 let localWorldBuilder=null;
