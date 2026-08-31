@@ -1,0 +1,37 @@
+name: Cleanup C6 Diagnostic Globals Audit
+
+on:
+  push:
+    branches:
+      - audit/diagnostics-c6
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Diagnostic global ownership and QA-consumer inventory
+        run: node qa-diagnostics-c6-audit.mjs
+      - name: Runtime import and debt audit
+        run: node qa/DEV_INTEGRATION_AUDIT.mjs
+      - name: Active forest runtime diagnostics
+        run: node qa-forest-active-runtime.mjs
+      - name: Active forest stress diagnostics
+        run: node qa-forest-active-stress.mjs
+      - name: Combined frame-pacing diagnostics
+        run: node qa-p937-combined-frame-pacing.mjs
+      - name: Hitch attribution diagnostics
+        run: node qa-p939-hitch-attribution.mjs
+      - name: Frame-runtime attribution diagnostics
+        run: node qa-p941-frame-runtime-attribution.mjs
+      - name: Production build
+        run: npm run build
