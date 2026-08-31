@@ -1,0 +1,73 @@
+name: Cleanup C5.6 Loaded Settings Candidate
+
+on:
+  push:
+    branches:
+      - cleanup/main-c5-loaded-settings
+  workflow_dispatch:
+
+concurrency:
+  group: cleanup-c5-loaded-settings-candidate
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+
+jobs:
+  qa:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install
+        run: npm ci
+      - name: Materialize C5.6 extraction
+        shell: bash
+        run: |
+          if grep -q 'async function applyLoadedV21Settings' src/main.js; then
+            node tools/cleanup-c5-loaded-settings.mjs
+          else
+            echo 'C5.6 already materialized'
+          fi
+      - name: C5.6 loaded settings semantics QA
+        run: node qa-main-c5-loaded-settings.mjs
+      - name: C5.5 stable settings identity QA
+        run: node qa-main-c5-settings.mjs
+      - name: V21.25 UI init-order QA
+        run: node qa/V21_25_UI_INIT_ORDER_QA.mjs
+      - name: V21.25 UI refactor QA
+        run: node qa/V21_25_UI_REFACTOR_QA.mjs
+      - name: V21.26 environment refactor QA
+        run: node qa/V21_26_ENVIRONMENT_REFACTOR_QA.mjs
+      - name: Runtime import and debt audit
+        run: node qa/DEV_INTEGRATION_AUDIT.mjs
+      - name: Driving dynamics simulation matrix
+        run: node qa/DEV_DRIVING_SIM_QA.mjs
+      - name: Full V21.31 regression stress
+        run: npm run qa:stress
+      - name: Production build
+        run: npm run build
+      - name: Diff hygiene
+        run: git diff --check
+      - name: Commit materialized C5.6 candidate
+        shell: bash
+        run: |
+          if git diff --quiet -- src/main.js; then
+            echo 'No materialized main.js change'
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add src/main.js
+          git commit -m 'Cleanup C5.6: move loaded settings application out of main'
+          git fetch origin cleanup/main-c5-loaded-settings
+          git rebase origin/cleanup/main-c5-loaded-settings
+          git push origin HEAD:cleanup/main-c5-loaded-settings
