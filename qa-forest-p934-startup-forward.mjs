@@ -4,7 +4,7 @@ import {spawnSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
 
 const root=path.dirname(fileURLToPath(import.meta.url));
-const streamerPath=path.join(root,'src','forest-chunk-streamer-p929-wrapper.js');
+const streamerPath=path.join(root,'src','forest-chunk-streamer.js');
 const gatePath=path.join(root,'src','scenery-renderer-p933.js');
 const startupPath=path.join(root,'src','startup-ui.js');
 

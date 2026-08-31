@@ -4,7 +4,7 @@ import {fileURLToPath} from 'node:url';
 
 const root=path.dirname(fileURLToPath(import.meta.url));
 const policyPath=path.join(root,'src','forest-streaming-policy.js');
-const implPath=path.join(root,'src','forest-chunk-streamer-p929.js');
+const implPath=path.join(root,'src','forest-chunk-streamer-core.js');
 
 function expect(condition,message){if(!condition)throw new Error(message);}
 

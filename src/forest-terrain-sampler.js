@@ -2,7 +2,7 @@
 // Caches the live near-terrain grid transform and reads BufferAttribute storage
 // directly so dense forest chunk builds do not allocate temporary vertex objects
 // or call getWorldPosition()/getWorldOffset() for every tree.
-export function createForestTerrainSamplerP912({
+export function createForestTerrainSampler({
   THREE,
   forestGroup,
   getWorldOffset,

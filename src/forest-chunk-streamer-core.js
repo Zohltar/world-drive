@@ -1,4 +1,4 @@
-import {createForestTerrainSamplerP912} from './forest-terrain-sampler-p912.js';
+import {createForestTerrainSampler} from './forest-terrain-sampler.js';
 import {
   FOREST_STREAMING_POLICY as FOREST,
   forestHash,
@@ -115,7 +115,7 @@ export function createForestChunkStreamer({
     catchupSlices:0
   };
 
-  const forestTerrain=createForestTerrainSamplerP912({
+  const forestTerrain=createForestTerrainSampler({
     THREE,
     forestGroup,
     getWorldOffset,

@@ -46,7 +46,7 @@ const bends=stress(serpentine());
 const legacyMatrixMultiplier=1+.88+.55+.20;
 const legacyBytes=candidatesPerChunk*16*4*legacyMatrixMultiplier*P.chunkCacheLimit;
 const activeBytes=candidatesPerChunk*16*4*P.chunkCacheLimit;
-const impl=fs.readFileSync(new URL('./src/forest-chunk-streamer-p929.js',import.meta.url),'utf8');
+const impl=fs.readFileSync(new URL('./src/forest-chunk-streamer-core.js',import.meta.url),'utf8');
 
 assert.ok(required({x:0,z:0}).length>=50&&required({x:0,z:0}).length<=70,'active chunk ring regression');
 assert.ok(line.maxEnteringAfterBoot<=4,'straight-line chunk burst regression');
