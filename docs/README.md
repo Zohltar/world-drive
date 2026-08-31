@@ -1,24 +1,28 @@
 # World Drive — Documentation index
 
-## Read this first for active development
+## Active development source of truth
 
-**Canonical current execution/restart plan:**
+**Canonical execution/restart plan:**
 
 - `WORLD_DRIVE_EVOLUTION_AND_CORRECTION_PLAN.md`
 
-For every new coding/architecture session:
+For every new coding, architecture, QA or GitHub session:
 1. read the current plan from `dev`;
 2. read live `dev` and `main` HEADs;
-3. read the plan's CURRENT CHECKPOINT;
+3. read the plan's **CURRENT CHECKPOINT**;
 4. inspect the latest Dev Integration QA for the exact `dev` HEAD;
-5. resume the written Next action unless the user changes priority.
+5. inspect any audit/candidate branch named by the checkpoint;
+6. resume the written **Next action** unless the user explicitly changes priority.
 
-## Stable/C6 history
+GitHub + the canonical plan override stale conversation memory.
 
-- `WORLD_DRIVE_TECH_DEBT_C6_CLOSEOUT.md` — authoritative C6 closeout and final global-boundary rationale.
-- `WORLD_DRIVE_TECH_DEBT_PLAN.md` — historical A/B/C technical-debt plan and detailed work log; no longer the active next-task authority.
-- `WORLD_DRIVE_TECH_DEBT_PLAN_D.md` — redirect only; superseded by the current evolution/correction plan.
+## Historical documentation
 
-## Archive
+Completed or superseded implementation plans live under `docs/archive/`.
 
-Historical/superseded documents live under `docs/archive/` and must not be treated as current execution instructions unless explicitly requested for history.
+They are retained as engineering history and rationale only. They must not be treated as current execution instructions unless the user explicitly asks for historical context.
+
+## Other documentation
+
+- `docs/images/` — documentation images/resources.
+- Root `README_PACKAGING.md` — current packaging instructions.
