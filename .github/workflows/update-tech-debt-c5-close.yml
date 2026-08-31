@@ -1,0 +1,38 @@
+name: Update Tech Debt C5 Closure
+
+on:
+  push:
+    branches:
+      - docs/c5-close
+    paths:
+      - tools/c5-close.trigger
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Update plan
+        run: node tools/update-tech-debt-c5-close.mjs
+      - name: Commit plan
+        shell: bash
+        run: |
+          if git diff --quiet -- docs/WORLD_DRIVE_TECH_DEBT_PLAN.md; then
+            echo 'Plan already up to date'
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add docs/WORLD_DRIVE_TECH_DEBT_PLAN.md
+          git commit -m 'Docs: close C5 after C5.7 audit'
+          git pull --rebase origin docs/c5-close
+          git push origin HEAD:docs/c5-close
