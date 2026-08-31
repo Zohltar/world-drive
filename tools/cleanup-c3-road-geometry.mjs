@@ -60,6 +60,12 @@ qa=replaceOnce(
   'assert.ok(Math.abs(cumulative.pz-50)<1e-9,`cumulative position interpolation changed: ${cumulative.pz}`);',
   'modernize cumulative frame position field'
 );
+qa=replaceOnce(
+  qa,
+  'assert.ok(Math.abs(surface.y-15.10)<1e-9,`road surface offset changed: ${surface.y}`);',
+  'assert.ok(Math.abs(surface.y-15)<1e-9,`geometric road surface interpolation changed: ${surface.y}`);',
+  'modernize geometric road surface expectation'
+);
 qa=qa.replace(/[ \t]+$/gm,'');
 fs.writeFileSync(legacyQaPath,qa+'\n');
 
