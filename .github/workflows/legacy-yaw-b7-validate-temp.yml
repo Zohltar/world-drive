@@ -1,0 +1,54 @@
+name: Validate Cleanup B7 grip-loss fallback
+
+on:
+  push:
+    branches:
+      - cleanup/legacy-yaw-b7
+    paths:
+      - 'qa/apply-legacy-yaw-b7-temp.mjs'
+      - 'qa-yaw-fallback-b7.mjs'
+      - '.github/workflows/legacy-yaw-b7-validate-temp.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+      - name: Apply B7 semantic refactor
+        run: node qa/apply-legacy-yaw-b7-temp.mjs
+      - name: B7 fallback equivalence and ownership
+        run: node qa-yaw-fallback-b7.mjs
+      - name: B5/B7 yaw ownership regressions
+        run: |
+          node qa-yaw-authority-b5.mjs
+          node qa-grip-countersteer-r7.mjs
+          node qa-grip-high-speed-r11.mjs
+          node qa-grip-fwd-power-r16.mjs
+          node qa-grip-ev-jturn-r17.mjs
+          node qa-grip-ev-maneuver-r18.mjs
+          node qa-grip-jturn-legacy-r19.mjs
+          node qa-grip-handbrake-lateral-r20.mjs
+          node qa-grip-full-runtime-180-probe-r20.mjs
+          node qa-grip-f1-front-slip-r21.mjs
+          node qa-grip-f1-legacy-r23.mjs
+      - name: Fleet stress / driving matrix
+        run: |
+          node qa/DEV_DRIVING_SIM_QA.mjs
+          npm run qa:stress
+      - name: Production build
+        run: npm run build
+      - name: Commit B7 candidate
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add src/physics/yaw-authority.js src/driving-runtime-base.js qa-yaw-fallback-b7.mjs qa-yaw-authority-b5.mjs qa-grip-fwd-power-r16.mjs qa-grip-f1-legacy-r23.mjs
+          git diff --cached --quiet || git commit -m 'Cleanup B7: clarify grip-loss fallback yaw ownership'
+          git push
