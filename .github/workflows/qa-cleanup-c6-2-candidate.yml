@@ -1,0 +1,46 @@
+name: Cleanup C6.2 Presentation Diagnostics Candidate
+
+on:
+  push:
+    branches:
+      - cleanup/diagnostics-c6-2
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  qa:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: C6.2 presentation diagnostics QA
+        run: node qa-diagnostics-c6-2.mjs
+      - name: C6.1 diagnostics regression
+        run: node qa-diagnostics-c6-1.mjs
+      - name: Multiplayer M4 adapter QA
+        run: node qa/V21_31_MULTIPLAYER_M4_ADAPTER_QA.mjs
+      - name: Multiplayer M4.11 reverse E2E QA
+        run: node qa/V21_31_MULTIPLAYER_M411_REVERSE_E2E_QA.mjs
+      - name: Multiplayer M4.12 controller runtime QA
+        run: node qa/V21_31_MULTIPLAYER_M412_CONTROLLER_RUNTIME_QA.mjs
+      - name: Multiplayer M3 protocol QA
+        run: node qa/V21_31_MULTIPLAYER_M3_PROTOCOL_QA.mjs
+      - name: Sonata controller ownership QA
+        run: node qa/V21_31_SONATA_CONTROLLER_OWNERSHIP_QA.mjs
+      - name: Runtime import/debt audit
+        run: node qa/DEV_INTEGRATION_AUDIT.mjs
+      - name: Driving dynamics simulation matrix
+        run: node qa/DEV_DRIVING_SIM_QA.mjs
+      - name: Full V21.31 regression stress
+        run: npm run qa:stress
+      - name: Production build
+        run: npm run build
+      - name: Diff hygiene
+        run: git diff --check
