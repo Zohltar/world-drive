@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
-import {solveRemoteSupportPlane} from '../src/multiplayer-support-math.js';
-import {listMultiplayerVehicleSpecs,getMultiplayerVehicleSpec} from '../src/multiplayer-vehicle-registry.js';
+import {solveRemoteSupportPlane} from '../src/multiplayer/multiplayer-support-math.js';
+import {listMultiplayerVehicleSpecs,getMultiplayerVehicleSpec} from '../src/multiplayer/multiplayer-vehicle-registry.js';
 
 for(const spec of listMultiplayerVehicleSpecs()){
   const contacts=spec.visual.supportContacts;
