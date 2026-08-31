@@ -1,0 +1,58 @@
+name: Cleanup C5.1 World Materials Candidate
+
+on:
+  push:
+    branches:
+      - cleanup/main-c5-materials
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  qa:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Materialize C5.1 extraction
+        run: |
+          if grep -q "function makeRoadSurfaceTextures" src/main.js; then
+            node tools/cleanup-c5-world-materials.mjs
+          else
+            echo "C5.1 already materialized"
+          fi
+      - name: C5.1 world materials ownership and behavior QA
+        run: node qa-main-c5-materials.mjs
+      - name: Terrain visual ownership QA
+        run: |
+          node qa-terrain-r1-legacy-ownership.mjs
+          node qa-terrain-r2-road-imagery.mjs
+          node qa/V21_31_LEGACY_TERRAIN_AUTHORITY_QA.mjs
+      - name: Driving dynamics simulation matrix
+        run: node qa/DEV_DRIVING_SIM_QA.mjs
+      - name: Full V21.31 regression stress
+        run: npm run qa:stress
+      - name: Production build
+        run: npm run build
+      - name: Diff hygiene
+        run: git diff --check
+      - name: Commit materialized C5.1 candidate
+        shell: bash
+        run: |
+          if git diff --quiet; then
+            echo "No materialized changes to commit"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/main.js
+          git commit -m "Cleanup C5.1: move world materials out of main"
+          git push origin HEAD:cleanup/main-c5-materials
