@@ -14,27 +14,27 @@ import {
 } from '../src/deferred-glb-system.js';
 
 for(const file of [
-  'src/multiplayer.js','src/multiplayer-client-m3.js','src/multiplayer-visuals.js','src/multiplayer-visuals-m3.js',
-  'src/multiplayer-vehicle-adapter.js','src/deferred-glb-system.js','src/transmission-network-state.js',
-  'src/vehicle-authored-registry.js','src/vehicle-glb-entries.js','src/multiplayer-vehicle-registry.js','src/multiplayer-support-math.js'
+  'src/multiplayer.js','src/multiplayer/multiplayer-client-m3.js','src/multiplayer-visuals.js','src/multiplayer/multiplayer-visuals-m3.js',
+  'src/multiplayer/multiplayer-vehicle-adapter.js','src/deferred-glb-system.js','src/transmission-network-state.js',
+  'src/vehicle-authored-registry.js','src/vehicle-glb-entries.js','src/multiplayer/multiplayer-vehicle-registry.js','src/multiplayer/multiplayer-support-math.js'
 ])execFileSync(process.execPath,['--check',file],{stdio:'pipe'});
 
 const entry=fs.readFileSync('src/multiplayer.js','utf8');
-const client=fs.readFileSync('src/multiplayer-client-m3.js','utf8');
+const client=fs.readFileSync('src/multiplayer/multiplayer-client-m3.js','utf8');
 const visualEntry=fs.readFileSync('src/multiplayer-visuals.js','utf8');
-const visuals=fs.readFileSync('src/multiplayer-visuals-m3.js','utf8');
-const adapter=fs.readFileSync('src/multiplayer-vehicle-adapter.js','utf8');
+const visuals=fs.readFileSync('src/multiplayer/multiplayer-visuals-m3.js','utf8');
+const adapter=fs.readFileSync('src/multiplayer/multiplayer-vehicle-adapter.js','utf8');
 const deferred=fs.readFileSync('src/deferred-glb-system.js','utf8');
 const transmissionNetwork=fs.readFileSync('src/transmission-network-state.js','utf8');
 const authoredRegistry=fs.readFileSync('src/vehicle-authored-registry.js','utf8');
 const localEntries=fs.readFileSync('src/vehicle-glb-entries.js','utf8');
 const main=fs.readFileSync('src/main.js','utf8');
 
-assert(entry.includes("import('./multiplayer-client-m3.js')"),'public multiplayer client must lazy-load maintained client');
-assert(!entry.includes("import {createMultiplayerClient as createMaintainedMultiplayerClient} from './multiplayer-client-m3.js'"),'maintained multiplayer client must stay out of startup bundle');
+assert(entry.includes("import('./multiplayer/multiplayer-client-m3.js')"),'public multiplayer client must lazy-load maintained client');
+assert(!entry.includes("import {createMultiplayerClient as createMaintainedMultiplayerClient} from './multiplayer/multiplayer-client-m3.js'"),'maintained multiplayer client must stay out of startup bundle');
 assert(entry.includes("from './transmission-network-state.js'"),'entry must read exact numeric transmission gear');
-assert(visualEntry.includes("import('./multiplayer-visuals-m3.js')"),'public multiplayer visuals must lazy-load maintained visual runtime');
-assert(!visualEntry.includes("export {createMultiplayerVisualSystem} from './multiplayer-visuals-m3.js'"),'visual runtime must stay out of startup bundle');
+assert(visualEntry.includes("import('./multiplayer/multiplayer-visuals-m3.js')"),'public multiplayer visuals must lazy-load maintained visual runtime');
+assert(!visualEntry.includes("export {createMultiplayerVisualSystem} from './multiplayer/multiplayer-visuals-m3.js'"),'visual runtime must stay out of startup bundle');
 assert(entry.includes("const prepareVisuals=options.createRemoteVisual?.prepare"),'client must preload lazy visuals before socket connect');
 assert(visualEntry.includes('createRemoteVehicleVisual.prepare=prepare'),'visual create callback must expose preload hook');
 assert(client.includes("from './multiplayer-vehicle-registry.js'"),'client must consume central metric registry');
@@ -117,8 +117,8 @@ assert(main.includes('createRemoteVisual:multiplayerVisuals.createRemoteVehicleV
 assert(main.includes('solveRemoteSupport:multiplayerVisuals.solveRemoteVehicleSupport'),'main must inject receiver-local support');
 
 console.log('V21.31 MULTIPLAYER M4 LAZY CLIENT QA: PASS',{
-  publicClient:'lazy -> multiplayer-client-m3',
-  publicVisuals:'lazy -> multiplayer-visuals-m3',
+  publicClient:'lazy -> multiplayer/multiplayer-client-m3',
+  publicVisuals:'lazy -> multiplayer/multiplayer-visuals-m3',
   networkHz:30,
   numericGearContract:{reverse:-1,neutral:0,forward:'1..N'},
   exactTransmissionNetworkGear:true,
