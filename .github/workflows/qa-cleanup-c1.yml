@@ -1,0 +1,55 @@
+name: Cleanup C1 Vehicle Dynamics Ownership QA
+
+on:
+  push:
+    branches:
+      - dev
+    paths:
+      - 'src/vehicle-dynamics-core.js'
+      - 'src/vehicle-dynamics-traction-steering.js'
+      - 'src/vehicle-dynamics.js'
+      - 'qa-vehicle-dynamics-c1.mjs'
+      - 'qa-grip-steering-curve-r3.mjs'
+      - 'qa-grip-steering-input-r13.mjs'
+      - 'qa-grip-f1-steering-r22.mjs'
+      - 'qa-wheelspin-state-b6.mjs'
+      - 'qa-momentum-direction-b4.mjs'
+      - 'qa-grip-handbrake-r1.mjs'
+      - '.github/workflows/qa-cleanup-c1.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  qa:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+      - name: C1 ownership boundary
+        run: node qa-vehicle-dynamics-c1.mjs
+      - name: Steering wheelspin and momentum regressions
+        run: |
+          node qa-grip-steering-curve-r3.mjs
+          node qa-grip-steering-input-r13.mjs
+          node qa-grip-f1-steering-r22.mjs
+          node qa-wheelspin-state-b6.mjs
+          node qa-momentum-direction-b4.mjs
+          node qa-grip-handbrake-r1.mjs
+      - name: Vehicle dynamics regression set
+        run: |
+          node qa/V21_29_ALL_COMBUSTION_CLUTCH_QA.mjs
+          node qa/V21_29_CIVIC_CLUTCH_DUMP_SLIP_QA.mjs
+          node qa/V21_29_CIVIC_CLUTCH_WHEELSPIN_QA.mjs
+          node qa/V21_29_CLUTCH_SHOCK_QA.mjs
+          node qa/V21_29_CLUTCH_SHOCK_FLEET_QA.mjs
+          node qa/V21_29_RUNTIME_WHEELSPIN_QA.mjs
+          node qa/V21_30_ANTI_ROLL_BALANCE_QA.mjs
+          node qa/V21_30_STATIONARY_STEERING_YAW_QA.mjs
+          node qa/V21_30_BRAKE_HOLD_STOP_QA.mjs
+          node qa/V21_30_TRUCK_HILL_TORQUE_QA.mjs
+          node qa/V21_31_AIRBORNE_TIRE_STATE_QA.mjs
