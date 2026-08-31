@@ -1,0 +1,94 @@
+name: Cleanup C6.1 Diagnostics Candidate
+
+on:
+  push:
+    branches:
+      - cleanup/diagnostics-c6-1
+  workflow_dispatch:
+
+concurrency:
+  group: cleanup-c6-1-diagnostics-candidate
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+
+jobs:
+  qa:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install
+        run: npm ci
+      - name: Materialize C6.1 diagnostics bridge
+        shell: bash
+        run: |
+          if grep -q "window.WorldDriveFramePacing=()=>({" src/main.js; then
+            node tools/cleanup-c6-1-diagnostics.mjs
+          else
+            echo 'C6.1 already materialized'
+          fi
+      - name: C6.1 canonical diagnostics QA
+        run: node qa-diagnostics-c6-1.mjs
+      - name: C4 forest compatibility ownership QA
+        run: node qa-forest-c4.mjs
+      - name: V21.22.3 hitch-free diagnostics QA
+        run: node qa/V21_22_3_HITCH_FREE_QA.mjs
+      - name: P9.29 forest frame-budget QA
+        run: node qa-forest-p929-frame-budget.mjs
+      - name: Forest startup/front-load QA
+        run: node qa-forest-p935-front-startup.mjs
+      - name: Forest rolling prefetch QA
+        run: node qa-forest-p936-rolling-prefetch.mjs
+      - name: Combined frame-pacing QA
+        run: node qa-p937-combined-frame-pacing.mjs
+      - name: Prepared forest-retention QA
+        run: node qa-p938-forest-retention.mjs
+      - name: Hitch attribution QA
+        run: node qa-p939-hitch-attribution.mjs
+      - name: Forest queue maintenance QA
+        run: node qa-forest-p940-maintenance.mjs
+      - name: Frame-runtime attribution QA
+        run: node qa-p941-frame-runtime-attribution.mjs
+      - name: Browser long-frame attribution QA
+        run: node qa-p942-browser-long-frame.mjs
+      - name: Active forest runtime mock
+        run: node qa-forest-active-runtime.mjs
+      - name: Active forest stress QA
+        run: node qa-forest-active-stress.mjs
+      - name: V21.25 UI init order QA
+        run: node qa/V21_25_UI_INIT_ORDER_QA.mjs
+      - name: V21.25 UI refactor QA
+        run: node qa/V21_25_UI_REFACTOR_QA.mjs
+      - name: Runtime import and debt audit
+        run: node qa/DEV_INTEGRATION_AUDIT.mjs
+      - name: Driving dynamics simulation matrix
+        run: node qa/DEV_DRIVING_SIM_QA.mjs
+      - name: Full V21.31 regression stress
+        run: npm run qa:stress
+      - name: Production build
+        run: npm run build
+      - name: Diff hygiene
+        run: git diff --check
+      - name: Commit materialized C6.1 candidate
+        shell: bash
+        run: |
+          if git diff --quiet; then
+            echo 'No generated changes to commit'
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add src/main.js src/forest-chunk-streamer.js src/scenery-renderer-p933.js src/startup-ui.js src/streaming-coordinator.js qa/V21_22_3_HITCH_FREE_QA.mjs qa-p939-hitch-attribution.mjs
+          git commit -m 'Cleanup C6.1: route frame and forest diagnostics through canonical root'
+          git pull --rebase origin cleanup/diagnostics-c6-1
+          git push origin HEAD:cleanup/diagnostics-c6-1
