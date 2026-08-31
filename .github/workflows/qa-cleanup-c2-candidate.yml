@@ -1,0 +1,69 @@
+name: Cleanup C2 Transmission Candidate
+
+on:
+  push:
+    branches:
+      - cleanup/transmission-c2
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  qa:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+      - name: Materialize C2 consolidation
+        run: |
+          if [ -f src/transmission-controller-base.js ]; then
+            node tools/cleanup-c2-transmission.mjs
+          else
+            echo "C2 already materialized"
+          fi
+      - name: C2 ownership and exact selector semantics
+        run: node qa-transmission-c2.mjs
+      - name: Transmission regressions
+        run: |
+          node qa/V21_26_TRANSMISSION_REFACTOR_QA.mjs
+          node qa/V21_26_AUTOPILOT_TRANSMISSION_QA.mjs
+          node qa/V21_29_DNR_BRAKE_SELECTOR_QA.mjs
+          node qa/V21_29_BODY_RELATIVE_TRANSMISSION_QA.mjs
+          node qa/V21_29_TRANSMISSION_DIRECTION_QA.mjs
+          node qa/V21_29_ALL_COMBUSTION_CLUTCH_QA.mjs
+          node qa/V21_29_FREE_REV_INERTIA_QA.mjs
+          node qa/V21_29_CLUTCH_SHOCK_QA.mjs
+          node qa/V21_29_CLUTCH_SHOCK_FLEET_QA.mjs
+          node qa/V21_29_SEMI_AUTO_CLUTCH_QA.mjs
+          node qa/V21_29_RUNTIME_WHEELSPIN_QA.mjs
+      - name: Multiplayer exact gear regressions
+        run: |
+          node qa/V21_31_MULTIPLAYER_M3_PROTOCOL_QA.mjs
+          node qa/V21_31_MULTIPLAYER_M3_CLIENT_QA.mjs
+          node qa/V21_31_MULTIPLAYER_M3_LIGHTING_MATRIX_QA.mjs
+      - name: Driving matrix
+        run: node qa/DEV_DRIVING_SIM_QA.mjs
+      - name: Stress
+        run: npm run qa:stress
+      - name: Production build
+        run: npm run build
+      - name: Diff hygiene
+        run: git diff --check
+      - name: Commit materialized C2 candidate
+        run: |
+          if git diff --quiet; then
+            echo "No generated C2 changes"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Cleanup C2: flatten transmission controller layers"
+          git push origin HEAD:cleanup/transmission-c2
