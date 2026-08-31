@@ -1,3 +1,4 @@
+// R2 read-only audit: this push intentionally runs after the workflow exists on the branch.
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
