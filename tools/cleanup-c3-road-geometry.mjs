@@ -54,6 +54,12 @@ qa=replaceOnce(
   '/function setActiveRoadProfile\\s*\\(/,',
   'modernize active profile owner assertion'
 );
+qa=replaceOnce(
+  qa,
+  'assert.ok(Math.abs(cumulative.z-50)<1e-9,`cumulative position interpolation changed: ${cumulative.z}`);',
+  'assert.ok(Math.abs(cumulative.pz-50)<1e-9,`cumulative position interpolation changed: ${cumulative.pz}`);',
+  'modernize cumulative frame position field'
+);
 qa=qa.replace(/[ \t]+$/gm,'');
 fs.writeFileSync(legacyQaPath,qa+'\n');
 
