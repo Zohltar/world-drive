@@ -65,6 +65,7 @@ import {
   clearWorldDriveCache
 } from './cache.js';
 import { createApplicationSettingsController } from './application-settings.js';
+import { createLoadedSettingsApplication } from './loaded-settings-application.js';
 import { createOverpassClient } from './overpass.js';
 import { createSignDataService, createGeographicSignOrchestrator } from './signs.js';
 import { createBridgeManager } from './bridges.js';
@@ -2413,52 +2414,21 @@ function syncV21VehicleInfo(){v21MenuSystem?.syncVehicleInfo();}
 function applyV21DisplayVisibility(){v21MenuSystem?.applyDisplayVisibility();}
 function showV21MenuButton(){v21MenuSystem?.showButton();}
 
-async function applyLoadedV21Settings(){
-  transmissionMode=
-    appSettings.transmissionMode===
-    'manual'
-      ?'manual'
-      :'automatic';
-
-  assist=
-    appSettings.assist!==false;
-
-  obeyRoadSpeedLimits=
-    appSettings.obeyRoadSpeedLimits!==false;
-
-  updateSpeedLimitModeUI();
-
-  if(
-    imageryService.enabled!==
-    !!appSettings.imageryEnabled
-  ){
-    imageryService.toggle();
-  }
-
-  applyDisplayDistanceProfile(
-    appSettings.displayDistance||
-    'high'
-  );
-
-  applyV21DisplayVisibility();
-
-  if($('assist')){
-    $('assist').textContent=
-      'Assist: '+
-      (
-        assist
-          ?'ON'
-          :'OFF'
-      );
-  }
-
-  if(transmissionModeSelect){
-    transmissionModeSelect.value=
-      transmissionMode;
-  }
-
-  syncV21RuntimeControls();
-}
+const loadedSettingsApplication=createLoadedSettingsApplication({
+  settings:appSettings,
+  setTransmissionMode:value=>{transmissionMode=value;},
+  setAssist:value=>{assist=value;},
+  setObeyRoadSpeedLimits:value=>{obeyRoadSpeedLimits=value;},
+  updateSpeedLimitModeUI,
+  isImageryEnabled:()=>imageryService.enabled,
+  toggleImagery:()=>imageryService.toggle(),
+  applyDisplayDistanceProfile,
+  applyDisplayVisibility:()=>applyV21DisplayVisibility(),
+  getAssistStatusEl:()=>$('assist'),
+  getTransmissionModeSelect:()=>transmissionModeSelect,
+  syncRuntimeControls:()=>syncV21RuntimeControls()
+});
+const applyLoadedV21Settings=()=>loadedSettingsApplication.apply();
 
 $('clearHydroCacheBtn').addEventListener('click',async()=>{
   try{

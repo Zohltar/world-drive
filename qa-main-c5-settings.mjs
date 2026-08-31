@@ -104,6 +104,7 @@ assert.equal(warnings.length,0,'unexpected settings save warning');
 }
 
 const main=fs.readFileSync('src/main.js','utf8');
+const settingsModule=fs.readFileSync('src/application-settings.js','utf8');
 const mainLines=main.split(/\r?\n/).length;
 assert.match(main,/import \{ createApplicationSettingsController \} from ['"]\.\/application-settings\.js['"]/,'main missing application-settings import');
 assert.match(main,/const settingsController=createApplicationSettingsController\(\{/,'main missing settings controller composition');
@@ -120,7 +121,7 @@ assert.doesNotMatch(main,/\bsettingsLoaded\b/,'main still owns settings loaded s
 assert.doesNotMatch(main,/\bsettingsSaveTimer\b/,'main still owns settings debounce timer');
 assert.match(main,/createKeyboardControls\(\{[\s\S]*?appSettings,/,'keyboard controller no longer receives stable settings root');
 assert.match(main,/createEnvironmentController\(\{[\s\S]*?appSettings,/,'environment controller no longer receives stable settings root');
-assert.match(main,/async function applyLoadedV21Settings\(\)/,'runtime settings application moved out of main unexpectedly');
+assert.doesNotMatch(settingsModule,/applyDisplayDistanceProfile|updateSpeedLimitModeUI|toggleImagery/,'C5.5 persistence owner absorbed runtime/UI settings application');
 assert.ok(mainLines<2782,`C5.5 did not reduce main settings lifecycle ownership: ${mainLines} lines`);
 
 console.log('CLEANUP C5.5 STABLE SETTINGS QA: PASS',{
@@ -128,6 +129,7 @@ console.log('CLEANUP C5.5 STABLE SETTINGS QA: PASS',{
   stableNestedObjects:['controls','keyboard','gamepad','display'],
   loadedKeyboardVisibleThroughCapturedReference:true,
   savedCapturedReferenceEdits:true,
+  runtimeApplicationLocation:'owned outside C5.5',
   saveDelayMs:controller.saveDelayMs,
   mainLines
 });
