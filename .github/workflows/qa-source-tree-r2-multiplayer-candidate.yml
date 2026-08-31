@@ -1,0 +1,63 @@
+name: Source Tree R2 Multiplayer Candidate
+
+on:
+  push:
+    branches:
+      - cleanup/source-tree-r2-multiplayer
+    paths:
+      - 'src/**'
+      - 'qa/**'
+      - 'qa-*.mjs'
+      - '.github/workflows/**'
+  workflow_dispatch:
+
+jobs:
+  qa:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install
+        run: npm ci
+      - name: R2 multiplayer folder boundary
+        run: node qa-source-tree-r2-multiplayer.mjs
+      - name: Runtime import/source-tree audit
+        run: node qa/DEV_INTEGRATION_AUDIT.mjs
+      - name: C6.7 local gear diagnostics
+        run: node qa-diagnostics-c6-7.mjs
+      - name: C6.8 wire diagnostics
+        run: node qa-diagnostics-c6-8.mjs
+      - name: C6.11 HD visual diagnostics
+        run: node qa-diagnostics-c6-11.mjs
+      - name: Multiplayer M3 protocol
+        run: node qa/V21_31_MULTIPLAYER_M3_PROTOCOL_QA.mjs
+      - name: Multiplayer M3 client
+        run: node qa/V21_31_MULTIPLAYER_M3_CLIENT_QA.mjs
+      - name: Multiplayer registry
+        run: node qa/V21_31_MULTIPLAYER_M3_REGISTRY_QA.mjs
+      - name: Multiplayer support
+        run: node qa/V21_31_MULTIPLAYER_M3_SUPPORT_QA.mjs
+      - name: Multiplayer lighting matrix
+        run: node qa/V21_31_MULTIPLAYER_M3_LIGHTING_MATRIX_QA.mjs
+      - name: Shared traffic
+        run: node qa-traffic-mp1.mjs
+      - name: Live traffic
+        run: node qa-traffic-mp1-live.mjs
+      - name: Multiplayer M4 adapter
+        run: node qa/V21_31_MULTIPLAYER_M4_ADAPTER_QA.mjs
+      - name: M4.11 reverse E2E
+        run: node qa/V21_31_MULTIPLAYER_M411_REVERSE_E2E_QA.mjs
+      - name: M4.12 controller runtime
+        run: node qa/V21_31_MULTIPLAYER_M412_CONTROLLER_RUNTIME_QA.mjs
+      - name: M4.14 authored reverse WebGL
+        run: node qa/V21_31_MULTIPLAYER_M414_AUTHORED_REVERSE_WEBGL_QA.mjs
+      - name: M4.15 network to WebGL reverse
+        run: node qa/V21_31_MULTIPLAYER_M415_NETWORK_REVERSE_WEBGL_QA.mjs
+      - name: Production build
+        run: npm run build
+      - name: Production code split
+        run: node qa/BUILD_V21_31_CODE_SPLIT_QA.mjs
