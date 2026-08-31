@@ -1,0 +1,82 @@
+name: Cleanup C6.1 Diagnostics Root QA
+
+on:
+  push:
+    branches:
+      - dev
+    paths:
+      - 'src/diagnostics.js'
+      - 'src/main.js'
+      - 'src/forest-chunk-streamer.js'
+      - 'src/scenery-renderer-p933.js'
+      - 'src/startup-ui.js'
+      - 'src/streaming-coordinator.js'
+      - 'src/streaming-coordinator-p913.js'
+      - 'src/frame-runtime-profiler.js'
+      - 'qa-diagnostics-c6-1.mjs'
+      - 'qa-forest-c4.mjs'
+      - 'qa-forest-p929-frame-budget.mjs'
+      - 'qa-forest-p935-front-startup.mjs'
+      - 'qa-forest-p936-rolling-prefetch.mjs'
+      - 'qa-p937-combined-frame-pacing.mjs'
+      - 'qa-p938-forest-retention.mjs'
+      - 'qa-p939-hitch-attribution.mjs'
+      - 'qa-forest-p940-maintenance.mjs'
+      - 'qa-p941-frame-runtime-attribution.mjs'
+      - 'qa-p942-browser-long-frame.mjs'
+      - 'qa/V21_22_3_HITCH_FREE_QA.mjs'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  qa:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install
+        run: npm ci
+      - name: C6.1 canonical diagnostics QA
+        run: node qa-diagnostics-c6-1.mjs
+      - name: C4 forest compatibility ownership QA
+        run: node qa-forest-c4.mjs
+      - name: V21.22.3 hitch-free policy QA
+        run: node qa/V21_22_3_HITCH_FREE_QA.mjs
+      - name: P9.29 forest frame-budget QA
+        run: node qa-forest-p929-frame-budget.mjs
+      - name: Forest startup/front-load QA
+        run: node qa-forest-p935-front-startup.mjs
+      - name: Forest rolling prefetch QA
+        run: node qa-forest-p936-rolling-prefetch.mjs
+      - name: Combined frame-pacing QA
+        run: node qa-p937-combined-frame-pacing.mjs
+      - name: Prepared forest-retention QA
+        run: node qa-p938-forest-retention.mjs
+      - name: Hitch attribution QA
+        run: node qa-p939-hitch-attribution.mjs
+      - name: Forest queue maintenance QA
+        run: node qa-forest-p940-maintenance.mjs
+      - name: Frame-runtime attribution QA
+        run: node qa-p941-frame-runtime-attribution.mjs
+      - name: Browser long-frame attribution QA
+        run: node qa-p942-browser-long-frame.mjs
+      - name: Active forest runtime mock
+        run: node qa-forest-active-runtime.mjs
+      - name: Active forest stress QA
+        run: node qa-forest-active-stress.mjs
+      - name: Runtime import and debt audit
+        run: node qa/DEV_INTEGRATION_AUDIT.mjs
+      - name: Driving dynamics simulation matrix
+        run: node qa/DEV_DRIVING_SIM_QA.mjs
+      - name: Full V21.31 regression stress
+        run: npm run qa:stress
+      - name: Production build
+        run: npm run build

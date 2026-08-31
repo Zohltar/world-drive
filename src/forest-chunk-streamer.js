@@ -1,5 +1,6 @@
 import {createForestChunkStreamer as createForestChunkStreamerCore} from './forest-chunk-streamer-core.js';
 import {frameRuntimeSnapshot} from './frame-runtime-profiler.js';
+import {ensureWorldDriveDiagnostics,installDiagnosticAlias} from './diagnostics.js';
 
 const FRAME_MATCH_SLACK_MS=2;
 const MATCH_AFTER_MS=2;
@@ -272,16 +273,25 @@ export function createForestChunkStreamer(options){
   }
 
   function installDiagnostics(){
-    globalThis.__WORLD_DRIVE_P928_RECORD_HITCH__=recordHitch;
-    globalThis.__WORLD_DRIVE_P929_FOREST__=snapshot;
-    globalThis.__WORLD_DRIVE_P931_FOREST__=snapshot;
-    globalThis.__WORLD_DRIVE_P934_FOREST__=snapshot;
-    globalThis.__WORLD_DRIVE_P936_FOREST__=snapshot;
-    globalThis.__WORLD_DRIVE_P940_FOREST__=snapshot;
-    globalThis.__WORLD_DRIVE_P941_FOREST__=snapshot;
+    const diagnostics=ensureWorldDriveDiagnostics();
+    diagnostics.forest.recordHitch=recordHitch;
+    diagnostics.forest.snapshot=snapshot;
+
+    // C6.1 compatibility delegates: legacy P9 names remain callable while the
+    // stable diagnostics root owns the current implementation.
+    installDiagnosticAlias('__WORLD_DRIVE_P928_RECORD_HITCH__',()=>diagnostics.forest.recordHitch);
+    installDiagnosticAlias('__WORLD_DRIVE_P929_FOREST__',()=>diagnostics.forest.snapshot);
+    installDiagnosticAlias('__WORLD_DRIVE_P931_FOREST__',()=>diagnostics.forest.snapshot);
+    installDiagnosticAlias('__WORLD_DRIVE_P934_FOREST__',()=>diagnostics.forest.snapshot);
+    installDiagnosticAlias('__WORLD_DRIVE_P936_FOREST__',()=>diagnostics.forest.snapshot);
+    installDiagnosticAlias('__WORLD_DRIVE_P940_FOREST__',()=>diagnostics.forest.snapshot);
+    installDiagnosticAlias('__WORLD_DRIVE_P941_FOREST__',()=>diagnostics.forest.snapshot);
+
     if(typeof globalThis.setTimeout!=='function')return;
     const attempt=()=>{
-      const current=globalThis.WorldDriveFramePacing;
+      // WorldDriveFramePacing remains a compatibility alias installed by main;
+      // the forest wrapper now replaces only the canonical snapshot authority.
+      const current=diagnostics.framePacing.snapshot;
       if(typeof current!=='function'){
         globalThis.setTimeout(attempt,INSTALL_RETRY_MS);
         return;
@@ -300,7 +310,7 @@ export function createForestChunkStreamer(options){
       wrapped.__worldDriveP940Forest=true;
       wrapped.__worldDriveP941Forest=true;
       wrapped.__worldDriveP928Original=original;
-      globalThis.WorldDriveFramePacing=wrapped;
+      diagnostics.framePacing.snapshot=wrapped;
     };
     globalThis.setTimeout(attempt,0);
   }

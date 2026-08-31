@@ -1,5 +1,6 @@
 import {createSceneryRenderer as createSceneryRendererP9} from './scenery-renderer-p9.js';
 import {FOREST_STREAMING_POLICY as FOREST} from './forest-streaming-policy.js';
+import {ensureWorldDriveDiagnostics,installDiagnosticAlias} from './diagnostics.js';
 
 // Foret P9.35 — route-aware startup forest readiness gate.
 //
@@ -131,12 +132,15 @@ export function createSceneryRenderer(options){
     };
   }
 
-  globalThis.__WORLD_DRIVE_P933_FOREST_READY__=whenInitialForestReady;
-  globalThis.__WORLD_DRIVE_P933_FOREST_STATUS__=startupForestStatus;
-  globalThis.__WORLD_DRIVE_P934_FOREST_READY__=whenInitialForestReady;
-  globalThis.__WORLD_DRIVE_P934_FOREST_STATUS__=startupForestStatus;
-  globalThis.__WORLD_DRIVE_P935_FOREST_READY__=whenInitialForestReady;
-  globalThis.__WORLD_DRIVE_P935_FOREST_STATUS__=startupForestStatus;
+  const diagnostics=ensureWorldDriveDiagnostics();
+  diagnostics.forest.whenInitialReady=whenInitialForestReady;
+  diagnostics.forest.startupStatus=startupForestStatus;
+  installDiagnosticAlias('__WORLD_DRIVE_P933_FOREST_READY__',()=>diagnostics.forest.whenInitialReady);
+  installDiagnosticAlias('__WORLD_DRIVE_P933_FOREST_STATUS__',()=>diagnostics.forest.startupStatus);
+  installDiagnosticAlias('__WORLD_DRIVE_P934_FOREST_READY__',()=>diagnostics.forest.whenInitialReady);
+  installDiagnosticAlias('__WORLD_DRIVE_P934_FOREST_STATUS__',()=>diagnostics.forest.startupStatus);
+  installDiagnosticAlias('__WORLD_DRIVE_P935_FOREST_READY__',()=>diagnostics.forest.whenInitialReady);
+  installDiagnosticAlias('__WORLD_DRIVE_P935_FOREST_STATUS__',()=>diagnostics.forest.startupStatus);
 
   return Object.freeze({
     ...base,

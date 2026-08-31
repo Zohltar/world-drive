@@ -65,6 +65,7 @@ import {
   clearWorldDriveCache
 } from './cache.js';
 import { createApplicationSettingsController } from './application-settings.js';
+import { ensureWorldDriveDiagnostics, installDiagnosticAlias } from './diagnostics.js';
 import { createLoadedSettingsApplication } from './loaded-settings-application.js';
 import { createOverpassClient } from './overpass.js';
 import { createSignDataService, createGeographicSignOrchestrator } from './signs.js';
@@ -2458,12 +2459,18 @@ $('clearHydroCacheBtn').addEventListener('click',async()=>{
 setTimeOfDay(12);
 
 // V21.22.3 diagnostics are kept in memory so observing them cannot itself
-// cause a periodic console/devtools hitch. Inspect manually if needed:
-// window.WorldDriveFramePacing()
-window.WorldDriveFramePacing=()=>({
+// cause a periodic console/devtools hitch. C6.1 keeps the historical callable
+// alias, but the stable WorldDriveDiagnostics root is now authoritative.
+const worldDriveDiagnostics=ensureWorldDriveDiagnostics();
+worldDriveDiagnostics.framePacing.snapshot=()=>({
   fps:perfGovernor.fps,
   ...(streamingCoordinator?.diagnostics?.()||{})
 });
+installDiagnosticAlias(
+  'WorldDriveFramePacing',
+  ()=>worldDriveDiagnostics.framePacing.snapshot,
+  window
+);
 
 // V21.27.2 diagnostics only. Safe to inspect from DevTools; values do not
 // feed back into the authoritative V21.26 vehicle integrator.

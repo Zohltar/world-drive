@@ -88,6 +88,7 @@ export function createStartupUi({
       if(startButton){startButton.disabled=true;startButton.textContent='PRÉPARATION DE LA FORÊT DEVANT…';}
       try{
         const waitForForest=
+          globalThis.WorldDriveDiagnostics?.forest?.whenInitialReady||
           globalThis.__WORLD_DRIVE_P935_FOREST_READY__||
           globalThis.__WORLD_DRIVE_P934_FOREST_READY__||
           globalThis.__WORLD_DRIVE_P933_FOREST_READY__;
