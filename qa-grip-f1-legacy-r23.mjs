@@ -20,7 +20,7 @@ assert.ok(Math.abs(full300.target-1)<1e-12,'R23 must preserve full-stick mechani
 const runtime=fs.readFileSync('src/driving-runtime-base.js','utf8');
 const yawAuthority=fs.readFileSync('src/physics/yaw-authority.js','utf8');
 const momentum=fs.readFileSync('src/physics/momentum-direction.js','utf8');
-const dynamicsBase=fs.readFileSync('src/vehicle-dynamics-base.js','utf8');
+const dynamicsCore=fs.readFileSync('src/vehicle-dynamics-core.js','utf8');
 assert.match(runtime,/const useLegacyDriftAssist=VEHICLE\?\.legacyDriftAssist!==false;/,'runtime lacks explicit legacy-drift ownership switch');
 // Cleanup B5 moved both legacy RWD yaw injection and R16/R21 fallback filtering
 // into the single local-chassis yaw authority owner.
@@ -33,7 +33,7 @@ assert.match(
   /const forceTrajectoryYawRate=useLegacyDriftAssist[\s\S]*\?blendDriftForce\([\s\S]*legacyForceTrajectoryYawRate,[\s\S]*finite\(physicalTrajectoryYawRate\),[\s\S]*finite\(driftPhysicalAuthority\)[\s\S]*\)[\s\S]*:finite\(physicalTrajectoryYawRate\);/,
   'legacy trajectory blend is not bypassed for physical-only profiles'
 );
-assert.match(dynamicsBase,/drivetrain==='RWD'&&vehicle\?\.legacyDriftAssist!==false/,'heuristic power-oversteer grip loss is not gated');
+assert.match(dynamicsCore,/drivetrain==='RWD'&&vehicle\?\.legacyDriftAssist!==false/,'heuristic power-oversteer grip loss is not gated');
 
 const contacts=[
   {front:false,side:'left',axleIndex:1,contact:true,contactFactor:1},
