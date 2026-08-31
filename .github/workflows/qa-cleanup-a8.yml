@@ -1,0 +1,50 @@
+name: Cleanup A8 Current Local-World QA
+
+on:
+  push:
+    branches:
+      - dev
+    paths:
+      - 'src/local-world-builder.js'
+      - 'src/local-world-builder-p926.js'
+      - 'src/local-world-builder-p925.js'
+      - 'qa-local-world-current-a8.mjs'
+      - 'qa/V21_26_ENVIRONMENT_REFACTOR_QA.mjs'
+      - 'qa/V21_26_LOCAL_WORLD_REFACTOR_QA.mjs'
+      - 'qa-streaming-p923-prepared-refresh.mjs'
+      - 'qa-streaming-p923-scheduler.mjs'
+      - 'qa-streaming-p924-frame-budget.mjs'
+      - 'qa-streaming-p925-scenery-and-prep.mjs'
+      - 'qa-streaming-p926-horizon.mjs'
+      - 'qa-streaming-p927-road-transition.mjs'
+      - 'qa-p937-combined-frame-pacing.mjs'
+      - 'qa-p938-forest-retention.mjs'
+      - '.github/workflows/qa-cleanup-a8.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  qa:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+      - name: Current local-world ownership QA
+        run: node qa-local-world-current-a8.mjs
+      - name: Direct environment controller QA
+        run: node qa/V21_26_ENVIRONMENT_REFACTOR_QA.mjs
+      - name: Current local-world streaming regressions
+        run: |
+          node qa-streaming-p923-prepared-refresh.mjs
+          node qa-streaming-p923-scheduler.mjs
+          node qa-streaming-p924-frame-budget.mjs
+          node qa-streaming-p925-scenery-and-prep.mjs
+          node qa-streaming-p926-horizon.mjs
+          node qa-streaming-p927-road-transition.mjs
+          node qa-p937-combined-frame-pacing.mjs
+          node qa-p938-forest-retention.mjs
