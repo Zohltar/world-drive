@@ -1,0 +1,54 @@
+name: Cleanup A8 QA Truth Candidate
+
+on:
+  push:
+    branches:
+      - cleanup/qa-truth-a8
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  qa:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+      - name: Materialize A8 QA truth cleanup
+        run: node tools/cleanup-a8-qa-truth.mjs
+      - name: A8 current local-world ownership QA
+        run: node qa-local-world-current-a8.mjs
+      - name: Direct environment controller QA
+        run: node qa/V21_26_ENVIRONMENT_REFACTOR_QA.mjs
+      - name: Current local-world streaming regressions
+        run: |
+          node qa-streaming-p923-prepared-refresh.mjs
+          node qa-streaming-p923-scheduler.mjs
+          node qa-streaming-p924-frame-budget.mjs
+          node qa-streaming-p925-scenery-and-prep.mjs
+          node qa-streaming-p926-horizon.mjs
+          node qa-streaming-p927-road-transition.mjs
+          node qa-p937-combined-frame-pacing.mjs
+          node qa-p938-forest-retention.mjs
+      - name: Production build
+        run: npm run build
+      - name: Diff hygiene
+        run: git diff --check
+      - name: Commit materialized A8 candidate
+        run: |
+          if git diff --quiet; then
+            echo "No generated A8 changes"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Cleanup A8: retire stale V21.26 local-world meta-QA"
+          git push origin HEAD:cleanup/qa-truth-a8
