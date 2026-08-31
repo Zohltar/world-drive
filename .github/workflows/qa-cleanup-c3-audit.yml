@@ -21,6 +21,14 @@ jobs:
       - run: npm ci
       - name: C3 ownership scan
         run: node qa-road-geometry-c3-audit.mjs
+      - name: Historical V21.25 road-refactor truth check
+        shell: bash
+        run: |
+          if node qa/V21_25_ROAD_GEOMETRY_REFACTOR_QA.mjs; then
+            echo "Unexpected: historical V21.25 source-location QA still passes before C3"
+            exit 1
+          fi
+          echo "Expected stale QA failure confirmed on untouched pre-C3 layering"
       - name: Active V21.31 road regressions
         run: |
           node qa/V21_31_ROAD_SMOOTHING_QA.mjs
