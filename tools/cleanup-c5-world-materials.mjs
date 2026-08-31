@@ -17,18 +17,18 @@ const end=main.indexOf(endMarker,start);
 if(start<0||end<0||end<=start)throw new Error('C5.1 material block markers missing');
 
 const outside=main.slice(0,start)+main.slice(end);
-for(const internal of ['makeRoadSurfaceTextures','asphaltTextures','shoulderTextures','makeWaterTexture','waterTex','waterStencil']){
+for(const internal of ['makeRoadSurfaceTextures','asphaltTextures','shoulderTextures','makeWaterTexture','waterStencil']){
   if(outside.includes(internal))throw new Error(`C5.1 internal material helper is used outside extraction block: ${internal}`);
 }
 for(const publicName of [
   'roadMat','shoulderMat','roadEdgeMat','roadUnderMat','lineYellow','lineWhite',
-  'treeTrunkMat','treeMat','waterMat','riverMat','coastWaterMat',
+  'treeTrunkMat','treeMat','waterTex','waterMat','riverMat','coastWaterMat',
   'ROAD_SURFACE_OFFSET','TIRE_VISUAL_CLEARANCE','WHEEL_RADIUS','TIRE_HALF_WIDTH','ROAD_WHEEL_CONTACT_HALF_WIDTH'
 ]){
   if(!outside.includes(publicName))throw new Error(`C5.1 extracted binding has no outside consumer: ${publicName}`);
 }
 
-const replacement=`// ---------- world materials facade ----------\nconst {\n  roadMat,\n  shoulderMat,\n  roadEdgeMat,\n  roadUnderMat,\n  lineYellow,\n  lineWhite,\n  treeTrunkMat,\n  treeMat,\n  waterMat,\n  riverMat,\n  coastWaterMat\n}=createWorldMaterials({THREE,renderer,documentRef:document});\n\n`;
+const replacement=`// ---------- world materials facade ----------\nconst {\n  roadMat,\n  shoulderMat,\n  roadEdgeMat,\n  roadUnderMat,\n  lineYellow,\n  lineWhite,\n  treeTrunkMat,\n  treeMat,\n  waterTex,\n  waterMat,\n  riverMat,\n  coastWaterMat\n}=createWorldMaterials({THREE,renderer,documentRef:document});\n\n`;
 main=main.slice(0,start)+replacement+main.slice(end);
 main=main.replace(/[ \t]+$/gm,'').trimEnd()+'\n';
 fs.writeFileSync(mainPath,main);
