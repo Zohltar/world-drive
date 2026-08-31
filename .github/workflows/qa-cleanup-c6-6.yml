@@ -1,0 +1,54 @@
+name: Cleanup C6.6 Physics Shadow Diagnostics QA
+
+on:
+  push:
+    branches:
+      - dev
+    paths:
+      - 'src/main.js'
+      - 'src/diagnostics.js'
+      - 'src/driving-runtime.js'
+      - 'src/driving-runtime-base.js'
+      - 'src/physics/per-wheel-shadow-solver.js'
+      - 'qa-diagnostics-c6-1.mjs'
+      - 'qa-diagnostics-c6-2.mjs'
+      - 'qa-diagnostics-c6-3.mjs'
+      - 'qa-diagnostics-c6-4.mjs'
+      - 'qa-diagnostics-c6-5.mjs'
+      - 'qa-diagnostics-c6-6.mjs'
+      - 'qa/V21_27_PHYSICS_SHADOW_QA.mjs'
+      - '.github/workflows/qa-cleanup-c6-6.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  qa:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: C6.1-C6.6 diagnostics QA
+        run: |
+          node qa-diagnostics-c6-1.mjs
+          node qa-diagnostics-c6-2.mjs
+          node qa-diagnostics-c6-3.mjs
+          node qa-diagnostics-c6-4.mjs
+          node qa-diagnostics-c6-5.mjs
+          node qa-diagnostics-c6-6.mjs
+      - name: V21.27 physics-shadow regression
+        run: node qa/V21_27_PHYSICS_SHADOW_QA.mjs
+      - name: Driving dynamics simulation matrix
+        run: node qa/DEV_DRIVING_SIM_QA.mjs
+      - name: Full V21.31 regression stress
+        run: npm run qa:stress
+      - name: Runtime import and debt audit
+        run: node qa/DEV_INTEGRATION_AUDIT.mjs
+      - name: Production build
+        run: npm run build

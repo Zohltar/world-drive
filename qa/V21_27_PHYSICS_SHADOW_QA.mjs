@@ -7,6 +7,7 @@ import { spawnSync } from 'node:child_process';
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
 const solverPath=path.join(root,'src','physics','per-wheel-shadow-solver.js');
 const runtimePath=path.join(root,'src','driving-runtime.js');
+const runtimeBasePath=path.join(root,'src','driving-runtime-base.js');
 const mainPath=path.join(root,'src','main.js');
 const foundationQa=path.join(root,'qa','V21_27_PHYSICS_FOUNDATION_QA.mjs');
 
@@ -214,18 +215,21 @@ assert.ok(resetResult.wheels.every(w=>Math.abs(w.slipRatio)<1e-9),'hard reset in
 
 // 7) Runtime integration must be observational only.
 const runtime=fs.readFileSync(runtimePath,'utf8');
+const runtimeBase=fs.readFileSync(runtimeBasePath,'utf8');
 const main=fs.readFileSync(mainPath,'utf8');
-assert.match(runtime,/createPerWheelShadowSolver/,'driving runtime does not import/create shadow solver');
-assert.match(runtime,/physicsShadow\.advance\(dt,\{/,'driving runtime does not advance shadow solver');
-assert.match(runtime,/physicsShadowDiagnostics:\(\)=>physicsShadow\.diagnostics\(\)/,'shadow diagnostics are not exposed by driving runtime');
+assert.match(runtime,/from '.\/driving-runtime-base\.js'/,'canonical driving runtime no longer delegates to base runtime');
+assert.match(runtimeBase,/createPerWheelShadowSolver/,'driving runtime base does not import/create shadow solver');
+assert.match(runtimeBase,/physicsShadow\.advance\(dt,\{/,'driving runtime base does not advance shadow solver');
+assert.match(runtimeBase,/physicsShadowDiagnostics:\(\)=>physicsShadow\.diagnostics\(\)/,'shadow diagnostics are not exposed by driving runtime base');
 assert.match(main,/getVehicleId:\(\)=>vehicleSystem\.activeId/,'driving runtime is not receiving active vehicle identity');
-assert.match(main,/window\.WorldDrivePhysicsShadow=/,'DevTools shadow diagnostics hook is missing');
+assert.match(main,/worldDriveDiagnostics\.physics\.shadow=\(\)=>/,'canonical physics-shadow diagnostics hook is missing');
+assert.match(main,/installDiagnosticAlias\(\s*'WorldDrivePhysicsShadow'/s,'DevTools physics-shadow compatibility delegate is missing');
 
 // Guard against accidentally feeding the prediction back into authoritative
 // chassis state during this phase.
-assert.doesNotMatch(runtime,/predictedAccelX\s*[+\-*/]?=/,'shadow predictedAccelX is being written into runtime state');
-assert.doesNotMatch(runtime,/predictedAccelZ\s*[+\-*/]?=/,'shadow predictedAccelZ is being written into runtime state');
-assert.doesNotMatch(runtime,/predictedYawAccel\s*[+\-*/]?=/,'shadow predictedYawAccel is being written into runtime state');
+assert.doesNotMatch(runtimeBase,/predictedAccelX\s*[+\-*/]?=/,'shadow predictedAccelX is being written into runtime state');
+assert.doesNotMatch(runtimeBase,/predictedAccelZ\s*[+\-*/]?=/,'shadow predictedAccelZ is being written into runtime state');
+assert.doesNotMatch(runtimeBase,/predictedYawAccel\s*[+\-*/]?=/,'shadow predictedYawAccel is being written into runtime state');
 
 console.log('V21.27 PHYSICS SHADOW QA: PASS');
 console.log('120 Hz per-wheel forces / stable wheel spin / Ackermann / rear lock / airborne state / hard reset / non-authoritative runtime integration verified');
