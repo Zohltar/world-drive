@@ -1,0 +1,13 @@
+import fs from 'node:fs';
+const path='docs/WORLD_DRIVE_TECH_DEBT_PLAN.md';
+let text=fs.readFileSync(path,'utf8');
+const marker='C6.1 selected boundary — canonical diagnostics root + frame-pacing/forest bridge:';
+const insert=`C6.1 material discovery — stale P9.29 hitch-hook location assertion:\n- after the V21.22.3 QA was modernized to current owners, candidate run \`33387555920\` passed C6.1, C4 and V21.22.3 then stopped in \`qa-forest-p929-frame-budget.mjs\`;\n- P9.29 still requires the exact historical direct call \`globalThis.__WORLD_DRIVE_P928_RECORD_HITCH__?.({...})\` in \`streaming-coordinator.js\`;\n- the actual invariant remains valid: every >20 ms gameplay hitch must feed the active forest hitch recorder, but C6.1 intentionally prefers \`WorldDriveDiagnostics.forest.recordHitch\` and retains P9.28 only as a compatibility fallback;\n- modernize P9.29 to protect the >20 ms threshold plus canonical-first/fallback hook semantics rather than the old source location.\n\n`;
+if(!text.includes(marker))throw new Error('C6.1 marker missing');
+if(!text.includes('C6.1 material discovery — stale P9.29'))text=text.replace(marker,insert+marker);
+const logMarker='## 2026-08-31 — C6.1 candidate exposed stale V21.22.3 hitch-free QA';
+const log=`## 2026-08-31 — C6.1 candidate exposed stale P9.29 hitch-hook location assertion\n\n- Candidate run \`33387555920\`: C6.1 diagnostics root, C4 forest compatibility and modern V21.22.3 policy QA PASS.\n- P9.29 then failed only because it required the historical direct P9.28 global invocation.\n- The accepted invariant is unchanged: >20 ms gameplay hitches feed the forest recorder. C6.1 changes ownership only, preferring the canonical diagnostics root while retaining the P9.28 alias as fallback.\n- Action: update P9.29 source assertion to canonical-first/fallback semantics; do not restore direct legacy ownership.\n\n`;
+if(!text.includes(logMarker))throw new Error('work log marker missing');
+if(!text.includes('## 2026-08-31 — C6.1 candidate exposed stale P9.29'))text=text.replace(logMarker,log+logMarker);
+fs.writeFileSync(path,text);
+console.log('C6.1 stale P9.29 QA discovery recorded');
