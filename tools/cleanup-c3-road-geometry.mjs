@@ -34,7 +34,9 @@ canonical=replaceOnce(
 );
 
 const header=`// World Drive C3 — canonical road geometry ownership.\n// The former V21.25 base and V21.31 smoothing wrapper now live in one module;\n// equations and frame ordering are unchanged.\n\n`;
-const combined=(header+base.trimEnd()+'\n\n'+canonical.trimStart()).replace(/[ \t]+$/gm,'');
+const combined=(header+base.trimEnd()+'\n\n'+canonical.trimStart())
+  .replace(/[ \t]+$/gm,'')
+  .trimEnd();
 fs.writeFileSync(canonicalPath,combined+'\n');
 fs.unlinkSync(basePath);
 
@@ -66,7 +68,7 @@ qa=replaceOnce(
   'assert.ok(Math.abs(surface.y-15)<1e-9,`geometric road surface interpolation changed: ${surface.y}`);',
   'modernize geometric road surface expectation'
 );
-qa=qa.replace(/[ \t]+$/gm,'');
+qa=qa.replace(/[ \t]+$/gm,'').trimEnd();
 fs.writeFileSync(legacyQaPath,qa+'\n');
 
 console.log('C3 road geometry flattening materialized',{removed:basePath,canonical:canonicalPath,privateCore:'createRoadGeometryCore'});
