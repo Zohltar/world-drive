@@ -4,7 +4,7 @@ import {spawnSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
 
 const root=path.dirname(fileURLToPath(import.meta.url));
-const profilerPath=path.join(root,'src','frame-runtime-profiler-p941.js');
+const profilerPath=path.join(root,'src','frame-runtime-profiler.js');
 
 function read(file){return fs.readFileSync(file,'utf8');}
 function expect(condition,message){if(!condition)throw new Error(message);}

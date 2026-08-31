@@ -4,8 +4,8 @@ import {spawnSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
 
 const root=path.dirname(fileURLToPath(import.meta.url));
-const profilerPath=path.join(root,'src','frame-runtime-profiler-p941.js');
-const wrapperPath=path.join(root,'src','forest-chunk-streamer-p929-wrapper.js');
+const profilerPath=path.join(root,'src','frame-runtime-profiler.js');
+const wrapperPath=path.join(root,'src','forest-chunk-streamer.js');
 
 function read(file){return fs.readFileSync(file,'utf8');}
 function expect(condition,message){if(!condition)throw new Error(message);}
@@ -31,7 +31,7 @@ expect(!profiler.includes('setInterval('),'P9.41 profiler must remain zero-polli
 expect(!profiler.includes('setTimeout('),'P9.41 profiler must not schedule background work');
 
 for(const marker of [
-  "from './frame-runtime-profiler-p941.js'",
+  "from './frame-runtime-profiler.js'",
   'frameWindow=Math.max(0,Math.min(250,finite(frameMs)))+FRAME_MATCH_SLACK_MS',
   'hitchesAttributedToForest',
   'runtimeSources',

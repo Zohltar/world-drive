@@ -5,8 +5,8 @@ import {fileURLToPath} from 'node:url';
 
 const root=path.dirname(fileURLToPath(import.meta.url));
 const entryPath=path.join(root,'src','forest-chunk-streamer.js');
-const implPath=path.join(root,'src','forest-chunk-streamer-p929.js');
-const wrapperPath=path.join(root,'src','forest-chunk-streamer-p929-wrapper.js');
+const implPath=path.join(root,'src','forest-chunk-streamer-core.js');
+const wrapperPath=path.join(root,'src','forest-chunk-streamer.js');
 const coordinatorPath=path.join(root,'src','streaming-coordinator.js');
 
 function read(file){return fs.readFileSync(file,'utf8');}
@@ -19,7 +19,7 @@ function checkSyntax(file){
 const entry=read(entryPath),impl=read(implPath),wrapper=read(wrapperPath),coordinator=read(coordinatorPath);
 for(const file of [entryPath,implPath,wrapperPath,coordinatorPath])checkSyntax(file);
 
-expect(entry.includes("from './forest-chunk-streamer-p929-wrapper.js'"),'entry point must use P9.29 wrapper');
+expect(entry.includes("from './forest-chunk-streamer-core.js'"),'canonical forest streamer must compose the frame-budget core');
 for(const marker of [
   'candidateIndex',
   'processBuilderCandidate',

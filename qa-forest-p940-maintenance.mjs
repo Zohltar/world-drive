@@ -4,8 +4,8 @@ import {spawnSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
 
 const root=path.dirname(fileURLToPath(import.meta.url));
-const implPath=path.join(root,'src','forest-chunk-streamer-p929.js');
-const wrapperPath=path.join(root,'src','forest-chunk-streamer-p929-wrapper.js');
+const implPath=path.join(root,'src','forest-chunk-streamer-core.js');
+const wrapperPath=path.join(root,'src','forest-chunk-streamer.js');
 
 function read(file){return fs.readFileSync(file,'utf8');}
 function expect(condition,message){if(!condition)throw new Error(message);}

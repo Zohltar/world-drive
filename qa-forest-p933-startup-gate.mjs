@@ -7,8 +7,8 @@ const root=path.dirname(fileURLToPath(import.meta.url));
 const wrapperPath=path.join(root,'src','scenery-renderer-p933.js');
 const entryPath=path.join(root,'src','scenery-renderer.js');
 const startupPath=path.join(root,'src','startup-ui.js');
-const streamerPath=path.join(root,'src','forest-chunk-streamer-p929-wrapper.js');
-const implPath=path.join(root,'src','forest-chunk-streamer-p929.js');
+const streamerPath=path.join(root,'src','forest-chunk-streamer.js');
+const implPath=path.join(root,'src','forest-chunk-streamer-core.js');
 
 function read(file){return fs.readFileSync(file,'utf8');}
 function expect(condition,message){if(!condition)throw new Error(message);}
