@@ -830,7 +830,7 @@ C5 completion record:
 
 ### C6 — Consolidate diagnostic globals **[P2]**
 
-Status: **IN PROGRESS — C6.1/C6.2/C6.3/C6.4 DONE; C6.5 engine-input diagnostics selected (2026-08-31)**
+Status: **IN PROGRESS — C6.1/C6.2/C6.3/C6.4/C6.5 DONE; C6.6 physics-shadow audit next (2026-08-31)**
 
 Audit baseline:
 - audit branch `audit/diagnostics-c6`; strengthened audit run `33386461640`: PASS diagnostic inventory, import/debt audit, active forest runtime/stress, P9.37 frame pacing, P9.39 hitch attribution, P9.41 frame-runtime attribution and production build;
@@ -1003,6 +1003,17 @@ C6.5 selected boundary — canonical engine-input telemetry:
 - do not change D/N/R semantics, RPM/free-rev behavior, clutch shock, selector/network gear publication or any transmission equation;
 - candidate validation must include dedicated C6.5 ownership/timing QA, C6.1–C6.4, C2 transmission ownership, D/N/R + clutch/wheelspin transmission regressions, multiplayer protocol, 288 driving cases, full stress and production build before integration.
 
+C6.5 completion record — canonical engine-input telemetry:
+- fresh remaining-global audit run `33401079190`: PASS and selected `WorldDriveEngineInput` as the lowest-risk remaining legacy diagnostic surface (one writer, zero runtime readers, zero QA consumers);
+- candidate branch `cleanup/diagnostics-c6-5`; candidate run `33401709987`: PASS C6.1–C6.5, C2 transmission ownership, D/N/R/body-relative/direction transmission, combustion/semi-auto clutch, runtime wheelspin, multiplayer exact-gear protocol, 288 driving cases, full V21.31 stress, runtime import/debt audit, production build and diff hygiene; candidate materialization `f5cd0c26`;
+- final runtime + permanent gate integration commit `eb15cc7b`: moved only the exact `{throttle, clutchHeld}` publication to `WorldDriveDiagnostics.physics.engineInput` and removed `WorldDriveEngineInput`;
+- permanent C6.5 gate run `33401906626`: PASS C6.1–C6.5, C2/DNR/direction/clutch/wheelspin/multiplayer regressions, 288 driving cases, full stress, import/debt audit and production build;
+- Dev Integration registration commit `33769944`; final Dev Integration run `33402032909`: PASS **80/80**, including C6.5, full stress, 288 driving cases, R2–R20, forest/frame pacing, M4.14/M4.15 WebGL, live route smoke, production build and code split;
+- publication semantics are unchanged: reset still publishes zero/false before core reset, normal update still publishes after authoritative core transmission/gear publication and before free-rev handling, and non-browser controller construction still creates no engine-input diagnostic store;
+- D/N/R, RPM/free-rev, clutch-shock, selector/network gear, traction and wheelspin behavior are unchanged;
+- human validation: not required; C6.5 is telemetry-only and all transmission/mechanical integration regressions remained green;
+- Result: **C6.5 DONE**. Next is a read-only audit of `WorldDrivePhysicsShadow` before any migration.
+
 ---
 
 # 4. Items intentionally NOT scheduled for immediate deletion
@@ -1043,13 +1054,22 @@ These rules are mandatory while working this plan:
 
 # 6. Recommended next task
 
-**Next: C6.5 — migrate passive engine-input telemetry.**
+**Next: C6.6 — audit `WorldDrivePhysicsShadow` ownership and QA contract.**
 
-Move only `WorldDriveEngineInput` to `WorldDriveDiagnostics.physics.engineInput` at the existing reset/update publication points. Preserve the exact `{throttle, clutchHeld}` payload and all transmission behavior; no selector, clutch, RPM, wheelspin, network or traction logic changes.
+Start read-only. Confirm its single writer, exact payload/call timing, absence of runtime readers, and the one QA/source-string dependency identified by C6.5. Determine whether it is passive diagnostics or an externally callable debug hook before selecting a canonical `WorldDriveDiagnostics.physics` boundary.
 
 ---
 
 # 7. Work log
+
+## 2026-08-31 — C6.5 completed: canonical engine-input telemetry
+
+- Fresh audit `33401079190` selected the one-writer/no-reader `WorldDriveEngineInput` surface.
+- Candidate `33401709987` PASS; materialized runtime `f5cd0c26`.
+- Runtime/permanent gate integration `eb15cc7b`; permanent gate `33401906626` PASS.
+- Dev Integration registration `33769944`; final `33402032909` PASS 80/80.
+- Legacy `WorldDriveEngineInput` removed; canonical `WorldDriveDiagnostics.physics.engineInput` preserves exact payload and publication timing.
+- C6.6 starts read-only on `WorldDrivePhysicsShadow`.
 
 ## 2026-08-31 — C6.4 completed: canonical road-sign diagnostics
 
