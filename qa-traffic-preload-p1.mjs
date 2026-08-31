@@ -11,7 +11,8 @@ assert.ok(preloadSource.includes("fetch(url,{cache:'force-cache'})"),'traffic as
 assert.ok(preloadSource.includes('loader.parseAsync(buffer'),'heavy GLB parsing must happen in the startup preloader');
 assert.ok(preloadSource.includes('buildGenericPassengerTemplates(parsed.gltf.scene'),'generic templates must be prebuilt during startup');
 assert.ok(preloadSource.includes('state.pack.promise=state.sonata.promise'),'Sonata and generic pack parsing must be sequential, not simultaneous');
-assert.ok(preloadSource.includes('WorldDriveTrafficPreload'),'startup preload timings must be exposed for runtime diagnostics');
+assert.ok(preloadSource.includes('ensureWorldDriveDiagnostics().traffic.preload=civilTrafficPreloadDiagnostics'),'startup preload timings must be exposed through canonical runtime diagnostics');
+assert.ok(!preloadSource.includes('WorldDriveTrafficPreload'),'legacy traffic-preload diagnostics global must remain retired');
 assert.ok(poolSource.includes('const GENERIC_TEMPLATE_CACHE=new WeakMap()'),'generic template extraction must be cached per parsed pack scene');
 assert.ok(poolSource.includes("import('./civil-traffic-preload.js')"),'browser runtime must start traffic preload from module startup');
 assert.ok(poolSource.includes("typeof window!=='undefined'"),'Node QA must not trigger browser asset preloading');
