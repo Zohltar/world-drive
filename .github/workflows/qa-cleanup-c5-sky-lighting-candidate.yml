@@ -1,0 +1,58 @@
+name: Cleanup C5.2 Sky Lighting Candidate
+
+on:
+  push:
+    branches:
+      - cleanup/main-c5-sky-lighting
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  qa:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Materialize C5.2 extraction
+        run: |
+          if grep -q "const hemi=new THREE.HemisphereLight" src/main.js; then
+            node tools/cleanup-c5-sky-lighting.mjs
+          else
+            echo "C5.2 already materialized"
+          fi
+      - name: C5.2 sky lighting ownership and behavior QA
+        run: node qa-main-c5-sky-lighting.mjs
+      - name: Environment controller regression QA
+        run: node qa/V21_26_ENVIRONMENT_REFACTOR_QA.mjs
+      - name: Sonata night body lighting QA
+        run: node qa-sonata-night-body-r1.mjs
+      - name: WRX rear night running lights QA
+        run: node qa-wrx-night-tail-r1.mjs
+      - name: Driving dynamics simulation matrix
+        run: node qa/DEV_DRIVING_SIM_QA.mjs
+      - name: Full V21.31 regression stress
+        run: npm run qa:stress
+      - name: Production build
+        run: npm run build
+      - name: Diff hygiene
+        run: git diff --check
+      - name: Commit materialized C5.2 candidate
+        run: |
+          if git diff --quiet -- src/main.js; then
+            echo "No materialized main.js change"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/main.js
+          git commit -m "Cleanup C5.2: move sky lighting out of main"
+          git push origin HEAD:cleanup/main-c5-sky-lighting
