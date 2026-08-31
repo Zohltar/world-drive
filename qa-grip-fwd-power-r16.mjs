@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import {createVehicleSystem} from './src/vehicle-system.js';
 import {createPerWheelShadowSolver} from './src/physics/per-wheel-shadow-solver.js';
 import {lateralDynamicsEnvelope,estimateWheelGripUsage} from './src/vehicle-dynamics.js';
-import {legacyGripYawAcceleration} from './src/driving-runtime-base.js';
+import {gripLossFallbackYawAcceleration} from './src/driving-runtime-base.js';
 
 function contactsFor(vehicle){
   const halfTrack=(Number(vehicle.trackWidth)||1.55)*.5;
@@ -56,13 +56,13 @@ function transitionCase(id,{speed=20,steerDeg=-12,driveAccel=4.0}={}){
     },{});
     for(let k=0;k<4;k++)previous[k]=grip.smoothed[k];
   }
-  const legacy=legacyGripYawAcceleration({
+  const fallback=gripLossFallbackYawAcceleration({
     frictionYawAccel:grip.frictionYawAccel,
     yawRate:env.yawRate,
     frontSlip:grip.frontLateral,
     rearSlip:grip.rearLateral
   });
-  return {env,grip,legacy};
+  return {env,grip,fallback};
 }
 
 // The physical tire solver itself must follow the steering direction under power.
@@ -86,12 +86,12 @@ for(const id of ['civic','sonata']){
     const frontDominated=r.grip.frontLateral>r.grip.rearLateral+.06;
     const opposing=(Number(r.grip.frictionYawAccel)||0)*(Number(r.env.yawRate)||0)<0;
     if(frontDominated&&opposing){
-      assert.equal(r.legacy,0,`${id}: front-loss understeer created counter-yaw`);
+      assert.equal(r.fallback,0,`${id}: front-loss understeer created counter-yaw`);
     }
     reports.push({
       id,speed,steerDeg,
       rawYaw:Number(r.grip.frictionYawAccel.toFixed(3)),
-      filteredYaw:Number(r.legacy.toFixed(3)),
+      filteredYaw:Number(r.fallback.toFixed(3)),
       frontSlip:Number(r.grip.frontLateral.toFixed(3)),
       rearSlip:Number(r.grip.rearLateral.toFixed(3))
     });
@@ -99,9 +99,9 @@ for(const id of ['civic','sonata']){
 }
 
 // Rear-dominated oversteer and same-direction tire yaw remain untouched.
-assert.equal(legacyGripYawAcceleration({frictionYawAccel:-2.2,yawRate:-.7,frontSlip:.15,rearSlip:.80}),-2.2);
-assert.equal(legacyGripYawAcceleration({frictionYawAccel:1.8,yawRate:-.7,frontSlip:.20,rearSlip:.70}),1.8);
-assert.equal(legacyGripYawAcceleration({frictionYawAccel:-1.6,yawRate:-.7,frontSlip:.85,rearSlip:.10}),-1.6);
+assert.equal(gripLossFallbackYawAcceleration({frictionYawAccel:-2.2,yawRate:-.7,frontSlip:.15,rearSlip:.80}),-2.2);
+assert.equal(gripLossFallbackYawAcceleration({frictionYawAccel:1.8,yawRate:-.7,frontSlip:.20,rearSlip:.70}),1.8);
+assert.equal(gripLossFallbackYawAcceleration({frictionYawAccel:-1.6,yawRate:-.7,frontSlip:.85,rearSlip:.10}),-1.6);
 
 console.log('GRIP R16 FWD POWER-UNDERSTEER COUNTER-YAW QA: PASS');
 console.table(reports.slice(0,12));

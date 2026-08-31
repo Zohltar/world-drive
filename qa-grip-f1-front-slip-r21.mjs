@@ -1,4 +1,4 @@
-import {createDrivingRuntime,legacyGripYawAcceleration} from './src/driving-runtime-base.js';
+import {createDrivingRuntime,gripLossFallbackYawAcceleration} from './src/driving-runtime-base.js';
 import {createVehicleSystem} from './src/vehicle-system.js';
 import {
   clampDynamics,computeGradeAcceleration,longitudinalTractionLimit,
@@ -38,8 +38,8 @@ function run(id,initialKmh){
     time+=dt;runtime.update(dt);
     if(time<.22)continue;
     const frontDominated=(lastGrip.front||0)>(lastGrip.rear||0)+.03 || (lastGrip.frontScale??1)<(lastGrip.rearScale??1)-.015;
-    const legacy=legacyGripYawAcceleration({frictionYawAccel:lastGrip.frictionYawAccel,yawRate:lastLat.yawRate,frontSlip:lastGrip.front,rearSlip:lastGrip.rear,frontForceScale:lastGrip.frontScale,rearForceScale:lastGrip.rearScale});
-    const sample={t:time,kmh:state.speed*3.6,steerDeg:state.currentSteerAngle*DEG,bicycleYaw:(lastLat.yawRate||0)*DEG,dynYaw:state.dynamicYawRate*DEG,front:lastGrip.front||0,rear:lastGrip.rear||0,frontScale:lastGrip.frontScale??1,rearScale:lastGrip.rearScale??1,rawLegacy:(lastGrip.frictionYawAccel||0)*DEG,filteredLegacy:legacy*DEG,sideslip:angleDelta(state.velocityHeading,state.heading)*DEG,frontDominated};
+    const fallback=gripLossFallbackYawAcceleration({frictionYawAccel:lastGrip.frictionYawAccel,yawRate:lastLat.yawRate,frontSlip:lastGrip.front,rearSlip:lastGrip.rear,frontForceScale:lastGrip.frontScale,rearForceScale:lastGrip.rearScale});
+    const sample={t:time,kmh:state.speed*3.6,steerDeg:state.currentSteerAngle*DEG,bicycleYaw:(lastLat.yawRate||0)*DEG,dynYaw:state.dynamicYawRate*DEG,front:lastGrip.front||0,rear:lastGrip.rear||0,frontScale:lastGrip.frontScale??1,rearScale:lastGrip.rearScale??1,rawFallback:(lastGrip.frictionYawAccel||0)*DEG,filteredFallback:fallback*DEG,sideslip:angleDelta(state.velocityHeading,state.heading)*DEG,frontDominated};
     if(frontDominated&&(!worst||sample.dynYaw<worst.dynYaw))worst=sample;
     if(i%30===0)rows.push(sample);
   }
@@ -51,20 +51,20 @@ for(const speed of [180,220,260,300])reports.push(run('f1_2010',speed));
 for(const speed of [180,220]){reports.push(run('wrx',speed));reports.push(run('countach_80',speed));}
 for(const r of reports){
   console.log(`\n${r.id} ${r.initialKmh} km/h worst front-dominated`,r.worst);
-  console.table(r.rows.map(x=>({t:+x.t.toFixed(2),kmh:+x.kmh.toFixed(0),steer:+x.steerDeg.toFixed(1),bike:+x.bicycleYaw.toFixed(0),dyn:+x.dynYaw.toFixed(0),front:+x.front.toFixed(2),rear:+x.rear.toFixed(2),fScale:+x.frontScale.toFixed(2),rScale:+x.rearScale.toFixed(2),raw:+x.rawLegacy.toFixed(0),filtered:+x.filteredLegacy.toFixed(0),slip:+x.sideslip.toFixed(1)})));
+  console.table(r.rows.map(x=>({t:+x.t.toFixed(2),kmh:+x.kmh.toFixed(0),steer:+x.steerDeg.toFixed(1),bike:+x.bicycleYaw.toFixed(0),dyn:+x.dynYaw.toFixed(0),front:+x.front.toFixed(2),rear:+x.rear.toFixed(2),fScale:+x.frontScale.toFixed(2),rScale:+x.rearScale.toFixed(2),raw:+x.rawFallback.toFixed(0),filtered:+x.filteredFallback.toFixed(0),slip:+x.sideslip.toFixed(1)})));
 }
 const highSpeedF1=reports.filter(r=>r.id==='f1_2010'&&r.initialKmh>=220);
 for(const r of highSpeedF1){
   if(!r.worst)throw new Error(`F1 ${r.initialKmh}: no front-force-dominated sample captured`);
-  if(r.worst.rawLegacy*r.worst.bicycleYaw>=0)throw new Error(`F1 ${r.initialKmh}: test did not exercise opposing front-loss yaw`);
-  if(Math.abs(r.worst.filteredLegacy)>1e-6)throw new Error(`F1 ${r.initialKmh}: front-loss legacy counter-yaw escaped R21 filter: ${JSON.stringify(r.worst)}`);
+  if(r.worst.rawFallback*r.worst.bicycleYaw>=0)throw new Error(`F1 ${r.initialKmh}: test did not exercise opposing front-loss yaw`);
+  if(Math.abs(r.worst.filteredFallback)>1e-6)throw new Error(`F1 ${r.initialKmh}: front-loss fallback counter-yaw escaped R21 filter: ${JSON.stringify(r.worst)}`);
   if(r.worst.dynYaw<-.5)throw new Error(`F1 ${r.initialKmh}: chassis yaw reversed against steering: ${JSON.stringify(r.worst)}`);
 }
 // R21 must not erase small balanced axle-force differences on other RWD cars.
 for(const r of reports.filter(r=>r.id!=='f1_2010')){
   for(const x of r.rows){
-    if(Math.abs(x.frontScale-x.rearScale)<.015&&Math.abs(x.rawLegacy)>1e-6&&Math.abs(x.filteredLegacy)<1e-9){
-      throw new Error(`${r.id}: balanced legacy yaw was incorrectly suppressed: ${JSON.stringify(x)}`);
+    if(Math.abs(x.frontScale-x.rearScale)<.015&&Math.abs(x.rawFallback)>1e-6&&Math.abs(x.filteredFallback)<1e-9){
+      throw new Error(`${r.id}: balanced fallback yaw was incorrectly suppressed: ${JSON.stringify(x)}`);
     }
   }
 }
