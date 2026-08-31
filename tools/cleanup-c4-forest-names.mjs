@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
+// C4 candidate materializer: naming/ownership only, no streaming-policy changes.
 const files={
   facade:'src/forest-chunk-streamer.js',
   wrapper:'src/forest-chunk-streamer-p929-wrapper.js',
