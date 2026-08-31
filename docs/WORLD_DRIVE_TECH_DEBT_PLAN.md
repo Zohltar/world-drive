@@ -670,7 +670,7 @@ Completion record:
 
 ### C5 — Reduce `main.js` size / responsibilities **[P2]**
 
-Status: **IN PROGRESS — C5.1 + C5.2 + C5.3 + C5.4 DONE (2026-08-30)**
+Status: **IN PROGRESS — C5.1 + C5.2 + C5.3 + C5.4 + C5.5 DONE (2026-08-30)**
 
 Audit baseline:
 - `main.js` measured 3245 lines / 100343 bytes, with 54 imports and about 100 top-level functions before C5 extraction work.
@@ -744,28 +744,28 @@ C5.4 completion record:
 - Final C5.4 Dev Integration run `33355510959`: PASS 73/73, with C5.4 explicitly executed plus WebGL reverse, build and production code-split QA.
 - Human validation: not required for this exact wiring/ownership extraction; exact sign policy, 3D sign runtime, minimap/readout behavior and full integration are directly protected.
 
-C5.5 audit completed — selected boundary: stable application-settings identity/lifecycle:
+C5.5 completed — stable application-settings identity/lifecycle:
 - post-C5.4 audit measured `main.js` at 2782 lines / 85782 bytes, with 57 imports and 88 top-level functions; audit branch `audit/main-c5-5`, run `33355730962` PASS responsibility inventory, import/debt audit and production build;
-- the audit disproved the previous apparent large UI boundary: the actual V21 menu facade is only about 41 lines and is not a high-value extraction by itself;
-- material functional discovery: `appSettings` is created before controllers, passed by direct reference to `keyboard-controls.js` and `environment-controller.js`, then the boot path replaces the root with the new object returned by `WorldSettings.load()`;
-- `WorldSettings.load()` returns a freshly merged/cloned object, so those pre-load controllers retain the stale default root after IndexedDB settings are loaded;
-- confirmed user-facing risks: loaded custom keyboard bindings may be ignored, rebinding may mutate the stale root while `queueSettingsSave()` persists the new root, and display-distance changes may apply visually through the stale environment reference without persisting to the saved root;
-- gamepad and autopilot settings access are not affected because their current contracts use dynamic getters.
+- material functional discovery confirmed that the boot path replaced `appSettings` after `keyboard-controls.js` and `environment-controller.js` had captured the original defaults root, while `WorldSettings.load()` returns a fresh merged object;
+- this could make loaded custom keyboard bindings invisible to the keyboard controller, let rebinding mutate a stale root while a different root was saved, and let display-distance changes diverge from persisted settings; gamepad/autopilot getter-based access was not affected;
+- added canonical `src/application-settings.js` with one stable settings root, recursive in-place load, default-safe cloning and the existing exact 120 ms save debounce;
+- root identity and nested plain-object identities (controls, keyboard, gamepad, display) now survive IndexedDB load, so controllers constructed before async boot continue observing and mutating the same settings objects;
+- pre-load save remains a no-op; post-load saves debounce/cancel exactly as before and persist edits made through pre-load captured references;
+- `applyLoadedV21Settings()` remains in `main.js` as runtime/UI application orchestration; settings schema/default values and accepted UI/environment behavior were not tuned;
+- reduced `main.js` from 2782 to 2752 lines (30 net lines) while fixing the stale-reference bug.
 
-C5.5 selected correction:
-- introduce canonical `src/application-settings.js` owning one stable settings root, IndexedDB load-into-existing-root, the existing 120 ms save debounce and default-controls cloning;
-- preserve root identity across load and preserve nested plain-object identities where practical so pre-load controller references remain valid;
-- replace the current `appSettings = await WorldSettings.load()` root reassignment with an in-place controller load;
-- keep `applyLoadedV21Settings()` in `main.js` for this step because it is runtime/UI application orchestration with many dependencies, not persistence ownership;
-- keep the existing settings schema/default values and all accepted menu/environment behavior unchanged.
+C5.5 completion record:
+- Candidate validation run `33356127350`: PASS stable root/nested identity, loaded keyboard visibility, persistence through captured references, 120 ms debounce, V21.25 UI init/refactor, V21.26 environment, import/debt audit, 288 driving cases, stress, build and diff hygiene.
+- Note: earlier run `33356122826` passed all functional tests but its final candidate push lost a branch fast-forward race; this was a push-only failure, not a runtime/QA failure.
+- Integration commit: `6cec0450` — keep application settings identity stable.
+- Dev Integration registration commit: `02b27eb1`.
+- Permanent C5.5 gate run `33356215309`: PASS.
+- Final C5.5 Dev Integration run `33356240462`: PASS 74/74, with C5.5 explicitly executed plus stress, 288 driving cases, both WebGL reverse tests, build and production code-split QA.
+- Human validation: not required for this identity/persistence correction; the previously stale reference behavior and all affected UI/environment contracts are directly reproduced and protected by QA.
 
-C5.5 required validation:
-- dedicated unit/source QA proving stable root identity and stable controls/keyboard/gamepad/display nested identities across load;
-- prove a pre-load captured keyboard reference sees loaded custom bindings and that edits through the captured reference are what the debounced save persists;
-- prove pre-load queue-save remains a no-op, post-load save remains debounced at 120 ms, and defaults are never mutated;
-- prove `main.js` no longer reassigns the settings root after controller construction and that keyboard/environment receive the same stable root;
-- run existing V21.25 UI/init QA, V21.26 environment QA, import/debt audit, 288 driving cases, stress and production build;
-- full Dev Integration before C5.5 is declared done.
+Next C5 step:
+- C5.6 begins with a fresh post-C5.5 read-only audit before selecting another boundary;
+- continue to prefer cohesive composition/plumbing cleanup and keep the frame-performance governor, route/hydro/vehicle behavior and C6 diagnostics deferred unless the audit proves a smaller safe boundary.
 
 Completion record:
 - C5 overall remains open until the remaining high-value responsibilities are reduced enough that `main.js` is materially a composition root.
@@ -838,13 +838,22 @@ These rules are mandatory while working this plan:
 
 # 6. Recommended next task
 
-**Next: C5.5 — establish stable application-settings identity and lifecycle.**
+**Next: C5.6 — fresh post-C5.5 responsibility audit of `main.js`.**
 
-Fix the discovered stale-settings-reference bug before further cosmetic extraction. Introduce a canonical settings controller that loads IndexedDB values into one stable root, preserves the existing 120 ms save debounce/default schema, and keeps keyboard/environment/menu on the same settings object. Do not move `applyLoadedV21Settings()` or tune runtime behavior in this step.
+Re-measure the remaining responsibilities after `main.js` reached 2752 lines. Select the next extraction by cohesion and risk rather than line count. Continue to defer the frame-performance governor, route/hydro/vehicle behavior and C6 diagnostics unless the audit identifies a clearly safer boundary.
 
 ---
 
 # 7. Work log
+
+## 2026-08-30 — C5.5 completed: stable application settings identity
+
+- C5.5 audit `33355730962` found a real stale-reference bug: keyboard/environment captured the defaults settings root before IndexedDB load replaced `appSettings`.
+- Added canonical `src/application-settings.js` with stable root/nested plain-object identity, in-place load and unchanged 120 ms debounced persistence.
+- QA proves a keyboard reference captured before load sees loaded bindings and that edits through that same captured reference are what persistence saves; UI/environment regressions remain green.
+- Candidate `33356127350` PASS; clean integration `6cec0450`; permanent gate `33356215309` PASS; Dev Integration registration `02b27eb1`; final Dev Integration `33356240462` PASS 74/74.
+- Resulting `main.js` = 2752 lines. No human validation required for this identity/persistence correction.
+- Next focus: C5.6 fresh read-only responsibility audit.
 
 ## 2026-08-30 — C5.5 audit completed; stable settings identity selected
 
