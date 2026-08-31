@@ -1,0 +1,23 @@
+name: Cleanup B6 wheelspin ownership audit
+
+on:
+  push:
+    branches:
+      - audit/wheelspin-b6
+    paths:
+      - 'qa/wheelspin-b6-audit-temp.mjs'
+      - '.github/workflows/wheelspin-b6-audit-temp.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: node qa/wheelspin-b6-audit-temp.mjs
