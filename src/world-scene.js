@@ -50,6 +50,7 @@ export function createWorldScene({THREE,scene}){
   // removes redundant matrix recomputation without changing geometry or visuals.
   freezeStaticMatrices(world);
 
+  // Public ordered contract: streaming-coordinator consumes this exact set/order.
   const streamedWorldGroups=[
     terrainDetailGroup,
     waterGroup,
@@ -104,6 +105,7 @@ export function createWorldScene({THREE,scene}){
     forestGroup,
     sceneryForestGroup,
     horizonGroup,
+    streamedWorldGroups,
     groundMat,
     ground,
     resetStreamedWorldOrigins
