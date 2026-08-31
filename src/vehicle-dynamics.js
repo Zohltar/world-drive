@@ -1,16 +1,16 @@
-// World Drive V21.30 — roll-stiffness wrapper over frozen V21.29 dynamics.
-// Keeps all validated V21.29 clutch/brake/drift behavior, then applies a small
+// World Drive V21.30 — roll-stiffness wrapper over validated traction/steering dynamics.
+// Keeps all validated clutch/brake/drift behavior, then applies a small
 // load-sensitivity correction that redistributes lateral grip according to the
 // effective front/rear roll-stiffness balance.
 
-export * from './vehicle-dynamics-v21.29.js';
+export * from './vehicle-dynamics-traction-steering.js';
 import {
   clampDynamics,
   smoothstep01,
   vehicleLayout,
   lateralDynamicsEnvelope as baseLateralDynamicsEnvelope,
   estimateWheelGripUsage as baseEstimateWheelGripUsage
-} from './vehicle-dynamics-v21.29.js';
+} from './vehicle-dynamics-traction-steering.js';
 
 function safeNumber(value,fallback){
   const n=Number(value);
