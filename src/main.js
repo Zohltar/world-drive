@@ -29,6 +29,13 @@ import {
   ROAD_WHEEL_CONTACT_HALF_WIDTH
 } from './world-materials.js';
 import { createSkyLighting } from './sky-lighting.js';
+import {
+  createWorldScene,
+  freezeStaticMatrices,
+  resetStaticGroupOrigin,
+  NEAR_TERRAIN_SIZE,
+  NEAR_TERRAIN_SEGMENTS
+} from './world-scene.js';
 import { createStartupUi } from './startup-ui.js';
 import { createV21MenuSystem } from './v21-menu.js';
 import {
@@ -425,18 +432,9 @@ const {
   updateMoonSkyPosition
 }=createSkyLighting({THREE,scene,camera,documentRef:document});
 
-const world=new THREE.Group(),
-      terrainDetailGroup=new THREE.Group(),
-      waterGroup=new THREE.Group(),
-      infrastructureGroup=new THREE.Group(), // bridges / fixed road infrastructure
-      signGroup=new THREE.Group(), // dynamic OSM + road metadata signs
-      sceneryInfrastructureGroup=new THREE.Group(),
-      buildingGroup=new THREE.Group(),
-      roadGroup=new THREE.Group(),
-      forestGroup=new THREE.Group(), // procedural roadside forest only
-      sceneryForestGroup=new THREE.Group(),
-      horizonGroup=new THREE.Group();
-world.add(
+// ---------- world render scene facade ----------
+const {
+  world,
   terrainDetailGroup,
   waterGroup,
   infrastructureGroup,
@@ -446,76 +444,12 @@ world.add(
   roadGroup,
   forestGroup,
   sceneryForestGroup,
-  horizonGroup
-);
-scene.add(world);
-
-// V21.21.9 FRAME PACING: streamed world geometry is static between rebuilds.
-// Freezing local matrices removes thousands of redundant matrix recomputations
-// from ordinary render frames without changing geometry, lighting or materials.
-function freezeStaticMatrices(root){
-  root.traverse(obj=>{
-    if(obj.matrixAutoUpdate){
-      obj.updateMatrix();
-      obj.matrixAutoUpdate=false;
-    }
-  });
-}
-freezeStaticMatrices(world);
-
-const streamedWorldGroups=[
-  terrainDetailGroup,
-  waterGroup,
-  infrastructureGroup,
-  signGroup,
-  sceneryInfrastructureGroup,
-  buildingGroup,
-  roadGroup,
-  forestGroup,
-  sceneryForestGroup,
-  horizonGroup
-];
-
-function resetStaticGroupOrigin(group){
-  group.position.set(0,0,0);
-  group.updateMatrix();
-}
-
-function resetStreamedWorldOrigins(){
-  for(const group of streamedWorldGroups)resetStaticGroupOrigin(group);
-  ground?.position?.set?.(0,0,0);
-  ground?.updateMatrix?.();
-}
-
-// V21.22.2: promote the visually important medium-distance band into the SAME
-// high-detail terrain/imagery pipeline as the near field. The footprint grows
-// from 3.2 km to 5.6 km while preserving the exact 12.5 m terrain grid spacing
-// (448 segments). The procedural horizon now begins only beyond +/-2.8 km.
-// This deliberately spends part of the newly verified GPU headroom on image
-// quality rather than trying to imitate near terrain with a separate far mesh.
-const NEAR_TERRAIN_SIZE=5600;
-const NEAR_TERRAIN_SEGMENTS=448;
-// V21.22.6: satellite chunks render first and mark stencil ref 2.
-// The procedural DEM underlay then rejects those pixels entirely. This avoids
-// z-fighting between two independently triangulated surfaces that represent the
-// same terrain while preserving the procedural mesh for physics/fallback.
-const groundMat=new THREE.MeshStandardMaterial({
-  color:0xffffff,
-  vertexColors:true,
-  roughness:1,
-  metalness:0,
-  stencilWrite:true,
-  stencilRef:2,
-  stencilFunc:THREE.NotEqualStencilFunc,
-  stencilFail:THREE.KeepStencilOp,
-  stencilZFail:THREE.KeepStencilOp,
-  stencilZPass:THREE.KeepStencilOp
-});
-const ground=new THREE.Mesh(new THREE.PlaneGeometry(NEAR_TERRAIN_SIZE,NEAR_TERRAIN_SIZE,88,88),groundMat);
-ground.rotation.x=-Math.PI/2;
-ground.receiveShadow=true;
-ground.renderOrder=-5;
-scene.add(ground); // keep matrixAutoUpdate ON: terrain rebuilds reset rotation after rotating geometry into XZ
+  horizonGroup,
+  streamedWorldGroups,
+  groundMat,
+  ground,
+  resetStreamedWorldOrigins
+}=createWorldScene({THREE,scene});
 
 // Local rendering origin follows the car to avoid large-coordinate precision loss.
 let worldOffset={x:0,z:0};
