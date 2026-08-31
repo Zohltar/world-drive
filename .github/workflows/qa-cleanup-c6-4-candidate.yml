@@ -1,0 +1,74 @@
+name: Cleanup C6.4 Road Sign Diagnostics Candidate
+
+on:
+  push:
+    branches:
+      - cleanup/diagnostics-c6-4
+  workflow_dispatch:
+
+concurrency:
+  group: cleanup-c6-4-road-sign-diagnostics-candidate
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+
+jobs:
+  qa:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Materialize C6.4 canonical road-sign diagnostics
+        run: |
+          if grep -q '__WORLD_DRIVE_P930_ROAD_SIGNS__' src/road-furniture-p930.js; then
+            node tools/cleanup-c6-4-road-sign-diagnostics.mjs
+          else
+            echo 'C6.4 already materialized'
+          fi
+      - name: C6.4 canonical road-sign diagnostics QA
+        run: node qa-diagnostics-c6-4.mjs
+      - name: C6.1 diagnostics root QA
+        run: node qa-diagnostics-c6-1.mjs
+      - name: C6.2 presentation diagnostics QA
+        run: node qa-diagnostics-c6-2.mjs
+      - name: C6.3 wheelspin diagnostics QA
+        run: node qa-diagnostics-c6-3.mjs
+      - name: P9.30 road-sign runtime QA
+        run: node qa-road-signs-p930-runtime.mjs
+      - name: P9.37 combined frame-pacing QA
+        run: node qa-p937-combined-frame-pacing.mjs
+      - name: C5.4 geographic sign orchestration QA
+        run: node qa-main-c5-geographic-signs.mjs
+      - name: V21.25 minimap sign readout QA
+        run: node qa/V21_25_MINIMAP_SIGN_READOUT_QA.mjs
+      - name: Runtime import and debt audit
+        run: node qa/DEV_INTEGRATION_AUDIT.mjs
+      - name: Driving dynamics simulation matrix
+        run: node qa/DEV_DRIVING_SIM_QA.mjs
+      - name: Full V21.31 regression stress
+        run: npm run qa:stress
+      - name: Production build
+        run: npm run build
+      - name: Diff hygiene
+        run: git diff --check
+      - name: Commit materialized C6.4 candidate
+        shell: bash
+        run: |
+          if git diff --quiet; then
+            echo 'No generated changes to commit'
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add src/road-furniture-p930.js src/road-furniture-p937.js qa-p937-combined-frame-pacing.mjs
+          git commit -m 'Cleanup C6.4: centralize road-sign diagnostics'
+          git pull --rebase origin cleanup/diagnostics-c6-4
+          git push origin HEAD:cleanup/diagnostics-c6-4
