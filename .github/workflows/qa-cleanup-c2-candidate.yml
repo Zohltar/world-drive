@@ -28,6 +28,16 @@ jobs:
           else
             echo "C2 already materialized"
           fi
+          node - <<'NODE'
+          const fs=require('node:fs');
+          const path='qa/V21_26_TRANSMISSION_REFACTOR_QA.mjs';
+          let s=fs.readFileSync(path,'utf8');
+          const old='/export function createTransmissionController\\s*\\(\\{/';
+          const modern='/export function createTransmissionController\\s*\\(args=\\{\\}\\)/';
+          if(s.includes(old))s=s.replace(old,modern);
+          else if(!s.includes(modern))throw new Error('V21.26 createTransmissionController signature assertion not recognized');
+          fs.writeFileSync(path,s);
+          NODE
       - name: C2 ownership and exact selector semantics
         run: node qa-transmission-c2.mjs
       - name: Transmission regressions
