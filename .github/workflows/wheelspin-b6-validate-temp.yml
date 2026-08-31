@@ -1,0 +1,68 @@
+name: Validate Cleanup B6 wheelspin ownership
+
+on:
+  push:
+    branches:
+      - cleanup/wheelspin-b6
+    paths:
+      - 'src/physics/wheelspin-state.js'
+      - 'qa-wheelspin-state-b6.mjs'
+      - 'qa/apply-wheelspin-b6-temp.mjs'
+      - '.github/workflows/wheelspin-b6-validate-temp.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+      - name: Apply B6 refactor
+        run: node qa/apply-wheelspin-b6-temp.mjs
+      - name: B6 ownership / order independence / persistence equivalence
+        run: node qa-wheelspin-state-b6.mjs
+      - name: V21.29 clutch and wheelspin regressions
+        run: |
+          node qa/V21_29_ALL_COMBUSTION_CLUTCH_QA.mjs
+          node qa/V21_29_CIVIC_CLUTCH_DUMP_SLIP_QA.mjs
+          node qa/V21_29_CIVIC_CLUTCH_WHEELSPIN_QA.mjs
+          node qa/V21_29_CLUTCH_BRIDGE_QA.mjs
+          node qa/V21_29_CLUTCH_ENGINE_THROTTLE_QA.mjs
+          node qa/V21_29_CLUTCH_FREE_REV_QA.mjs
+          node qa/V21_29_CLUTCH_SHOCK_FLEET_QA.mjs
+          node qa/V21_29_CLUTCH_SHOCK_QA.mjs
+          node qa/V21_29_RUNTIME_WHEELSPIN_QA.mjs
+          node qa/V21_29_SEMI_AUTO_CLUTCH_QA.mjs
+          node qa/V21_29_SKID_AUDIO_CURVE_QA.mjs
+          node qa/V21_29_SKID_AUDIO_LINK_QA.mjs
+          node qa/V21_31_AIRBORNE_TIRE_STATE_QA.mjs
+      - name: Physics regressions
+        run: |
+          node qa-grip-braking-r9.mjs
+          node qa-grip-high-speed-r11.mjs
+          node qa-grip-fwd-power-r16.mjs
+          node qa-grip-ev-jturn-r17.mjs
+          node qa-grip-ev-maneuver-r18.mjs
+          node qa-grip-jturn-legacy-r19.mjs
+          node qa-grip-handbrake-lateral-r20.mjs
+          node qa-grip-f1-front-slip-r21.mjs
+          node qa-grip-f1-legacy-r23.mjs
+      - name: Fleet stress / driving matrix
+        run: |
+          node qa/DEV_DRIVING_SIM_QA.mjs
+          npm run qa:stress
+      - name: Production build
+        run: npm run build
+      - name: Commit B6 candidate
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add src/physics/wheelspin-state.js src/vehicle-dynamics-v21.29.js src/vehicle-dynamics.js src/driving-runtime-base.js src/driving-runtime.js qa-wheelspin-state-b6.mjs qa/V21_29_CIVIC_CLUTCH_DUMP_SLIP_QA.mjs qa/V21_29_CIVIC_CLUTCH_WHEELSPIN_QA.mjs qa/V21_29_RUNTIME_WHEELSPIN_QA.mjs qa/V21_31_AIRBORNE_TIRE_STATE_QA.mjs
+          git diff --cached --quiet || git commit -m 'Cleanup B6: make wheelspin ownership explicit'
+          git push
