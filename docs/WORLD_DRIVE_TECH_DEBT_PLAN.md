@@ -396,7 +396,7 @@ Completion record:
 
 ### B4 — Extract momentum-direction ownership **[P0/P1]**
 
-Status: **IN PROGRESS — OWNERSHIP AUDIT COMPLETE (2026-08-30)**
+Status: **DONE (2026-08-30)**
 
 Proposed module:
 - `src/physics/momentum-direction.js`
@@ -419,14 +419,19 @@ Completion record:
 - Audit run `33342452650`: PASS. All frame-by-frame physical writes to `velocityHeading` remain concentrated in `src/driving-runtime-base.js`; `main.js` only owns storage/init/reset/serialization and `vehicle-placement-controller.js` only realigns momentum on explicit placement/reset. Multiplayer keeps a separate remote/interpolated representation and is outside B4 physical ownership.
 - Planned extraction boundary: body-relative longitudinal/steering projection, true-stop canonicalization, opposing body-drive crossing reconstruction, low-speed momentum following, force-derived trajectory rotation and momentum-heading rotation limiting move into `src/physics/momentum-direction.js` while global state storage remains unchanged.
 - R23 prerequisite completed before extraction: source `ff36b40c`, permanent F1 ownership QA `52023fe9`, stale F1 QA cleanup `c6933883`, current steering-rack gate `acb467ff`; R23 workflow `33342416319` PASS and Dev Integration `33342416332` PASS 60/60.
-- Source commit: _pending_
-- Permanent B4 QA: _pending_
+- Candidate source commit: `c1b780e3`; integration source commit on `dev`: `aaa3b009`.
+- Numerical-equivalence QA: `qa-momentum-direction-b4.mjs` compares the extracted owner against the exact pre-B4 equations over 25,000 deterministic randomized states; candidate run `33343053835` PASS with max error exactly 0.
+- R11 and R23 source-location QA were migrated to the new momentum owner; equations/thresholds were unchanged.
+- Permanent B4 gate commit: `877f0398`; gate run `33343158212` PASS.
+- Dev Integration commit: `0e895fb1`; final run `33343173064` PASS all 61 steps, including 288 driving cases, 80,000 stress samples, R9/R11/R17/R18/R19/R20/R21/R23, WebGL, live route smoke and production build/code split.
+- Human validation: not required; this was a strict ownership extraction with bit-for-bit-equivalent momentum evolution in the randomized equivalence harness.
+- Result: `src/physics/momentum-direction.js` is now the single owner of physical `velocityHeading` evolution and body-relative momentum helpers; `main.js` retains storage/init/reset only.
 
 ---
 
 ### B5 — Extract yaw authority / bicycle↔physical transition **[P0/P1]**
 
-Status: **TODO**
+Status: **IN PROGRESS — OWNERSHIP AUDIT COMPLETE (2026-08-30)**
 
 Proposed module:
 - `src/physics/yaw-authority.js`
@@ -441,8 +446,11 @@ Goal:
 - make it impossible for multiple hidden yaw authorities to simultaneously fight each other.
 
 Completion record:
-- Commit: _pending_
-- QA: _pending_
+- Ownership audit branch: `audit/yaw-b5`; audit workflow commit `3fe7c458`; audit run `33343248476` PASS.
+- Audit result: local chassis yaw authority is still concentrated in `src/driving-runtime-base.js`. Multiplayer peer extrapolation and articulated trailer yaw are separate domains and remain outside B5.
+- Planned extraction boundary: bicycle-target saturation/slip conditioning, front/rear dominance, legacy RWD power-oversteer contribution, `driftKinematicCoupling`, R7 physical-authority gate, R16/R21 legacy-yaw filtering, physical-vs-legacy yaw-acceleration blend, yaw settling response and `dynamicYawRate` integration move to `src/physics/yaw-authority.js`. Tire-force generation remains in the per-wheel solver; momentum direction remains in B4's owner.
+- Source commit: _pending_
+- Permanent B5 QA: _pending_
 
 ---
 
