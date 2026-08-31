@@ -1,0 +1,69 @@
+name: Cleanup C6.3 Wheelspin Diagnostics Candidate
+
+on:
+  push:
+    branches:
+      - cleanup/diagnostics-c6-3
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  qa:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Materialize C6.3 canonical wheelspin diagnostics
+        shell: bash
+        run: |
+          if grep -q 'WorldDriveRuntimeWheelspin' src/driving-runtime.js; then
+            node tools/cleanup-c6-3-wheelspin.mjs
+          else
+            echo 'C6.3 already materialized'
+          fi
+      - name: C6.3 wheelspin diagnostics QA
+        run: node qa-diagnostics-c6-3.mjs
+      - name: C6.1 diagnostics regression
+        run: node qa-diagnostics-c6-1.mjs
+      - name: C6.2 presentation diagnostics regression
+        run: node qa-diagnostics-c6-2.mjs
+      - name: B6 wheelspin ownership QA
+        run: node qa-wheelspin-state-b6.mjs
+      - name: V21.29 runtime wheelspin QA
+        run: node qa/V21_29_RUNTIME_WHEELSPIN_QA.mjs
+      - name: Civic clutch wheelspin QA
+        run: node qa/V21_29_CIVIC_CLUTCH_WHEELSPIN_QA.mjs
+      - name: Civic clutch dump slip QA
+        run: node qa/V21_29_CIVIC_CLUTCH_DUMP_SLIP_QA.mjs
+      - name: Driving dynamics simulation matrix
+        run: node qa/DEV_DRIVING_SIM_QA.mjs
+      - name: Full V21.31 regression stress
+        run: npm run qa:stress
+      - name: Runtime import/debt audit
+        run: node qa/DEV_INTEGRATION_AUDIT.mjs
+      - name: Production build
+        run: npm run build
+      - name: Diff hygiene
+        run: git diff --check
+      - name: Commit materialized C6.3 runtime
+        shell: bash
+        run: |
+          if git diff --quiet -- src/driving-runtime.js; then
+            echo 'No generated runtime changes to commit'
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add src/driving-runtime.js
+          git commit -m 'Cleanup C6.3: centralize runtime wheelspin diagnostics'
+          git pull --rebase origin cleanup/diagnostics-c6-3
+          git push origin HEAD:cleanup/diagnostics-c6-3
