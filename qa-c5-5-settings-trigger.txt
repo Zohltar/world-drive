@@ -1,0 +1,1 @@
+Trigger C5.5 stable settings candidate validation.
