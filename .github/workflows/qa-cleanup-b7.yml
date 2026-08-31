@@ -1,0 +1,43 @@
+name: Cleanup B7 Grip-Loss Fallback QA
+
+on:
+  push:
+    branches:
+      - dev
+    paths:
+      - 'src/physics/yaw-authority.js'
+      - 'src/driving-runtime-base.js'
+      - 'qa-yaw-fallback-b7.mjs'
+      - 'qa-yaw-authority-b5.mjs'
+      - 'qa-grip-fwd-power-r16.mjs'
+      - 'qa-grip-f1-front-slip-r21.mjs'
+      - 'qa-grip-f1-legacy-r23.mjs'
+      - '.github/workflows/qa-cleanup-b7.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  qa:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+      - name: B7 fallback equivalence and ownership
+        run: node qa-yaw-fallback-b7.mjs
+      - name: B5 yaw owner equivalence
+        run: node qa-yaw-authority-b5.mjs
+      - name: Critical fallback/yaw regressions
+        run: |
+          node qa-grip-countersteer-r7.mjs
+          node qa-grip-high-speed-r11.mjs
+          node qa-grip-fwd-power-r16.mjs
+          node qa-grip-ev-jturn-r17.mjs
+          node qa-grip-jturn-legacy-r19.mjs
+          node qa-grip-handbrake-lateral-r20.mjs
+          node qa-grip-f1-front-slip-r21.mjs
+          node qa-grip-f1-legacy-r23.mjs
