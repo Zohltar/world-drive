@@ -1,0 +1,59 @@
+name: Cleanup C2 Transmission Ownership QA
+
+on:
+  push:
+    branches:
+      - dev
+    paths:
+      - 'src/transmission-controller.js'
+      - 'src/transmission-controller-base.js'
+      - 'src/transmission-runtime-bridge.js'
+      - 'src/transmission-network-state.js'
+      - 'qa-transmission-c2.mjs'
+      - 'qa/V21_26_TRANSMISSION_REFACTOR_QA.mjs'
+      - 'qa/V21_26_AUTOPILOT_TRANSMISSION_QA.mjs'
+      - 'qa/V21_29_DNR_BRAKE_SELECTOR_QA.mjs'
+      - 'qa/V21_29_BODY_RELATIVE_TRANSMISSION_QA.mjs'
+      - 'qa/V21_29_TRANSMISSION_DIRECTION_QA.mjs'
+      - 'qa/V21_29_ALL_COMBUSTION_CLUTCH_QA.mjs'
+      - 'qa/V21_29_FREE_REV_INERTIA_QA.mjs'
+      - 'qa/V21_29_CLUTCH_SHOCK_QA.mjs'
+      - 'qa/V21_29_CLUTCH_SHOCK_FLEET_QA.mjs'
+      - 'qa/V21_29_SEMI_AUTO_CLUTCH_QA.mjs'
+      - 'qa/V21_31_MULTIPLAYER_M3_PROTOCOL_QA.mjs'
+      - '.github/workflows/qa-cleanup-c2.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  qa:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+      - name: C2 ownership and exact selector semantics
+        run: node qa-transmission-c2.mjs
+      - name: Transmission regressions
+        run: |
+          node qa/V21_26_TRANSMISSION_REFACTOR_QA.mjs
+          node qa/V21_26_AUTOPILOT_TRANSMISSION_QA.mjs
+          node qa/V21_29_DNR_BRAKE_SELECTOR_QA.mjs
+          node qa/V21_29_BODY_RELATIVE_TRANSMISSION_QA.mjs
+          node qa/V21_29_TRANSMISSION_DIRECTION_QA.mjs
+          node qa/V21_29_ALL_COMBUSTION_CLUTCH_QA.mjs
+          node qa/V21_29_FREE_REV_INERTIA_QA.mjs
+          node qa/V21_29_CLUTCH_SHOCK_QA.mjs
+          node qa/V21_29_CLUTCH_SHOCK_FLEET_QA.mjs
+          node qa/V21_29_SEMI_AUTO_CLUTCH_QA.mjs
+          node qa/V21_29_RUNTIME_WHEELSPIN_QA.mjs
+      - name: Multiplayer exact gear regressions
+        run: |
+          node qa/V21_31_MULTIPLAYER_M3_PROTOCOL_QA.mjs
+          node qa/V21_31_MULTIPLAYER_M3_CLIENT_QA.mjs
+          node qa/V21_31_MULTIPLAYER_M3_LIGHTING_MATRIX_QA.mjs

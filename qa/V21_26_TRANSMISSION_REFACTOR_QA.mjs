@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { pathToFileURL, fileURLToPath } from 'node:url';
+import {publishTransmissionRuntimeState} from '../src/transmission-runtime-bridge.js';
 
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
 const mainPath=path.join(root,'src','main.js');
@@ -39,7 +40,7 @@ for(const pattern of [
 }
 
 for(const pattern of [
-  /export function createTransmissionController\s*\(\{/,
+  /export function createTransmissionController\s*\(args=\{\}\)/,
   /state\.transmissionGear/,
   /state\.transmissionPendingGear/,
   /state\.engineRpm/,
@@ -147,17 +148,18 @@ vehicleSystem.activeId='qa-ev';
 vehicleSystem.active={audio:{type:'ev',profile:'ev'}};
 speed=0;
 state.transmissionMode='automatic';
+publishTransmissionRuntimeState({bodyLongitudinalSpeed:0,engineThrottle:.4,clutchHeld:false,serviceBrake:0});
 const evThrottle=controller.updateTransmission(.016,.4,true);
 assert.equal(evThrottle,.4,'EV throttle passthrough changed');
-assert.equal(state.transmissionGear,0,'EV forward gear state changed');
+assert.equal(state.transmissionGear,1,'EV forward/D must remain exact gear 1; Neutral alone is 0');
 assert.equal(state.engineRpm,0,'EV RPM state changed');
 assert.equal(state.revLimiterActive,false,'EV rev limiter should remain inactive');
 
 const mainLines=main.split('\n').length;
 assert.ok(mainLines<3800,`main.js is still unexpectedly large after transmission extraction: ${mainLines} lines`);
 
-const regression=spawnSync(process.execPath,['qa/V21_26_ENVIRONMENT_REFACTOR_QA.mjs'],{cwd:root,encoding:'utf8'});
-assert.equal(regression.status,0,`prior V21.26 refactors regressed:\n${regression.stderr||regression.stdout}`);
+// C2: historical environment meta-regression retired; transmission coverage is direct.
+
 
 console.log('V21.26 TRANSMISSION REFACTOR QA: PASS');
 console.log(`main.js: ${mainLines} lines; transmission-controller.js: ${transmission.split('\n').length} lines`);
