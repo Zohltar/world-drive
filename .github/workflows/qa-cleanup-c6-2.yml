@@ -1,0 +1,42 @@
+name: Cleanup C6.2 Presentation Diagnostics QA
+
+on:
+  push:
+    branches:
+      - dev
+    paths:
+      - src/diagnostics.js
+      - src/deferred-glb-system.js
+      - qa-diagnostics-c6-1.mjs
+      - qa-diagnostics-c6-2.mjs
+      - .github/workflows/qa-cleanup-c6-2.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  qa:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: C6.2 presentation diagnostics QA
+        run: node qa-diagnostics-c6-2.mjs
+      - name: C6.1 diagnostics regression
+        run: node qa-diagnostics-c6-1.mjs
+      - name: Multiplayer M4 adapter QA
+        run: node qa/V21_31_MULTIPLAYER_M4_ADAPTER_QA.mjs
+      - name: Multiplayer M4.11 reverse E2E QA
+        run: node qa/V21_31_MULTIPLAYER_M411_REVERSE_E2E_QA.mjs
+      - name: Multiplayer M3 protocol QA
+        run: node qa/V21_31_MULTIPLAYER_M3_PROTOCOL_QA.mjs
+      - name: Runtime import/debt audit
+        run: node qa/DEV_INTEGRATION_AUDIT.mjs
+      - name: Production build
+        run: npm run build
