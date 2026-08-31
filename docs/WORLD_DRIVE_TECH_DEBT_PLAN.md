@@ -830,7 +830,7 @@ C5 completion record:
 
 ### C6 — Consolidate diagnostic globals **[P2]**
 
-Status: **IN PROGRESS — C6.1/C6.2/C6.3/C6.4/C6.5/C6.6/C6.7 DONE; C6.8 multiplayer wire diagnostics audit next (2026-08-31)**
+Status: **IN PROGRESS — C6.1/C6.2/C6.3/C6.4/C6.5/C6.6/C6.7/C6.8 DONE; C6.9 fresh remaining-global audit next (2026-08-31)**
 
 Audit baseline:
 - audit branch `audit/diagnostics-c6`; strengthened audit run `33386461640`: PASS diagnostic inventory, import/debt audit, active forest runtime/stress, P9.37 frame pacing, P9.39 hitch attribution, P9.41 frame-runtime attribution and production build;
@@ -1094,6 +1094,19 @@ C6.8 selected boundary — canonical multiplayer wire diagnostics:
 - M3 protocol QA must continue proving actual outgoing/incoming diagnostic state exists, now under the canonical root;
 - keep `__WORLD_DRIVE_MULTIPLAYER_HD_VISUALS__`, streaming, forest aliases and all traffic diagnostics out of C6.8 scope;
 - candidate validation must include C6.1-C6.8, M3 exact-gear/socket-scoped protocol, shared/live traffic, C2/DNR transmission regressions, 288 driving cases, full stress, M4.15 network-to-WebGL reverse, import/debt audit and production build.
+
+C6.8 completion record — canonical multiplayer wire diagnostics:
+- first read-only audit run `33428001193` stopped only because the new audit expected one legacy-name QA reference; it correctly exposed four references across C6.7 and V21.31 M3 QA, and that material discovery was recorded before any QA modernization;
+- corrected audit run `33428333975`: PASS one-writer/zero-runtime-reader inventory, C6.1-C6.7, M3 protocol, shared/live traffic, runtime import/debt audit and production build;
+- candidate branch `cleanup/diagnostics-c6-8`; candidate run `33428652377`: PASS C6.1-C6.8, C2/DNR/direction, M3 exact-gear protocol, shared/live traffic, 288 driving cases, full V21.31 stress, M4.15 network-to-WebGL reverse, import/debt audit, production build and strict three-file diff hygiene;
+- materialized candidate commit `9b06d182`: changed only `src/multiplayer.js`, `qa-diagnostics-c6-7.mjs` and `qa/V21_31_MULTIPLAYER_M3_PROTOCOL_QA.mjs`;
+- final runtime + permanent gate integration commit `0017c593`: moved the unchanged wire observer callable to `WorldDriveDiagnostics.multiplayer.wire`, removed `__WORLD_DRIVE_MULTIPLAYER_WIRE__`, added dedicated permanent C6.8 QA and CI gate;
+- permanent C6.8 gate run `33428839319`: PASS C6.1-C6.8, C2, D/N/R, M3 protocol, shared/live traffic, 288 driving cases, full stress, import/debt audit and production build;
+- Dev Integration registration commit `a434656f`; final Dev Integration run `33429038521`: PASS **83/83**, including C6.8 at step 31, full stress, 288 driving cases, R2-R20, traffic/multiplayer, forest/frame pacing, M4.14/M4.15 WebGL, live route smoke, production build and production code-split QA;
+- exact wire diagnostics semantics are unchanged: live normalized `exactLocalGear`, outgoing/incoming counts, outgoing shallow defensive clone, incoming deep defensive clone, unchanged timestamping and unchanged recording order after exact-gear/traffic merge and legacy-upgrade/traffic consume;
+- packet send/receive, connection lifecycle, civil-traffic sharing, exact transmission gear publication and rendering were not changed;
+- human validation: not required; C6.8 is an observer-only ownership migration with full network/WebGL integration green;
+- Result: **C6.8 DONE**. C6.9 begins with a fresh read-only inventory; do not assume the previous HD-visual candidate remains the lowest-risk seam after C6.8.
 - candidate validation must include C6.1–C6.7, C2 transmission ownership, D/N/R/exact-gear multiplayer protocol regressions, shared/live traffic networking, 288 driving cases, full stress, M4.15 network-to-WebGL reverse, runtime import/debt audit and production build before integration.
 
 ---
@@ -1136,13 +1149,23 @@ These rules are mandatory while working this plan:
 
 # 6. Recommended next task
 
-**Next: C6.8 — implement canonical multiplayer wire diagnostics.**
+**Next: C6.9 — fresh read-only inventory of remaining diagnostic/compatibility globals.**
 
-Move only the observer callable to `WorldDriveDiagnostics.multiplayer.wire`, modernize the two QA contracts that intentionally pin the legacy name, and preserve every wire store mutation/order/copy semantic exactly. Keep HD visuals, streaming, forest compatibility aliases and traffic out of scope.
+Recount writers, runtime readers, QA/source-string consumers and multi-owner surfaces after C6.8. Explicitly exclude `worldDriveDesktop` from diagnostic debt. Do not select or modify HD visuals, streaming, forest aliases or traffic until the fresh post-C6.8 inventory confirms the safest next boundary.
 
 ---
 
 # 7. Work log
+
+## 2026-08-31 — C6.8 completed: canonical multiplayer wire diagnostics
+
+- Initial audit `33428001193` exposed the intentional C6.7 + M3 legacy-name QA contracts; corrected audit `33428333975` proved the wire callable is one-writer/zero-reader observer-only telemetry.
+- Candidate `33428652377` PASS including network/WebGL M4.15; materialized commit `9b06d182`.
+- Clean dev integration `0017c593`; permanent gate `33428839319` PASS.
+- Dev Integration registration `a434656f`; final `33429038521` PASS **83/83**.
+- Legacy wire global removed; canonical `WorldDriveDiagnostics.multiplayer.wire` preserves exact snapshot/count/copy/order semantics.
+- C6.9 begins with a fresh remaining-global audit.
+
 
 ## 2026-08-31 — C6.8 audit completed: canonical wire boundary selected
 
