@@ -830,7 +830,7 @@ C5 completion record:
 
 ### C6 — Consolidate diagnostic globals **[P2]**
 
-Status: **IN PROGRESS — C6.1/C6.2/C6.3/C6.4/C6.5/C6.6/C6.7/C6.8 DONE; C6.9 fresh remaining-global audit next (2026-08-31)**
+Status: **IN PROGRESS — C6.1/C6.2/C6.3/C6.4/C6.5/C6.6/C6.7/C6.8 DONE; C6.9 traffic-network diagnostics boundary selected (2026-08-31)**
 
 Audit baseline:
 - audit branch `audit/diagnostics-c6`; strengthened audit run `33386461640`: PASS diagnostic inventory, import/debt audit, active forest runtime/stress, P9.37 frame pacing, P9.39 hitch attribution, P9.41 frame-runtime attribution and production build;
@@ -1107,6 +1107,19 @@ C6.8 completion record — canonical multiplayer wire diagnostics:
 - packet send/receive, connection lifecycle, civil-traffic sharing, exact transmission gear publication and rendering were not changed;
 - human validation: not required; C6.8 is an observer-only ownership migration with full network/WebGL integration green;
 - Result: **C6.8 DONE**. C6.9 begins with a fresh read-only inventory; do not assume the previous HD-visual candidate remains the lowest-risk seam after C6.8.
+
+C6.9 fresh post-C6.8 inventory and selected boundary — traffic-network diagnostics:
+- inventory audit branch `audit/diagnostics-c6-9`; run `33429382828`: PASS remaining-global inventory, C6.1-C6.8 regressions, runtime import/debt audit and production build;
+- only 12 World Drive-style global surfaces remain visible in browser source, of which 11 are C6 diagnostic/compatibility surfaces after explicitly excluding the real Electron preload bridge `worldDriveDesktop`;
+- remaining categories: traffic 5, multiplayer 1, streaming 1 and retained forest compatibility 4, plus the excluded desktop bridge;
+- fresh ranking changed the expected next target: `WorldDriveTrafficNetwork` is lower risk than multiplayer HD visuals because it has exactly one writer, zero runtime readers, zero QA/source-string consumers and no multi-owner state; HD visuals still has two writers;
+- targeted traffic-network audit run `33429517787`: PASS exact seam audit, C6.1-C6.8, shared/live Traffic MP1, local traffic/pool/preload regressions, runtime import/debt audit and production build;
+- `WorldDriveTrafficNetwork` is an invocation-only observer in `src/civil-traffic-network-bridge.js`; it reads the already-authoritative `readCivilTrafficMultiplayerBridge()` state and returns only `{connected,ownId,authorityId,isAuthority,peers,remoteAgents,localAgents}`;
+- the global is not read by election, snapshot sanitization, outgoing merge, incoming consumption, Node/Electron relay or rendering code; removing its independent writer cannot change traffic authority or transport if the callable is moved unchanged;
+- canonical C6.9 boundary: publish that same callable as `WorldDriveDiagnostics.traffic.network` and remove `WorldDriveTrafficNetwork`; no compatibility alias is justified by the fresh zero-reader/zero-QA audit;
+- keep `WorldDriveTraffic`, `WorldDriveTrafficPool`, `WorldDriveTrafficPreload`, `WorldDriveTrafficSpawn`, multiplayer HD visuals, local-world streaming and all forest compatibility aliases out of C6.9 scope;
+- do not change peer election, sequence handling, traffic snapshot sanitization, at-most-two-agent cap, outgoing authority merge, incoming legacy/network handling, Node/Electron relay or traffic rendering;
+- candidate validation must include dedicated C6.9 payload/ownership QA, C6.1-C6.8, all Traffic MP1/local/pool/preload regressions, M3 multiplayer protocol, 288 driving cases, full stress, M4.15 network-to-WebGL reverse, import/debt audit and production build.
 - candidate validation must include C6.1–C6.7, C2 transmission ownership, D/N/R/exact-gear multiplayer protocol regressions, shared/live traffic networking, 288 driving cases, full stress, M4.15 network-to-WebGL reverse, runtime import/debt audit and production build before integration.
 
 ---
@@ -1149,13 +1162,21 @@ These rules are mandatory while working this plan:
 
 # 6. Recommended next task
 
-**Next: C6.9 — fresh read-only inventory of remaining diagnostic/compatibility globals.**
+**Next: C6.9 — implement canonical traffic-network diagnostics.**
 
-Recount writers, runtime readers, QA/source-string consumers and multi-owner surfaces after C6.8. Explicitly exclude `worldDriveDesktop` from diagnostic debt. Do not select or modify HD visuals, streaming, forest aliases or traffic until the fresh post-C6.8 inventory confirms the safest next boundary.
+Move only the invocation-only `WorldDriveTrafficNetwork` observer to `WorldDriveDiagnostics.traffic.network` and remove the unused legacy writer. Preserve the entire Traffic MP1 authority/transport/rendering path exactly; all other traffic globals and compatibility surfaces remain out of scope.
 
 ---
 
 # 7. Work log
+
+## 2026-08-31 — C6.9 audit completed: traffic-network diagnostics selected
+
+- Fresh inventory `33429382828` PASS: 12 visible global surfaces / 11 actionable after excluding the Electron desktop bridge.
+- Lowest-risk seam is `WorldDriveTrafficNetwork`: one writer, zero runtime readers, zero QA; HD visuals remains multi-owner.
+- Targeted audit `33429517787` PASS C6.1-C6.8, Traffic MP1 shared/live, local traffic/pool/preload, import audit and build.
+- Selected boundary: unchanged observer payload under `WorldDriveDiagnostics.traffic.network`; no traffic authority/transport/rendering changes.
+
 
 ## 2026-08-31 — C6.8 completed: canonical multiplayer wire diagnostics
 
