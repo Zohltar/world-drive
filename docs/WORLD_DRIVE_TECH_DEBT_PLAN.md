@@ -744,9 +744,28 @@ C5.4 completion record:
 - Final C5.4 Dev Integration run `33355510959`: PASS 73/73, with C5.4 explicitly executed plus WebGL reverse, build and production code-split QA.
 - Human validation: not required for this exact wiring/ownership extraction; exact sign policy, 3D sign runtime, minimap/readout behavior and full integration are directly protected.
 
-Next C5 step:
-- C5.5 begins with a fresh post-C5.4 audit before selecting another boundary;
-- continue to prefer cohesive UI/composition/plumbing extraction over frame-governor, physics, route, hydro or vehicle behavior unless the audit shows a cleaner boundary.
+C5.5 audit completed — selected boundary: stable application-settings identity/lifecycle:
+- post-C5.4 audit measured `main.js` at 2782 lines / 85782 bytes, with 57 imports and 88 top-level functions; audit branch `audit/main-c5-5`, run `33355730962` PASS responsibility inventory, import/debt audit and production build;
+- the audit disproved the previous apparent large UI boundary: the actual V21 menu facade is only about 41 lines and is not a high-value extraction by itself;
+- material functional discovery: `appSettings` is created before controllers, passed by direct reference to `keyboard-controls.js` and `environment-controller.js`, then the boot path replaces the root with the new object returned by `WorldSettings.load()`;
+- `WorldSettings.load()` returns a freshly merged/cloned object, so those pre-load controllers retain the stale default root after IndexedDB settings are loaded;
+- confirmed user-facing risks: loaded custom keyboard bindings may be ignored, rebinding may mutate the stale root while `queueSettingsSave()` persists the new root, and display-distance changes may apply visually through the stale environment reference without persisting to the saved root;
+- gamepad and autopilot settings access are not affected because their current contracts use dynamic getters.
+
+C5.5 selected correction:
+- introduce canonical `src/application-settings.js` owning one stable settings root, IndexedDB load-into-existing-root, the existing 120 ms save debounce and default-controls cloning;
+- preserve root identity across load and preserve nested plain-object identities where practical so pre-load controller references remain valid;
+- replace the current `appSettings = await WorldSettings.load()` root reassignment with an in-place controller load;
+- keep `applyLoadedV21Settings()` in `main.js` for this step because it is runtime/UI application orchestration with many dependencies, not persistence ownership;
+- keep the existing settings schema/default values and all accepted menu/environment behavior unchanged.
+
+C5.5 required validation:
+- dedicated unit/source QA proving stable root identity and stable controls/keyboard/gamepad/display nested identities across load;
+- prove a pre-load captured keyboard reference sees loaded custom bindings and that edits through the captured reference are what the debounced save persists;
+- prove pre-load queue-save remains a no-op, post-load save remains debounced at 120 ms, and defaults are never mutated;
+- prove `main.js` no longer reassigns the settings root after controller construction and that keyboard/environment receive the same stable root;
+- run existing V21.25 UI/init QA, V21.26 environment QA, import/debt audit, 288 driving cases, stress and production build;
+- full Dev Integration before C5.5 is declared done.
 
 Completion record:
 - C5 overall remains open until the remaining high-value responsibilities are reduced enough that `main.js` is materially a composition root.
@@ -819,13 +838,22 @@ These rules are mandatory while working this plan:
 
 # 6. Recommended next task
 
-**Next: C5.5 — fresh post-C5.4 responsibility audit of `main.js`.**
+**Next: C5.5 — establish stable application-settings identity and lifecycle.**
 
-Re-measure the remaining responsibilities after `main.js` reached 2782 lines. Choose the next extraction by cohesion and risk, favoring UI/composition/plumbing when practical. Continue to defer frame-governor, route/hydro/vehicle behavior and C6 diagnostics unless the audit proves a smaller, safer boundary.
+Fix the discovered stale-settings-reference bug before further cosmetic extraction. Introduce a canonical settings controller that loads IndexedDB values into one stable root, preserves the existing 120 ms save debounce/default schema, and keeps keyboard/environment/menu on the same settings object. Do not move `applyLoadedV21Settings()` or tune runtime behavior in this step.
 
 ---
 
 # 7. Work log
+
+## 2026-08-30 — C5.5 audit completed; stable settings identity selected
+
+- Fresh post-C5.4 audit `33355730962` PASS: `main.js` = 2782 lines / 85782 bytes / 57 imports / 88 top-level functions.
+- The audit rejected the apparent large UI extraction; the real menu facade is only ~41 lines.
+- Material discovery: the boot path replaces `appSettings` after keyboard/environment controllers capture the original root, while `WorldSettings.load()` returns a new merged object.
+- Confirmed risk: loaded/rebound keyboard controls and display-distance persistence can diverge between stale and current settings roots. Gamepad/autopilot getter-based access is unaffected.
+- C5.5 selected boundary: canonical stable settings root + load/save lifecycle, preserving 120 ms debounce and current settings schema.
+- Next: implement on an isolated cleanup branch with identity/persistence QA before integration.
 
 ## 2026-08-30 — C5.4 completed: geographic sign orchestration extracted
 
