@@ -188,7 +188,10 @@ export function createStreamingCoordinator(options){
       gameplayHitchCount++;
       let forestMatched=false;
       try{
-        forestMatched=globalThis.__WORLD_DRIVE_P928_RECORD_HITCH__?.({
+        const forestHitchRecorder=
+          globalThis.WorldDriveDiagnostics?.forest?.recordHitch||
+          globalThis.__WORLD_DRIVE_P928_RECORD_HITCH__;
+        forestMatched=forestHitchRecorder?.({
           hitchCount:gameplayHitchCount,
           hitchAt:now,
           frameMs:rawFrameMs

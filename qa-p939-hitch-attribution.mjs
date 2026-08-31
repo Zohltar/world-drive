@@ -26,8 +26,9 @@ for(const marker of [
 ])expect(source.includes(marker),`P9.39 marker missing: ${marker}`);
 
 expect(
-  source.includes('forestMatched=globalThis.__WORLD_DRIVE_P928_RECORD_HITCH__?.({'),
-  'P9.39 must reuse the forest hitch correlation result'
+  source.includes('globalThis.WorldDriveDiagnostics?.forest?.recordHitch||')&&
+  source.includes('globalThis.__WORLD_DRIVE_P928_RECORD_HITCH__'),
+  'P9.39 must prefer canonical forest hitch correlation while preserving the compatibility fallback'
 );
 expect(
   source.includes('lastPreparedCommitEvent={at:ended,ms,reasons:[...reasons]}'),
