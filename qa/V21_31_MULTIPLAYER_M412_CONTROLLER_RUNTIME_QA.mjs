@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import {fileURLToPath} from 'node:url';
 import * as THREE from 'three';
-import {createMultiplayerVisualSystem} from '../src/multiplayer-visuals-m3.js';
+import {createMultiplayerVisualSystem} from '../src/multiplayer/multiplayer-visuals-m3.js';
 
 // M4.12 runs the actual authored GLB controllers without a WebGL renderer.
 // We still load the real GLB, build real Three.js meshes/materials and drive the
@@ -151,9 +151,6 @@ async function exercise(vehicleId){
     assert(!reverseVisual.all.hot.some(entry=>entry.object==='Object_37'),'WRX: misleading fh_reverse_material/Object_37 must not be the active reverse output');
   }
 
-  // Stress the discrete state path while brake/night states change independently.
-  // Only the reverse-specific authored mesh counts here, so headlights at night
-  // cannot masquerade as a stuck reverse lamp.
   for(let i=0;i<120;i++){
     const gear=i%4===0?-1:(i%4===1?1:(i%4===2?0:-1));
     const frame=state({gear,braking:i%3===0,nightLevel:i%5===0?1:0});
@@ -171,8 +168,6 @@ async function exercise(vehicleId){
     }
   }
 
-  // Visibility culling must not destroy the current discrete state. A peer may
-  // leave and re-enter the 3.2 km visual radius while remaining in R.
   visual.setRemoteVisible?.(false,reverse);
   visual.setLighting?.({...reverse,reversing:false,gear:null,distance:Infinity});
   visual.setRemoteVisible?.(true,reverse);
