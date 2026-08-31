@@ -171,7 +171,7 @@ export function createMultiplayerClient(options={}){
     loadPromise=(async()=>{
       const prepareVisuals=options.createRemoteVisual?.prepare;
       if(typeof prepareVisuals==='function')await prepareVisuals();
-      const module=await import('./multiplayer-client-m3.js');
+      const module=await import('./multiplayer/multiplayer-client-m3.js');
       if(toggleButton)toggleButton.removeEventListener('click',bootstrapToggle);
       implementation=module.createMultiplayerClient(preparedOptions);
       return implementation;

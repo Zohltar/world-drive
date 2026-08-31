@@ -15,7 +15,7 @@ export function createMultiplayerVisualSystem(options={}){
     if(loadPromise)return loadPromise;
     loadPromise=(async()=>{
       try{
-        const module=await import('./multiplayer-visuals-m3.js');
+        const module=await import('./multiplayer/multiplayer-visuals-m3.js');
         implementation=module.createMultiplayerVisualSystem(options);
         loadError=null;
         return implementation;

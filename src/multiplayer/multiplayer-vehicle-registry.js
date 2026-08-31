@@ -1,5 +1,5 @@
-import {createVehicleSystem} from './vehicle-system.js';
-import {getAuthoredVehicleDescriptor} from './vehicle-authored-registry.js';
+import {createVehicleSystem} from '../vehicle-system.js';
+import {getAuthoredVehicleDescriptor} from '../vehicle-authored-registry.js';
 
 // Multiplayer M4 metric/support registry.
 //

@@ -1,4 +1,4 @@
-import {readTransmissionRuntimeState} from './transmission-runtime-bridge.js';
+import {readTransmissionRuntimeState} from '../transmission-runtime-bridge.js';
 import {getMultiplayerVehicleSpec} from './multiplayer-vehicle-registry.js';
 
 // Multiplayer M4.11 client: presentation-only N-player LAN replication at 30 Hz.

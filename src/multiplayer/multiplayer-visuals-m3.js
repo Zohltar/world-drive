@@ -1,7 +1,7 @@
 import {createMultiplayerVisualSystem as createSupportSystem} from './multiplayer-visuals-v18.js';
 import {createRemoteVehicleAdapter} from './multiplayer-vehicle-adapter.js';
-import {VEHICLE_RENDER_ROOT_SCALE} from './vehicle-render-contract.js';
-import {ensureWorldDriveDiagnostics} from './diagnostics.js';
+import {VEHICLE_RENDER_ROOT_SCALE} from '../vehicle-render-contract.js';
+import {ensureWorldDriveDiagnostics} from '../diagnostics.js';
 
 // Multiplayer M4 presentation pipeline:
 // normalized support chassis -> isolated adapter -> exact LOCAL authored controller.
