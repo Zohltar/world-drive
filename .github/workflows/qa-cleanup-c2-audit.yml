@@ -20,11 +20,17 @@ jobs:
       - run: npm ci
       - name: Transmission ownership and DNR semantic audit
         run: node qa-transmission-c2-audit.mjs
-      - name: Existing transmission regressions
+      - name: Current transmission regressions
         run: |
+          node qa/V21_29_DNR_BRAKE_SELECTOR_QA.mjs
           node qa/V21_29_BODY_RELATIVE_TRANSMISSION_QA.mjs
+          node qa/V21_29_TRANSMISSION_DIRECTION_QA.mjs
           node qa/V21_29_ALL_COMBUSTION_CLUTCH_QA.mjs
           node qa/V21_29_SEMI_AUTO_CLUTCH_QA.mjs
           node qa/V21_29_RUNTIME_WHEELSPIN_QA.mjs
+          node qa/V21_31_MULTIPLAYER_M3_PROTOCOL_QA.mjs
+      - name: Historical V21.26 transmission truth check
+        continue-on-error: true
+        run: node qa/V21_26_TRANSMISSION_REFACTOR_QA.mjs
       - name: Production build
         run: npm run build
