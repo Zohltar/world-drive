@@ -120,7 +120,7 @@ for(let i=0;i<25000;i++){
 }
 
 const base=fs.readFileSync('src/driving-runtime-base.js','utf8');
-const dynBase=fs.readFileSync('src/vehicle-dynamics-base.js','utf8');
+const dynBase=fs.readFileSync('src/vehicle-dynamics-core.js','utf8');
 const main=fs.readFileSync('src/main.js','utf8');
 const owned=fs.readFileSync('src/physics/momentum-direction.js','utf8');
 for(const name of [
