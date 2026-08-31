@@ -69,6 +69,20 @@ function rewriteTarget(target){
 }
 for(const target of roots)rewriteTarget(target);
 
+// P9.29 remains a useful frame-budget/diagnostics regression, but its wiring
+// assertion described the old facade -> wrapper -> core filename chain. After
+// C4 the canonical streamer owns the former wrapper behavior directly.
+const p929Qa='qa-forest-p929-frame-budget.mjs';
+if(fs.existsSync(p929Qa)){
+  let qa=fs.readFileSync(p929Qa,'utf8');
+  qa=replaceAllExact(
+    qa,
+    `expect(entry.includes("from './forest-chunk-streamer.js'"),'entry point must use P9.29 wrapper');`,
+    `expect(entry.includes("from './forest-chunk-streamer-core.js'"),'canonical forest streamer must compose the frame-budget core');`
+  );
+  fs.writeFileSync(p929Qa,tidy(qa));
+}
+
 console.log('C4 forest naming migration materialized',{
   canonical:files.facade,
   core:files.newCore,
