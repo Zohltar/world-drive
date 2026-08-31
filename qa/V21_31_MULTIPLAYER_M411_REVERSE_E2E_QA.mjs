@@ -5,7 +5,7 @@ import {createRequire} from 'node:module';
 import {
   normalizeMultiplayerGear,
   reverseFromMultiplayerGear
-} from '../src/multiplayer-client-m3.js';
+} from '../src/multiplayer/multiplayer-client-m3.js';
 
 const require=createRequire(import.meta.url);
 const {createMultiplayerRuntime}=require('../electron/multiplayer-runtime.cjs');
@@ -85,9 +85,6 @@ async function assertReverseRelay(url,label){
     assert.equal(reverseState.gear,-1,`${label}: relay changed explicit reverse gear`);
     assert.equal(reverseState.reversing,true,`${label}: relay lost reversing=true for gear -1`);
 
-    // Simulate one incomplete/legacy frame arriving between valid R frames. The
-    // receiver must preserve the previous explicit gear instead of coercing null
-    // to Neutral through Number(null) === 0.
     const incompletePromise=waitForMessage(receiver,message=>message?.type==='state'&&message?.vehicleId==='sonata'&&message?.seq===102);
     sender.send(JSON.stringify({
       type:'state',seq:102,name:'Sonata',vehicleId:'sonata',lat:45,lon:-73,y:0,heading:0,speed:0,steer:0,
@@ -114,7 +111,6 @@ async function assertReverseRelay(url,label){
   }
 }
 
-// Pure receiver contract first.
 assert.equal(normalizeMultiplayerGear(-1,null),-1,'explicit reverse must normalize to -1');
 assert.equal(normalizeMultiplayerGear(null,-1),-1,'null packet gear must preserve prior reverse');
 assert.equal(normalizeMultiplayerGear(undefined,-1),-1,'undefined packet gear must preserve prior reverse');
@@ -124,7 +120,6 @@ assert.equal(normalizeMultiplayerGear(6,-1),6,'forward gear number must replicat
 assert.equal(reverseFromMultiplayerGear(-1,false),true,'-1 must derive reversing=true');
 assert.equal(reverseFromMultiplayerGear(0,true),false,'0 must derive reversing=false');
 
-// Real browser/dev relay.
 const browserPort=await freePort();
 const browserRelay=spawn(process.execPath,['server/multiplayer-server.mjs'],{
   cwd:process.cwd(),
@@ -140,7 +135,6 @@ try{
   browserRelay.kill('SIGTERM');
 }
 
-// Real packaged Electron/Windows relay.
 const electronPort=await freePort();
 const runtime=createMultiplayerRuntime();
 try{
