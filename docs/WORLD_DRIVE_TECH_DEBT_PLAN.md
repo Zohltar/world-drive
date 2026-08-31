@@ -830,7 +830,7 @@ C5 completion record:
 
 ### C6 — Consolidate diagnostic globals **[P2]**
 
-Status: **IN PROGRESS — C6.1 DONE; C6.2 presentation selected (2026-08-31)**
+Status: **IN PROGRESS — C6.1/C6.2 DONE; C6.3 wheelspin audit next (2026-08-31)**
 
 Audit baseline:
 - audit branch `audit/diagnostics-c6`; strengthened audit run `33386461640`: PASS diagnostic inventory, import/debt audit, active forest runtime/stress, P9.37 frame pacing, P9.39 hitch attribution, P9.41 frame-runtime attribution and production build;
@@ -919,6 +919,23 @@ C6.2 selected boundary — local authored presentation diagnostics:
 - no changes to authored model activation, deferred loading, brake/reverse/night values, multiplayer packet semantics or rendering behavior;
 - dedicated QA must prove snapshot equivalence, stable diagnostics-root identity, no independent global writer, and unchanged exported presentation-state behavior.
 
+C6.2 completed — local authored presentation diagnostics:
+- `src/deferred-glb-system.js` now binds the existing exported `readLocalAuthoredPresentationState` function directly to `WorldDriveDiagnostics.presentation.localAuthored`;
+- removed the unconsumed independent global writer `__WORLD_DRIVE_LOCAL_AUTHORED_PRESENTATION__`; no compatibility delegate was required because the fresh audit found no runtime or QA reader;
+- publish/reset/source-guarded clear semantics, sequence increments, night-level clamp, deferred active-update capture and deactivation clear remain unchanged;
+- no authored rendering values, deferred loading behavior, multiplayer packet semantics, vehicle physics or visual quality were changed.
+
+C6.2 completion record:
+- Read-only audit run `33391592921`: PASS; presentation and wheelspin ranked lowest risk, presentation selected to avoid physics-adjacent churn.
+- Candidate run `33391965284`: PASS C6.2/C6.1, M4 adapter, M4.11/M4.12, M3 protocol, Sonata ownership, 288 driving cases, full stress and production build.
+- Runtime integration commit: `02935759` — centralize authored presentation diagnostics.
+- Permanent C6.2 gate run `33392124520`: PASS on integrated runtime SHA.
+- Pre-registration Dev Integration `33392124535`: PASS 76/76 on integrated runtime.
+- Dev Integration registration commit: `3d721bfa` — C6.2 added explicitly after C6.1.
+- Final Dev Integration run `33392329882`: PASS **77/77**, including C6.2, full stress, 288 driving cases, M4.14/M4.15 WebGL, production build and code split.
+- Human validation: not required; C6.2 is diagnostics-only and rendering/network equivalence is covered directly by deterministic, multiplayer and WebGL integration QA.
+- Result: C6.2 is DONE. Wheelspin remains the next lowest-risk category but must start with an exact read-only seam audit because its writer lives in `driving-runtime.js`.
+
 ---
 
 # 4. Items intentionally NOT scheduled for immediate deletion
@@ -959,13 +976,21 @@ These rules are mandatory while working this plan:
 
 # 6. Recommended next task
 
-**Next: C6.2 — migrate local authored presentation diagnostics.**
+**Next: C6.3 — audit wheelspin diagnostics ownership before migration.**
 
-Implement only the selected presentation slice: canonical `WorldDriveDiagnostics.presentation` ownership around the existing local authored presentation snapshot, with no rendering/network behavior change. Validate candidate equivalence before integrating to `dev`.
+Start read-only around `WorldDriveRuntimeWheelspin` in `driving-runtime.js`. Confirm exact write timing, payload identity, zero consumers/QA assumptions and interaction with B6/V21.29 wheelspin tests before considering canonical `WorldDriveDiagnostics.wheelspin` publication. Do not change traction behavior during the audit.
 
 ---
 
 # 7. Work log
+
+## 2026-08-31 — C6.2 completed: authored presentation diagnostics
+
+- Audit `33391592921` selected presentation as the safest remaining diagnostic category.
+- Candidate `33391965284` PASS; runtime integration `02935759`; permanent gate `33392124520` PASS.
+- Dev Integration registration `3d721bfa`; final `33392329882` PASS 77/77.
+- Legacy `__WORLD_DRIVE_LOCAL_AUTHORED_PRESENTATION__` removed; canonical `WorldDriveDiagnostics.presentation.localAuthored` uses the unchanged exported snapshot function.
+- C6.3 wheelspin requires read-only physics-adjacent audit before any runtime edit.
 
 ## 2026-08-31 — C6.1 completed: canonical frame-pacing/forest diagnostics root
 
