@@ -7,10 +7,10 @@ on:
       - dev
     paths:
       - 'src/multiplayer-visuals.js'
-      - 'src/multiplayer-visuals-m3.js'
-      - 'src/multiplayer-visuals-v18.js'
-      - 'src/multiplayer-vehicle-adapter.js'
-      - 'src/multiplayer-client-m3.js'
+      - 'src/multiplayer/multiplayer-visuals-m3.js'
+      - 'src/multiplayer/multiplayer-visuals-v18.js'
+      - 'src/multiplayer/multiplayer-vehicle-adapter.js'
+      - 'src/multiplayer/multiplayer-client-m3.js'
       - 'src/diagnostics.js'
       - 'qa-diagnostics-c6-*.mjs'
       - 'qa/V21_31_MULTIPLAYER_*.mjs'
