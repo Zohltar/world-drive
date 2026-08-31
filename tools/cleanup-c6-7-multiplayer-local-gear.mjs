@@ -1,0 +1,12 @@
+import fs from 'node:fs';
+const path='src/multiplayer.js';
+let s=fs.readFileSync(path,'utf8');
+const importAnchor="import {readTransmissionNetworkGear} from './transmission-network-state.js';\n";
+if(!s.includes(importAnchor))throw new Error('transmission import anchor missing');
+if(!s.includes("from './diagnostics.js'"))s=s.replace(importAnchor,importAnchor+"import {ensureWorldDriveDiagnostics} from './diagnostics.js';\n");
+const old=`try{\n  globalThis.__WORLD_DRIVE_MULTIPLAYER_LOCAL_GEAR__=()=>({\n    gear:normalizeWireGear(readTransmissionNetworkGear()),\n    reversing:normalizeWireGear(readTransmissionNetworkGear())===-1\n  });\n  globalThis.__WORLD_DRIVE_MULTIPLAYER_WIRE__=()=>({\n`;
+const next=`const multiplayerDiagnostics=ensureWorldDriveDiagnostics().multiplayer;\nmultiplayerDiagnostics.localGear=()=>({\n  gear:normalizeWireGear(readTransmissionNetworkGear()),\n  reversing:normalizeWireGear(readTransmissionNetworkGear())===-1\n});\n\ntry{\n  globalThis.__WORLD_DRIVE_MULTIPLAYER_WIRE__=()=>({\n`;
+if(!s.includes(old))throw new Error('legacy local-gear diagnostics block missing');
+s=s.replace(old,next);
+fs.writeFileSync(path,s);
+console.log('C6.7 multiplayer local-gear telemetry materialized');
