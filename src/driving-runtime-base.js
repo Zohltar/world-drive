@@ -30,9 +30,9 @@ export {
 import {
   advanceYawAuthority,
   driftKinematicCoupling,
-  legacyGripYawAcceleration
+  gripLossFallbackYawAcceleration
 } from './physics/yaw-authority.js';
-export {driftKinematicCoupling,legacyGripYawAcceleration};
+export {driftKinematicCoupling,gripLossFallbackYawAcceleration};
 
 function smoothstep01(value){
   const t=Math.max(0,Math.min(1,Number(value)||0));

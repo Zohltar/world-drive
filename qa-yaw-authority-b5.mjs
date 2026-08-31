@@ -15,7 +15,7 @@ function oldDriftKinematicCoupling({sideslipRad=0,forceCoupledSlide=0}={}){
   const forceT=smooth((slide-.12)/.68)*driftForceSideslipGate(sideslip);
   return 1-.94*Math.max(sideT,forceT);
 }
-function oldLegacyGripYawAcceleration({frictionYawAccel=0,yawRate=0,frontSlip=0,rearSlip=0,frontForceScale=1,rearForceScale=1}={}){
+function referenceGripLossFallbackYawAcceleration({frictionYawAccel=0,yawRate=0,frontSlip=0,rearSlip=0,frontForceScale=1,rearForceScale=1}={}){
   const accel=Number(frictionYawAccel)||0,targetYaw=Number(yawRate)||0;
   const front=Math.max(0,Number(frontSlip)||0),rear=Math.max(0,Number(rearSlip)||0);
   const frontScale=Number.isFinite(Number(frontForceScale))?Math.max(0,Math.min(1,Number(frontForceScale))):1;
@@ -52,26 +52,26 @@ function oldAdvance(args={}){
   const physicalYaw=Number.isFinite(physicalTireYawAccel)?physicalTireYawAccel:frictionYawAccel;
   const yawReleaseBoost=driftKinematicScale>.82&&Math.abs(yawRate)<Math.abs(dynamicYawRate)?1.35:1;
   const yawGripResponseScale=airborne?0:driftKinematicScale*(1-.85*driftPhysicalAuthority);
-  const legacyYawAccel=useLegacyDriftAssist?oldLegacyGripYawAcceleration({
+  const fallbackYawAccel=useLegacyDriftAssist?referenceGripLossFallbackYawAcceleration({
     frictionYawAccel,yawRate,frontSlip:targetFrontSlip,rearSlip:targetRearSlip,
     frontForceScale:frontLateralForceScale,rearForceScale:rearLateralForceScale
   }):0;
-  const authoritativeYawAccel=blendDriftForce(legacyYawAccel,physicalYaw,driftPhysicalAuthority);
+  const authoritativeYawAccel=blendDriftForce(fallbackYawAccel,physicalYaw,driftPhysicalAuthority);
   dynamicYawRate+=authoritativeYawAccel*dt;
   dynamicYawRate+=(yawRate-dynamicYawRate)*(1-Math.exp(-dt*yawResponse*yawReleaseBoost*yawGripResponseScale));
-  return {yawRate,dynamicYawRate,frontDominance,rearDominance,fourWheelSlide,frictionYawLoss,forceCoupledSlide,driftKinematicScale,driftPhysicalAuthority,physicalTireYawAccel:physicalYaw,yawReleaseBoost,yawGripResponseScale,legacyYawAccel,authoritativeYawAccel};
+  return {yawRate,dynamicYawRate,frontDominance,rearDominance,fourWheelSlide,frictionYawLoss,forceCoupledSlide,driftKinematicScale,driftPhysicalAuthority,physicalTireYawAccel:physicalYaw,yawReleaseBoost,yawGripResponseScale,fallbackYawAccel,authoritativeYawAccel};
 }
 
 const yaw=await import('./src/physics/yaw-authority.js');
 const runtime=await import('./src/driving-runtime-base.js');
 assert.equal(runtime.driftKinematicCoupling,yaw.driftKinematicCoupling,'runtime compatibility export changed');
-assert.equal(runtime.legacyGripYawAcceleration,yaw.legacyGripYawAcceleration,'legacy yaw compatibility export changed');
+assert.equal(runtime.gripLossFallbackYawAcceleration,yaw.gripLossFallbackYawAcceleration,'grip-loss fallback compatibility export changed');
 
 let seed=0xb500cafe;
 const rnd=()=>{seed=(Math.imul(seed,1664525)+1013904223)>>>0;return seed/4294967296;};
 const range=(a,b)=>a+(b-a)*rnd();
 const drives=['FWD','RWD','AWD'];
-const keys=['yawRate','dynamicYawRate','frontDominance','rearDominance','fourWheelSlide','frictionYawLoss','forceCoupledSlide','driftKinematicScale','driftPhysicalAuthority','physicalTireYawAccel','yawReleaseBoost','yawGripResponseScale','legacyYawAccel','authoritativeYawAccel'];
+const keys=['yawRate','dynamicYawRate','frontDominance','rearDominance','fourWheelSlide','frictionYawLoss','forceCoupledSlide','driftKinematicScale','driftPhysicalAuthority','physicalTireYawAccel','yawReleaseBoost','yawGripResponseScale','fallbackYawAccel','authoritativeYawAccel'];
 let maxError=0;
 for(let i=0;i<30000;i++){
   const args={
@@ -101,8 +101,8 @@ for(const sideslip of [0,.05,.2,.5,1.0,Math.PI/2])for(const slide of [0,.1,.4,.8
 const runtimeSource=fs.readFileSync('src/driving-runtime-base.js','utf8');
 const ownerSource=fs.readFileSync('src/physics/yaw-authority.js','utf8');
 assert.doesNotMatch(runtimeSource,/export function driftKinematicCoupling\b/,'drift kinematic coupling still locally owned by runtime');
-assert.doesNotMatch(runtimeSource,/export function legacyGripYawAcceleration\b/,'legacy yaw filter still locally owned by runtime');
-assert.doesNotMatch(runtimeSource,/const authoritativeYawAccel=blendDriftForce/,'runtime still owns physical-vs-legacy yaw blend');
+assert.doesNotMatch(runtimeSource,/export function gripLossFallbackYawAcceleration\b/,'grip-loss fallback still locally owned by runtime');
+assert.doesNotMatch(runtimeSource,/const authoritativeYawAccel=blendDriftForce/,'runtime still owns physical-vs-fallback yaw blend');
 assert.match(runtimeSource,/const yawAuthority=advanceYawAuthority\(\{/,'runtime does not delegate yaw authority');
 assert.match(ownerSource,/export function advanceYawAuthority\b/,'yaw owner missing authoritative integration');
 assert.match(ownerSource,/const authoritativeYawAccel=blendDriftForce\(/,'yaw owner missing physical-vs-legacy blend');

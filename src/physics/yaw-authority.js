@@ -29,7 +29,17 @@ export function driftKinematicCoupling({sideslipRad=0,forceCoupledSlide=0}={}){
   return 1-.94*Math.max(sideT,forceT);
 }
 
-export function legacyGripYawAcceleration({
+// Cleanup B7 — retained aggregate grip-loss yaw fallback.
+//
+// This is not a second free-running yaw controller. estimateWheelGripUsage()
+// can measure an axle-force-loss moment at 20 Hz before the high-sideslip R7
+// per-wheel solver has meaningful authority. In that low-authority transition
+// this filtered aggregate moment supplies missing grip-loss yaw; blendDriftForce()
+// progressively replaces it with the physical per-wheel yaw moment as
+// driftPhysicalAuthority rises. R16/R21 suppress front-dominated opposing
+// moments so ordinary understeer cannot become counter-yaw. Profiles such as
+// the F1 opt out through legacyDriftAssist=false.
+export function gripLossFallbackYawAcceleration({
   frictionYawAccel=0,yawRate=0,frontSlip=0,rearSlip=0,
   frontForceScale=1,rearForceScale=1
 }={}){
@@ -109,8 +119,8 @@ export function advanceYawAuthority({
   const yawGripResponseScale=airborne
     ?0
     :driftKinematicScale*(1-.85*driftPhysicalAuthority);
-  const legacyYawAccel=useLegacyDriftAssist
-    ?legacyGripYawAcceleration({
+  const fallbackYawAccel=useLegacyDriftAssist
+    ?gripLossFallbackYawAcceleration({
       frictionYawAccel:friction,
       yawRate:targetYawRate,
       frontSlip:targetFrontSlip,
@@ -120,7 +130,7 @@ export function advanceYawAuthority({
     })
     :0;
   const authoritativeYawAccel=blendDriftForce(
-    legacyYawAccel,
+    fallbackYawAccel,
     physicalYaw,
     driftPhysicalAuthority
   );
@@ -136,6 +146,6 @@ export function advanceYawAuthority({
     fourWheelSlide:conditioned.fourWheelSlide,
     frictionYawLoss,forceCoupledSlide,driftKinematicScale,driftPhysicalAuthority,
     physicalTireYawAccel:physicalYaw,yawReleaseBoost,yawGripResponseScale,
-    legacyYawAccel,authoritativeYawAccel
+    fallbackYawAccel,authoritativeYawAccel
   };
 }

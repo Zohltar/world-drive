@@ -25,7 +25,7 @@ assert.match(runtime,/const useLegacyDriftAssist=VEHICLE\?\.legacyDriftAssist!==
 // Cleanup B5 moved both legacy RWD yaw injection and R16/R21 fallback filtering
 // into the single local-chassis yaw authority owner.
 assert.match(yawAuthority,/if\(useLegacyDriftAssist&&String\(drivetrain\|\|'AWD'\)==='RWD'/,'synthetic RWD yaw is not gated');
-assert.match(yawAuthority,/const legacyYawAccel=useLegacyDriftAssist/,'legacy grip yaw is not gated');
+assert.match(yawAuthority,/const fallbackYawAccel=useLegacyDriftAssist/,'grip-loss fallback yaw is not gated');
 // Cleanup B4 owns momentum trajectory. Physical-only profiles (currently F1)
 // must still bypass the pre-R7 trajectory estimate once force rotation is active.
 assert.match(
