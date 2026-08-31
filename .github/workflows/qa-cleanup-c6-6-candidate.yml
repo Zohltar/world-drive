@@ -1,0 +1,56 @@
+name: Cleanup C6.6 Physics Shadow Candidate
+
+on:
+  push:
+    branches:
+      - cleanup/diagnostics-c6-6
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  qa:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Materialize C6.6 canonical physics-shadow diagnostics
+        run: node tools/cleanup-c6-6-physics-shadow.mjs
+      - name: C6.6 diagnostics QA
+        run: node qa-diagnostics-c6-6.mjs
+      - name: C6.1-C6.5 diagnostics regressions
+        run: |
+          node qa-diagnostics-c6-1.mjs
+          node qa-diagnostics-c6-2.mjs
+          node qa-diagnostics-c6-3.mjs
+          node qa-diagnostics-c6-4.mjs
+          node qa-diagnostics-c6-5.mjs
+      - name: V21.27 physics-shadow regression
+        run: node qa/V21_27_PHYSICS_SHADOW_QA.mjs
+      - name: Driving dynamics simulation matrix
+        run: node qa/DEV_DRIVING_SIM_QA.mjs
+      - name: Full V21.31 regression stress
+        run: npm run qa:stress
+      - name: Runtime import and debt audit
+        run: node qa/DEV_INTEGRATION_AUDIT.mjs
+      - name: Production build
+        run: npm run build
+      - name: Diff hygiene
+        run: git diff --check
+      - name: Commit materialized C6.6 candidate
+        shell: bash
+        run: |
+          if git diff --quiet -- src/main.js qa/V21_27_PHYSICS_SHADOW_QA.mjs; then exit 0; fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add src/main.js qa/V21_27_PHYSICS_SHADOW_QA.mjs
+          git commit -m 'Cleanup C6.6: centralize physics-shadow diagnostics'
+          git push origin HEAD:cleanup/diagnostics-c6-6
