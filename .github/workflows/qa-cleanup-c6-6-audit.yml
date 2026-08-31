@@ -1,0 +1,46 @@
+name: Cleanup C6.6 Physics Shadow Audit
+
+on:
+  push:
+    branches:
+      - audit/diagnostics-c6-6
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: C6.6 physics-shadow ownership audit
+        run: node qa-diagnostics-c6-6-audit.mjs
+      - name: C6.1-C6.5 diagnostics regressions
+        run: |
+          node qa-diagnostics-c6-1.mjs
+          node qa-diagnostics-c6-2.mjs
+          node qa-diagnostics-c6-3.mjs
+          node qa-diagnostics-c6-4.mjs
+          node qa-diagnostics-c6-5.mjs
+      - name: Physics-shadow existing QA contract
+        shell: bash
+        run: |
+          FILES=$(grep -RIl 'WorldDrivePhysicsShadow' --include='*.mjs' --exclude='qa-diagnostics-c6-6-audit.mjs' . | grep -E '^\./(qa|qa-)' || true)
+          echo "$FILES"
+          test "$(printf '%s\n' "$FILES" | sed '/^$/d' | wc -l)" = "1"
+          node "${FILES#./}"
+      - name: Driving dynamics simulation matrix
+        run: node qa/DEV_DRIVING_SIM_QA.mjs
+      - name: Full V21.31 regression stress
+        run: npm run qa:stress
+      - name: Runtime import and debt audit
+        run: node qa/DEV_INTEGRATION_AUDIT.mjs
+      - name: Production build
+        run: npm run build
