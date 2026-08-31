@@ -36,6 +36,8 @@ jobs:
         run: node qa-version-branding-a6.mjs
       - name: Cleanup A7 repository hygiene QA
         run: node qa-repo-hygiene-a7.mjs
+      - name: Cleanup A8 current local-world ownership QA
+        run: node qa-local-world-current-a8.mjs
       - name: Cleanup B3 maneuver-state ownership QA
         run: node qa-maneuver-state-b3.mjs
       - name: Cleanup B4 momentum-direction ownership QA
@@ -44,6 +46,12 @@ jobs:
         run: node qa-yaw-authority-b5.mjs
       - name: Cleanup B6 wheelspin ownership QA
         run: node qa-wheelspin-state-b6.mjs
+      - name: Cleanup B7 grip-loss fallback ownership QA
+        run: node qa-yaw-fallback-b7.mjs
+      - name: Cleanup C1 vehicle dynamics ownership QA
+        run: node qa-vehicle-dynamics-c1.mjs
+      - name: Cleanup C2 transmission ownership QA
+        run: node qa-transmission-c2.mjs
       - name: Full V21.31 regression stress
         run: npm run qa:stress
       - name: Driving dynamics simulation matrix
