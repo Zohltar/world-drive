@@ -1,5 +1,6 @@
 import {readLocalAuthoredPresentationState} from './deferred-glb-system.js';
 import {readTransmissionNetworkGear} from './transmission-network-state.js';
+import {ensureWorldDriveDiagnostics} from './diagnostics.js';
 import {
   consumeCivilTrafficMultiplayerPayload,
   mergeCivilTrafficIntoOutgoingState,
@@ -107,11 +108,13 @@ function prepareIncomingPayload(raw){
   return recordIncomingPayload(upgraded);
 }
 
+const multiplayerDiagnostics=ensureWorldDriveDiagnostics().multiplayer;
+multiplayerDiagnostics.localGear=()=>({
+  gear:normalizeWireGear(readTransmissionNetworkGear()),
+  reversing:normalizeWireGear(readTransmissionNetworkGear())===-1
+});
+
 try{
-  globalThis.__WORLD_DRIVE_MULTIPLAYER_LOCAL_GEAR__=()=>({
-    gear:normalizeWireGear(readTransmissionNetworkGear()),
-    reversing:normalizeWireGear(readTransmissionNetworkGear())===-1
-  });
   globalThis.__WORLD_DRIVE_MULTIPLAYER_WIRE__=()=>({
     exactLocalGear:normalizeWireGear(readTransmissionNetworkGear()),
     outgoingCount:wireDiagnostics.outgoingCount,
