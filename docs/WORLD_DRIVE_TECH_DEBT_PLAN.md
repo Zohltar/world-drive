@@ -830,7 +830,7 @@ C5 completion record:
 
 ### C6 — Consolidate diagnostic globals **[P2]**
 
-Status: **IN PROGRESS — C6.1 DONE; C6.2 audit next (2026-08-31)**
+Status: **IN PROGRESS — C6.1 DONE; C6.2 presentation selected (2026-08-31)**
 
 Audit baseline:
 - audit branch `audit/diagnostics-c6`; strengthened audit run `33386461640`: PASS diagnostic inventory, import/debt audit, active forest runtime/stress, P9.37 frame pacing, P9.39 hitch attribution, P9.41 frame-runtime attribution and production build;
@@ -904,6 +904,21 @@ Completion record:
 - Human validation: not required; C6.1 changes diagnostics ownership/compatibility only and all runtime-facing forest/frame-pacing semantics are directly covered by deterministic and integration QA.
 - Result: C6.1 is DONE; remaining diagnostic categories stay intentionally untouched until individually audited.
 
+C6.2 read-only audit — remaining diagnostic categories:
+- fresh branch `audit/diagnostics-c6-2` from post-C6.1 dev; run `33391592921`: PASS remaining-global inventory, C6.1 regression, runtime import/debt audit and production build;
+- 22 World Drive globals remain visible in the current source scan, including compatibility surfaces retained by C6.1;
+- lowest-risk categories are presentation and wheelspin, each with exactly one global, one writer, zero runtime readers, zero QA mentions and no version alias;
+- presentation global `__WORLD_DRIVE_LOCAL_AUTHORED_PRESENTATION__` is written only by `src/deferred-glb-system.js`; it exposes the existing `readLocalAuthoredPresentationState` snapshot and has no detected consumer of the global name;
+- wheelspin global `WorldDriveRuntimeWheelspin` is equally isolated but is emitted directly inside the driving/traction path, so it is intentionally deferred behind presentation to avoid unnecessary physics-adjacent churn;
+- higher-risk categories remain deferred: physics has source-string QA, road signs retain versioned QA contracts, multiplayer contains a multi-owner HD-visual global, streaming has a three-writer P9.23 runtime bridge, and traffic has five globals including two multi-owner surfaces.
+
+C6.2 selected boundary — local authored presentation diagnostics:
+- move global diagnostic authority for local authored brake/reverse/night presentation state under `WorldDriveDiagnostics.presentation`;
+- preserve the existing `readLocalAuthoredPresentationState()` exported API and the exact state object semantics;
+- because the legacy global has no runtime/QA consumer, do not keep an independent store; either remove it or retain only a live delegate if candidate validation exposes an external compatibility need;
+- no changes to authored model activation, deferred loading, brake/reverse/night values, multiplayer packet semantics or rendering behavior;
+- dedicated QA must prove snapshot equivalence, stable diagnostics-root identity, no independent global writer, and unchanged exported presentation-state behavior.
+
 ---
 
 # 4. Items intentionally NOT scheduled for immediate deletion
@@ -944,9 +959,9 @@ These rules are mandatory while working this plan:
 
 # 6. Recommended next task
 
-**Next: C6.2 — audit the next small diagnostic category before migration.**
+**Next: C6.2 — migrate local authored presentation diagnostics.**
 
-Start read-only from the remaining traffic, multiplayer, physics, wheelspin, streaming, road-sign and presentation globals. Prefer the smallest category with a clear single owner and few compatibility consumers; document exact writers/readers/QA contracts before changing runtime.
+Implement only the selected presentation slice: canonical `WorldDriveDiagnostics.presentation` ownership around the existing local authored presentation snapshot, with no rendering/network behavior change. Validate candidate equivalence before integrating to `dev`.
 
 ---
 
