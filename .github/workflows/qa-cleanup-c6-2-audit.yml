@@ -1,0 +1,30 @@
+name: Cleanup C6.2 Remaining Diagnostics Audit
+
+on:
+  push:
+    branches:
+      - audit/diagnostics-c6-2
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Remaining diagnostics ownership audit
+        run: node qa-diagnostics-c6-2-audit.mjs
+      - name: C6.1 regression
+        run: node qa-diagnostics-c6-1.mjs
+      - name: Runtime import/debt audit
+        run: node qa/DEV_INTEGRATION_AUDIT.mjs
+      - name: Production build
+        run: npm run build
