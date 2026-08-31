@@ -1,0 +1,25 @@
+name: C6 Final Global Inventory
+
+on:
+  push:
+    branches:
+      - audit/diagnostics-c6-final
+    paths:
+      - 'src/**'
+      - 'qa-diagnostics-c6-final-inventory.mjs'
+      - '.github/workflows/qa-diagnostics-c6-final-inventory.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  inventory:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Final C6 global inventory
+        run: node qa-diagnostics-c6-final-inventory.mjs
