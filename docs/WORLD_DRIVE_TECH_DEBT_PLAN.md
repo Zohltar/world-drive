@@ -562,20 +562,38 @@ Completion record:
 
 ### C2 — Flatten transmission controller layers **[P1/P2]**
 
-Status: **TODO**
+Status: **IN PROGRESS — audit complete 2026-08-30**
 
-Current layering:
+Current layering before correction:
 - `transmission-controller-base.js`
 - `transmission-controller.js`
 
-Audit note:
-- base controller often assumes forward gears are `>=1` using patterns like `Number(x)||1`;
-- current D/N/R wrapper repairs selector semantics, but this is an implicit fragile contract.
+Audit findings:
+- the only active source consumer of `transmission-controller-base.js` is the canonical `transmission-controller.js`; there is no independent runtime consumer that requires the base layer to remain;
+- the base controller contains several forward-gear coercions such as `Number(x)||1`, so selector state `0` cannot remain Neutral inside that layer without the wrapper repairing it afterward;
+- the current canonical wrapper already owns the authoritative selector contract `R=-1 / N=0 / D=1..N`, publishes the exact displayed gear to `transmission-network-state.js`, and the runtime bridge/multiplayer path preserve Neutral exactly;
+- existing current-path D/N/R, body-relative transmission, clutch, wheelspin and multiplayer protocol regressions all pass on the pre-C2 baseline;
+- `qa/V21_26_TRANSMISSION_REFACTOR_QA.mjs` is stale before C2: it still expects implementation ownership to reside directly in `transmission-controller.js` even though the heavy logic is currently hidden in the base layer, and it also carries the obsolete convention that EV forward may be represented by gear `0`. That historical assertion must be migrated rather than forcing the runtime back to an ambiguous Neutral/forward contract.
 
 Required correction:
-- consolidate selector/gear semantics in one controller;
-- represent Neutral explicitly without depending on wrapper repair;
-- add regression for exact D/N/R state and multiplayer transmission serialization.
+- consolidate selector/gear semantics in one canonical `transmission-controller.js`;
+- remove `transmission-controller-base.js`;
+- make Neutral explicitly owned as exact gear `0` rather than relying on post-update wrapper repair;
+- preserve reverse `-1` and exact forward gear `1..N`;
+- preserve clutch/free-rev/rev-limiter/autopilot behavior and body-relative drive direction;
+- preserve multiplayer serialization and reverse-light behavior sourced from the exact authoritative gear;
+- modernize stale V21.26 transmission QA to the current D/N/R contract;
+- add a permanent C2 ownership/selector regression before integration.
+
+Audit evidence:
+- audit branch: `audit/transmission-c2`;
+- ownership/current-regression audit run `33347455580`: PASS;
+- expanded truth-check run `33347531229`: current D/N/R + multiplayer regressions PASS and production build PASS; the historical V21.26 refactor QA fails on the untouched pre-C2 architecture, proving it is stale rather than a C2 regression.
+
+Implementation state:
+- candidate branch `cleanup/transmission-c2` created;
+- deterministic consolidation tooling staged, but no C2 source change has been integrated into `dev` yet;
+- C2 remains open until candidate QA, stress/driving matrix/build, permanent C2 gate and final Dev Integration all pass.
 
 Completion record:
 - Commit: _pending_
@@ -717,6 +735,15 @@ Start with an ownership/semantic audit of `transmission-controller-base.js` and 
 ---
 
 # 7. Work log
+
+## 2026-08-30 — C2 audit completed: transmission selector ownership
+
+- Confirmed `transmission-controller-base.js` has only one active source consumer: the canonical controller wrapper.
+- Confirmed the hidden base layer coerces non-forward selector values toward first gear, while the wrapper repairs `N=0` afterward.
+- Established the authoritative current contract as `R=-1 / N=0 / D=1..N`, already preserved by multiplayer serialization and runtime lighting consumers.
+- Current D/N/R, body-relative, clutch, wheelspin and multiplayer regressions PASS; audit runs `33347455580` and `33347531229`.
+- Identified `V21_26_TRANSMISSION_REFACTOR_QA` as stale on the untouched pre-C2 baseline; its old implementation-location/EV-forward assumptions must be migrated, not used to retune runtime behavior.
+- Candidate consolidation is on `cleanup/transmission-c2`; no C2 source change is on `dev` yet.
 
 ## 2026-08-30 — C1 completed: vehicle dynamics layers renamed by responsibility
 
