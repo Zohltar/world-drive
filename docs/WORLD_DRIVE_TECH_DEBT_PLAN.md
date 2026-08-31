@@ -306,6 +306,36 @@ Completion record:
 
 ---
 
+### A8 — Retire stale V21.26 local-world meta-QA **[P1/P2]**
+
+Status: **DONE — 2026-08-30**
+
+Problem discovered during C2:
+- `qa/V21_26_ENVIRONMENT_REFACTOR_QA.mjs` chained the historical `qa/V21_26_LOCAL_WORLD_REFACTOR_QA.mjs`;
+- that old local-world test required pre-P9.23/P9.37/P9.38 implementation details to live directly in `src/local-world-builder.js`;
+- the active architecture now delegates through `local-world-builder.js -> local-world-builder-p926.js -> local-world-builder-p925.js`, while P9.37 road prebuild and P9.38 forest retention are owned by the canonical entry;
+- keeping the V21.26 meta-test would make green QA depend on obsolete source-location assumptions rather than current behavior.
+
+Correction completed:
+- retired `qa/V21_26_LOCAL_WORLD_REFACTOR_QA.mjs`;
+- removed the nested meta-regression from `qa/V21_26_ENVIRONMENT_REFACTOR_QA.mjs`, which now validates its own environment-controller contract directly;
+- added `qa-local-world-current-a8.mjs` to verify useful orchestration invariants against their current owners instead of the obsolete public-entry layout;
+- retained explicit coverage for prepared terrain (P9.23), frame budget/scenery prep (P9.24/P9.25), horizon (P9.26), road transition (P9.27), combined frame pacing / road prebuild (P9.37) and prepared forest retention (P9.38);
+- added permanent `qa-cleanup-a8.yml`;
+- expanded Dev Integration so A8, B7, C1 and C2 ownership gates run on every integration pass.
+
+Completion record:
+- Candidate branch: `cleanup/qa-truth-a8`; candidate run `33350739004`: PASS including current ownership, direct environment QA, P9.23→P9.38 regressions, build and diff hygiene.
+- Integration commit: `8bb0c39c` — retired stale QA, added current ownership QA and permanent A8 workflow.
+- First permanent A8 run `33350880415` correctly failed because the new workflow itself still listed the retired filename in its path trigger; the gate was kept strict and the trigger was corrected rather than weakening the scanner.
+- Gate-fix commit: `e9840a9b`; final permanent A8 run `33350936461`: PASS.
+- Dev Integration hardening commit: `41f43d1f` — A8/B7/C1/C2 gates are now explicit integration steps.
+- Final Dev Integration run `33350936465`: PASS all 67 steps, including cleanup ownership gates, stress, 288 driving cases, R2–R20, terrain/traffic/forest/frame pacing, WebGL, live route smoke, production build and code split.
+- Human validation: not required; A8 changes QA truthfulness only and does not alter runtime code.
+- Result: no active QA forces the local-world system back to V21.26 implementation ownership, while all useful current streaming/frame-pacing invariants remain protected.
+
+---
+
 ## CLEANUP B — Physics architecture stabilization
 
 Goal: prevent another R17–R20 situation where old helper semantics silently conflict with the current physical solver.
@@ -562,42 +592,33 @@ Completion record:
 
 ### C2 — Flatten transmission controller layers **[P1/P2]**
 
-Status: **IN PROGRESS — audit complete 2026-08-30**
+Status: **DONE — 2026-08-30**
 
-Current layering before correction:
-- `transmission-controller-base.js`
-- `transmission-controller.js`
+Resulting ownership:
+- one canonical `src/transmission-controller.js` owns selector state, forward gear state, shifting, free-rev/clutch integration and exact authoritative gear publication;
+- `src/transmission-controller-base.js` is removed;
+- selector contract is explicit and unambiguous: **R = -1, N = 0, D/forward = 1..N**;
+- Neutral is a first-class controller state and cannot be coerced back to first gear by `Number(x)||1` fallback semantics;
+- multiplayer continues to serialize the exact authoritative gear used by the instrument cluster and reverse-light logic.
 
-Audit findings:
-- the only active source consumer of `transmission-controller-base.js` is the canonical `transmission-controller.js`; there is no independent runtime consumer that requires the base layer to remain;
-- the base controller contains several forward-gear coercions such as `Number(x)||1`, so selector state `0` cannot remain Neutral inside that layer without the wrapper repairing it afterward;
-- the current canonical wrapper already owns the authoritative selector contract `R=-1 / N=0 / D=1..N`, publishes the exact displayed gear to `transmission-network-state.js`, and the runtime bridge/multiplayer path preserve Neutral exactly;
-- existing current-path D/N/R, body-relative transmission, clutch, wheelspin and multiplayer protocol regressions all pass on the pre-C2 baseline;
-- `qa/V21_26_TRANSMISSION_REFACTOR_QA.mjs` is stale before C2: it still expects implementation ownership to reside directly in `transmission-controller.js` even though the heavy logic is currently hidden in the base layer, and it also carries the obsolete convention that EV forward may be represented by gear `0`. That historical assertion must be migrated rather than forcing the runtime back to an ambiguous Neutral/forward contract.
-
-Required correction:
-- consolidate selector/gear semantics in one canonical `transmission-controller.js`;
-- remove `transmission-controller-base.js`;
-- make Neutral explicitly owned as exact gear `0` rather than relying on post-update wrapper repair;
-- preserve reverse `-1` and exact forward gear `1..N`;
-- preserve clutch/free-rev/rev-limiter/autopilot behavior and body-relative drive direction;
-- preserve multiplayer serialization and reverse-light behavior sourced from the exact authoritative gear;
-- modernize stale V21.26 transmission QA to the current D/N/R contract;
-- add a permanent C2 ownership/selector regression before integration.
-
-Audit evidence:
-- audit branch: `audit/transmission-c2`;
-- ownership/current-regression audit run `33347455580`: PASS;
-- expanded truth-check run `33347531229`: current D/N/R + multiplayer regressions PASS and production build PASS; the historical V21.26 refactor QA fails on the untouched pre-C2 architecture, proving it is stale rather than a C2 regression.
-
-Implementation state:
-- candidate branch `cleanup/transmission-c2` created;
-- deterministic consolidation tooling staged, but no C2 source change has been integrated into `dev` yet;
-- C2 remains open until candidate QA, stress/driving matrix/build, permanent C2 gate and final Dev Integration all pass.
+Correction completed:
+- folded historical base logic into a private canonical core inside `transmission-controller.js`;
+- separated selector writes from publication so post-update code observes state instead of repairing it;
+- made EV and combustion D/N/R semantics explicit;
+- preserved body-relative drive direction, clutch/free-rev, rev limiter, manual/automatic shifting and autopilot behavior;
+- modernized stale `V21_26_TRANSMISSION_REFACTOR_QA` assumptions to the current runtime input bridge and exact D/N/R contract;
+- detached its unrelated historical environment meta-regression, which was handled separately as A8;
+- added permanent `qa-transmission-c2.mjs` and `qa-cleanup-c2.yml`.
 
 Completion record:
-- Commit: _pending_
-- QA: _pending_
+- Audit branch `audit/transmission-c2`; audit runs `33347455580` and `33347531229`: current D/N/R, clutch/wheelspin, multiplayer and production-build contracts PASS; old V21.26 QA proven stale on the untouched baseline.
+- Candidate branch `cleanup/transmission-c2`; final materialized candidate run `33350348361`: PASS ownership, transmission, exact multiplayer gear, 288 driving cases, stress, production build and diff hygiene.
+- Integration commit: `9087368b` — flattened controller layers and removed `transmission-controller-base.js`.
+- Permanent C2 gate run `33350480452`: PASS.
+- C2 final Dev Integration run `33350480418`: PASS all 63 steps.
+- Subsequent integration hardening commit `41f43d1f` adds C2 (plus B7/C1/A8) explicitly to Dev Integration; run `33350936465` PASS all 67 steps.
+- Human validation: not required; exact selector/transmission/network behavior is directly covered and the full driving/stress suite remained green.
+- Result: there is no wrapper/base repair contract; one controller owns exact selector and gear semantics end-to-end.
 
 ---
 
@@ -728,13 +749,29 @@ These rules are mandatory while working this plan:
 
 # 6. Recommended next task
 
-**Next: C2 — Flatten transmission controller layers.**
+**Next: C3 — Flatten road geometry layers after A1.**
 
-Start with an ownership/semantic audit of `transmission-controller-base.js` and `transmission-controller.js`. Preserve exact D/N/R behavior, make Neutral explicit without wrapper repair, retain multiplayer transmission serialization compatibility, and add a permanent C2 regression before removing any layer.
+Start with the ownership/reference audit of `road-geometry-base.js` and `road-geometry.js`. Preserve the active A1/V21.31 smoothing, banking, road-volume/profile and terrain/bridge invariants; migrate stale source-location QA before removing any layer; add a permanent C3 regression and run full Dev Integration before completion.
 
 ---
 
 # 7. Work log
+
+## 2026-08-30 — A8 completed: current local-world QA truth
+
+- Retired the stale V21.26 local-world implementation meta-test discovered during C2.
+- Rehomed useful orchestration assertions to current P9.25/P9.26/P9.37/P9.38 owners and retained the complete current streaming regression chain.
+- Candidate `33350739004` PASS; final A8 gate `33350936461` PASS; Dev Integration `33350936465` PASS 67/67.
+- No runtime code changed.
+- Next focus: C3 road-geometry consolidation.
+
+## 2026-08-30 — C2 completed: transmission selector ownership unified
+
+- Removed `transmission-controller-base.js` and consolidated exact R/N/D semantics into one canonical controller.
+- Neutral is now exact gear 0 inside the controller rather than a wrapper repair; Reverse remains -1 and forward gears remain 1..N.
+- Exact network/instrument gear serialization remains unchanged.
+- Final candidate `33350348361`, permanent gate `33350480452` and Dev Integration `33350480418` all PASS.
+- A stale V21.26 environment/local-world meta-regression discovered during validation was split out as A8 instead of being allowed to influence transmission behavior.
 
 ## 2026-08-30 — C2 audit completed: transmission selector ownership
 
