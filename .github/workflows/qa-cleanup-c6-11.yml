@@ -1,0 +1,106 @@
+name: Cleanup C6.11 Multiplayer HD Diagnostics QA
+
+on:
+  push:
+    branches:
+      - cleanup/diagnostics-c6-11
+      - dev
+    paths:
+      - 'src/multiplayer-visuals.js'
+      - 'src/multiplayer-visuals-m3.js'
+      - 'src/multiplayer-visuals-v18.js'
+      - 'src/multiplayer-vehicle-adapter.js'
+      - 'src/multiplayer-client-m3.js'
+      - 'src/diagnostics.js'
+      - 'qa-diagnostics-c6-*.mjs'
+      - 'qa/V21_31_MULTIPLAYER_*.mjs'
+      - 'qa/m414-*'
+      - 'qa/m415-*'
+      - '.github/workflows/qa-cleanup-c6-11.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  qa:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: C6.1-C6.11 diagnostics QA
+        run: |
+          node qa-diagnostics-c6-1.mjs
+          node qa-diagnostics-c6-2.mjs
+          node qa-diagnostics-c6-3.mjs
+          node qa-diagnostics-c6-4.mjs
+          node qa-diagnostics-c6-5.mjs
+          node qa-diagnostics-c6-6.mjs
+          node qa-diagnostics-c6-7.mjs
+          node qa-diagnostics-c6-8.mjs
+          node qa-diagnostics-c6-9.mjs
+          node qa-diagnostics-c6-10.mjs
+          node qa-diagnostics-c6-11.mjs
+      - name: Multiplayer protocol and client QA
+        run: |
+          node qa/V21_31_MULTIPLAYER_M3_PROTOCOL_QA.mjs
+          node qa/V21_31_MULTIPLAYER_M3_CLIENT_QA.mjs
+          node qa/V21_31_MULTIPLAYER_M3_SUPPORT_QA.mjs
+          node qa/V21_31_MULTIPLAYER_M3_REGISTRY_QA.mjs
+      - name: Multiplayer authored adapter QA
+        run: |
+          node qa/V21_31_MULTIPLAYER_M4_ADAPTER_QA.mjs
+          node qa/V21_31_MULTIPLAYER_M411_REVERSE_E2E_QA.mjs
+          node qa/V21_31_MULTIPLAYER_M412_CONTROLLER_RUNTIME_QA.mjs
+          node qa/V21_31_MULTIPLAYER_M413_REVERSE_BURST_SNAPSHOT_QA.mjs
+      - name: Shared multiplayer traffic QA
+        run: |
+          node qa-traffic-mp1.mjs
+          node qa-traffic-mp1-live.mjs
+      - name: Driving dynamics simulation matrix
+        run: node qa/DEV_DRIVING_SIM_QA.mjs
+      - name: Full V21.31 regression stress
+        run: npm run qa:stress
+      - name: M4.14 authored reverse WebGL pixel QA
+        shell: bash
+        run: |
+          npx vite --host 127.0.0.1 --port 5187 --strictPort >/tmp/c611-m414-vite.log 2>&1 &
+          VITE_PID=$!
+          cleanup(){ kill "$VITE_PID" >/dev/null 2>&1 || true; cat /tmp/c611-m414-vite.log || true; }
+          trap cleanup EXIT
+          READY=0
+          for i in {1..80}; do
+            if curl -fsS http://127.0.0.1:5187/qa/m414-render.html >/dev/null 2>&1; then READY=1; break; fi
+            sleep 0.1
+          done
+          test "$READY" = "1"
+          xvfb-run -a ./node_modules/.bin/electron --no-sandbox qa/m414-electron-main.cjs
+      - name: M4.15 network to WebGL reverse QA
+        shell: bash
+        run: |
+          npx vite --host 127.0.0.1 --port 5188 --strictPort >/tmp/c611-m415-vite.log 2>&1 &
+          VITE_PID=$!
+          WORLD_DRIVE_MP_PORT=8081 node server/multiplayer-server.mjs >/tmp/c611-m415-relay.log 2>&1 &
+          RELAY_PID=$!
+          cleanup(){
+            kill "$VITE_PID" "$RELAY_PID" >/dev/null 2>&1 || true
+            echo "--- Vite ---"; cat /tmp/c611-m415-vite.log || true
+            echo "--- Relay ---"; cat /tmp/c611-m415-relay.log || true
+          }
+          trap cleanup EXIT
+          READY=0
+          for i in {1..100}; do
+            if curl -fsS http://127.0.0.1:5188/qa/m415-render.html >/dev/null 2>&1 && curl -fsS http://127.0.0.1:8081/ >/dev/null 2>&1; then READY=1; break; fi
+            sleep 0.1
+          done
+          test "$READY" = "1"
+          M415_URL=http://127.0.0.1:5188/qa/m415-render.html xvfb-run -a ./node_modules/.bin/electron --no-sandbox qa/m415-electron-main.cjs
+      - name: Runtime import and debt audit
+        run: node qa/DEV_INTEGRATION_AUDIT.mjs
+      - name: Production build
+        run: npm run build
