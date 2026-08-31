@@ -4,6 +4,7 @@ import {createTransmissionController} from './src/transmission-controller.js';
 import {publishTransmissionRuntimeState,readTransmissionRuntimeState} from './src/transmission-runtime-bridge.js';
 import {readTransmissionNetworkGear,resetTransmissionNetworkGear} from './src/transmission-network-state.js';
 
+// C2 permanent contract: one controller owns exact R/N/D gear semantics.
 assert.equal(fs.existsSync('src/transmission-controller-base.js'),false,'historical transmission-controller-base.js returned');
 const source=fs.readFileSync('src/transmission-controller.js','utf8');
 assert.doesNotMatch(source,/transmission-controller-base\.js/,'canonical controller still imports historical base layer');
