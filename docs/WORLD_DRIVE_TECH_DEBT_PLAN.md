@@ -830,7 +830,7 @@ C5 completion record:
 
 ### C6 — Consolidate diagnostic globals **[P2]**
 
-Status: **IN PROGRESS — C6.1/C6.2/C6.3 DONE; C6.4 road-sign audit next (2026-08-31)**
+Status: **IN PROGRESS — C6.1/C6.2/C6.3 DONE; C6.4 road-sign boundary selected (2026-08-31)**
 
 Audit baseline:
 - audit branch `audit/diagnostics-c6`; strengthened audit run `33386461640`: PASS diagnostic inventory, import/debt audit, active forest runtime/stress, P9.37 frame pacing, P9.39 hitch attribution, P9.41 frame-runtime attribution and production build;
@@ -961,6 +961,23 @@ C6.3 completion record — canonical runtime wheelspin diagnostics:
 - human validation: not required because C6.3 is telemetry-only and all mechanical/visual integration regressions remained green;
 - Result: **C6.3 DONE**. Next is C6.4 read-only audit of road-sign diagnostics before any alias migration.
 
+C6.4 read-only audit — road-sign diagnostic globals:
+- branch `audit/diagnostics-c6-4`; first run `33397020292` stopped only in the new audit script because it assumed an obsolete P9.30 diagnostic mode label; no runtime QA executed or failed;
+- corrected run `33397131467`: PASS exact global inventory, P9.30 runtime signs, P9.37 combined frame pacing, C5.4 geographic sign orchestration, V21.25 minimap sign readout, runtime import/debt audit and production build;
+- exactly two road-sign diagnostic globals remain: `__WORLD_DRIVE_P930_ROAD_SIGNS__` and `__WORLD_DRIVE_P937_ROAD_SIGNS__`;
+- P9.30 has one writer in `src/road-furniture-p930.js`, zero runtime readers and zero QA/source-string consumers; its current diagnostic mode is `p930-incremental-sign-build`;
+- P9.37 has one writer in `src/road-furniture-p937.js`, zero runtime readers and exactly one QA/source-string consumer in `qa-p937-combined-frame-pacing.mjs`; its current mode is `p937-idle-sign-collection`;
+- P9.37 already composes `base.diagnostics()` and spreads the complete P9.30 payload before adding its own P9.37 scheduling section, so the P9.30 global is externally redundant even though the P9.30 diagnostic function remains an internal API;
+- accepted behavior remains green: P9.30 runtime built 4 signs with bounded slices/commit, P9.37 coalesced idle refresh stayed intact, C5.4 sign placement policy stayed intact, and minimap readout remains 5 s + fade with bidirectional rearm.
+
+C6.4 selected boundary — one canonical road-sign snapshot:
+- make the stable `WorldDriveDiagnostics.roadSigns` category authoritative and expose the existing P9.37 combined diagnostic function as `roadSigns.snapshot`;
+- keep P9.30 `diagnostics()` internal and unchanged because P9.37 already consumes it; remove `__WORLD_DRIVE_P930_ROAD_SIGNS__` because it has no consumer;
+- migrate the sole P9.37 QA source-string contract to the canonical diagnostics root, then remove `__WORLD_DRIVE_P937_ROAD_SIGNS__` rather than preserving an otherwise unused compatibility store;
+- preserve exact diagnostic payloads, callable timing and allocation cadence: registration occurs at road-furniture system creation, while each snapshot still computes P9.30 + P9.37 data only when called;
+- no changes to sign geometry, texture/cache policy, placement, geographic sign selection, idle scheduling thresholds, minimap 5 s/fade readout or sign rearm;
+- candidate validation must include C6.4 equivalence, P9.30 runtime, P9.37 combined frame pacing, C5.4 geographic signs, minimap sign readout, C6.1–C6.3, runtime import/debt audit, full stress and production build before integration.
+
 ---
 
 # 4. Items intentionally NOT scheduled for immediate deletion
@@ -1001,9 +1018,9 @@ These rules are mandatory while working this plan:
 
 # 6. Recommended next task
 
-**Next: C6.4 — audit road-sign diagnostic globals.**
+**Next: C6.4 — implement the audited canonical road-sign snapshot.**
 
-Start read-only: inventory every road-sign diagnostic global, writer, runtime reader and QA/source-string dependency before changing ownership. Preserve the P9.37 compatibility alias until its current consumer/QA contract is explicitly migrated; no road-sign rendering, placement, timing or sign-readout behavior changes during the audit.
+Move only diagnostic publication: register the existing combined P9.37 diagnostic function at `WorldDriveDiagnostics.roadSigns.snapshot`, remove the unconsumed P9.30/P9.37 globals after migrating the sole QA source-string contract, and preserve all road-sign rendering, placement, scheduling and minimap readout behavior.
 
 ---
 
