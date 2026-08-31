@@ -13,15 +13,15 @@ assert.equal(exists('src/vehicle-dynamics.js'),true,'canonical vehicle dynamics 
 const canonical=read('src/vehicle-dynamics.js');
 const control=read('src/vehicle-dynamics-traction-steering.js');
 const core=read('src/vehicle-dynamics-core.js');
-const runtime=read('src/driving-runtime-base.js')+'\n'+read('src/driving-runtime.js');
+const main=read('src/main.js');
 
 assert.match(canonical,/vehicle-dynamics-traction-steering\.js/,'canonical facade must consume traction/steering owner');
 assert.doesNotMatch(canonical,/vehicle-dynamics-v21\.29|vehicle-dynamics-base/,'canonical facade still points at historical dynamics layers');
 assert.match(control,/vehicle-dynamics-core\.js/,'traction/steering layer must consume dynamics core');
 assert.doesNotMatch(control,/vehicle-dynamics-v21\.29|vehicle-dynamics-base/,'traction/steering layer still points at historical names');
 assert.match(core,/export const GRAVITY=/,'core math owner is missing expected foundation exports');
-assert.doesNotMatch(runtime,/vehicle-dynamics-(?:core|traction-steering|v21\.29|base)/,'driving runtime must consume only canonical vehicle-dynamics.js');
-assert.match(runtime,/vehicle-dynamics\.js/,'driving runtime no longer imports canonical vehicle dynamics');
+assert.match(main,/from '\.\/vehicle-dynamics\.js'/,'composition root must consume canonical vehicle-dynamics.js');
+assert.doesNotMatch(main,/vehicle-dynamics-(?:core|traction-steering|v21\.29|base)/,'composition root must not bypass canonical vehicle dynamics');
 
 // Public behavior must remain available only through the canonical facade.
 const dynamics=await import('./src/vehicle-dynamics.js');
@@ -35,5 +35,5 @@ for(const name of [
 
 console.log('CLEANUP C1 VEHICLE DYNAMICS OWNERSHIP QA: PASS',{
   layers:['vehicle-dynamics-core.js','vehicle-dynamics-traction-steering.js','vehicle-dynamics.js'],
-  runtimeBoundary:'vehicle-dynamics.js only'
+  compositionRootBoundary:'vehicle-dynamics.js only'
 });
