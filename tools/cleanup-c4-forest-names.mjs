@@ -60,7 +60,8 @@ function rewriteTarget(target){
     return;
   }
   if(!/\.(?:js|mjs|cjs|yml|yaml|md)$/i.test(target))return;
-  if(target.replaceAll('\\','/')==='.github/workflows/qa-cleanup-c4-candidate.yml')return;
+  const rel=target.replaceAll('\\','/');
+  if(rel==='qa-forest-c4.mjs'||rel==='.github/workflows/qa-cleanup-c4-candidate.yml')return;
   let text=fs.readFileSync(target,'utf8');
   let next=text;
   for(const [from,to] of replacements)next=replaceAllExact(next,from,to);
