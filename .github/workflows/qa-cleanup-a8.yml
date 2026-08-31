@@ -10,7 +10,6 @@ on:
       - 'src/local-world-builder-p925.js'
       - 'qa-local-world-current-a8.mjs'
       - 'qa/V21_26_ENVIRONMENT_REFACTOR_QA.mjs'
-      - 'qa/V21_26_LOCAL_WORLD_REFACTOR_QA.mjs'
       - 'qa-streaming-p923-prepared-refresh.mjs'
       - 'qa-streaming-p923-scheduler.mjs'
       - 'qa-streaming-p924-frame-budget.mjs'
