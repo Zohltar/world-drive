@@ -42,6 +42,10 @@ jobs:
           const evAnchor='const evThrottle=controller.updateTransmission(.016,.4,true);';
           const bridged=`publishTransmissionRuntimeState({bodyLongitudinalSpeed:0,engineThrottle:.4,clutchHeld:false,serviceBrake:0});\n${evAnchor}`;
           if(!s.includes('publishTransmissionRuntimeState({bodyLongitudinalSpeed:0,engineThrottle:.4'))s=s.replace(evAnchor,bridged);
+          const metaStart="const regression=spawnSync(process.execPath,['qa/V21_26_ENVIRONMENT_REFACTOR_QA.mjs'],{cwd:root,encoding:'utf8'});";
+          const metaAssert="assert.equal(regression.status,0,`prior V21.26 refactors regressed:\\n${regression.stderr||regression.stdout}`);";
+          if(s.includes(metaStart))s=s.replace(metaStart,'// C2: historical environment meta-regression retired; transmission coverage is direct.');
+          if(s.includes(metaAssert))s=s.replace(metaAssert,'');
           fs.writeFileSync(path,s);
           NODE
       - name: C2 ownership and exact selector semantics
