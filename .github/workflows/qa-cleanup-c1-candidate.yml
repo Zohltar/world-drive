@@ -1,0 +1,71 @@
+name: Cleanup C1 Candidate
+
+on:
+  push:
+    branches:
+      - cleanup/vehicle-dynamics-c1-v2
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  candidate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+      - name: Apply deterministic C1 migration
+        run: |
+          if [ -f src/vehicle-dynamics-v21.29.js ]; then
+            node tools/cleanup-c1-vehicle-dynamics.mjs
+          else
+            echo "C1 migration already materialized"
+          fi
+      - name: C1 ownership gate
+        run: node qa-vehicle-dynamics-c1.mjs
+      - name: Steering and wheelspin regressions
+        run: |
+          node qa-grip-steering-curve-r3.mjs
+          node qa-grip-steering-input-r13.mjs
+          node qa-grip-f1-steering-r22.mjs
+          node qa-wheelspin-state-b6.mjs
+      - name: V21.29 clutch regressions
+        run: |
+          node qa/V21_29_ALL_COMBUSTION_CLUTCH_QA.mjs
+          node qa/V21_29_CIVIC_CLUTCH_DUMP_SLIP_QA.mjs
+          node qa/V21_29_CIVIC_CLUTCH_WHEELSPIN_QA.mjs
+          node qa/V21_29_CLUTCH_SHOCK_QA.mjs
+          node qa/V21_29_CLUTCH_SHOCK_FLEET_QA.mjs
+          node qa/V21_29_RUNTIME_WHEELSPIN_QA.mjs
+      - name: V21.30 and V21.31 dynamics regressions
+        run: |
+          node qa/V21_30_ANTI_ROLL_BALANCE_QA.mjs
+          node qa/V21_30_STATIONARY_STEERING_YAW_QA.mjs
+          node qa/V21_30_BRAKE_HOLD_STOP_QA.mjs
+          node qa/V21_30_TRUCK_HILL_TORQUE_QA.mjs
+          node qa/V21_31_AIRBORNE_TIRE_STATE_QA.mjs
+      - name: Driving matrix
+        run: node qa/DEV_DRIVING_SIM_QA.mjs
+      - name: Stress suite
+        run: npm run qa:stress
+      - name: Production build
+        run: npm run build
+      - name: Diff hygiene
+        run: git diff --check
+      - name: Commit materialized migration
+        run: |
+          if git diff --quiet; then
+            echo "No generated C1 changes to commit"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Cleanup C1: flatten versioned vehicle dynamics layers"
+          git push origin HEAD:cleanup/vehicle-dynamics-c1-v2
