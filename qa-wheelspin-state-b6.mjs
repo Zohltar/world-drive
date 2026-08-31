@@ -79,7 +79,7 @@ for(const drivetrain of drives){
   }
 }
 
-// The V21.29 tire wrapper must be call-order independent. The raw clutch demand
+// The traction/steering tire owner must be call-order independent. The raw clutch demand
 // belongs to this grip evaluation, not to whichever traction call happened last.
 const sys=createVehicleSystem({initialId:'civic'});
 const civic=sys.physics;
@@ -129,12 +129,12 @@ approx(cleanFallback.requestedPropulsionAccel,1.1,1e-12,'stale raw demand leaked
 approx(cleanFallback.appliedPropulsionAccel,1.1,1e-12,'fallback applied propulsion changed');
 approx(cleanFallback.propulsionSaturationRatio,1,1e-12,'fallback saturation must be 1');
 
-const dynamics=fs.readFileSync('src/vehicle-dynamics-v21.29.js','utf8');
+const dynamics=fs.readFileSync('src/vehicle-dynamics-traction-steering.js','utf8');
 const runtime=fs.readFileSync('src/driving-runtime.js','utf8');
 const wrapper=fs.readFileSync('src/vehicle-dynamics.js','utf8');
 assert.doesNotMatch(dynamics,/latestRawDriveDemandAccel|latestAppliedDriveAccel/,'hidden traction→grip module state remains');
-assert.doesNotMatch(dynamics,/WorldDriveWheelSpinTelemetry/,'deprecated V21.29 wheelspin telemetry global remains');
-assert.doesNotMatch(wrapper,/WorldDriveWheelSpinTelemetry/,'V21.30 still depends on deprecated wheelspin telemetry global');
+assert.doesNotMatch(dynamics,/WorldDriveWheelSpinTelemetry/,'deprecated wheelspin telemetry global remains');
+assert.doesNotMatch(wrapper,/WorldDriveWheelSpinTelemetry/,'canonical dynamics still depends on deprecated wheelspin telemetry global');
 assert.match(runtime,/createWheelspinState/,'runtime does not use B6 persistent wheelspin owner');
 assert.doesNotMatch(runtime,/let wheelspinLevel=0,wheelspinHoldSec=0/,'runtime still owns hidden parallel wheelspin variables');
 
