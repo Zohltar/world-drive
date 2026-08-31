@@ -238,6 +238,7 @@ export function createWorldMaterials({THREE,renderer,documentRef=globalThis.docu
     lineWhite,
     treeTrunkMat,
     treeMat,
+    waterTex,
     waterMat,
     riverMat,
     coastWaterMat
