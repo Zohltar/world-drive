@@ -1,4 +1,5 @@
 import {createRoadFurnitureSystem as createRoadFurnitureSystemP930} from './road-furniture-p930.js';
+import {ensureWorldDriveDiagnostics} from './diagnostics.js';
 
 const MIN_IDLE_MS=5.5;
 const MAX_IDLE_DEFERRALS=10;
@@ -99,9 +100,7 @@ export function createRoadFurnitureSystem(options={}){
     refreshRoadSignsOnly,
     diagnostics
   });
-
-  try{
-    globalThis.__WORLD_DRIVE_P937_ROAD_SIGNS__=diagnostics;
-  }catch{}
+  const roadSignDiagnostics=ensureWorldDriveDiagnostics().roadSigns;
+  roadSignDiagnostics.snapshot=diagnostics;
   return api;
 }
