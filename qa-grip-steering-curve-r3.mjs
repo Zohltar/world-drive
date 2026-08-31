@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import {steeringCommand} from './src/vehicle-dynamics-v21.29.js';
+import {steeringCommand} from './src/vehicle-dynamics.js';
 
 const vehicle={
   maxSteerLow:.46,
