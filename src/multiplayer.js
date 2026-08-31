@@ -114,15 +114,13 @@ multiplayerDiagnostics.localGear=()=>({
   reversing:normalizeWireGear(readTransmissionNetworkGear())===-1
 });
 
-try{
-  globalThis.__WORLD_DRIVE_MULTIPLAYER_WIRE__=()=>({
-    exactLocalGear:normalizeWireGear(readTransmissionNetworkGear()),
-    outgoingCount:wireDiagnostics.outgoingCount,
-    incomingCount:wireDiagnostics.incomingCount,
-    outgoing:wireDiagnostics.outgoing?{...wireDiagnostics.outgoing}:null,
-    incoming:wireDiagnostics.incoming?JSON.parse(JSON.stringify(wireDiagnostics.incoming)):null
-  });
-}catch{}
+multiplayerDiagnostics.wire=()=>({
+  exactLocalGear:normalizeWireGear(readTransmissionNetworkGear()),
+  outgoingCount:wireDiagnostics.outgoingCount,
+  incomingCount:wireDiagnostics.incomingCount,
+  outgoing:wireDiagnostics.outgoing?{...wireDiagnostics.outgoing}:null,
+  incoming:wireDiagnostics.incoming?JSON.parse(JSON.stringify(wireDiagnostics.incoming)):null
+});
 
 export function createMultiplayerClient(options={}){
   const baseGetLocalState=options.getLocalState;

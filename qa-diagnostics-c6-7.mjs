@@ -6,7 +6,8 @@ if(!source.includes("import {ensureWorldDriveDiagnostics} from './diagnostics.js
 if(!source.includes('const multiplayerDiagnostics=ensureWorldDriveDiagnostics().multiplayer;'))throw new Error('multiplayer diagnostics category is not canonical');
 if(!source.includes('multiplayerDiagnostics.localGear=()=>({'))throw new Error('canonical local-gear callable missing');
 if(/globalThis\.__WORLD_DRIVE_MULTIPLAYER_LOCAL_GEAR__\s*=/.test(source))throw new Error('legacy local-gear writer remains');
-if(!source.includes('globalThis.__WORLD_DRIVE_MULTIPLAYER_WIRE__=()=>({'))throw new Error('wire diagnostics changed during C6.7');
+if(!source.includes('multiplayerDiagnostics.wire=()=>({'))throw new Error('canonical wire diagnostics missing after C6.8');
+if(/globalThis\.__WORLD_DRIVE_MULTIPLAYER_WIRE__\s*=/.test(source))throw new Error('legacy wire writer returned');
 
 try{delete globalThis.WorldDriveDiagnostics;}catch{}
 try{delete globalThis.__WORLD_DRIVE_MULTIPLAYER_LOCAL_GEAR__;}catch{}
@@ -15,7 +16,8 @@ await import(`./src/multiplayer.js?c67=${Date.now()}`);
 const root=globalThis.WorldDriveDiagnostics;
 if(!root?.multiplayer||typeof root.multiplayer.localGear!=='function')throw new Error('canonical multiplayer localGear callable not installed');
 if(globalThis.__WORLD_DRIVE_MULTIPLAYER_LOCAL_GEAR__!==undefined)throw new Error('legacy local-gear global was recreated');
-if(typeof globalThis.__WORLD_DRIVE_MULTIPLAYER_WIRE__!=='function')throw new Error('wire diagnostics compatibility changed');
+if(typeof root.multiplayer.wire!=='function')throw new Error('canonical wire diagnostics missing');
+if(globalThis.__WORLD_DRIVE_MULTIPLAYER_WIRE__!==undefined)throw new Error('legacy wire global was recreated');
 
 publishTransmissionNetworkGear(-1);
 let diag=root.multiplayer.localGear();
@@ -36,6 +38,7 @@ console.log('CLEANUP C6.7 MULTIPLAYER LOCAL-GEAR DIAGNOSTICS QA: PASS',{
   reverse:true,
   neutral:true,
   forward:true,
-  wireDiagnosticsUntouched:true,
+  wireBehaviorUntouched:true,
+  wireDiagnosticsCanonical:true,
   invocationAllocationPreserved:true
 });
