@@ -830,11 +830,22 @@ C5 completion record:
 
 ### C6 — Consolidate diagnostic globals **[P2]**
 
-Status: **TODO**
+Status: **IN PROGRESS — audit complete, C6.1 selected (2026-08-31)**
 
-Current runtime exposes many globals accumulated over development, including forest P9.xx aliases, physics shadow, traffic, multiplayer and wheelspin telemetry.
+Audit baseline:
+- audit branch `audit/diagnostics-c6`; strengthened audit run `33386461640`: PASS diagnostic inventory, import/debt audit, active forest runtime/stress, P9.37 frame pacing, P9.39 hitch attribution, P9.41 frame-runtime attribution and production build;
+- first audit run `33386355567` was technically green but undercounted QA dependencies that reference diagnostic names through source-string/regex assertions; V2 explicitly scans those references before migration decisions;
+- 31 World Drive globals are currently exposed across 9 categories: forest 12, frame pacing 2, multiplayer 3, other 3, physics 1, presentation 1, road signs 2, streaming 1, traffic 5 and wheelspin 1.
 
-Proposed direction:
+Material findings:
+- multi-owner globals: `WorldDriveFramePacing` (main + forest wrapper), `__WORLD_DRIVE_MULTIPLAYER_HD_VISUALS__`, `__WORLD_DRIVE_P923_LOCAL_WORLD__`, `WorldDriveTraffic`, and `WorldDriveTrafficSpawn`;
+- version aliases still pinned by QA are only `__WORLD_DRIVE_P928_RECORD_HITCH__` (P9.39) and `__WORLD_DRIVE_P937_ROAD_SIGNS__` (P9.37); these must not disappear until their QA/consumer migration is explicit;
+- additional source-string QA contracts include `__WORLD_DRIVE_MULTIPLAYER_WIRE__`, `WorldDrivePhysicsShadow`, and the injected desktop bridge `worldDriveDesktop`;
+- most forest P9.xx snapshot/status aliases have no QA consumer; however the P9.33/P9.34/P9.35 READY aliases are still read by `startup-ui.js`, so they are runtime compatibility surfaces rather than dead globals;
+- `WorldDriveFramePacing` is a callable diagnostic facade installed by `main.js` and later wrapped asynchronously by the forest streamer. C6 must preserve callable identity/semantics while moving authoritative ownership under one diagnostics root;
+- P9.28 hitch recording is also a real runtime callback consumed by `streaming-coordinator.js`, not merely a DevTools alias.
+
+Target direction:
 
 ```js
 globalThis.WorldDriveDiagnostics = {
@@ -844,15 +855,29 @@ globalThis.WorldDriveDiagnostics = {
   traffic,
   multiplayer,
   wheelspin,
-  streaming
+  streaming,
+  roadSigns,
+  presentation
 };
 ```
 
-Then keep temporary aliases only for a defined migration window if old QA requires them.
+Migration rule:
+- create one stable canonical root and move authority category-by-category;
+- compatibility aliases may temporarily delegate to the canonical root but may not remain independent stores/writers;
+- do not convert all 31 globals in one commit. Each phase needs identity/equivalence QA and the existing subsystem regressions.
+
+C6.1 selected boundary — canonical diagnostics root + frame-pacing/forest bridge:
+- add a small canonical diagnostics module that creates/returns one stable `WorldDriveDiagnostics` root;
+- make canonical `framePacing` and `forest` accessors authoritative without changing their returned diagnostic payloads, retry cadence, hitch thresholds or forest timing;
+- retain `WorldDriveFramePacing` and `__WORLD_DRIVE_P928_RECORD_HITCH__` as compatibility delegates during C6.1 because current runtime/QA consumes them;
+- migrate startup forest readiness lookup to the canonical forest diagnostics path, while temporary P9.33/P9.34/P9.35 READY aliases may remain equivalent during the transition;
+- leave traffic, multiplayer, physics, wheelspin, road-sign and presentation globals for later C6 phases.
 
 Completion record:
-- Commit: _pending_
-- QA: _pending_
+- Audit V1: `33386355567` PASS (consumer scan later strengthened).
+- Audit V2: `33386461640` PASS.
+- C6.1 commit: _pending_
+- C6.1 QA: _pending_
 
 ---
 
@@ -894,13 +919,22 @@ These rules are mandatory while working this plan:
 
 # 6. Recommended next task
 
-**Next: C6 — consolidate diagnostic globals.**
+**Next: C6.1 — canonical diagnostics root + frame-pacing/forest bridge.**
 
-C5 is closed after the C5.7 audit found no further worthwhile low-risk `main.js` boundary. Start C6 with a read-only inventory of active diagnostic globals/aliases and their QA consumers; define a compatibility-preserving migration plan before changing runtime diagnostics.
+The strengthened C6 audit is complete. Implement the first compatibility-preserving slice only: one stable diagnostics root for frame pacing/forest, with current P9.28 and frame-pacing aliases delegating to the same authority and startup forest readiness migrated to the canonical path.
 
 ---
 
 # 7. Work log
+
+## 2026-08-31 — C6 diagnostic-global audit completed; C6.1 selected
+
+- Audit branch `audit/diagnostics-c6`; V1 run `33386355567` PASS but exposed an audit limitation: source-string/regex QA references were not counted as consumers.
+- Strengthened V2 run `33386461640` PASS after scanning both direct global access and textual QA contracts; all active forest/frame-pacing regressions and production build remained green.
+- Inventory: 31 globals across forest/frame-pacing/multiplayer/physics/traffic/wheelspin/streaming/road-sign/presentation/other categories.
+- Multi-owner debt confirmed for frame pacing, local-world compatibility, multiplayer HD visuals and two traffic globals.
+- Only P9.28 hitch and P9.37 road-sign aliases are version-name QA contracts; startup still consumes P9.33–P9.35 READY aliases at runtime.
+- C6.1 selected: stable canonical diagnostics root plus frame-pacing/forest bridge, preserving callable diagnostics, hitch callback semantics and temporary compatibility aliases.
 
 ## 2026-08-31 — C5 closed after C5.7 diminishing-returns audit
 
