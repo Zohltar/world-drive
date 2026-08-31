@@ -10,13 +10,13 @@ import {enforceExactGearOnOutgoingPayload} from '../src/multiplayer.js';
 import {
   normalizeMultiplayerGear,
   reverseFromMultiplayerGear
-} from '../src/multiplayer-client-m3.js';
+} from '../src/multiplayer/multiplayer-client-m3.js';
 
 for(const file of [
   'server/multiplayer-server.mjs',
   'electron/multiplayer-runtime.cjs',
   'src/multiplayer.js',
-  'src/multiplayer-client-m3.js',
+  'src/multiplayer/multiplayer-client-m3.js',
   'src/transmission-controller.js',
   'src/transmission-network-state.js',
   'src/transmission-runtime-bridge.js'
@@ -25,7 +25,7 @@ for(const file of [
 const browser=fs.readFileSync('server/multiplayer-server.mjs','utf8');
 const electron=fs.readFileSync('electron/multiplayer-runtime.cjs','utf8');
 const entry=fs.readFileSync('src/multiplayer.js','utf8');
-const client=fs.readFileSync('src/multiplayer-client-m3.js','utf8');
+const client=fs.readFileSync('src/multiplayer/multiplayer-client-m3.js','utf8');
 const transmission=fs.readFileSync('src/transmission-controller.js','utf8');
 const bridge=fs.readFileSync('src/transmission-runtime-bridge.js','utf8');
 
