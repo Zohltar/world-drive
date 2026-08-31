@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import {createMultiplayerVisualSystem} from '/src/multiplayer-visuals-m3.js';
+import {createMultiplayerVisualSystem} from '/src/multiplayer/multiplayer-visuals-m3.js';
 
 const WIDTH=640;
 const HEIGHT=360;
