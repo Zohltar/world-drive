@@ -514,8 +514,6 @@ export function createRoadFurnitureSystem({
     };
   }
 
-  globalThis.__WORLD_DRIVE_P930_ROAD_SIGNS__=diagnostics;
-
   return Object.freeze({
     addRoadSignAt(...args){
       syncState();

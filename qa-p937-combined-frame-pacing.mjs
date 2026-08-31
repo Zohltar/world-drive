@@ -43,7 +43,8 @@ for(const marker of [
   'requestIdleCallback',
   'perf.coalesced++',
   "mode:'p937-idle-sign-collection'",
-  '__WORLD_DRIVE_P937_ROAD_SIGNS__'
+  'ensureWorldDriveDiagnostics',
+  'roadSignDiagnostics.snapshot=diagnostics'
 ])expect(wrapper.includes(marker),`P9.37 road-sign idle marker missing: ${marker}`);
 
 expect(wrapper.includes('pending:scheduled||baseDiag.pending===true'),'P9.37 must expose deferred sign work as pending');

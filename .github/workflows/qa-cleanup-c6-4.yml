@@ -1,0 +1,55 @@
+name: Cleanup C6.4 Road Sign Diagnostics QA
+
+on:
+  push:
+    branches:
+      - dev
+    paths:
+      - 'src/diagnostics.js'
+      - 'src/road-furniture-p930.js'
+      - 'src/road-furniture-p937.js'
+      - 'qa-diagnostics-c6-1.mjs'
+      - 'qa-diagnostics-c6-2.mjs'
+      - 'qa-diagnostics-c6-3.mjs'
+      - 'qa-diagnostics-c6-4.mjs'
+      - 'qa-road-signs-p930-runtime.mjs'
+      - 'qa-p937-combined-frame-pacing.mjs'
+      - 'qa-main-c5-geographic-signs.mjs'
+      - 'qa/V21_25_MINIMAP_SIGN_READOUT_QA.mjs'
+      - '.github/workflows/qa-cleanup-c6-4.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  qa:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: C6.1 diagnostics root QA
+        run: node qa-diagnostics-c6-1.mjs
+      - name: C6.2 presentation diagnostics QA
+        run: node qa-diagnostics-c6-2.mjs
+      - name: C6.3 wheelspin diagnostics QA
+        run: node qa-diagnostics-c6-3.mjs
+      - name: C6.4 road-sign diagnostics QA
+        run: node qa-diagnostics-c6-4.mjs
+      - name: P9.30 road-sign runtime QA
+        run: node qa-road-signs-p930-runtime.mjs
+      - name: P9.37 combined frame-pacing QA
+        run: node qa-p937-combined-frame-pacing.mjs
+      - name: C5.4 geographic sign orchestration QA
+        run: node qa-main-c5-geographic-signs.mjs
+      - name: V21.25 minimap sign readout QA
+        run: node qa/V21_25_MINIMAP_SIGN_READOUT_QA.mjs
+      - name: Runtime import and debt audit
+        run: node qa/DEV_INTEGRATION_AUDIT.mjs
+      - name: Production build
+        run: npm run build
