@@ -37,6 +37,7 @@ jobs:
           else
             echo 'C6.1 already materialized'
           fi
+          node tools/modernize-v21-22-3-qa-c6.mjs
       - name: C6.1 canonical diagnostics QA
         run: node qa-diagnostics-c6-1.mjs
       - name: C4 forest compatibility ownership QA
