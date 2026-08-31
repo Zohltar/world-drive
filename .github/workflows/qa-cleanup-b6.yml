@@ -6,7 +6,7 @@ on:
       - dev
     paths:
       - 'src/physics/wheelspin-state.js'
-      - 'src/vehicle-dynamics-v21.29.js'
+      - 'src/vehicle-dynamics-traction-steering.js'
       - 'src/vehicle-dynamics.js'
       - 'src/driving-runtime-base.js'
       - 'src/driving-runtime.js'
