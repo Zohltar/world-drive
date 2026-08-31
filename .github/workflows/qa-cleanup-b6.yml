@@ -1,0 +1,42 @@
+name: Cleanup B6 Wheelspin Ownership QA
+
+on:
+  push:
+    branches:
+      - dev
+    paths:
+      - 'src/physics/wheelspin-state.js'
+      - 'src/vehicle-dynamics-v21.29.js'
+      - 'src/vehicle-dynamics.js'
+      - 'src/driving-runtime-base.js'
+      - 'src/driving-runtime.js'
+      - 'qa-wheelspin-state-b6.mjs'
+      - 'qa/V21_29_CIVIC_CLUTCH_DUMP_SLIP_QA.mjs'
+      - 'qa/V21_29_CIVIC_CLUTCH_WHEELSPIN_QA.mjs'
+      - 'qa/V21_29_RUNTIME_WHEELSPIN_QA.mjs'
+      - 'qa/V21_31_AIRBORNE_TIRE_STATE_QA.mjs'
+      - '.github/workflows/qa-cleanup-b6.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  qa:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+      - name: B6 ownership and order-independence QA
+        run: node qa-wheelspin-state-b6.mjs
+      - name: Clutch/wheelspin regressions
+        run: |
+          node qa/V21_29_ALL_COMBUSTION_CLUTCH_QA.mjs
+          node qa/V21_29_CIVIC_CLUTCH_DUMP_SLIP_QA.mjs
+          node qa/V21_29_CIVIC_CLUTCH_WHEELSPIN_QA.mjs
+          node qa/V21_29_RUNTIME_WHEELSPIN_QA.mjs
+          node qa/V21_29_SEMI_AUTO_CLUTCH_QA.mjs
+          node qa/V21_31_AIRBORNE_TIRE_STATE_QA.mjs
