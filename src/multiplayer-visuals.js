@@ -1,3 +1,5 @@
+import {ensureWorldDriveDiagnostics} from './diagnostics.js';
+
 // Lightweight multiplayer visual facade.
 // The full remote presentation stack is optional and is loaded only when the
 // multiplayer client is about to connect. This keeps interpolation/support/GLB
@@ -54,7 +56,7 @@ export function createMultiplayerVisualSystem(options={}){
     };
   }
 
-  try{globalThis.__WORLD_DRIVE_MULTIPLAYER_HD_VISUALS__=diagnostics;}catch{}
+  try{ensureWorldDriveDiagnostics().multiplayer.hdVisuals=diagnostics;}catch{}
 
   return {
     createRemoteVehicleVisual,
