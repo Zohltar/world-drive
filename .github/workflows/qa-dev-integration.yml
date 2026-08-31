@@ -88,6 +88,10 @@ jobs:
         run: node qa-diagnostics-c6-9.mjs
       - name: Cleanup C6.10 traffic-preload diagnostics QA
         run: node qa-diagnostics-c6-10.mjs
+      - name: Cleanup C6.11 multiplayer HD visual diagnostics QA
+        run: node qa-diagnostics-c6-11.mjs
+      - name: Cleanup C6.12 traffic runtime diagnostics QA
+        run: node qa-diagnostics-c6-12.mjs
       - name: Full V21.31 regression stress
         run: npm run qa:stress
       - name: Driving dynamics simulation matrix
