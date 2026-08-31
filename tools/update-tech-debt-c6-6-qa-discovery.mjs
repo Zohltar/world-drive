@@ -1,0 +1,13 @@
+import fs from 'node:fs';
+const path='docs/WORLD_DRIVE_TECH_DEBT_PLAN.md';
+let s=fs.readFileSync(path,'utf8');
+const oldStatus='Status: **IN PROGRESS — C6.1/C6.2/C6.3/C6.4/C6.5 DONE; C6.6 physics-shadow audit next (2026-08-31)**';
+const newStatus='Status: **IN PROGRESS — C6.1/C6.2/C6.3/C6.4/C6.5 DONE; C6.6 physics-shadow audit in progress (2026-08-31)**';
+if(!s.includes(oldStatus))throw new Error('C6 status anchor missing');
+s=s.replace(oldStatus,newStatus);
+const anchor='- Result: **C6.5 DONE**. Next is a read-only audit of `WorldDrivePhysicsShadow` before any migration.\n';
+if(!s.includes(anchor))throw new Error('C6.5 result anchor missing');
+const note=`\nC6.6 material discovery — stale V21.27 physics-shadow source-location QA:\n- read-only audit branch \`audit/diagnostics-c6-6\`; audit step itself PASS: \`WorldDrivePhysicsShadow\` has one writer in \`src/main.js\`, zero runtime readers and exactly one QA/source-string consumer; the hook is a callable DevTools observer that returns \`drivingRuntime?.physicsShadowDiagnostics?.()||null\` and does not feed authoritative state;\n- audit run \`33402410942\` then stopped in \`qa/V21_27_PHYSICS_SHADOW_QA.mjs\`, not in C6.6 ownership checks;\n- the historical QA still requires \`createPerWheelShadowSolver\` and \`physicsShadow.advance(...)\` directly in \`src/driving-runtime.js\`, while the accepted current architecture owns the shadow solver in \`src/driving-runtime-base.js\` and exposes it through the canonical wrapper;\n- the useful invariant remains valid: the per-wheel shadow solver is non-authoritative, advances from current vehicle state, exposes diagnostics, and must never feed predicted acceleration/yaw back into authoritative chassis state;\n- modernize the QA to current ownership before trusting it in C6.6; do not move the solver back into the wrapper or change shadow equations/timing merely to satisfy stale source-location assertions.\n`;
+if(!s.includes('C6.6 material discovery — stale V21.27 physics-shadow source-location QA:'))s=s.replace(anchor,anchor+note);
+fs.writeFileSync(path,s);
+console.log('C6.6 stale QA discovery recorded');
