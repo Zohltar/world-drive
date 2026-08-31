@@ -467,39 +467,36 @@ Completion record:
 
 ### B6 — Eliminate hidden wheelspin state and duplicate authority **[P0]**
 
-Status: **IN PROGRESS — OWNERSHIP AUDIT COMPLETE (2026-08-30)**
+Status: **DONE — 2026-08-30**
 
-Problem:
-- `vehicle-dynamics-v21.29.js` stores module-global intermediates `latestRawDriveDemandAccel` and `latestAppliedDriveAccel`; `longitudinalTractionLimit()` writes them and a later `estimateWheelGripUsage()` consumes/resets them, so results depend on call order;
-- `driving-runtime.js` independently owns persistent clutch-breakaway wheelspin state/hold and applies a second grip factor;
-- `vehicle-dynamics-v21.29.js` also synthesizes instantaneous driven-wheel slip and publishes `WorldDriveWheelSpinTelemetry`;
-- `vehicle-dynamics.js` still mutates that global diagnostic when airborne;
-- skidmarks synthesize wheelspin again from runtime state, so physics state and visual observers are not cleanly separated.
+Canonical persistent-state module:
+- `src/physics/wheelspin-state.js`
 
-Required correction:
-- pass requested and applied propulsion acceleration explicitly into tire-grip evaluation;
-- remove the module-global traction→grip handoff and prove call-order independence;
-- make the combustion runtime the authoritative owner of persistent clutch/wheelspin state because it already owns clutch-release/shock timing;
-- keep tire-utilization/slip calculation stateless and driven by explicit inputs/state;
-- reduce/remove global telemetry coupling; diagnostics, audio and skidmarks must observe authoritative state rather than create alternate physics authority;
-- preserve clutch-dump behavior for FWD, RWD, AWD, F1/Sonata and truck cases; EV behavior must remain unchanged.
+Resulting ownership:
+- `driving-runtime.js` / `wheelspin-state.js` own persistent clutch-breakaway wheelspin level, hold duration and dynamic grip factor;
+- `vehicle-dynamics-v21.29.js` is stateless and calculates instantaneous driven-wheel tire utilization from explicit requested/applied propulsion values;
+- skidmarks and `WorldDriveRuntimeWheelspin` are observers/diagnostics, not alternate physics state;
+- deprecated `WorldDriveWheelSpinTelemetry` and the hidden `latestRawDriveDemandAccel` / `latestAppliedDriveAccel` handoff are removed.
 
 Acceptance:
 - wheelspin result does not depend on unrelated call order;
-- no `latestRawDriveDemandAccel` / `latestAppliedDriveAccel` module globals remain;
-- explicit requested/applied propulsion values drive tire utilization;
+- no hidden traction→grip module memory remains;
+- requested/applied propulsion values are explicit;
 - one persistent wheelspin owner;
-- clutch-dump, FWD, RWD, AWD and truck cases remain correct;
-- full V21.29 clutch/wheelspin suite, 288 driving cases, stress and build pass.
+- clutch-dump, FWD, RWD, AWD and truck cases remain correct.
 
 Completion record:
-- Ownership audit branch: `audit/wheelspin-b6`; audit workflow commit `de7e72f4`; audit run `33344102940` PASS.
-- Audit confirmed three current layers: hidden V21.29 demand globals, persistent runtime wheelspin/grip reduction, and global telemetry cleanup/observer coupling in the V21.30 wrapper.
-- Current frame-order dependency is explicit: `driving-runtime-base.js` calls drive `longitudinalTractionLimit()` around the longitudinal phase, then calls `estimateWheelGripUsage()` later in the same frame; the V21.29 wrapper silently relies on that ordering.
-- Existing authoritative coverage identified for migration/retention: `V21_29_CIVIC_CLUTCH_DUMP_SLIP_QA`, `V21_29_CIVIC_CLUTCH_WHEELSPIN_QA`, `V21_29_RUNTIME_WHEELSPIN_QA`, fleet clutch/shock QA, semi-auto clutch QA, skid/audio linkage QA and `V21_31_AIRBORNE_TIRE_STATE_QA`.
-- Intended ownership: `driving-runtime.js` remains the single persistent wheelspin state owner; the vehicle-dynamics layer becomes stateless/order-independent and consumes explicit propulsion demand/applied values.
-- Source commit: _pending_
-- Permanent B6 QA: _pending_
+- Ownership audit branch: `audit/wheelspin-b6`; audit workflow commit `de7e72f4`; audit run `33344102940` PASS. The audit confirmed three old layers: V21.29 hidden demand globals, runtime persistent wheelspin, and global telemetry/observer coupling.
+- Interim plan sync commit: `0f2ae313` recorded the audit and intended ownership before source changes.
+- Candidate source commit: `54d4f516` on `cleanup/wheelspin-b6`; candidate validation run `33344433491` PASS.
+- `qa-wheelspin-state-b6.mjs` validates 42,000 deterministic persistent-state transitions against the exact pre-B6 equations with max error 0 and explicitly interleaves unrelated traction calls to prove grip call-order independence.
+- V21.29 clutch/wheelspin coverage migrated to explicit demand inputs: Civic clutch-dump slip, Civic wheelspin, runtime wheelspin ownership and V21.31 airborne tire-state QA.
+- Full candidate validation PASS: complete V21.29 combustion clutch/wheelspin suite, R9/R11/R16/R17/R18/R19/R20/R21/R23, 288-case driving matrix, 80,000-sample stress and production build.
+- Integration source commit on `dev`: `d4423346`.
+- Permanent B6 gate commit: `0247c879`; permanent gate run `33344541640` PASS.
+- Dev Integration gate commit / final validated HEAD at completion: `92a6e77b`; final Dev Integration run `33344573404` PASS all 63 steps including B3/B4/B5/B6 ownership gates, stress, 288 cases, WebGL, live route smoke and production build/code split.
+- Human validation: not required for B6. Persistent wheelspin evolution is numerically identical, clutch-dump behavior is explicitly covered across drivetrain classes, and the complete integration suite is green.
+- Result: the order-dependent V21.29 traction→grip memory is gone; persistent wheelspin has one explicit owner and downstream systems only observe it.
 
 ---
 
