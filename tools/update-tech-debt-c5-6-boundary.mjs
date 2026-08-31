@@ -1,0 +1,24 @@
+import fs from 'node:fs';
+
+const path='docs/WORLD_DRIVE_TECH_DEBT_PLAN.md';
+let text=fs.readFileSync(path,'utf8');
+
+const anchor=`Next C5 step:\n- C5.6 begins with a fresh post-C5.5 read-only audit before selecting another boundary;\n- continue to prefer cohesive composition/plumbing cleanup and keep the frame-performance governor, route/hydro/vehicle behavior and C6 diagnostics deferred unless the audit proves a smaller safe boundary.\n`;
+
+const replacement=`C5.6 audit completed — selected boundary: loaded-settings runtime/UI application:\n- fresh post-C5.5 audit branch \`audit/main-c5-6\`, run \`33382825080\`: PASS responsibility inventory, runtime import/debt audit and production build;\n- measured \`main.js\` at 2752 lines / 85546 bytes, with 58 imports and 86 top-level function declarations; all 114 source modules remain runtime-reachable;\n- audit parser exposed false-large spans for tiny functions followed by facade code (notably \`setCollapsed\` and \`featureCentroid\`), so C5.6 selection is based on actual source boundaries rather than raw span counts;\n- frame-performance governor / \`animate()\`, route loading, hydrography and vehicle-selection remain explicitly deferred because they are behavior/frame-pacing sensitive;\n- the V21 menu facade itself remains only about 41 lines and is not worth extracting alone;\n- selected the cohesive settings-application responsibility deliberately left in \`main.js\` during C5.5: applying already-loaded settings to transmission mode, assist state, road-speed-limit state, imagery enablement, display distance, display visibility and synchronized runtime UI.\n\nC5.6 required invariants:\n- preserve transmission semantics exactly: only literal \`manual\` selects manual, otherwise automatic;\n- preserve assist and road-speed-limit defaults: only explicit \`false\` disables either;\n- imagery toggles only when current enablement differs from the loaded boolean;\n- display distance keeps \`high\` as fallback;\n- preserve exact assist label \`Assist: ON/OFF\`, transmission select synchronization, speed-limit UI refresh, display-visibility application and runtime-control synchronization;\n- preserve current startup ordering, including awaiting settings application before the initial route is created;\n- do not move settings persistence/schema ownership out of \`application-settings.js\`, and do not tune visual, physics, streaming or menu behavior.\n\nNext C5 step:\n- implement C5.6 on an isolated cleanup branch using a small canonical runtime-settings applicator module;\n- validate C5.5 identity/persistence, V21.25 UI, V21.26 environment, imagery/settings behavior, import audit, 288 driving cases, stress and production build before integration.\n`;
+
+if(!text.includes(anchor))throw new Error('C5.6 next-step anchor not found');
+text=text.replace(anchor,replacement);
+
+const recommended=`**Next: C5.6 — fresh post-C5.5 responsibility audit of \`main.js\`.**\n\nRe-measure the remaining responsibilities after \`main.js\` reached 2752 lines. Select the next extraction by cohesion and risk rather than line count. Continue to defer the frame-performance governor, route/hydro/vehicle behavior and C6 diagnostics unless the audit identifies a clearly safer boundary.`;
+const recommendedReplacement=`**Next: C5.6 — extract loaded-settings runtime/UI application.**\n\nThe post-C5.5 audit is complete and selected the settings-application boundary. Move only the application of already-loaded settings into a small canonical runtime applicator while keeping persistence in \`application-settings.js\` and startup composition/state ownership in \`main.js\`. Preserve exact UI, imagery, environment and transmission semantics; keep frame governor, route, hydro, vehicle behavior and C6 diagnostics deferred.`;
+if(!text.includes(recommended))throw new Error('recommended next task anchor not found');
+text=text.replace(recommended,recommendedReplacement);
+
+const workLogAnchor=`# 7. Work log\n\n`;
+const workLogEntry=`## 2026-08-31 — C5.6 audit completed; loaded-settings application selected\n\n- Audit branch \`audit/main-c5-6\`; run \`33382825080\` PASS inventory, import/debt audit and production build.\n- Post-C5.5 \`main.js\`: 2752 lines / 85546 bytes / 58 imports / 86 top-level function declarations; 114/114 source modules runtime-reachable.\n- Rejected parser false positives and deferred frame governor/animate, route, hydro and vehicle-selection due higher behavioral risk.\n- Selected the coherent \`applyLoadedV21Settings()\` responsibility: apply already-loaded settings to runtime/UI without changing persistence, schema, visuals, physics or frame pacing.\n- Next: isolated C5.6 candidate + dedicated exact-semantics QA before any integration.\n\n`;
+if(!text.includes(workLogAnchor))throw new Error('work log anchor not found');
+text=text.replace(workLogAnchor,workLogAnchor+workLogEntry);
+
+fs.writeFileSync(path,text);
+console.log('C5.6 boundary recorded');
