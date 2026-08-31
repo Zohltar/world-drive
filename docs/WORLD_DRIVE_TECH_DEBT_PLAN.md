@@ -830,7 +830,7 @@ C5 completion record:
 
 ### C6 — Consolidate diagnostic globals **[P2]**
 
-Status: **IN PROGRESS — C6.1/C6.2/C6.3/C6.4/C6.5 DONE; C6.6 physics-shadow audit in progress (2026-08-31)**
+Status: **IN PROGRESS — C6.1/C6.2/C6.3/C6.4/C6.5 DONE; C6.6 physics-shadow boundary selected (2026-08-31)**
 
 Audit baseline:
 - audit branch `audit/diagnostics-c6`; strengthened audit run `33386461640`: PASS diagnostic inventory, import/debt audit, active forest runtime/stress, P9.37 frame pacing, P9.39 hitch attribution, P9.41 frame-runtime attribution and production build;
@@ -1021,6 +1021,19 @@ C6.6 material discovery — stale V21.27 physics-shadow source-location QA:
 - the useful invariant remains valid: the per-wheel shadow solver is non-authoritative, advances from current vehicle state, exposes diagnostics, and must never feed predicted acceleration/yaw back into authoritative chassis state;
 - modernize the QA to current ownership before trusting it in C6.6; do not move the solver back into the wrapper or change shadow equations/timing merely to satisfy stale source-location assertions.
 
+C6.6 read-only audit result — physics-shadow diagnostics:
+- corrected audit run `33423627814`: PASS C6.6 ownership, C6.1–C6.5 diagnostics regressions, modernized V21.27 physics-shadow QA, 288 driving cases, full V21.31 stress, runtime import/debt audit and production build;
+- `WorldDrivePhysicsShadow` is a single callable writer in `src/main.js`, has zero runtime readers, and is explicitly documented as a DevTools-only observer;
+- current callable semantics are `()=>drivingRuntime?.physicsShadowDiagnostics?.()||null`; it allocates/computes only when invoked and does not participate in the frame loop;
+- the per-wheel shadow solver remains owned by `src/driving-runtime-base.js`, runs at the existing 120 Hz fixed-step cadence, and is non-authoritative; the QA migration changes only source ownership assertions.
+
+C6.6 selected boundary — canonical physics-shadow diagnostics with DevTools compatibility:
+- make `WorldDriveDiagnostics.physics.shadow` the authoritative callable, preserving the exact existing return semantics and invocation-only cadence;
+- retain `WorldDrivePhysicsShadow` as a live delegate via `installDiagnosticAlias` because it is an intentional human-facing DevTools hook, not an independent store;
+- migrate `qa/V21_27_PHYSICS_SHADOW_QA.mjs` permanently to current `driving-runtime-base.js` ownership and require canonical diagnostics + compatibility delegate wiring;
+- do not change `createPerWheelShadowSolver`, 120 Hz cadence, wheel/contact calculations, predicted force payload, authoritative chassis equations, or frame-loop timing;
+- candidate validation must include C6.1–C6.6, the full V21.27 shadow solver QA, 288 driving cases, full stress, runtime import/debt audit and production build before integration.
+
 ---
 
 # 4. Items intentionally NOT scheduled for immediate deletion
@@ -1061,9 +1074,9 @@ These rules are mandatory while working this plan:
 
 # 6. Recommended next task
 
-**Next: C6.6 — audit `WorldDrivePhysicsShadow` ownership and QA contract.**
+**Next: C6.6 — implement canonical physics-shadow diagnostics.**
 
-Start read-only. Confirm its single writer, exact payload/call timing, absence of runtime readers, and the one QA/source-string dependency identified by C6.5. Determine whether it is passive diagnostics or an externally callable debug hook before selecting a canonical `WorldDriveDiagnostics.physics` boundary.
+Move only diagnostic publication: bind the existing physics-shadow callable to `WorldDriveDiagnostics.physics.shadow`, retain `WorldDrivePhysicsShadow` as a live DevTools compatibility delegate, permanently modernize the V21.27 QA to current base-runtime ownership, and preserve all shadow-solver math/cadence/non-authoritative behavior.
 
 ---
 
