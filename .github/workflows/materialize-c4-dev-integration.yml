@@ -1,0 +1,34 @@
+name: Materialize C4 Dev Integration
+
+on:
+  push:
+    branches:
+      - integration/c4-dev-gate
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  materialize:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Add C4 gate
+        run: node tools/add-c4-dev-integration.mjs
+      - name: Commit materialized workflow
+        run: |
+          if git diff --quiet; then
+            echo "No changes"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add .github/workflows/qa-dev-integration.yml
+          git commit -m "QA: add C4 ownership to Dev Integration"
+          git push origin HEAD:integration/c4-dev-gate
