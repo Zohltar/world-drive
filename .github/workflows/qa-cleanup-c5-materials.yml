@@ -1,0 +1,40 @@
+name: Cleanup C5.1 World Materials QA
+
+on:
+  push:
+    branches:
+      - dev
+    paths:
+      - 'src/main.js'
+      - 'src/world-materials.js'
+      - 'qa-main-c5-materials.mjs'
+      - '.github/workflows/qa-cleanup-c5-materials.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  qa:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: C5.1 world materials ownership and behavior QA
+        run: node qa-main-c5-materials.mjs
+      - name: Terrain visual ownership QA
+        run: |
+          node qa-terrain-r1-legacy-ownership.mjs
+          node qa-terrain-r2-road-imagery.mjs
+          node qa/V21_31_LEGACY_TERRAIN_AUTHORITY_QA.mjs
+      - name: Driving dynamics simulation matrix
+        run: node qa/DEV_DRIVING_SIM_QA.mjs
+      - name: Full V21.31 regression stress
+        run: npm run qa:stress
+      - name: Production build
+        run: npm run build
