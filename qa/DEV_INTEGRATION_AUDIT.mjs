@@ -107,23 +107,41 @@ function ownershipBucket(file){
   const name=path.basename(file);
   if(name==='main.js')return 'entrypoint';
   if(file.startsWith('src/physics/'))return 'physics';
-  if(/^(application-settings|loaded-settings-application|diagnostics|version)\.js$/.test(name))return 'app';
-  if(/^(keyboard-controls|gamepad)\.js$/.test(name))return 'input';
-  if(/^(startup-ui|v21-menu|instrument-cluster|minimap|heading-compass|route-planner-ui)\.js$/.test(name))return 'ui';
-  if(/^(routing|routing-service|route-lifecycle|route-presets|route-challenge|geocoding)\.js$/.test(name))return 'routing';
-  if(/^(cache|overpass|desktop-overpass-transport)\.js$/.test(name))return 'services';
-  if(/^(audio|audio-base)\.js$/.test(name))return 'audio';
-  if(/^civil-traffic(?:-|\.)/.test(name))return 'traffic';
-  if(/^(multiplayer(?:-|\.)|multiplayer\.js$)/.test(name))return 'multiplayer';
-  if(/^(vehicle-|deferred-glb-system|countach-glb|id4-glb|wrx-glb|civic-glb|sonata-glb|f1-glb|i3-glb|truck-trailer)\.js$/.test(name))return 'vehicles';
-  if(/^(vehicle-dynamics(?:-|\.)|driving-runtime(?:-|\.)|transmission-|wheel-ground-support|skidmarks)\S*\.js$/.test(name))return 'physics-runtime';
-  if(/^(camera|autopilot-controller|environment-controller)\.js$/.test(name))return 'driving-control';
-  if(/^(road-geometry|road-furniture(?:-|\.)|signs|bridges)\S*\.js$/.test(name))return 'world-road';
-  if(/^(terrain(?:-|\.)|elevation|sky-lighting|world-materials|world-scene)\S*\.js$/.test(name))return 'world-terrain';
-  if(/^imagery(?:-|\.)\S*\.js$/.test(name))return 'world-imagery';
-  if(/^(scenery-|forest-|frame-runtime-profiler)\S*\.js$/.test(name))return 'world-scenery-forest';
-  if(/^water-\S*\.js$/.test(name))return 'world-water';
-  if(/^(local-world-builder|streaming-coordinator)(?:-|\.)\S*\.js$/.test(name)||name==='world-streaming.js')return 'world-streaming';
+
+  if(['application-settings.js','loaded-settings-application.js','diagnostics.js','version.js'].includes(name))return 'app';
+  if(['keyboard-controls.js','gamepad.js'].includes(name))return 'input';
+  if(['startup-ui.js','v21-menu.js','instrument-cluster.js','minimap.js','heading-compass.js','route-planner-ui.js'].includes(name))return 'ui';
+  if(['routing.js','routing-service.js','route-lifecycle.js','route-presets.js','route-challenge.js','geocoding.js'].includes(name))return 'routing';
+  if(['cache.js','overpass.js','desktop-overpass-transport.js'].includes(name))return 'services';
+  if(['audio.js','audio-base.js'].includes(name))return 'audio';
+
+  if(name.startsWith('civil-traffic'))return 'traffic';
+  if(name==='multiplayer.js'||name.startsWith('multiplayer-'))return 'multiplayer';
+
+  if(
+    name.startsWith('vehicle-dynamics')||
+    name.startsWith('driving-runtime')||
+    name.startsWith('transmission-')||
+    name==='wheel-ground-support.js'||
+    name==='skidmarks.js'
+  )return 'physics-runtime';
+
+  if(['camera.js','autopilot-controller.js','environment-controller.js'].includes(name))return 'driving-control';
+
+  if(
+    name.startsWith('vehicle-')||
+    name==='deferred-glb-system.js'||
+    /^(countach|id4|wrx|civic|sonata|f1|i3)-glb\.js$/.test(name)||
+    name==='truck-trailer.js'
+  )return 'vehicles';
+
+  if(name==='road-geometry.js'||name.startsWith('road-furniture')||name==='signs.js'||name==='bridges.js')return 'world-road';
+  if(name.startsWith('terrain')||['elevation.js','sky-lighting.js','world-materials.js','world-scene.js'].includes(name))return 'world-terrain';
+  if(name.startsWith('imagery'))return 'world-imagery';
+  if(name.startsWith('scenery-')||name.startsWith('forest-')||name==='frame-runtime-profiler.js')return 'world-scenery-forest';
+  if(name.startsWith('water-'))return 'world-water';
+  if(name.startsWith('local-world-builder')||name.startsWith('streaming-coordinator')||name==='world-streaming.js')return 'world-streaming';
+
   return null;
 }
 
