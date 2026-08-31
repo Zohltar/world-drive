@@ -76,6 +76,8 @@ jobs:
         run: node qa-diagnostics-c6-3.mjs
       - name: Cleanup C6.4 road-sign diagnostics QA
         run: node qa-diagnostics-c6-4.mjs
+      - name: Cleanup C6.5 engine-input diagnostics QA
+        run: node qa-diagnostics-c6-5.mjs
       - name: Full V21.31 regression stress
         run: npm run qa:stress
       - name: Driving dynamics simulation matrix
