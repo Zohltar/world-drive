@@ -32,7 +32,9 @@ const readers=sourceRefs.filter(r=>!writers.includes(r));
 const qaRefs=refs(qaFiles);
 if(writers.length!==1)throw new Error(`Expected exactly one wire diagnostics writer, found ${writers.length}`);
 if(readers.length!==0)throw new Error(`Wire diagnostics unexpectedly feeds runtime code: ${JSON.stringify(readers)}`);
-if(qaRefs.length!==1||qaRefs[0].file!=='qa/V21_31_MULTIPLAYER_M3_PROTOCOL_QA.mjs'){
+const qaFilesWithRefs=[...new Set(qaRefs.map(r=>r.file))].sort();
+const expectedQaFiles=['qa-diagnostics-c6-7.mjs','qa/V21_31_MULTIPLAYER_M3_PROTOCOL_QA.mjs'].sort();
+if(qaRefs.length!==4||JSON.stringify(qaFilesWithRefs)!==JSON.stringify(expectedQaFiles)){
   throw new Error(`Unexpected wire QA contracts: ${JSON.stringify(qaRefs)}`);
 }
 
