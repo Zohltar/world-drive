@@ -1,0 +1,32 @@
+name: Patch Dev Integration C6.4
+
+on:
+  push:
+    branches:
+      - prep/dev-integration-c6-4
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: node tools/add-c6-4-dev-integration.mjs
+      - run: git diff --check
+      - name: Commit patched workflow
+        shell: bash
+        run: |
+          if git diff --quiet -- .github/workflows/qa-dev-integration.yml; then exit 0; fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add .github/workflows/qa-dev-integration.yml
+          git commit -m 'QA: add C6.4 to Dev Integration'
+          git push origin HEAD:prep/dev-integration-c6-4
