@@ -27,14 +27,24 @@ jobs:
         run: node qa/DEV_INTEGRATION_AUDIT.mjs
       - name: Multiplayer M3 protocol QA
         run: node qa/V21_31_MULTIPLAYER_M3_PROTOCOL_QA.mjs
+      - name: Multiplayer M3 client QA
+        run: node qa/V21_31_MULTIPLAYER_M3_CLIENT_QA.mjs
+      - name: Multiplayer registry QA
+        run: node qa/V21_31_MULTIPLAYER_M3_REGISTRY_QA.mjs
+      - name: Multiplayer support QA
+        run: node qa/V21_31_MULTIPLAYER_M3_SUPPORT_QA.mjs
       - name: Shared multiplayer traffic QA
-        run: node qa/V21_31_MULTIPLAYER_SHARED_TRAFFIC_QA.mjs
+        run: node qa-traffic-mp1.mjs
       - name: Live multiplayer traffic QA
-        run: node qa/V21_31_MULTIPLAYER_LIVE_TRAFFIC_QA.mjs
+        run: node qa-traffic-mp1-live.mjs
       - name: Multiplayer vehicle adapter QA
         run: node qa/V21_31_MULTIPLAYER_M4_ADAPTER_QA.mjs
+      - name: M4.11 reverse E2E QA
+        run: node qa/V21_31_MULTIPLAYER_M411_REVERSE_E2E_QA.mjs
+      - name: M4.12 controller runtime QA
+        run: node qa/V21_31_MULTIPLAYER_M412_CONTROLLER_RUNTIME_QA.mjs
       - name: Production build and code split
         run: |
           npm ci
           npm run build
-          node qa/V21_31_PRODUCTION_CODE_SPLIT_QA.mjs
+          node qa/BUILD_V21_31_CODE_SPLIT_QA.mjs
