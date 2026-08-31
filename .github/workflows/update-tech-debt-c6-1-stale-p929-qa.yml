@@ -4,8 +4,6 @@ on:
   push:
     branches:
       - docs/c6-1-stale-p929-qa
-    paths:
-      - tools/c6-1-stale-p929-qa.trigger
   workflow_dispatch:
 
 permissions:
