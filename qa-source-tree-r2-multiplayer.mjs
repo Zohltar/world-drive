@@ -1,3 +1,4 @@
+// R2 candidate gate trigger after workflow registration.
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 
