@@ -1,0 +1,32 @@
+name: Source Tree R1 Audit
+
+on:
+  push:
+    branches:
+      - audit/source-tree-r1
+    paths:
+      - 'src/**'
+      - 'qa/**'
+      - 'qa-*.mjs'
+      - '.github/workflows/**'
+      - 'docs/**'
+  workflow_dispatch:
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Source tree R1 audit
+        run: node qa-source-tree-r1-audit.mjs
+      - name: Runtime import and debt audit
+        run: node qa-runtime-import-debt-audit.mjs
+      - name: Production build
+        run: |
+          npm ci
+          npm run build
