@@ -53,11 +53,8 @@ for(const info of fleet){
     assert.equal(Number(result[key]),0,`${info.id}: airborne ${key} must be zero`);
   }
 
-  const telemetry=globalThis.WorldDriveWheelSpinTelemetry;
-  if(telemetry){
-    assert.ok((telemetry.levels||[]).every(value=>Number(value)===0),`${info.id}: airborne telemetry slip retained`);
-    assert.ok((telemetry.longitudinalUsage||[]).every(value=>Number(value)===0),`${info.id}: airborne telemetry longitudinal usage retained`);
-  }
+  assert.equal(Number(result.requestedPropulsionAccel),0,`${info.id}: airborne requested propulsion must be zero`);
+  assert.equal(Number(result.appliedPropulsionAccel),0,`${info.id}: airborne applied propulsion must be zero`);
 }
 
 console.log('V21.31 AIRBORNE TIRE STATE QA: PASS',{

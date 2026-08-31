@@ -410,6 +410,8 @@ export function createDrivingRuntime({
       const tireSolverSignedLatAccel=Math.sign(signedLatAccel||steerAngle||1)*tireSolverLatAccel;
       perWheelGrip=estimateWheelGripUsage({
         requestedLatAccel:tireSolverLatAccel,signedLatAccel:tireSolverSignedLatAccel,latLimit,longitudinalAccel,
+        requestedPropulsionAccel:requestedBodyDriveAccel,
+        appliedPropulsionAccel:appliedBodyDriveAccel,
         propulsionAccel:appliedBodyDriveAccel,serviceBrakeAccel:brakeForce.acceleration,
         surfaceMu:longitudinalMu,throttle:driveThrottle,handbrake:hand,
         handbrakeSlipState:rearHandbrakeSlipState,sideslipRad:rearTireSideslip,

@@ -1,33 +1,49 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
 import {
+  createWheelspinState,
   drivenWheelSlipLevels,
-  wheelspinDynamicGripFactor
-} from '../src/driving-runtime.js';
-
-function fail(message){throw new Error(message);}
+  wheelspinDynamicGripFactor,
+  wheelspinHoldDurationSec
+} from '../src/physics/wheelspin-state.js';
 
 const civic=drivenWheelSlipLevels('FWD',1);
-if(civic.length!==4)fail('Expected four wheel slip channels');
-if(civic[0]!==0||civic[2]!==0)fail('Civic rear wheels must remain non-driven');
-if(civic[1]<.99||civic[3]<.99)fail('Civic front wheels must receive full runtime wheelspin');
+assert.equal(civic.length,4);
+assert.equal(civic[0],0);
+assert.equal(civic[2],0);
+assert.ok(civic[1]>=.99&&civic[3]>=.99,'Civic front wheels must receive full wheelspin');
 
 const civicGrip=wheelspinDynamicGripFactor('FWD',1,'passenger');
 const wrxGrip=wheelspinDynamicGripFactor('AWD',1,'passenger');
 const countachGrip=wheelspinDynamicGripFactor('RWD',1,'passenger');
-if(!(civicGrip<wrxGrip))fail('FWD clutch wheelspin must lose more launch traction than AWD');
-if(!(countachGrip<wrxGrip))fail('RWD clutch wheelspin must lose more launch traction than AWD');
-if(Math.abs(civicGrip-.78)>.001)fail(`Expected Civic dynamic grip factor .78, got ${civicGrip}`);
+assert.ok(civicGrip<wrxGrip,'FWD clutch wheelspin must lose more launch traction than AWD');
+assert.ok(countachGrip<wrxGrip,'RWD clutch wheelspin must lose more launch traction than AWD');
+assert.ok(Math.abs(civicGrip-.78)<.001,`Expected Civic dynamic grip factor .78, got ${civicGrip}`);
+assert.equal(wheelspinHoldDurationSec('FWD','passenger'),.62);
+assert.equal(wheelspinHoldDurationSec('RWD','passenger'),.48);
+assert.equal(wheelspinHoldDurationSec('AWD','passenger'),.24);
+assert.equal(wheelspinHoldDurationSec('AWD','tractor'),.18);
 
-// Runtime persistence is intentionally longer than the clutch shock itself.
-// This guards the architecture: a ~0.11 s clutch bite can seed wheel angular
-// velocity that persists long enough to be felt and to lay rubber as the car moves.
-const source=await import('node:fs').then(fs=>fs.readFileSync(new URL('../src/driving-runtime.js',import.meta.url),'utf8'));
-for(const marker of ['wheelspinHoldSec','drivetrain===\'FWD\'?.62','skidMarksWithWheelspin','runtimeWheelspinLevel']){
-  if(!source.includes(marker))fail(`Persistent runtime wheelspin path missing: ${marker}`);
-}
+const state=createWheelspinState();
+const seeded=state.advance({
+  dt:1/60,releaseMultiplier:2.2,engineThrottle:1,
+  tractionResult:{requested:10.8,limit:6,limited:true},
+  drivetrain:'FWD',vehicleClass:'passenger'
+});
+assert.ok(seeded.level>.42,'clutch breakaway must seed persistent wheelspin');
+assert.equal(seeded.holdSec,.62);
+const held=state.advance({
+  dt:1/60,releaseMultiplier:1,engineThrottle:1,
+  tractionResult:{requested:4,limit:8,limited:false},
+  drivetrain:'FWD',vehicleClass:'passenger'
+});
+assert.ok(held.level>0&&held.holdSec<.62,'wheelspin must persist after clutch shock');
+
+const runtime=fs.readFileSync(new URL('../src/driving-runtime.js',import.meta.url),'utf8');
+assert.match(runtime,/createWheelspinState/,'runtime must consume explicit B6 wheelspin owner');
+assert.match(runtime,/skidMarksWithWheelspin/,'skidmarks must remain an observer of authoritative wheelspin');
+assert.doesNotMatch(runtime,/let wheelspinLevel=0,wheelspinHoldSec=0/,'parallel runtime wheelspin variables returned');
 
 console.log('V21.29 persistent runtime wheelspin QA passed',{
-  civicGrip,
-  wrxGrip,
-  countachGrip,
-  civicWheels:civic
+  civicGrip,wrxGrip,countachGrip,civicWheels:civic,seededLevel:seeded.level
 });

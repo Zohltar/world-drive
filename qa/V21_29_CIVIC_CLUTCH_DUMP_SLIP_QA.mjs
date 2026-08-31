@@ -39,6 +39,8 @@ const grip=estimateWheelGripUsage({
   signedLatAccel:0,
   latLimit:civic.lateralAccelLimit,
   longitudinalAccel:drive.acceleration,
+  requestedPropulsionAccel:requestedDriveAccel,
+  appliedPropulsionAccel:drive.acceleration,
   propulsionAccel:drive.acceleration,
   serviceBrakeAccel:0,
   surfaceMu:.94,

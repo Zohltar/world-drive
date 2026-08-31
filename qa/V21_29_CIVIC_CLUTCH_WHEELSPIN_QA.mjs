@@ -50,6 +50,8 @@ const grip=estimateWheelGripUsage({
   signedLatAccel:0,
   latLimit:8.53,
   longitudinalAccel:limited.acceleration,
+  requestedPropulsionAccel:requested,
+  appliedPropulsionAccel:limited.acceleration,
   propulsionAccel:limited.acceleration,
   serviceBrakeAccel:0,
   surfaceMu:8.67/9.80665,
@@ -70,9 +72,6 @@ if(rearMax>.10)fail(`Civic non-driven rear wheels must stay planted, got ${rearM
 if(Math.min(grip.longitudinalUsage[1]||0,grip.longitudinalUsage[3]||0)<=1)
   fail('Civic front longitudinal tire demand must exceed 100% during clutch dump');
 
-const telemetry=globalThis.WorldDriveWheelSpinTelemetry;
-if(!telemetry||telemetry.levels?.length!==4)fail('Driven-wheel spin telemetry must be published');
-if(Math.min(telemetry.levels[1]||0,telemetry.levels[3]||0)<.35)fail('Telemetry must expose front-wheel spin');
 
 const skidSource=fs.readFileSync(new URL('../src/skidmarks.js',import.meta.url),'utf8');
 for(const marker of ['wheelspinSpeedGate','intenseDrive','driveRaw']){

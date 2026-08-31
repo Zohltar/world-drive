@@ -21,9 +21,6 @@ function safeNumber(value,fallback){
   return Number.isFinite(n)?n:fallback;
 }
 
-let latestRawDriveDemandAccel=0;
-let latestAppliedDriveAccel=0;
-
 function clutchSlidingGripFactor(vehicle={},requested=0,limit=0){
   const normalAccel=Math.max(.1,Math.abs(safeNumber(vehicle?.accel,0)));
   const request=Math.abs(safeNumber(requested,0));
@@ -43,7 +40,6 @@ export function longitudinalTractionLimit(args={},out=null){
   const result=baseLongitudinalTractionLimit(args,out);
   if(String(args?.mode||'')==='drive'){
     const requested=safeNumber(result?.requested,safeNumber(args?.requestedAccel,0));
-    latestRawDriveDemandAccel=requested;
     if(result?.limited){
       const slideFactor=clutchSlidingGripFactor(args?.vehicle||{},requested,result?.limit);
       if(slideFactor<1){
@@ -52,7 +48,6 @@ export function longitudinalTractionLimit(args={},out=null){
         result.acceleration*=slideFactor;
       }
     }
-    latestAppliedDriveAccel=safeNumber(result?.acceleration,0);
   }
   return result;
 }
@@ -64,32 +59,19 @@ function fallbackWheelAxleIndex(index){
   return 1;
 }
 
-function publishWheelSpinTelemetry(result,propulsionDemand,applied){
-  if(typeof globalThis==='undefined')return;
-  const levels=Array.isArray(result?.slip)?result.slip.map(v=>Math.max(0,Number(v)||0)):[];
-  const longitudinalUsage=Array.isArray(result?.longitudinalUsage)
-    ?result.longitudinalUsage.map(v=>Math.max(0,Number(v)||0))
-    :[];
-  const ratio=Math.abs(applied)>1e-6
-    ?Math.abs(propulsionDemand)/Math.abs(applied)
-    :(Math.abs(propulsionDemand)>1e-6?4:1);
-  globalThis.WorldDriveWheelSpinTelemetry={
-    levels,
-    longitudinalUsage,
-    saturationRatio:Number.isFinite(ratio)?ratio:4,
-    driveSign:Math.sign(propulsionDemand||1),
-    requestedAccel:propulsionDemand,
-    appliedAccel:applied,
-    updatedAt:typeof performance!=='undefined'&&performance.now?performance.now():Date.now()
-  };
-}
-
 export function estimateWheelGripUsage(args={},out=null){
-  const applied=safeNumber(args?.propulsionAccel,latestAppliedDriveAccel);
-  const raw=latestRawDriveDemandAccel;
+  // Cleanup B6 — propulsion demand is explicit. No previous traction call may
+  // affect this result. requestedPropulsionAccel is the drivetrain request
+  // before traction limiting; appliedPropulsionAccel is what reached the
+  // chassis after limiting/handbrake ownership.
+  const applied=safeNumber(
+    args?.appliedPropulsionAccel,
+    safeNumber(args?.propulsionAccel,0)
+  );
+  const requested=safeNumber(args?.requestedPropulsionAccel,applied);
   const propulsionDemand=
-    Math.abs(raw)>Math.abs(applied)+1e-6
-      ?raw
+    Math.abs(requested)>Math.abs(applied)+1e-6
+      ?requested
       :applied;
   const result=baseEstimateWheelGripUsage({
     ...args,
@@ -143,9 +125,6 @@ export function estimateWheelGripUsage(args={},out=null){
     }
   }
 
-  publishWheelSpinTelemetry(result,propulsionDemand,applied);
-  latestRawDriveDemandAccel=0;
-  latestAppliedDriveAccel=0;
   return result;
 }
 
