@@ -670,7 +670,7 @@ Completion record:
 
 ### C5 — Reduce `main.js` size / responsibilities **[P2]**
 
-Status: **IN PROGRESS — C5.1 DONE (2026-08-30)**
+Status: **IN PROGRESS — C5.1 + C5.2 DONE (2026-08-30)**
 
 Audit baseline:
 - `main.js` measured 3245 lines / 100343 bytes, with 54 imports and about 100 top-level functions before C5 extraction work.
@@ -693,14 +693,27 @@ C5.1 completion record:
 - Final C5.1 Dev Integration run `33353661136`: PASS 70/70.
 - Human validation: not required for this exact extraction; material values and animated-water wiring are protected directly by QA and the full integration suite.
 
-Next C5 extraction:
-- C5.2: extract sky/lighting construction (hemisphere light, sun, crescent-moon texture/sprite/light and moon positioning) behind a responsibility-based module;
-- retain `environment-controller.js` as owner of time-of-day/display-distance behavior;
-- retain `animate()` cadence and performance-governor ownership in `main.js` for this step;
-- verify exact light/material constants plus environment QA, stress, driving matrix and build before integration.
+C5.2 completed — sky/lighting construction:
+- extracted hemisphere light, sun construction, crescent-moon texture/sprite/light and moon positioning into canonical `src/sky-lighting.js`;
+- preserved every accepted sky/light constant, moon canvas/halo geometry, shadow envelope, sprite scale/material and the 3100 m / 850 m camera-relative moon positioning distances;
+- kept `environment-controller.js` authoritative for time-of-day, sun/moon intensity/direction, display distance and automatic-headlight daylight behavior;
+- kept `animate()` authoritative for moon-update cadence through `perfGovernor.nextMoonAt`;
+- removed 112 net lines from `main.js` in the clean integration commit without changing visual policy.
+
+C5.2 completion record:
+- Integration commit: `d791b046` — move sky lighting out of main.
+- Dev Integration registration commit: `d00d648a`.
+- Permanent C5.2 gate run `33353945084`: PASS exact sky-light contract, environment regression, Sonata/WRX night lighting, 288 driving cases, stress and build.
+- Final C5.2 Dev Integration run `33353966798`: PASS 71/71.
+- Human validation: not required for this exact extraction; accepted light/material constants and the existing environment/night-lighting behavior are directly protected by QA.
+
+Next C5 step:
+- C5.3 begins with a fresh read-only audit of the remaining `main.js` responsibilities after C5.1/C5.2;
+- choose the next extraction by cohesion and risk, not by line-count alone;
+- continue to avoid diagnostics consolidation until C6 unless C5 only moves publishing/composition plumbing.
 
 Completion record:
-- C5 overall remains open until additional high-value responsibilities are removed and `main.js` is materially closer to a composition root.
+- C5 overall remains open until the remaining high-value responsibilities are reduced enough that `main.js` is materially a composition root.
 
 ---
 
@@ -770,13 +783,21 @@ These rules are mandatory while working this plan:
 
 # 6. Recommended next task
 
-**Next: C5.2 — extract sky/lighting construction from `main.js`.**
+**Next: C5.3 — audit the remaining `main.js` responsibilities and select the next low-risk cohesive extraction.**
 
-Keep time-of-day policy in `environment-controller.js` and frame cadence/performance-governor logic in `main.js`. Move only static sky-light construction and moon positioning behind a responsibility-based module, preserve every accepted visual constant, and require dedicated QA plus full Dev Integration before continuing C5.
+Start from the post-C5.2 source, quantify remaining ownership blocks and dependencies, and prefer composition/configuration plumbing over physics, terrain rules or diagnostics. Record the selected C5.3 boundary here before implementation, then validate it with dedicated QA plus full Dev Integration.
 
 ---
 
 # 7. Work log
+
+## 2026-08-30 — C5.2 completed: sky/lighting construction extracted
+
+- Added canonical `src/sky-lighting.js` for static hemisphere/sun/moon construction and camera-relative moon positioning.
+- Time-of-day/display-distance policy remains in `environment-controller.js`; moon cadence/performance-governor ownership remains in `main.js`.
+- Clean integration `d791b046` removed 112 net lines from `main.js`; Dev Integration registration `d00d648a`.
+- Permanent C5.2 gate `33353945084` PASS; final Dev Integration `33353966798` PASS 71/71.
+- Next focus: C5.3 fresh responsibility audit before choosing another extraction.
 
 ## 2026-08-30 — C3/C4 completed; C5.1 world-material extraction completed
 
