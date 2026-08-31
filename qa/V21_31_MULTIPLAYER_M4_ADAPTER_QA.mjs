@@ -2,14 +2,14 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import * as THREE from 'three';
 import {createVehicleSystem} from '../src/vehicle-system.js';
-import {getMultiplayerVehicleSpec} from '../src/multiplayer-vehicle-registry.js';
+import {getMultiplayerVehicleSpec} from '../src/multiplayer/multiplayer-vehicle-registry.js';
 import {VEHICLE_RENDER_ROOT_SCALE} from '../src/vehicle-render-contract.js';
 import {
   listAuthoredVehicleDescriptors,
   listAuthoredVehicleIds,
   loadAuthoredVehicleFactory
 } from '../src/vehicle-authored-registry.js';
-import {normalizeMultiplayerVehicleState} from '../src/multiplayer-vehicle-adapter.js';
+import {normalizeMultiplayerVehicleState} from '../src/multiplayer/multiplayer-vehicle-adapter.js';
 
 const liveVehicleSystem=createVehicleSystem({initialId:'wrx'});
 const fleet=liveVehicleSystem.list().map(entry=>entry.id).sort();
@@ -89,9 +89,9 @@ for(const descriptor of descriptors){
 }
 
 const entries=fs.readFileSync('src/vehicle-glb-entries.js','utf8');
-const adapter=fs.readFileSync('src/multiplayer-vehicle-adapter.js','utf8');
-const visuals=fs.readFileSync('src/multiplayer-visuals-m3.js','utf8');
-const client=fs.readFileSync('src/multiplayer-client-m3.js','utf8');
+const adapter=fs.readFileSync('src/multiplayer/multiplayer-vehicle-adapter.js','utf8');
+const visuals=fs.readFileSync('src/multiplayer/multiplayer-visuals-m3.js','utf8');
+const client=fs.readFileSync('src/multiplayer/multiplayer-client-m3.js','utf8');
 const localVisuals=fs.readFileSync('src/vehicle-visuals.js','utf8');
 const wrx=fs.readFileSync('src/wrx-glb.js','utf8');
 const sonata=fs.readFileSync('src/sonata-glb.js','utf8');
@@ -99,7 +99,7 @@ const id4=fs.readFileSync('src/id4-glb.js','utf8');
 
 assert(entries.includes("from './vehicle-authored-registry.js'"),'local GLB entrypoint must use canonical authored registry');
 for(const legacy of ['./wrx-glb.js','./sonata-glb.js','./civic-glb.js','./id4-glb.js'])assert(!entries.includes(`import '${legacy}'`),`local entrypoint must not bypass registry: ${legacy}`);
-assert(adapter.includes("from './vehicle-authored-registry.js'"),'remote adapter must resolve exact local authored controller registry');
+assert(adapter.includes("from '../vehicle-authored-registry.js'"),'remote adapter must resolve exact local authored controller registry');
 assert(adapter.includes('loadAuthoredVehicleFactory(vehicleId)'),'remote adapter must instantiate the canonical local controller');
 assert(adapter.includes('createVehicleSystem({initialId:vehicleId})'),'every peer must own an isolated vehicleSystem');
 assert(adapter.includes("descriptor?.kind==='articulated-truck'"),'adapter must convert articulated truck through the same contract');
@@ -110,7 +110,7 @@ assert(adapter.includes('reverseRequested:optionalBoolean(system?.reverseRequest
 assert(adapter.includes('reverseMaterialCount:optionalCount(system?.reverseMaterialCount)'),'adapter diagnostics must expose authored reverse binding count when controller supports it');
 assert(adapter.includes('reverseGlowOpacity:optionalCount(system?.reverseGlowOpacity)'),'adapter diagnostics must expose authored shader output when available');
 assert(visuals.includes("from './multiplayer-vehicle-adapter.js'"),'multiplayer visuals must route through M4 adapter');
-assert(visuals.includes("from './vehicle-render-contract.js'"),'remote visuals must consume shared local render transform contract');
+assert(visuals.includes("from '../vehicle-render-contract.js'"),'remote visuals must consume shared local render transform contract');
 assert(visuals.includes('support.root.scale.set(VEHICLE_RENDER_ROOT_SCALE'),'remote authored root must use exact local car scale');
 assert(localVisuals.includes("from './vehicle-render-contract.js'"),'local visuals must consume shared render transform contract');
 assert(localVisuals.includes('car.scale.set(VEHICLE_RENDER_ROOT_SCALE'),'local car root must use shared render scale');
@@ -121,18 +121,11 @@ assert(client.includes('peer.visual.updateRemoteVehicle?.(dt,remoteState)'),'cli
 assert(client.includes('peer.visual.setRemoteVisible?.(true,remoteState)'),'client must keep external trailer/controller visibility aligned');
 assert(client.includes('gear:peer.gear'),'client must forward network gear into normalized remote state');
 
-// M4.12 WRX: restore the exact local-proven reverse selector that preceded the
-// multiplayer experiments. The real visible rear clear lens is Object_27 with
-// material fh_light_glass. The misleading fh_reverse_material/Object_37 branch
-// actually carries material Eblems in this GLB and must not own reverse output.
 assert(wrx.includes('const isRearCluster=localCenter.z<-1.7 && localCenter.y>.65'),'WRX reverse must classify the physical rear cluster in root-local space');
 assert(wrx.includes("materialNames.some(name=>name.includes('fh_light_glass'))"),'WRX reverse must bind the proven authored fh_light_glass rear lens');
 assert(wrx.includes("console.warn('WRX authored reverse-lamp binding found no rear white lens.')"),'WRX missing proven reverse lens must be diagnosable');
 assert(!wrx.includes("if(path.includes('fh_reverse_material'))"),'WRX reverse must not regress to misleading fh_reverse_material/Eblems branch');
 
-// Sonata: Object_46 is the audited authored rear-inner lens. Every shader
-// uniform referenced in GLSL must exist. M4.10 keeps brake red texture-driven,
-// while reverse remains on the authored white layer.
 assert(sonata.includes("const rearInnerLens=root.getObjectByName('Object_46')"),'Sonata reverse must originate from audited Object_46 authored lens');
 for(const uniform of ['uTintMix','uUseUvRegion','uUvMin','uUvMax','uUvFeather']){
   assert(sonata.includes(`${uniform}:{value:`),`Sonata shader missing initialized ${uniform}`);
