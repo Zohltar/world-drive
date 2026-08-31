@@ -830,7 +830,7 @@ C5 completion record:
 
 ### C6 — Consolidate diagnostic globals **[P2]**
 
-Status: **IN PROGRESS — C6.1/C6.2/C6.3 DONE; C6.4 road-sign boundary selected (2026-08-31)**
+Status: **IN PROGRESS — C6.1/C6.2/C6.3/C6.4 DONE; C6.5 remaining-global audit next (2026-08-31)**
 
 Audit baseline:
 - audit branch `audit/diagnostics-c6`; strengthened audit run `33386461640`: PASS diagnostic inventory, import/debt audit, active forest runtime/stress, P9.37 frame pacing, P9.39 hitch attribution, P9.41 frame-runtime attribution and production build;
@@ -978,6 +978,17 @@ C6.4 selected boundary — one canonical road-sign snapshot:
 - no changes to sign geometry, texture/cache policy, placement, geographic sign selection, idle scheduling thresholds, minimap 5 s/fade readout or sign rearm;
 - candidate validation must include C6.4 equivalence, P9.30 runtime, P9.37 combined frame pacing, C5.4 geographic signs, minimap sign readout, C6.1–C6.3, runtime import/debt audit, full stress and production build before integration.
 
+C6.4 completion record — canonical road-sign diagnostics:
+- corrected read-only audit run `33397131467`: PASS exact two-global inventory, P9.30 runtime signs, P9.37 combined frame pacing, C5.4 geographic sign orchestration, V21.25 minimap sign readout, runtime import/debt audit and production build; the preceding `33397020292` stopped only because the new audit expected an obsolete P9.30 mode label, before runtime QA;
+- candidate branch `cleanup/diagnostics-c6-4`; candidate run `33397564315`: PASS C6.1–C6.4, P9.30/P9.37, geographic-sign and minimap-readout regressions, 288 driving cases, full V21.31 stress, production build and diff hygiene; candidate materialization `a91fd464`;
+- final runtime + permanent gate integration commit `6ac02b10`: removed both independent legacy road-sign global writers, retained P9.30 `diagnostics()` internally, and registered the unchanged combined P9.37 function at `WorldDriveDiagnostics.roadSigns.snapshot`;
+- permanent C6.4 gate run `33400198218`: PASS C6.1–C6.4, P9.30/P9.37, C5.4, minimap sign readout, runtime import/debt audit and production build;
+- Dev Integration registration commit `be3da897`; final Dev Integration run `33400446316`: PASS **79/79**, including C6.4, full stress, 288 driving cases, R2–R20, forest/frame pacing, M4.14/M4.15 WebGL, live route smoke, production build and code split;
+- removed legacy globals `__WORLD_DRIVE_P930_ROAD_SIGNS__` and `__WORLD_DRIVE_P937_ROAD_SIGNS__`; no runtime reader required a compatibility alias, and the sole source-string QA was migrated to canonical ownership;
+- road-sign geometry, texture/cache policy, geographic placement, P9.30 incremental build, P9.37 idle/coalescing thresholds, minimap 5 s + fade readout and bidirectional rearm are unchanged;
+- human validation: not required; C6.4 is diagnostics-only and all road-sign rendering/scheduling/readout behavior is covered by deterministic and integration QA;
+- Result: **C6.4 DONE**. Next is a fresh read-only inventory of the remaining diagnostic globals before selecting C6.5.
+
 ---
 
 # 4. Items intentionally NOT scheduled for immediate deletion
@@ -1018,13 +1029,22 @@ These rules are mandatory while working this plan:
 
 # 6. Recommended next task
 
-**Next: C6.4 — implement the audited canonical road-sign snapshot.**
+**Next: C6.5 — audit the remaining diagnostic globals.**
 
-Move only diagnostic publication: register the existing combined P9.37 diagnostic function at `WorldDriveDiagnostics.roadSigns.snapshot`, remove the unconsumed P9.30/P9.37 globals after migrating the sole QA source-string contract, and preserve all road-sign rendering, placement, scheduling and minimap readout behavior.
+Run a fresh read-only inventory from current `dev`, including direct runtime readers and QA/source-string contracts. Rank the remaining categories by ownership complexity and compatibility risk before choosing the next migration; do not assume the pre-C6.4 counts are still current.
 
 ---
 
 # 7. Work log
+
+## 2026-08-31 — C6.4 completed: canonical road-sign diagnostics
+
+- Audit `33397131467` PASS after correcting only the audit's stale P9.30 mode label.
+- Candidate `33397564315` PASS; materialized runtime `a91fd464`.
+- Runtime/permanent gate integration `6ac02b10`; permanent gate `33400198218` PASS.
+- Dev Integration registration `be3da897`; final `33400446316` PASS 79/79.
+- P9.30/P9.37 legacy globals removed; canonical `WorldDriveDiagnostics.roadSigns.snapshot` preserves the combined P9.30 + P9.37 snapshot and all sign scheduling/readout behavior.
+- C6.5 begins with a fresh remaining-global audit.
 
 ## 2026-08-31 — C6.2 completed: authored presentation diagnostics
 
