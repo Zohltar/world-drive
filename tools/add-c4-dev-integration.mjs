@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 
+// Temporary branch-only materializer for the permanent Dev Integration gate.
 const file='.github/workflows/qa-dev-integration.yml';
 let text=fs.readFileSync(file,'utf8');
 const anchor=`      - name: Cleanup C3 road geometry ownership QA\n        run: node qa-road-geometry-c3.mjs\n`;
