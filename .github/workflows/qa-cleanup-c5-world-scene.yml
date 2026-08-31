@@ -1,0 +1,53 @@
+name: Cleanup C5.3 World Scene QA
+
+on:
+  push:
+    branches:
+      - dev
+    paths:
+      - 'src/main.js'
+      - 'src/world-scene.js'
+      - 'src/terrain*.js'
+      - 'src/local-world-builder*.js'
+      - 'src/streaming-coordinator*.js'
+      - 'qa-main-c5-world-scene.mjs'
+      - 'qa-local-world-current-a8.mjs'
+      - 'qa-terrain-r1-legacy-ownership.mjs'
+      - 'qa-terrain-r2-road-imagery.mjs'
+      - 'qa/V21_31_ROAD_SMOOTHING_QA.mjs'
+      - 'qa/V21_31_SUPERELEVATION_QA.mjs'
+      - '.github/workflows/qa-cleanup-c5-world-scene.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  qa:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: C5.3 world scene ownership and behavior QA
+        run: node qa-main-c5-world-scene.mjs
+      - name: Current local-world ownership QA
+        run: node qa-local-world-current-a8.mjs
+      - name: Terrain visual ownership QA
+        run: node qa-terrain-r1-legacy-ownership.mjs
+      - name: Terrain road imagery alignment QA
+        run: node qa-terrain-r2-road-imagery.mjs
+      - name: V21.31 road smoothing regression
+        run: node qa/V21_31_ROAD_SMOOTHING_QA.mjs
+      - name: V21.31 superelevation regression
+        run: node qa/V21_31_SUPERELEVATION_QA.mjs
+      - name: Driving dynamics simulation matrix
+        run: node qa/DEV_DRIVING_SIM_QA.mjs
+      - name: Full V21.31 regression stress
+        run: npm run qa:stress
+      - name: Production build
+        run: npm run build
