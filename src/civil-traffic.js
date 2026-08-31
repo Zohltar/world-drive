@@ -6,6 +6,7 @@ import {
   publishLocalCivilTrafficSnapshot,
   readCivilTrafficMultiplayerBridge
 } from './civil-traffic-network-bridge.js';
+import {ensureWorldDriveDiagnostics,installDiagnosticAlias} from './diagnostics.js';
 
 // Traffic MP1 facade.
 // Offline and authoritative multiplayer clients run the exact validated R7 local
@@ -320,8 +321,21 @@ export function createCivilTrafficSystem(args={}){
     };
   }
 
+  function poolDiagnostics(){
+    const base=local.diagnostics();
+    return {
+      configured:base.configuredPool,
+      available:base.availableVehicles,
+      packReady:base.packReady
+    };
+  }
+
   if(typeof globalThis!=='undefined'){
-    globalThis.WorldDriveTraffic=diagnostics;
+    const trafficDiagnostics=ensureWorldDriveDiagnostics().traffic;
+    trafficDiagnostics.runtime=diagnostics;
+    trafficDiagnostics.pool=poolDiagnostics;
+    installDiagnosticAlias('WorldDriveTraffic',()=>trafficDiagnostics.runtime);
+    installDiagnosticAlias('WorldDriveTrafficPool',()=>trafficDiagnostics.pool);
     globalThis.WorldDriveTrafficSpawn=(kind,vehicleId)=>forceSpawn(kind,vehicleId);
   }
 
