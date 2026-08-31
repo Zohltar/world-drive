@@ -431,57 +431,75 @@ Completion record:
 
 ### B5 — Extract yaw authority / bicycle↔physical transition **[P0/P1]**
 
-Status: **IN PROGRESS — OWNERSHIP AUDIT COMPLETE (2026-08-30)**
+Status: **DONE — 2026-08-30**
 
-Proposed module:
+Canonical module:
 - `src/physics/yaw-authority.js`
 
 Owns:
 - transition between normal bicycle-model yaw and per-wheel force-authoritative yaw;
-- `forceDominatedDrift` decision;
-- `driftKinematicCoupling` semantics;
-- legacy grip-yaw fallback only if still demonstrably required.
+- `driftKinematicCoupling` semantics and physical-authority gate;
+- front/rear dominance and four-wheel-slide conditioning of the bicycle target;
+- RWD legacy power-oversteer contribution where still enabled;
+- R16/R21 legacy grip-yaw filtering;
+- physical-vs-legacy yaw acceleration blend;
+- yaw settling response and frame-by-frame `dynamicYawRate` integration.
 
 Goal:
 - make it impossible for multiple hidden yaw authorities to simultaneously fight each other.
 
 Completion record:
 - Ownership audit branch: `audit/yaw-b5`; audit workflow commit `3fe7c458`; audit run `33343248476` PASS.
-- Audit result: local chassis yaw authority is still concentrated in `src/driving-runtime-base.js`. Multiplayer peer extrapolation and articulated trailer yaw are separate domains and remain outside B5.
-- Planned extraction boundary: bicycle-target saturation/slip conditioning, front/rear dominance, legacy RWD power-oversteer contribution, `driftKinematicCoupling`, R7 physical-authority gate, R16/R21 legacy-yaw filtering, physical-vs-legacy yaw-acceleration blend, yaw settling response and `dynamicYawRate` integration move to `src/physics/yaw-authority.js`. Tire-force generation remains in the per-wheel solver; momentum direction remains in B4's owner.
-- Source commit: _pending_
-- Permanent B5 QA: _pending_
+- Audit result: local player chassis yaw authority was concentrated in `src/driving-runtime-base.js`. Multiplayer peer extrapolation and articulated trailer yaw are separate domains and remain outside B5.
+- Candidate source commit: `812780c7` on `cleanup/yaw-b5`.
+- Numerical-equivalence QA: `qa-yaw-authority-b5.mjs` compares the extracted owner against the exact pre-B5 equations over 30,000 deterministic randomized states; final candidate run `33343672832` PASS with max error exactly 0.
+- Critical regressions PASS in the candidate: R7, R11, R16, R17, R19, R20, R21 and R23, plus the 288-case driving matrix, 80,000-sample stress suite and production build.
+- Integration source commit on `dev`: `d02987ad`.
+- Permanent B5 gate commit: `3f52ebba`; gate run `33343954812` PASS.
+- Dev Integration gate commit: `e3a5ae42`. The first run correctly exposed one stale source-location assertion in R6: airborne yaw had moved to the B5 owner while the QA still searched `driving-runtime-base.js`.
+- R6 ownership migration commit: `72f6cc10`; it now verifies runtime delegation to `advanceYawAuthority()` and the zero airborne kinematic-yaw response in `src/physics/yaw-authority.js`. No equation or threshold changed.
+- Final Dev Integration run `33344066041`: PASS all 62 steps, including B3/B4/B5 ownership gates, 288 driving cases, 80,000 stress samples, Grip R2–R20, forest/frame pacing, M4.14/M4.15 WebGL, live route smoke and production build/code split.
+- Human validation: not required for B5 because the extracted yaw update is numerically identical to the old implementation over 30,000 randomized states.
+- Separate stale-QA finding: `qa/V21_27_CG_CONTACT_GEOMETRY_QA.mjs` already fails on the pre-B5 `dev` baseline; verification run `33343640402`. It is not a B5 regression and must be handled as separate technical debt rather than changing B5 physics to satisfy it.
+- Result: `src/physics/yaw-authority.js` is now the single owner of local chassis yaw-authority arbitration and `dynamicYawRate` evolution; tire-force generation remains in the per-wheel solver and momentum direction remains in B4.
 
 ---
 
 ### B6 — Eliminate hidden wheelspin state and duplicate authority **[P0]**
 
-Status: **TODO**
+Status: **IN PROGRESS — OWNERSHIP AUDIT COMPLETE (2026-08-30)**
 
 Problem:
-- `vehicle-dynamics-v21.29.js` stores module-global intermediates such as:
-  - `latestRawDriveDemandAccel`
-  - `latestAppliedDriveAccel`
-- one call writes them and another later call consumes/reset them;
-- this creates order-dependent behavior.
-- `driving-runtime.js` also has its own wheelspin state/hold/grip behavior, so wheelspin authority is split.
+- `vehicle-dynamics-v21.29.js` stores module-global intermediates `latestRawDriveDemandAccel` and `latestAppliedDriveAccel`; `longitudinalTractionLimit()` writes them and a later `estimateWheelGripUsage()` consumes/resets them, so results depend on call order;
+- `driving-runtime.js` independently owns persistent clutch-breakaway wheelspin state/hold and applies a second grip factor;
+- `vehicle-dynamics-v21.29.js` also synthesizes instantaneous driven-wheel slip and publishes `WorldDriveWheelSpinTelemetry`;
+- `vehicle-dynamics.js` still mutates that global diagnostic when airborne;
+- skidmarks synthesize wheelspin again from runtime state, so physics state and visual observers are not cleanly separated.
 
 Required correction:
-- pass explicit values into tire-grip evaluation:
-  - requested propulsion acceleration;
-  - applied propulsion acceleration;
-  - clutch state/shock where relevant;
-- remove module-global handoff;
-- decide one authoritative wheelspin state path;
-- keep visual/audio/skid consumers as observers, not alternate physics authorities.
+- pass requested and applied propulsion acceleration explicitly into tire-grip evaluation;
+- remove the module-global traction→grip handoff and prove call-order independence;
+- make the combustion runtime the authoritative owner of persistent clutch/wheelspin state because it already owns clutch-release/shock timing;
+- keep tire-utilization/slip calculation stateless and driven by explicit inputs/state;
+- reduce/remove global telemetry coupling; diagnostics, audio and skidmarks must observe authoritative state rather than create alternate physics authority;
+- preserve clutch-dump behavior for FWD, RWD, AWD, F1/Sonata and truck cases; EV behavior must remain unchanged.
 
 Acceptance:
 - wheelspin result does not depend on unrelated call order;
-- clutch-dump, FWD, RWD, AWD and truck cases remain correct.
+- no `latestRawDriveDemandAccel` / `latestAppliedDriveAccel` module globals remain;
+- explicit requested/applied propulsion values drive tire utilization;
+- one persistent wheelspin owner;
+- clutch-dump, FWD, RWD, AWD and truck cases remain correct;
+- full V21.29 clutch/wheelspin suite, 288 driving cases, stress and build pass.
 
 Completion record:
-- Commit: _pending_
-- QA: _pending_
+- Ownership audit branch: `audit/wheelspin-b6`; audit workflow commit `de7e72f4`; audit run `33344102940` PASS.
+- Audit confirmed three current layers: hidden V21.29 demand globals, persistent runtime wheelspin/grip reduction, and global telemetry cleanup/observer coupling in the V21.30 wrapper.
+- Current frame-order dependency is explicit: `driving-runtime-base.js` calls drive `longitudinalTractionLimit()` around the longitudinal phase, then calls `estimateWheelGripUsage()` later in the same frame; the V21.29 wrapper silently relies on that ordering.
+- Existing authoritative coverage identified for migration/retention: `V21_29_CIVIC_CLUTCH_DUMP_SLIP_QA`, `V21_29_CIVIC_CLUTCH_WHEELSPIN_QA`, `V21_29_RUNTIME_WHEELSPIN_QA`, fleet clutch/shock QA, semi-auto clutch QA, skid/audio linkage QA and `V21_31_AIRBORNE_TIRE_STATE_QA`.
+- Intended ownership: `driving-runtime.js` remains the single persistent wheelspin state owner; the vehicle-dynamics layer becomes stateless/order-independent and consumes explicit propulsion demand/applied values.
+- Source commit: _pending_
+- Permanent B6 QA: _pending_
 
 ---
 
