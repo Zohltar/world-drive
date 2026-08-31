@@ -785,6 +785,13 @@ Keep time-of-day policy in `environment-controller.js` and frame cadence/perform
 - C5 audit measured `main.js` at 3245 lines / 100343 bytes. C5.1 extracted world materials into `src/world-materials.js`, including explicit animated-water texture ownership. Permanent gate `33353622236` PASS; Dev Integration `33353661136` PASS 70/70.
 - Next focus: C5.2 sky/lighting construction extraction; no time-of-day or frame-pacing policy changes.
 
+## 2026-08-30 — C3/C4 completed; C5.1 world-material extraction completed
+
+- C3 consolidated road geometry into one canonical owner; stale V21.25 implementation-location contracts were migrated without changing route behavior. Permanent gate `33352045645` PASS; Dev Integration `33352045710` PASS.
+- C4 renamed forest production layers by responsibility while preserving all performance-sensitive values and P9.xx diagnostic compatibility for C6. Permanent gate `33352459857` PASS; Dev Integration `33352603137` PASS 69/69.
+- C5 audit measured `main.js` at 3245 lines / 100343 bytes. C5.1 extracted world materials into `src/world-materials.js`, including explicit animated-water texture ownership. Permanent gate `33353622236` PASS; Dev Integration `33353661136` PASS 70/70.
+- Next focus: C5.2 sky/lighting construction extraction; no time-of-day or frame-pacing policy changes.
+
 ## 2026-08-30 — A8 completed: current local-world QA truth
 
 - Retired the stale V21.26 local-world implementation meta-test discovered during C2.
