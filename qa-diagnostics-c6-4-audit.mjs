@@ -55,7 +55,7 @@ if(!/globalThis\.__WORLD_DRIVE_P937_ROAD_SIGNS__\s*=\s*diagnostics/.test(p937))t
 if(!p937.includes('const baseDiag=base.diagnostics?.()||{};'))throw new Error('P9.37 no longer composes canonical P9.30 diagnostics');
 if(!p937.includes('...baseDiag'))throw new Error('P9.37 diagnostics no longer include base diagnostic payload');
 if(!p937.includes("mode:'p937-idle-sign-collection'"))throw new Error('P9.37 diagnostics mode changed');
-if(!p930.includes("mode:'p930-idle-one-sign-per-slice'"))throw new Error('P9.30 diagnostics mode changed');
+if(!p930.includes("mode:'p930-incremental-sign-build'"))throw new Error('P9.30 diagnostics mode changed');
 
 for(const [name,data] of Object.entries(inventory)){
   if(data.writers.length!==1)throw new Error(`${name} must have exactly one writer; found ${data.writers.length}`);
@@ -66,7 +66,7 @@ const report={
   inventory,
   composition:{
     p937WrapsP930:true,
-    p930Mode:'p930-idle-one-sign-per-slice',
+    p930Mode:'p930-incremental-sign-build',
     p937Mode:'p937-idle-sign-collection'
   }
 };
