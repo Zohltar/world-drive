@@ -1,0 +1,19 @@
+name: B5 CG baseline check
+
+on:
+  push:
+    branches:
+      - qa/b5-cg-baseline
+    paths:
+      - '.github/workflows/b5-cg-baseline-temp.yml'
+  workflow_dispatch:
+
+jobs:
+  qa:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: node qa/V21_27_CG_CONTACT_GEOMETRY_QA.mjs
