@@ -3,6 +3,7 @@ import path from 'node:path';
 
 const root=process.cwd();
 const runtimePath='src/driving-runtime.js';
+const auditPath='qa-diagnostics-c6-3-audit.mjs';
 const runtime=fs.readFileSync(runtimePath,'utf8');
 const globalName='WorldDriveRuntimeWheelspin';
 
@@ -26,7 +27,7 @@ walk('src');
 const qaFiles=[
   ...fs.readdirSync(root).filter(name=>/^qa-.*\.mjs$/.test(name)),
   ...fs.readdirSync('qa').filter(name=>/\.mjs$/.test(name)).map(name=>path.join('qa',name))
-];
+].filter(file=>file!==auditPath);
 
 const sourceMentions=[];
 for(const file of srcFiles){
