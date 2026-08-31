@@ -830,7 +830,7 @@ C5 completion record:
 
 ### C6 — Consolidate diagnostic globals **[P2]**
 
-Status: **IN PROGRESS — audit complete, C6.1 selected (2026-08-31)**
+Status: **IN PROGRESS — C6.1 DONE; C6.2 audit next (2026-08-31)**
 
 Audit baseline:
 - audit branch `audit/diagnostics-c6`; strengthened audit run `33386461640`: PASS diagnostic inventory, import/debt audit, active forest runtime/stress, P9.37 frame pacing, P9.39 hitch attribution, P9.41 frame-runtime attribution and production build;
@@ -886,11 +886,23 @@ C6.1 selected boundary — canonical diagnostics root + frame-pacing/forest brid
 - migrate startup forest readiness lookup to the canonical forest diagnostics path, while temporary P9.33/P9.34/P9.35 READY aliases may remain equivalent during the transition;
 - leave traffic, multiplayer, physics, wheelspin, road-sign and presentation globals for later C6 phases.
 
+C6.1 completed — canonical diagnostics root + frame-pacing/forest bridge:
+- added canonical `src/diagnostics.js` with one stable `WorldDriveDiagnostics` root; frame-pacing and forest diagnostics now publish through that authority;
+- preserved `WorldDriveFramePacing` and `__WORLD_DRIVE_P928_RECORD_HITCH__` as live compatibility delegates/fallbacks rather than independent stores;
+- startup forest readiness now prefers canonical forest diagnostics while P9.33/P9.34/P9.35 READY compatibility remains equivalent;
+- modernized stale V21.22.3 hitch-free QA to current ownership/accepted values and P9.29 to canonical-first hitch-recorder semantics without changing thresholds/timing;
+- no physics, visual-quality, forest-density, streaming-distance or frame-budget tuning was introduced.
+
 Completion record:
 - Audit V1: `33386355567` PASS (consumer scan later strengthened).
 - Audit V2: `33386461640` PASS.
-- C6.1 commit: _pending_
-- C6.1 QA: _pending_
+- Candidate final run `33387813899`: PASS C6.1, C4, modernized V21.22.3, P9.29–P9.42, forest runtime/stress, 288 driving cases, full stress and production build.
+- Runtime integration commit: `b8104d63` — centralize frame and forest diagnostics.
+- Permanent C6.1 gate run `33388072639`: PASS.
+- Dev Integration registration commit: `8786af33` — C6.1 added explicitly as step 24.
+- Final Dev Integration run `33391069457`: PASS **76/76**, including C6.1, full stress, 288 driving cases, M4.14/M4.15 WebGL, production build and code split.
+- Human validation: not required; C6.1 changes diagnostics ownership/compatibility only and all runtime-facing forest/frame-pacing semantics are directly covered by deterministic and integration QA.
+- Result: C6.1 is DONE; remaining diagnostic categories stay intentionally untouched until individually audited.
 
 ---
 
@@ -932,13 +944,21 @@ These rules are mandatory while working this plan:
 
 # 6. Recommended next task
 
-**Next: C6.1 — canonical diagnostics root + frame-pacing/forest bridge.**
+**Next: C6.2 — audit the next small diagnostic category before migration.**
 
-The strengthened C6 audit is complete. Implement the first compatibility-preserving slice only: one stable diagnostics root for frame pacing/forest, with current P9.28 and frame-pacing aliases delegating to the same authority and startup forest readiness migrated to the canonical path.
+Start read-only from the remaining traffic, multiplayer, physics, wheelspin, streaming, road-sign and presentation globals. Prefer the smallest category with a clear single owner and few compatibility consumers; document exact writers/readers/QA contracts before changing runtime.
 
 ---
 
 # 7. Work log
+
+## 2026-08-31 — C6.1 completed: canonical frame-pacing/forest diagnostics root
+
+- Runtime integration `b8104d63`; permanent C6.1 gate `33388072639` PASS.
+- Dev Integration registration `8786af33`; final run `33391069457` PASS 76/76.
+- Candidate `33387813899` passed the full forest/frame-pacing stack, 288 driving cases, stress and build.
+- V21.22.3 and P9.29 stale source-location assertions were modernized to current ownership without restoring historical policy.
+- C6.2 remains read-only until the next category's writers/readers/QA contracts are mapped.
 
 ## 2026-08-31 — C6.1 candidate exposed stale P9.29 hitch-hook location assertion
 
