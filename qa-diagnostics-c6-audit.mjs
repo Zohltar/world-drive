@@ -21,12 +21,18 @@ function walk(rel){
 }
 
 const files=[...new Set([...roots.flatMap(walk),...extraFiles.filter(file=>fs.existsSync(path.join(root,file)))])].sort();
+const sources=new Map(files.map(file=>[file,fs.readFileSync(path.join(root,file),'utf8')]));
 const globals=new Map();
 const globalPattern=/(?:globalThis|window)\s*(?:\.\s*([A-Za-z_$][\w$]*)|\[\s*['"]([^'"]+)['"]\s*\])/g;
+
+function isQaFile(file){
+  return file.startsWith('qa/')||file.startsWith('qa-');
+}
 
 function category(name){
   const n=name.toLowerCase();
   if(n.includes('forest'))return 'forest';
+  if(n.includes('framepacing')||n.includes('hitch'))return 'framePacing';
   if(n.includes('physics')||n.includes('grip')||n.includes('yaw')||n.includes('tire'))return 'physics';
   if(n.includes('traffic'))return 'traffic';
   if(n.includes('multiplayer'))return 'multiplayer';
@@ -46,9 +52,9 @@ function relation(source,start,end){
   return 'read';
 }
 
-for(const file of files){
-  const source=fs.readFileSync(path.join(root,file),'utf8');
+for(const [file,source] of sources){
   let match;
+  globalPattern.lastIndex=0;
   while((match=globalPattern.exec(source))){
     const name=match[1]||match[2];
     if(!/(?:WORLD_DRIVE|WorldDrive)/i.test(name))continue;
@@ -60,9 +66,8 @@ for(const file of files){
       globals.set(name,item);
     }
     item.occurrences.push({file,line,relation:rel});
-    const isQa=file.startsWith('qa/')||file.startsWith('qa-');
     const isWrite=rel==='write'||rel==='mutation'||rel==='delete';
-    if(isQa){
+    if(isQaFile(file)){
       (isWrite?item.qaWriters:item.qaReaders).add(file);
     }else{
       (isWrite?item.srcWriters:item.srcReaders).add(file);
@@ -70,26 +75,36 @@ for(const file of files){
   }
 }
 
-const rows=[...globals.values()].map(item=>({
-  name:item.name,
-  category:item.category,
-  occurrences:item.occurrences.length,
-  srcWriters:[...item.srcWriters].sort(),
-  srcReaders:[...item.srcReaders].sort(),
-  qaReaders:[...item.qaReaders].sort(),
-  qaWriters:[...item.qaWriters].sort(),
-  sourceOwnerCount:item.srcWriters.size,
-  qaConsumerCount:new Set([...item.qaReaders,...item.qaWriters]).size,
-  versionAlias:/P\d{3,4}|V\d+/i.test(item.name)
-})).sort((a,b)=>a.category.localeCompare(b.category)||b.qaConsumerCount-a.qaConsumerCount||a.name.localeCompare(b.name));
+const rows=[...globals.values()].map(item=>{
+  const qaMentions=[];
+  const srcMentions=[];
+  for(const [file,source] of sources){
+    if(!source.includes(item.name))continue;
+    (isQaFile(file)?qaMentions:srcMentions).push(file);
+  }
+  return {
+    name:item.name,
+    category:item.category,
+    occurrences:item.occurrences.length,
+    srcWriters:[...item.srcWriters].sort(),
+    srcReaders:[...item.srcReaders].sort(),
+    qaReaders:[...item.qaReaders].sort(),
+    qaWriters:[...item.qaWriters].sort(),
+    srcMentions:[...new Set(srcMentions)].sort(),
+    qaMentions:[...new Set(qaMentions)].sort(),
+    sourceOwnerCount:item.srcWriters.size,
+    directQaConsumerCount:new Set([...item.qaReaders,...item.qaWriters]).size,
+    qaMentionCount:new Set(qaMentions).size,
+    versionAlias:/P\d{3,4}|V\d+/i.test(item.name)
+  };
+}).sort((a,b)=>a.category.localeCompare(b.category)||b.qaMentionCount-a.qaMentionCount||a.name.localeCompare(b.name));
 
 const byCategory={};
 for(const row of rows){
   const bucket=byCategory[row.category]??={globals:0,aliases:0,qaConsumers:new Set(),sourceWriters:new Set()};
   bucket.globals++;
   if(row.versionAlias)bucket.aliases++;
-  row.qaReaders.forEach(v=>bucket.qaConsumers.add(v));
-  row.qaWriters.forEach(v=>bucket.qaConsumers.add(v));
+  row.qaMentions.forEach(v=>bucket.qaConsumers.add(v));
   row.srcWriters.forEach(v=>bucket.sourceWriters.add(v));
 }
 for(const value of Object.values(byCategory)){
@@ -98,22 +113,25 @@ for(const value of Object.values(byCategory)){
 }
 
 const multiOwner=rows.filter(row=>row.sourceOwnerCount>1);
-const qaPinnedAliases=rows.filter(row=>row.versionAlias&&row.qaConsumerCount>0);
-const runtimeOnly=rows.filter(row=>row.qaConsumerCount===0);
+const qaPinnedAliases=rows.filter(row=>row.versionAlias&&row.qaMentionCount>0);
+const noQaMentions=rows.filter(row=>row.qaMentionCount===0);
 const readWithoutWriter=rows.filter(row=>row.srcWriters.length===0&&row.qaWriters.length===0);
+const sourceStringOnlyQa=rows.filter(row=>row.qaMentionCount>row.directQaConsumerCount);
 
-console.log('CLEANUP C6 DIAGNOSTIC GLOBAL AUDIT');
+console.log('CLEANUP C6 DIAGNOSTIC GLOBAL AUDIT V2');
 console.log(JSON.stringify({
   filesScanned:files.length,
   totalGlobals:rows.length,
   categories:byCategory,
-  multiOwner:multiOwner.map(({name,category,srcWriters,qaConsumerCount})=>({name,category,srcWriters,qaConsumerCount})),
-  qaPinnedAliases:qaPinnedAliases.map(({name,category,srcWriters,qaConsumerCount})=>({name,category,srcWriters,qaConsumerCount})),
-  runtimeOnly:runtimeOnly.map(({name,category,srcWriters,srcReaders})=>({name,category,srcWriters,srcReaders})),
-  readWithoutWriter:readWithoutWriter.map(({name,category,srcReaders,qaReaders})=>({name,category,srcReaders,qaReaders})),
+  multiOwner:multiOwner.map(({name,category,srcWriters,qaMentionCount})=>({name,category,srcWriters,qaMentionCount})),
+  qaPinnedAliases:qaPinnedAliases.map(({name,category,srcWriters,qaMentions})=>({name,category,srcWriters,qaMentions})),
+  sourceStringOnlyQa:sourceStringOnlyQa.map(({name,category,directQaConsumerCount,qaMentions})=>({name,category,directQaConsumerCount,qaMentions})),
+  noQaMentions:noQaMentions.map(({name,category,srcWriters,srcReaders})=>({name,category,srcWriters,srcReaders})),
+  readWithoutWriter:readWithoutWriter.map(({name,category,srcReaders,qaMentions})=>({name,category,srcReaders,qaMentions})),
   globals:rows
 },null,2));
 
 if(rows.length<10)throw new Error(`diagnostic audit found suspiciously few globals: ${rows.length}`);
 if(!rows.some(row=>row.category==='forest'))throw new Error('forest diagnostics unexpectedly absent');
 if(!rows.some(row=>row.category==='multiplayer'))throw new Error('multiplayer diagnostics unexpectedly absent');
+if(!sourceStringOnlyQa.length)throw new Error('expected source-string QA diagnostic references were not detected');
