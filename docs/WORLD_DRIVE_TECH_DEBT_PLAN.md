@@ -1079,6 +1079,21 @@ C6.8 material discovery — C6.7 intentionally pins wire compatibility:
 - this is not a runtime regression: C6.7 deliberately kept wire diagnostics out of scope, so its permanent QA asserts that the legacy wire callable remained unchanged and available while local-gear telemetry moved;
 - C6.8 must therefore modernize both QA contracts if canonical wire ownership is selected. C6.7 should continue protecting local-gear isolation and that C6.7 itself did not alter packet/wire behavior, but it must stop pinning the old global name once C6.8 becomes authoritative for wire diagnostics;
 - do not weaken or bypass either test, and do not change packet transforms, traffic merge order, incoming legacy upgrade order, counters, timestamps or copy semantics merely to satisfy source-location assertions.
+
+C6.8 audit completed — multiplayer wire diagnostics are observer-only:
+- corrected read-only audit run `33428333975`: PASS exact wire inventory, C6.1-C6.7 diagnostics regressions, V21.31 M3 socket-scoped protocol QA, shared/live multiplayer traffic, runtime import/debt audit and production build;
+- `__WORLD_DRIVE_MULTIPLAYER_WIRE__` has exactly one runtime writer in `src/multiplayer.js` and zero runtime readers; the only consumers of the legacy name are QA/source-string contracts in C6.7 and V21.31 M3 protocol QA;
+- the callable is a pure observer over the internal `wireDiagnostics` store: live normalized `exactLocalGear`, outgoing/incoming counters, shallow-cloned outgoing snapshot and JSON-deep-cloned incoming snapshot; it does not influence socket send/receive behavior;
+- outgoing diagnostic state is recorded only after exact gear and civil traffic are merged; incoming diagnostic state is recorded only after legacy payload upgrade and civil-traffic consumption; these ordering semantics must remain exact;
+- no evidence indicates a deliberate human-facing DevTools compatibility contract comparable to `WorldDrivePhysicsShadow`, so C6.8 may retire the legacy wire name rather than retain another permanent alias.
+
+C6.8 selected boundary — canonical multiplayer wire diagnostics:
+- move the existing callable to `WorldDriveDiagnostics.multiplayer.wire` without changing the internal `wireDiagnostics` store, mutation sites, payload shape, timestamps, counts or copy semantics;
+- remove `__WORLD_DRIVE_MULTIPLAYER_WIRE__` after modernizing both C6.7 and V21.31 M3 QA to current canonical ownership;
+- C6.7 must continue proving that local-gear migration is isolated from wire packet behavior, but should assert the canonical wire callable rather than the historical global name;
+- M3 protocol QA must continue proving actual outgoing/incoming diagnostic state exists, now under the canonical root;
+- keep `__WORLD_DRIVE_MULTIPLAYER_HD_VISUALS__`, streaming, forest aliases and all traffic diagnostics out of C6.8 scope;
+- candidate validation must include C6.1-C6.8, M3 exact-gear/socket-scoped protocol, shared/live traffic, C2/DNR transmission regressions, 288 driving cases, full stress, M4.15 network-to-WebGL reverse, import/debt audit and production build.
 - candidate validation must include C6.1–C6.7, C2 transmission ownership, D/N/R/exact-gear multiplayer protocol regressions, shared/live traffic networking, 288 driving cases, full stress, M4.15 network-to-WebGL reverse, runtime import/debt audit and production build before integration.
 
 ---
@@ -1121,13 +1136,19 @@ These rules are mandatory while working this plan:
 
 # 6. Recommended next task
 
-**Next: C6.8 — read-only audit of multiplayer wire diagnostics.**
+**Next: C6.8 — implement canonical multiplayer wire diagnostics.**
 
-Map `__WORLD_DRIVE_MULTIPLAYER_WIRE__` exactly: writer count, QA/source-string contract, outgoing/incoming snapshot payload, publication timing and whether any external DevTools workflow depends on the legacy name. Do not modify packet transforms or network state until that audit proves a safe diagnostics-only boundary. Keep `__WORLD_DRIVE_MULTIPLAYER_HD_VISUALS__`, streaming, forest compatibility aliases and traffic out of scope.
+Move only the observer callable to `WorldDriveDiagnostics.multiplayer.wire`, modernize the two QA contracts that intentionally pin the legacy name, and preserve every wire store mutation/order/copy semantic exactly. Keep HD visuals, streaming, forest compatibility aliases and traffic out of scope.
 
 ---
 
 # 7. Work log
+
+## 2026-08-31 — C6.8 audit completed: canonical wire boundary selected
+
+- Corrected audit `33428333975` PASS: one writer, zero runtime readers, two QA owners; C6.1-C6.7, M3 protocol, shared/live traffic, import audit and build green.
+- Wire callable is observer-only and preserves live exact gear, counters, outgoing shallow clone, incoming deep clone, plus exact outgoing/incoming recording order.
+- Selected C6.8: canonical `WorldDriveDiagnostics.multiplayer.wire`, retire legacy name, modernize C6.7 + M3 QA without touching packet transforms.
 
 ## 2026-08-31 — C6.8 audit discovery: C6.7 wire-compatibility QA contract
 
