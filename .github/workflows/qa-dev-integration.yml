@@ -54,6 +54,8 @@ jobs:
         run: node qa-transmission-c2.mjs
       - name: Cleanup C3 road geometry ownership QA
         run: node qa-road-geometry-c3.mjs
+      - name: Cleanup C4 forest ownership QA
+        run: node qa-forest-c4.mjs
       - name: Full V21.31 regression stress
         run: npm run qa:stress
       - name: Driving dynamics simulation matrix
