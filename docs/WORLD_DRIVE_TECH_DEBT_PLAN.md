@@ -873,6 +873,12 @@ C6.1 material discovery — stale dormant V21.22.3 hitch-free QA:
 - this proves the dormant QA is stale on the untouched current architecture and must be modernized to current owners/accepted values rather than forcing old source locations or old policy back into runtime;
 - C6.1 runtime diagnostics code is not to be changed to satisfy these unrelated historical assertions.
 
+C6.1 material discovery — stale P9.29 hitch-hook location assertion:
+- after the V21.22.3 QA was modernized to current owners, candidate run `33387555920` passed C6.1, C4 and V21.22.3 then stopped in `qa-forest-p929-frame-budget.mjs`;
+- P9.29 still requires the exact historical direct call `globalThis.__WORLD_DRIVE_P928_RECORD_HITCH__?.({...})` in `streaming-coordinator.js`;
+- the actual invariant remains valid: every >20 ms gameplay hitch must feed the active forest hitch recorder, but C6.1 intentionally prefers `WorldDriveDiagnostics.forest.recordHitch` and retains P9.28 only as a compatibility fallback;
+- modernize P9.29 to protect the >20 ms threshold plus canonical-first/fallback hook semantics rather than the old source location.
+
 C6.1 selected boundary — canonical diagnostics root + frame-pacing/forest bridge:
 - add a small canonical diagnostics module that creates/returns one stable `WorldDriveDiagnostics` root;
 - make canonical `framePacing` and `forest` accessors authoritative without changing their returned diagnostic payloads, retry cadence, hitch thresholds or forest timing;
@@ -933,6 +939,13 @@ The strengthened C6 audit is complete. Implement the first compatibility-preserv
 ---
 
 # 7. Work log
+
+## 2026-08-31 — C6.1 candidate exposed stale P9.29 hitch-hook location assertion
+
+- Candidate run `33387555920`: C6.1 diagnostics root, C4 forest compatibility and modern V21.22.3 policy QA PASS.
+- P9.29 then failed only because it required the historical direct P9.28 global invocation.
+- The accepted invariant is unchanged: >20 ms gameplay hitches feed the forest recorder. C6.1 changes ownership only, preferring the canonical diagnostics root while retaining the P9.28 alias as fallback.
+- Action: update P9.29 source assertion to canonical-first/fallback semantics; do not restore direct legacy ownership.
 
 ## 2026-08-31 — C6.1 candidate exposed stale V21.22.3 hitch-free QA
 
