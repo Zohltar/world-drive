@@ -20,6 +20,10 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      - name: Modernize stale V21.27 physics-shadow ownership QA
+        run: node tools/modernize-v21-27-physics-shadow-qa-c6-6.mjs
+      - name: QA migration diff hygiene
+        run: git diff --check
       - name: C6.6 physics-shadow ownership audit
         run: node qa-diagnostics-c6-6-audit.mjs
       - name: C6.1-C6.5 diagnostics regressions
