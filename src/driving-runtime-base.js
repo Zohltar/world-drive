@@ -1,11 +1,6 @@
 import { createPerWheelShadowSolver } from './physics/per-wheel-shadow-solver.js';
 import { effectiveTireFriction, tireProfileForVehicle } from './physics/tire-model.js';
-import {
-  driftTireForceAuthority,
-  driftForceSideslipGate,
-  tireForceTrajectoryYawRate,
-  blendDriftForce
-} from './physics/drift-force-coupling.js';
+import { tireForceTrajectoryYawRate } from './physics/drift-force-coupling.js';
 import { serviceBrakeAcceleration, brakeWouldCrossZero } from './physics/longitudinal-control.js';
 import {
   createManeuverState,
@@ -32,6 +27,12 @@ export {
   shouldCanonicalizeMomentumHeading,
   travelAxisSideslip
 };
+import {
+  advanceYawAuthority,
+  driftKinematicCoupling,
+  legacyGripYawAcceleration
+} from './physics/yaw-authority.js';
+export {driftKinematicCoupling,legacyGripYawAcceleration};
 
 function smoothstep01(value){
   const t=Math.max(0,Math.min(1,Number(value)||0));
@@ -96,50 +97,6 @@ export function rearContactPatchSideslip({speed=0,heading=0,velocityHeading=0,ya
   const rearDistance=Math.max(.35,(Number(wheelbase)||2.7)*Math.max(.30,Math.min(.75,Number(frontWeightBias)||.55)));
   const rearLat=bodyLat-(Number(yawRate)||0)*rearDistance;
   return Math.atan2(rearLat,Math.max(.50,Math.abs(bodyLong)));
-}
-
-export function driftKinematicCoupling({sideslipRad=0,forceCoupledSlide=0}={}){
-  const sideslip=Math.max(0,Math.min(Math.PI*.5,Math.abs(Number(sideslipRad)||0)));
-  const slide=Math.max(0,Math.min(1,Number(forceCoupledSlide)||0));
-  // Bicycle-model yaw is valid near the no-slip region, but it must stop acting
-  // like stability control once the chassis is far from its momentum vector.
-  // Near 90 degrees only 6% of the kinematic yaw target remains; angular inertia
-  // and measured tire-force imbalance dominate instead.
-  const sideT=smoothstep01((sideslip-.30)/.85);
-  const forceT=
-    smoothstep01((slide-.12)/.68)*
-    driftForceSideslipGate(sideslip);
-  return 1-.94*Math.max(sideT,forceT);
-}
-
-// Grip R16 — front-axle saturation is understeer, not reverse steering.
-// The legacy grip estimator expresses lost front lateral force as an opposing
-// yaw moment. In the near/bicycle transition that moment was integrated as an
-// independent yaw acceleration, so a FWD car on throttle could cross through
-// zero yaw and point opposite the steering command. The already-scaled bicycle
-// yaw target owns ordinary understeer; genuine drift/countersteer remains owned
-// by the per-wheel physical solver blended later.
-export function legacyGripYawAcceleration({
-  frictionYawAccel=0,yawRate=0,frontSlip=0,rearSlip=0,
-  frontForceScale=1,rearForceScale=1
-}={}){
-  const accel=Number(frictionYawAccel)||0;
-  const targetYaw=Number(yawRate)||0;
-  const front=Math.max(0,Number(frontSlip)||0);
-  const rear=Math.max(0,Number(rearSlip)||0);
-  const frontScale=Number.isFinite(Number(frontForceScale))?Math.max(0,Math.min(1,Number(frontForceScale))):1;
-  const rearScale=Number.isFinite(Number(rearForceScale))?Math.max(0,Math.min(1,Number(rearForceScale))):1;
-  // Grip R21 — axle slip telemetry can saturate equally even while the front
-  // axle retains materially less lateral force than the rear. That happens on
-  // the high-downforce F1 and previously let the legacy front-loss moment act
-  // as an independent counter-yaw. Ordinary understeer already reduces the
-  // bicycle yaw target; real drift/countersteer remains owned by the per-wheel
-  // physical solver. Therefore a front-force-dominated opposing legacy moment
-  // may reduce authority, but must not reverse the steering direction.
-  const frontSlipDominated=front>rear+.06;
-  const frontForceDominated=frontScale<rearScale-.015;
-  if((frontSlipDominated||frontForceDominated)&&Math.abs(targetYaw)>.01&&accel*targetYaw<0)return 0;
-  return accel;
 }
 
 export function rearAxleStaticLoadFraction(vehicle={}){
@@ -504,35 +461,7 @@ export function createDrivingRuntime({
     const gripResponse=rawGripUsage>lateralGripUsage?12:18;
     lateralGripUsage+=(rawGripUsage-lateralGripUsage)*(1-Math.exp(-dt*gripResponse));
     if(lateralGripUsage<.002&&rawGripUsage===0)lateralGripUsage=0;
-    if(!jTurnLatchedActive&&requestedLatAccel>latLimit&&requestedLatAccel>0)yawRate*=latLimit/requestedLatAccel;
-
-    const frontDominance=Math.max(0,frontSlipAmount-rearSlipAmount*.55);
-    const rearDominance=Math.max(0,rearSlipAmount-frontSlipAmount*.55);
-    const fourWheelSlide=Math.min(frontSlipAmount,rearSlipAmount);
-    if(!airborneNow)yawRate*=Math.max(.46,1-frontDominance*.54-fourWheelSlide*.24);
-
     const useLegacyDriftAssist=VEHICLE?.legacyDriftAssist!==false;
-    if(useLegacyDriftAssist&&drivetrain==='RWD'&&powerCorneringLoad>.05&&!airborneNow){
-      const powerOversteerYaw=VEHICLE.powerOversteerYaw??.035;
-      const rearSlipYaw=Math.sign(steer||1)*powerOversteerYaw*powerCorneringLoad*(.30+rearDominance*.70)*Math.min(1,speedAbs/18);
-      yawRate+=rearSlipYaw*Math.sign((hand?speed:steeringTravelSpeed)||speed||1);
-    }
-
-    // Grip R7 — per-wheel tire forces become authoritative outside the small-
-    // slip bicycle-model region. The old guard above used to erase an opposing
-    // tire yaw moment whenever steering was present; that prevented countersteer
-    // from stabilizing a drift and could make both axles translate with the rack.
-    const yawResponse=yawResponseRate({vehicle:VEHICLE,speedAbs,airborne:airborneNow});
-    const frictionYawLoss=physicsClamp(Math.abs(frictionYawAccel)/4.5,0,1);
-    const forceCoupledSlide=physicsClamp(Math.max(frictionYawLoss,rearLateralForceLoss),0,1);
-    const driftKinematicScale=driftKinematicCoupling({
-      sideslipRad:currentSideslip,
-      forceCoupledSlide
-    });
-    const driftPhysicalAuthority=airborneNow?0:driftTireForceAuthority({
-      sideslipRad:currentSideslip,
-      forceCoupledSlide
-    });
     const physicalTireYawAccel=Number.isFinite(physicalTireForces?.predictedYawAccel)
       ?physicalTireForces.predictedYawAccel
       :frictionYawAccel;
@@ -542,33 +471,22 @@ export function createDrivingRuntime({
       accelX:physicalTireForces?.predictedAccelX,
       accelZ:physicalTireForces?.predictedAccelZ
     });
-    // Keep the familiar fast settling only while the car is close to the
-    // bicycle-model regime. During a real drift, do not numerically brake yaw
-    // just because the steady-state target is smaller or changes sign.
-    const yawReleaseBoost=
-      driftKinematicScale>.82&&Math.abs(yawRate)<Math.abs(dynamicYawRate)
-        ?1.35
-        :1;
-    const yawGripResponseScale=airborneNow
-      ?0
-      :driftKinematicScale*(1-.85*driftPhysicalAuthority);
-    const legacyYawAccel=useLegacyDriftAssist
-      ?legacyGripYawAcceleration({
-        frictionYawAccel,
-        yawRate,
-        frontSlip:targetFrontSlip,
-        rearSlip:targetRearSlip,
-        frontForceScale:frontLateralForceScale,
-        rearForceScale:rearLateralForceScale
-      })
-      :0;
-    const authoritativeYawAccel=blendDriftForce(
-      legacyYawAccel,
-      physicalTireYawAccel,
-      driftPhysicalAuthority
-    );
-    dynamicYawRate+=authoritativeYawAccel*dt;
-    dynamicYawRate+=(yawRate-dynamicYawRate)*(1-Math.exp(-dt*yawResponse*yawReleaseBoost*yawGripResponseScale));
+    const yawResponse=yawResponseRate({vehicle:VEHICLE,speedAbs,airborne:airborneNow});
+    const yawAuthority=advanceYawAuthority({
+      yawRate,dynamicYawRate,dt,yawResponse,
+      jTurnLatchedActive,requestedLatAccel,latLimit,frontSlipAmount,rearSlipAmount,
+      airborne:airborneNow,useLegacyDriftAssist,drivetrain,powerCorneringLoad,steer,
+      powerOversteerYaw:VEHICLE.powerOversteerYaw,speedAbs,speed,steeringTravelSpeed,handbrake:hand,
+      currentSideslip,frictionYawAccel,rearLateralForceLoss,physicalTireYawAccel,
+      targetFrontSlip,targetRearSlip,frontLateralForceScale,rearLateralForceScale
+    });
+    yawRate=yawAuthority.yawRate;
+    dynamicYawRate=yawAuthority.dynamicYawRate;
+    const fourWheelSlide=yawAuthority.fourWheelSlide;
+    const frictionYawLoss=yawAuthority.frictionYawLoss;
+    const forceCoupledSlide=yawAuthority.forceCoupledSlide;
+    const driftKinematicScale=yawAuthority.driftKinematicScale;
+    const driftPhysicalAuthority=yawAuthority.driftPhysicalAuthority;
     heading+=dynamicYawRate*dt;
 
     if(onPavement&&!airborneNow&&fourWheelSlide>.01&&speedAbs>6){
