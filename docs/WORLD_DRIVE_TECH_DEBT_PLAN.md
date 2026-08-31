@@ -624,62 +624,83 @@ Completion record:
 
 ### C3 — Flatten road geometry layers after A1 **[P2]**
 
-Status: **TODO**
+Status: **DONE (2026-08-30)**
 
-Current active layers include `road-geometry-base.js` + `road-geometry.js`.
-
-Required correction:
-- only after stale V21.31 alternate implementation is removed;
-- decide whether base/facade split is still useful;
-- prefer responsibility-based extraction over version-number filenames.
+Correction completed:
+- removed the historical `road-geometry-base.js` layer and made `road-geometry.js` the single canonical production owner;
+- preserved V21.31 smoothing, banking, road-profile/volume and terrain/bridge behavior;
+- modernized stale V21.25 source-location assumptions instead of reintroducing old contracts;
+- updated the old profile-frame assertion from historical `z` to current `pz`;
+- confirmed `roadSurfaceAt()` owns geometric surface height while the physical +0.10 m road-support offset remains intentionally owned by `wheel-ground-support.js`;
+- added permanent `qa-road-geometry-c3.mjs` / `qa-cleanup-c3.yml` ownership coverage.
 
 Completion record:
-- Commit: _pending_
-- QA: _pending_
+- Integration commit: `386c4d80` — canonical road geometry consolidation.
+- Permanent-gate hardening commit: `f2624a20`.
+- Permanent C3 gate run `33352045645`: PASS.
+- Final C3 Dev Integration run `33352045710`: PASS all then-current steps, including stress, driving matrix, forest, WebGL, build and code split.
+- Human validation: not required; behavior-sensitive route/terrain regressions remained green and no tuning changed.
+- Result: one canonical road-geometry production module remains; old source-location QA can no longer force the removed base layer back in.
 
 ---
 
 ### C4 — Modernize forest file naming/layers **[P2]**
 
-Status: **TODO**
+Status: **DONE (2026-08-30)**
 
-Current active code contains historical names such as P9.29/P9.40/P9.41 even though those are now the production path.
-
-Do this only after A5 and after performance remains stable.
-
-Possible direction:
-- canonical `forest-chunk-streamer-core.js`
-- canonical `forest-chunk-streamer.js`
-- canonical diagnostics module
-
-Do not merge performance-sensitive code just for aesthetics.
+Correction completed:
+- replaced historical production filenames with responsibility-based names while preserving separate responsibilities;
+- canonical orchestration/diagnostics: `forest-chunk-streamer.js`;
+- frame-budget/core generation: `forest-chunk-streamer-core.js`;
+- terrain sampling: `forest-terrain-sampler.js`;
+- frame attribution: `frame-runtime-profiler.js`;
+- migrated active P9.29–P9.42 QA source paths without changing frame budgets, batch sizes, catch-up budgets, prefetch, retention or hitch attribution behavior;
+- intentionally preserved P9.xx diagnostic aliases for compatibility until C6 consolidates diagnostics.
 
 Completion record:
-- Commit: _pending_
-- QA: _pending_
+- Integration commit: `fd667b73` — modernized forest production names.
+- Dev Integration registration commit: `85cb4554`.
+- Permanent C4 gate run `33352459857`: PASS.
+- Final C4 Dev Integration run `33352603137`: PASS 69/69.
+- Candidate validation covered all active forest QA P9.29–P9.42, stress, build and diff hygiene with unchanged measured forest policy values.
+- Human validation: not required; this was an ownership/naming migration with performance-sensitive values unchanged.
+- Result: forest production filenames describe responsibility rather than historical release steps; diagnostic compatibility remains explicitly deferred to C6.
 
 ---
 
 ### C5 — Reduce `main.js` size / responsibilities **[P2]**
 
-Status: **TODO**
+Status: **IN PROGRESS — C5.1 DONE (2026-08-30)**
 
-Audit size at creation: ~3247 lines / ~100 KB.
-
-Potential extractions:
-- app/bootstrap composition;
-- route state + geographic transforms;
-- settings lifecycle;
-- renderer/frame-pacing setup;
-- vehicle selection/runtime wiring;
-- diagnostics publishing.
+Audit baseline:
+- `main.js` measured 3245 lines / 100343 bytes, with 54 imports and about 100 top-level functions before C5 extraction work.
 
 Rule:
-- `main.js` should become a composition root, not another place containing vehicle/terrain/physics rules.
+- `main.js` should become a composition root, not another place containing vehicle/terrain/physics rules;
+- perform small responsibility-based extractions only;
+- preserve accepted visuals, physics and frame pacing exactly.
+
+C5.1 completed — world materials:
+- extracted procedural road/water texture creation and static world-surface material configuration into canonical `src/world-materials.js`;
+- preserved exact texture sizes, deterministic seeds, colors, roughness, bump scales, stencil ownership, anisotropy and contact constants;
+- kept the animated shared `waterTex` explicit because `animate()` advances its UV offset every frame;
+- removed more than 200 lines of material-generation responsibility from `main.js` without changing visual tuning.
+
+C5.1 completion record:
+- Integration commit: `e14b5ec1` — move world materials out of main.
+- Dev Integration registration commit: `f6f1f125`.
+- Permanent C5.1 gate run `33353622236`: PASS materials contract, terrain ownership, 288 driving cases, stress and build.
+- Final C5.1 Dev Integration run `33353661136`: PASS 70/70.
+- Human validation: not required for this exact extraction; material values and animated-water wiring are protected directly by QA and the full integration suite.
+
+Next C5 extraction:
+- C5.2: extract sky/lighting construction (hemisphere light, sun, crescent-moon texture/sprite/light and moon positioning) behind a responsibility-based module;
+- retain `environment-controller.js` as owner of time-of-day/display-distance behavior;
+- retain `animate()` cadence and performance-governor ownership in `main.js` for this step;
+- verify exact light/material constants plus environment QA, stress, driving matrix and build before integration.
 
 Completion record:
-- Commit: _pending_
-- QA: _pending_
+- C5 overall remains open until additional high-value responsibilities are removed and `main.js` is materially closer to a composition root.
 
 ---
 
@@ -749,13 +770,20 @@ These rules are mandatory while working this plan:
 
 # 6. Recommended next task
 
-**Next: C3 — Flatten road geometry layers after A1.**
+**Next: C5.2 — extract sky/lighting construction from `main.js`.**
 
-Start with the ownership/reference audit of `road-geometry-base.js` and `road-geometry.js`. Preserve the active A1/V21.31 smoothing, banking, road-volume/profile and terrain/bridge invariants; migrate stale source-location QA before removing any layer; add a permanent C3 regression and run full Dev Integration before completion.
+Keep time-of-day policy in `environment-controller.js` and frame cadence/performance-governor logic in `main.js`. Move only static sky-light construction and moon positioning behind a responsibility-based module, preserve every accepted visual constant, and require dedicated QA plus full Dev Integration before continuing C5.
 
 ---
 
 # 7. Work log
+
+## 2026-08-30 — C3/C4 completed; C5.1 world-material extraction completed
+
+- C3 consolidated road geometry into one canonical owner; stale V21.25 implementation-location contracts were migrated without changing route behavior. Permanent gate `33352045645` PASS; Dev Integration `33352045710` PASS.
+- C4 renamed forest production layers by responsibility while preserving all performance-sensitive values and P9.xx diagnostic compatibility for C6. Permanent gate `33352459857` PASS; Dev Integration `33352603137` PASS 69/69.
+- C5 audit measured `main.js` at 3245 lines / 100343 bytes. C5.1 extracted world materials into `src/world-materials.js`, including explicit animated-water texture ownership. Permanent gate `33353622236` PASS; Dev Integration `33353661136` PASS 70/70.
+- Next focus: C5.2 sky/lighting construction extraction; no time-of-day or frame-pacing policy changes.
 
 ## 2026-08-30 — A8 completed: current local-world QA truth
 
@@ -901,4 +929,3 @@ Start with the ownership/reference audit of `road-geometry-base.js` and `road-ge
 - Identified hidden wheelspin module-global state and duplicated wheelspin authority as a future physics architecture risk.
 - Identified version mismatch across browser/package/Electron.
 - Created this persistent cleanup plan on `dev`.
-
