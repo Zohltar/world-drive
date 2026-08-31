@@ -830,7 +830,7 @@ C5 completion record:
 
 ### C6 — Consolidate diagnostic globals **[P2]**
 
-Status: **IN PROGRESS — C6.1/C6.2/C6.3/C6.4 DONE; C6.5 remaining-global audit next (2026-08-31)**
+Status: **IN PROGRESS — C6.1/C6.2/C6.3/C6.4 DONE; C6.5 engine-input diagnostics selected (2026-08-31)**
 
 Audit baseline:
 - audit branch `audit/diagnostics-c6`; strengthened audit run `33386461640`: PASS diagnostic inventory, import/debt audit, active forest runtime/stress, P9.37 frame pacing, P9.39 hitch attribution, P9.41 frame-runtime attribution and production build;
@@ -989,6 +989,20 @@ C6.4 completion record — canonical road-sign diagnostics:
 - human validation: not required; C6.4 is diagnostics-only and all road-sign rendering/scheduling/readout behavior is covered by deterministic and integration QA;
 - Result: **C6.4 DONE**. Next is a fresh read-only inventory of the remaining diagnostic globals before selecting C6.5.
 
+C6.5 read-only audit — remaining diagnostic globals after C6.4:
+- fresh audit branch `audit/diagnostics-c6-5`; run `33401079190`: PASS remaining-global inventory, C6.1–C6.4 regressions, runtime import/debt audit and production build;
+- 16 legacy/injected World Drive globals remain visible in browser source after C6.4: 1 engine-input telemetry, 1 physics shadow hook, 5 traffic surfaces, 3 multiplayer surfaces, 1 local-world streaming bridge, 4 retained forest compatibility aliases and the injected desktop bridge;
+- lowest-risk remaining surface is `WorldDriveEngineInput`: exactly one writer in `src/transmission-controller.js`, zero runtime readers, zero QA/source-string references and no multi-owner state;
+- `WorldDrivePhysicsShadow` is next-lowest but has a source-string QA contract, while traffic/multiplayer/streaming all have multi-owner or active compatibility complexity; forest and desktop aliases still have runtime readers and are intentionally deferred;
+- `WorldDriveEngineInput` publishes only `{throttle, clutchHeld}`; reset publishes zero/false, and normal transmission updates publish after the authoritative core transmission update using the already computed effective clutch state; it does not feed transmission, clutch shock, gear selection, multiplayer or traction decisions.
+
+C6.5 selected boundary — canonical engine-input telemetry:
+- move the exact two-field engine-input snapshot to `WorldDriveDiagnostics.physics.engineInput` at the existing reset/update publication points;
+- remove `WorldDriveEngineInput` because the fresh audit found no runtime or QA consumer; no compatibility alias is required;
+- preserve payload normalization, publication timing and one-object-per-publication allocation cadence;
+- do not change D/N/R semantics, RPM/free-rev behavior, clutch shock, selector/network gear publication or any transmission equation;
+- candidate validation must include dedicated C6.5 ownership/timing QA, C6.1–C6.4, C2 transmission ownership, D/N/R + clutch/wheelspin transmission regressions, multiplayer protocol, 288 driving cases, full stress and production build before integration.
+
 ---
 
 # 4. Items intentionally NOT scheduled for immediate deletion
@@ -1029,9 +1043,9 @@ These rules are mandatory while working this plan:
 
 # 6. Recommended next task
 
-**Next: C6.5 — audit the remaining diagnostic globals.**
+**Next: C6.5 — migrate passive engine-input telemetry.**
 
-Run a fresh read-only inventory from current `dev`, including direct runtime readers and QA/source-string contracts. Rank the remaining categories by ownership complexity and compatibility risk before choosing the next migration; do not assume the pre-C6.4 counts are still current.
+Move only `WorldDriveEngineInput` to `WorldDriveDiagnostics.physics.engineInput` at the existing reset/update publication points. Preserve the exact `{throttle, clutchHeld}` payload and all transmission behavior; no selector, clutch, RPM, wheelspin, network or traction logic changes.
 
 ---
 
