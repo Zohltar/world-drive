@@ -56,6 +56,7 @@ const orderedGroups=[
   worldScene.horizonGroup
 ];
 assert.deepEqual(worldScene.world.children,orderedGroups,'streamed world group order changed');
+assert.deepEqual(worldScene.streamedWorldGroups,orderedGroups,'streaming coordinator group contract changed');
 assert.deepEqual(scene.added,[worldScene.world,worldScene.ground],'scene add order changed');
 assert.equal(worldScene.world.matrixAutoUpdate,false,'world matrix was not frozen');
 for(const group of orderedGroups){
@@ -117,11 +118,13 @@ assert.doesNotMatch(main,/new THREE\.PlaneGeometry\(NEAR_TERRAIN_SIZE,NEAR_TERRA
 assert.match(main,/let worldOffset=\{x:0,z:0\}/,'mutable world offset must remain in main');
 assert.match(main,/function toRender\(x,z\)/,'render-coordinate transform must remain in main');
 assert.match(main,/createTerrainService\(\{[\s\S]*?ground,[\s\S]*?horizonGroup,[\s\S]*?getWorldOffset:\(\)=>worldOffset,[\s\S]*?groundSize:NEAR_TERRAIN_SIZE,[\s\S]*?groundSegments:NEAR_TERRAIN_SEGMENTS/,'terrain service composition contract changed');
+assert.match(main,/createStreamingCoordinator\(\{[\s\S]*?streamedWorldGroups,[\s\S]*?ground,[\s\S]*?terrainService,/,'streaming coordinator lost ordered streamed-world group contract');
 assert.ok(lines<2880,`C5.3 did not materially reduce main.js: ${lines} lines`);
 
 console.log('CLEANUP C5.3 WORLD SCENE QA: PASS',{
   mainLines:lines,
   groupOrderPreserved:true,
+  streamingGroupContractPreserved:true,
   groundContractPreserved:true,
   originAndMatrixHelpersPreserved:true,
   worldOffsetOwnership:'main.js'
