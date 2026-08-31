@@ -2473,9 +2473,15 @@ installDiagnosticAlias(
 );
 
 // V21.27.2 diagnostics only. Safe to inspect from DevTools; values do not
-// feed back into the authoritative V21.26 vehicle integrator.
-window.WorldDrivePhysicsShadow=()=>
+// feed back into the authoritative V21.26 vehicle integrator. C6.6 makes the
+// canonical diagnostics root authoritative while preserving the DevTools name.
+worldDriveDiagnostics.physics.shadow=()=>
   drivingRuntime?.physicsShadowDiagnostics?.()||null;
+installDiagnosticAlias(
+  'WorldDrivePhysicsShadow',
+  ()=>worldDriveDiagnostics.physics.shadow,
+  window
+);
 
 // ---------- main ----------
 function animate(now){
