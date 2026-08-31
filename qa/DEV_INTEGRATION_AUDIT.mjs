@@ -1,17 +1,22 @@
 import assert from 'node:assert/strict';
-import {readdirSync,readFileSync,statSync} from 'node:fs';
+import {readdirSync,readFileSync,statSync,existsSync} from 'node:fs';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 
 const ROOT=fileURLToPath(new URL('../',import.meta.url));
 const SRC=path.join(ROOT,'src');
 
-function walk(dir){
+function walk(dir,{extensions=null,filter=null}={}){
   const out=[];
+  if(!existsSync(dir))return out;
   for(const entry of readdirSync(dir,{withFileTypes:true})){
     const full=path.join(dir,entry.name);
-    if(entry.isDirectory())out.push(...walk(full));
-    else if(entry.isFile()&&/\.(?:js|mjs|cjs)$/.test(entry.name))out.push(full);
+    if(entry.isDirectory())out.push(...walk(full,{extensions,filter}));
+    else if(entry.isFile()){
+      if(extensions&&!extensions.some(ext=>entry.name.endsWith(ext)))continue;
+      if(filter&&!filter(full))continue;
+      out.push(full);
+    }
   }
   return out;
 }
@@ -20,12 +25,12 @@ function rel(file){return path.relative(ROOT,file).replaceAll('\\','/');}
 function localSpecs(source){
   const specs=[];
   const patterns=[
-    /(?:import|export)\s+(?:[^'";]*?\s+from\s*)?['"]([^'"]+)['"]/g,
-    /import\s*\(\s*['"]([^'"]+)['"]\s*\)/g
+    {kind:'static',regex:/(?:import|export)\s+(?:[^'";]*?\s+from\s*)?['"]([^'"]+)['"]/g},
+    {kind:'dynamic',regex:/import\s*\(\s*['"]([^'"]+)['"]\s*\)/g}
   ];
-  for(const regex of patterns){
+  for(const {kind,regex} of patterns){
     let match;
-    while((match=regex.exec(source)))if(match[1]?.startsWith('.'))specs.push(match[1]);
+    while((match=regex.exec(source)))if(match[1]?.startsWith('.'))specs.push({spec:match[1],kind});
   }
   return specs;
 }
@@ -37,17 +42,19 @@ function resolveLocal(from,spec){
   })||null;
 }
 
-const files=walk(SRC);
+const files=walk(SRC,{extensions:['.js','.mjs','.cjs']});
 const fileSet=new Set(files);
 const graph=new Map();
 const unresolved=[];
+const dynamicImports=[];
 for(const file of files){
   const source=readFileSync(file,'utf8');
   const deps=[];
-  for(const spec of localSpecs(source)){
-    const resolved=resolveLocal(file,spec);
+  for(const item of localSpecs(source)){
+    const resolved=resolveLocal(file,item.spec);
+    if(item.kind==='dynamic')dynamicImports.push({from:rel(file),spec:item.spec,resolved:resolved?rel(resolved):null});
     if(resolved&&fileSet.has(resolved))deps.push(resolved);
-    else if(!resolved)unresolved.push({from:rel(file),spec});
+    else if(!resolved)unresolved.push({from:rel(file),spec:item.spec,kind:item.kind});
   }
   graph.set(file,[...new Set(deps)]);
 }
@@ -66,8 +73,8 @@ const multiplayerFiles=files.filter(file=>path.basename(file).startsWith('multip
 const multiplayerOrphans=multiplayerFiles.filter(file=>!reachable.has(file)).map(rel).sort();
 const multiplayerReachable=multiplayerFiles.filter(file=>reachable.has(file)).map(rel).sort();
 
-const historicalPattern=/(?:-m\d+(?:\d+)?|-v18|-v2)\.js$/i;
-const historicalReachable=multiplayerReachable.filter(file=>historicalPattern.test(file));
+const historicalPattern=/(?:-m\d+(?:\d+)?|-v18|-v2|-p\d+)\.js$/i;
+const historicalReachable=[...reachable].map(rel).filter(file=>historicalPattern.test(file)).sort();
 
 const globals=[];
 for(const file of files){
@@ -88,15 +95,104 @@ for(const file of files){
   }
 }
 
+// R1 — source-root organization inventory.
+const rootSourceFiles=readdirSync(SRC,{withFileTypes:true})
+  .filter(entry=>entry.isFile()&&/\.(?:js|mjs|cjs|css)$/.test(entry.name))
+  .map(entry=>`src/${entry.name}`)
+  .sort();
+const rootJs=rootSourceFiles.filter(file=>/\.(?:js|mjs|cjs)$/.test(file));
+const cssFiles=walk(SRC,{extensions:['.css']}).map(rel).sort();
+
+function ownershipBucket(file){
+  const name=path.basename(file);
+  if(name==='main.js')return 'entrypoint';
+  if(file.startsWith('src/physics/'))return 'physics';
+  if(/^(application-settings|loaded-settings-application|diagnostics|version)\.js$/.test(name))return 'app';
+  if(/^(keyboard-controls|gamepad)\.js$/.test(name))return 'input';
+  if(/^(startup-ui|v21-menu|instrument-cluster|minimap|heading-compass|route-planner-ui)\.js$/.test(name))return 'ui';
+  if(/^(routing|routing-service|route-lifecycle|route-presets|route-challenge|geocoding)\.js$/.test(name))return 'routing';
+  if(/^(cache|overpass|desktop-overpass-transport)\.js$/.test(name))return 'services';
+  if(/^(audio|audio-base)\.js$/.test(name))return 'audio';
+  if(/^civil-traffic(?:-|\.)/.test(name))return 'traffic';
+  if(/^(multiplayer(?:-|\.)|multiplayer\.js$)/.test(name))return 'multiplayer';
+  if(/^(vehicle-|deferred-glb-system|countach-glb|id4-glb|wrx-glb|civic-glb|sonata-glb|f1-glb|i3-glb|truck-trailer)\.js$/.test(name))return 'vehicles';
+  if(/^(vehicle-dynamics(?:-|\.)|driving-runtime(?:-|\.)|transmission-|wheel-ground-support|skidmarks)\S*\.js$/.test(name))return 'physics-runtime';
+  if(/^(camera|autopilot-controller|environment-controller)\.js$/.test(name))return 'driving-control';
+  if(/^(road-geometry|road-furniture(?:-|\.)|signs|bridges)\S*\.js$/.test(name))return 'world-road';
+  if(/^(terrain(?:-|\.)|elevation|sky-lighting|world-materials|world-scene)\S*\.js$/.test(name))return 'world-terrain';
+  if(/^imagery(?:-|\.)\S*\.js$/.test(name))return 'world-imagery';
+  if(/^(scenery-|forest-|frame-runtime-profiler)\S*\.js$/.test(name))return 'world-scenery-forest';
+  if(/^water-\S*\.js$/.test(name))return 'world-water';
+  if(/^(local-world-builder|streaming-coordinator)(?:-|\.)\S*\.js$/.test(name)||name==='world-streaming.js')return 'world-streaming';
+  return null;
+}
+
+const ownership={};
+const unclassifiedRoot=[];
+for(const file of rootJs){
+  const bucket=ownershipBucket(file);
+  if(!bucket)unclassifiedRoot.push(file);
+  else (ownership[bucket]??=[]).push(file);
+}
+
+// R1 — explicit path contracts outside production source. These need migration
+// whenever a module moves even if runtime imports are otherwise correct.
+const contractCandidates=[
+  ...walk(path.join(ROOT,'qa'),{extensions:['.mjs','.js']}),
+  ...walk(ROOT,{filter:file=>/^qa-.*\.mjs$/i.test(path.basename(file))}),
+  ...walk(path.join(ROOT,'.github','workflows'),{extensions:['.yml','.yaml']}),
+  ...walk(path.join(ROOT,'electron'),{extensions:['.js','.cjs','.mjs']}),
+  path.join(ROOT,'index.html'),
+  path.join(ROOT,'forge.config.cjs'),
+  path.join(ROOT,'package.json')
+].filter(existsSync);
+const uniqueContracts=[...new Set(contractCandidates)];
+const sourcePathPattern=/(?:\.\.\/|\.\/)?src\/[A-Za-z0-9_./-]+\.(?:js|css)/g;
+const pathContracts=[];
+for(const file of uniqueContracts){
+  const source=readFileSync(file,'utf8');
+  const matches=[...new Set(source.match(sourcePathPattern)||[])].sort();
+  if(matches.length)pathContracts.push({file:rel(file),paths:matches});
+}
+
+const fanIn=new Map(files.map(file=>[file,0]));
+for(const deps of graph.values())for(const dep of deps)fanIn.set(dep,(fanIn.get(dep)||0)+1);
+const metrics=files.map(file=>({
+  file:rel(file),
+  bytes:statSync(file).size,
+  fanIn:fanIn.get(file)||0,
+  fanOut:(graph.get(file)||[]).length,
+  reachable:reachable.has(file)
+}));
+const topByBytes=[...metrics].sort((a,b)=>b.bytes-a.bytes).slice(0,15);
+const topFanIn=[...metrics].sort((a,b)=>b.fanIn-a.fanIn||b.bytes-a.bytes).slice(0,15);
+const topFanOut=[...metrics].sort((a,b)=>b.fanOut-a.fanOut||b.bytes-a.bytes).slice(0,15);
+
 assert.ok(entrypoints.length,'src/main.js missing');
 assert.equal(unresolved.filter(item=>reachable.has(path.join(ROOT,item.from))).length,0,'reachable runtime has unresolved relative imports');
+assert.deepEqual(unclassifiedRoot,[],'R1 ownership map must classify every root JS file');
 
-console.log('DEV INTEGRATION IMPORT AUDIT',JSON.stringify({
-  srcFiles:files.length,
-  runtimeReachable:reachable.size,
+console.log('DEV INTEGRATION IMPORT / SOURCE TREE AUDIT',JSON.stringify({
+  sourceTree:{
+    srcCodeFiles:files.length,
+    runtimeReachable:reachable.size,
+    browserGraphOrphans:files.filter(file=>!reachable.has(file)).map(rel).sort(),
+    rootSourceFiles,
+    rootJsCount:rootJs.length,
+    nestedCodeFiles:files.length-rootJs.length,
+    cssFiles,
+    ownership,
+    unclassifiedRoot,
+    dynamicImports,
+    pathContracts,
+    topByBytes,
+    topFanIn,
+    topFanOut
+  },
   multiplayerReachable,
   multiplayerOrphans,
   historicalReachable,
   debugGlobals:globals,
-  suspiciousNumberNull
+  suspiciousNumberNull,
+  unresolved
 },null,2));
