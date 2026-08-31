@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import {createVehicleSystem} from '../src/vehicle-system.js';
-import {getMultiplayerVehicleSpec,listMultiplayerVehicleSpecs,listMultiplayerVehicleIds} from '../src/multiplayer-vehicle-registry.js';
+import {getMultiplayerVehicleSpec,listMultiplayerVehicleSpecs,listMultiplayerVehicleIds} from '../src/multiplayer/multiplayer-vehicle-registry.js';
 import {getAuthoredVehicleDescriptor} from '../src/vehicle-authored-registry.js';
 
 const vehicleSystem=createVehicleSystem({initialId:'wrx'});
@@ -34,9 +34,9 @@ assert.equal(semi.physics.wheelbase,5.45,'semi must use authoritative 5.45 m whe
 assert.equal(semi.physics.axles.length,3,'semi must expose three physical axles');
 assert.equal(semi.visual.supportContacts.length,6,'semi terrain support must use six left/right contact probes');
 
-const registrySource=fs.readFileSync('src/multiplayer-vehicle-registry.js','utf8');
-const fallback=fs.readFileSync('src/multiplayer-fallback-visual.js','utf8');
-const support=fs.readFileSync('src/multiplayer-visuals-v18.js','utf8');
+const registrySource=fs.readFileSync('src/multiplayer/multiplayer-vehicle-registry.js','utf8');
+const fallback=fs.readFileSync('src/multiplayer/multiplayer-fallback-visual.js','utf8');
+const support=fs.readFileSync('src/multiplayer/multiplayer-visuals-v18.js','utf8');
 assert(!registrySource.includes('LIGHTING_CONTRACTS'),'M4 metric registry must not duplicate authored lamp contracts');
 assert(!registrySource.includes('hdAsset')&&!registrySource.includes('hdUrl'),'M4 metric registry must not duplicate authored asset paths');
 assert(fallback.includes("from './multiplayer-vehicle-registry.js'"),'temporary fallback must read registry metrics');
