@@ -1,0 +1,62 @@
+name: Cleanup C3 Road Geometry Candidate
+
+on:
+  push:
+    branches:
+      - cleanup/road-geometry-c3
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  qa:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+      - name: Materialize C3 consolidation
+        run: |
+          if [ -f src/road-geometry-base.js ]; then
+            node tools/cleanup-c3-road-geometry.mjs
+          else
+            echo "C3 already materialized"
+          fi
+      - name: C3 ownership gate
+        run: node qa-road-geometry-c3.mjs
+      - name: Historical road-refactor behavior QA
+        run: node qa/V21_25_ROAD_GEOMETRY_REFACTOR_QA.mjs
+      - name: Active V21.31 road regressions
+        run: |
+          node qa/V21_31_ROAD_SMOOTHING_QA.mjs
+          node qa/V21_31_SUPERELEVATION_QA.mjs
+          node qa/V21_31_SUPERELEVATION_ENVELOPE_QA.mjs
+          node qa/V21_31_LEGACY_TERRAIN_AUTHORITY_QA.mjs
+          node qa-road-banking-r1.mjs
+          node qa-terrain-r1-legacy-ownership.mjs
+          node qa-terrain-r2-road-imagery.mjs
+      - name: Driving matrix
+        run: node qa/DEV_DRIVING_SIM_QA.mjs
+      - name: Stress
+        run: npm run qa:stress
+      - name: Production build
+        run: npm run build
+      - name: Diff hygiene
+        run: git diff --check
+      - name: Commit materialized C3 candidate
+        run: |
+          if git diff --quiet; then
+            echo "No generated C3 changes"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Cleanup C3: flatten road geometry layers"
+          git push origin HEAD:cleanup/road-geometry-c3
