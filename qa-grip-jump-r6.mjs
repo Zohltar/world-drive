@@ -61,14 +61,17 @@ assert.equal(airborneLandingDecision({nextY:9.99,supportY:10,verticalVelocity:-2
 assert.equal(airborneLandingDecision({nextY:9.99,supportY:10,verticalVelocity:1,supportVerticalVelocity:0}),false);
 assert.equal(airborneLandingDecision({nextY:10.1,supportY:10,verticalVelocity:-2,supportVerticalVelocity:0}),false);
 
-// Integration contract: airborne yaw must not be numerically attracted toward
-// any bicycle/drift steering target, and presentation must receive velocityHeading.
+// Integration contract: B5 owns local chassis yaw authority. Airborne yaw must
+// therefore remain free of kinematic steering attraction in yaw-authority.js,
+// while presentation must still receive velocityHeading for crest/air travel.
 const runtime=fs.readFileSync(new URL('./src/driving-runtime-base.js',import.meta.url),'utf8');
+const yawAuthority=fs.readFileSync(new URL('./src/physics/yaw-authority.js',import.meta.url),'utf8');
 const presentation=fs.readFileSync(new URL('./src/vehicle-presentation-v21.29.js',import.meta.url),'utf8');
 const main=fs.readFileSync(new URL('./src/main.js',import.meta.url),'utf8');
+assert.match(runtime,/advanceYawAuthority\(\{/,'runtime no longer delegates local yaw authority to B5 owner');
 assert.match(
-  runtime,
-  /const yawGripResponseScale=airborneNow[\s\S]*?\?0[\s\S]*?:driftKinematicScale/,
+  yawAuthority,
+  /const yawGripResponseScale=airborne[\s\S]*?\?0[\s\S]*?:driftKinematicScale/,
   'airborne yaw must keep zero kinematic steering response even with later drift-force blends'
 );
 assert.match(presentation,/horizontalTravelDirection\(\{speed,heading,velocityHeading\}\)/,'crest launch does not use actual travel direction');
