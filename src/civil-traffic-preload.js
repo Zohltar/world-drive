@@ -1,4 +1,5 @@
 import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
+import {ensureWorldDriveDiagnostics} from './diagnostics.js';
 import {
   GENERIC_PASSENGER_PACK_URL,
   GENERIC_PASSENGER_PACK_FALLBACK_URL,
@@ -140,7 +141,7 @@ export function startCivilTrafficAssetPreload(){
       throw error;
     });
 
-  if(typeof globalThis!=='undefined'){
-    globalThis.WorldDriveTrafficPreload=civilTrafficPreloadDiagnostics;
-  }
+  try{
+    ensureWorldDriveDiagnostics().traffic.preload=civilTrafficPreloadDiagnostics;
+  }catch{}
 }
