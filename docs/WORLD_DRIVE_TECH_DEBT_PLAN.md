@@ -670,7 +670,7 @@ Completion record:
 
 ### C5 — Reduce `main.js` size / responsibilities **[P2]**
 
-Status: **IN PROGRESS — C5.1 + C5.2 + C5.3 DONE (2026-08-30)**
+Status: **IN PROGRESS — C5.1 + C5.2 + C5.3 + C5.4 DONE (2026-08-30)**
 
 Audit baseline:
 - `main.js` measured 3245 lines / 100343 bytes, with 54 imports and about 100 top-level functions before C5 extraction work.
@@ -722,27 +722,31 @@ C5.3 completion record:
 - Final C5.3 Dev Integration run `33354621243`: PASS 72/72, including both WebGL reverse tests and production code-split QA.
 - Human validation: not required for this exact composition extraction; group order, ground visuals, streaming group contract and terrain/road behavior are directly covered.
 
-C5.4 audit completed — selected boundary: geographic sign orchestration:
+C5.4 completed — geographic sign orchestration:
 - post-C5.3 audit measured `main.js` at 2859 lines / 88091 bytes, with 57 imports and 93 top-level functions; audit branch `audit/main-c5-4`, run `33354840492` PASS responsibility inventory, import/debt audit and production build;
-- the safest cohesive remaining block is the 106-line contiguous fallback/sign-placement orchestration currently at roughly lines 978–1083;
-- `src/signs.js` already states that 3D rendering/fallback signs remained in `main.js` for its first extraction, so C5.4 completes that existing boundary instead of creating a competing subsystem;
-- extend `signs.js` with a geographic-sign orchestration factory owning fallback city/river/speed selection and calls into the rendering callback;
-- keep `createSignDataService(...)` authoritative for OSM sign/city/river loading/parsing;
-- keep `road-furniture.js` authoritative for 3D sign geometry/materials, atomic sign refresh and face-cache/frame-budget behavior;
-- preserve exact fallback thresholds/distances: route correlation 120 m, speed confidence > .20, nearby-speed suppression 900 m, speed placement +95 m, river -22 m, city -55 m and visible corridor +/-1600 m;
-- preserve endpoint city deduplication, river-name fallback, sign status count, route heights and current left/right placement semantics.
+- completed the boundary already documented in `src/signs.js`: OSM sign/city/river loading/parsing remains in `createSignDataService(...)`, while fallback city/river/speed selection and placement orchestration now live in canonical `createGeographicSignOrchestrator(...)`;
+- kept `road-furniture.js` / P9.30 authoritative for 3D sign geometry/materials, atomic sign refresh, face cache and frame-budget behavior;
+- froze exact geographic-sign policy in `GEOGRAPHIC_SIGN_POLICY`: route correlation <120 m, speed confidence >.20, nearby-speed suppression <900 m, speed +95 m, river -22 m, city -55 m and visible corridor +/-1600 m;
+- preserved endpoint city deduplication, French river-name priority, road-height placement, side=1 semantics, sign status count, minimap consumption and transient readout behavior;
+- reduced `main.js` from 2859 to 2782 lines (77 net lines) without visual, routing, physics, streaming or metadata tuning.
 
-C5.4 required validation:
-- dedicated orchestration QA for endpoint-city, river and speed fallback decisions plus exact distance/threshold constants;
-- existing P9.30 road-sign runtime QA;
-- V21.25 minimap/sign-readout regressions;
-- 288 driving cases, stress and production build;
-- full Dev Integration before C5.4 is declared done.
+C5.4 material discovery — stale V21.25 sign-readout QA:
+- candidate validation exposed that `qa/V21_25_MINIMAP_SIGN_READOUT_QA.mjs` still required the historical literal `currentRoadGuideSign={...}` inside `main.js`;
+- current production ownership already creates the guide descriptor in `road-furniture-p930.js`, publishes it through `setRoadGuideSign(...)`, stores only the current value in `main.js`, resets it through `route-lifecycle.js`, and consumes it in `minimap.js`;
+- modernized the QA to protect that real ownership chain instead of reintroducing stale source-location code;
+- the accepted transient readout remains explicitly protected at 5000 ms duration with 1100 ms fade and bidirectional re-arm behavior.
 
-Explicitly out of scope:
-- performance/frame governor remains deferred;
-- road metadata/hydro/vehicle-selection/route-load ownership remains unchanged;
-- C6 diagnostic-global consolidation remains separate.
+C5.4 completion record:
+- Integration commit: `bf820b19` — move geographic sign orchestration out of main.
+- Dev Integration registration commit: `f1ef70bb`.
+- Candidate validation run `33355404813`: PASS C5.4 policy/ownership, P9.30 sign runtime, minimap, updated sign readout, import audit, 288 driving cases, stress, build and diff hygiene.
+- Permanent C5.4 gate run `33355486837`: PASS.
+- Final C5.4 Dev Integration run `33355510959`: PASS 73/73, with C5.4 explicitly executed plus WebGL reverse, build and production code-split QA.
+- Human validation: not required for this exact wiring/ownership extraction; exact sign policy, 3D sign runtime, minimap/readout behavior and full integration are directly protected.
+
+Next C5 step:
+- C5.5 begins with a fresh post-C5.4 audit before selecting another boundary;
+- continue to prefer cohesive UI/composition/plumbing extraction over frame-governor, physics, route, hydro or vehicle behavior unless the audit shows a cleaner boundary.
 
 Completion record:
 - C5 overall remains open until the remaining high-value responsibilities are reduced enough that `main.js` is materially a composition root.
@@ -815,13 +819,22 @@ These rules are mandatory while working this plan:
 
 # 6. Recommended next task
 
-**Next: C5.4 — complete geographic sign orchestration extraction into `src/signs.js`.**
+**Next: C5.5 — fresh post-C5.4 responsibility audit of `main.js`.**
 
-Move only fallback city/river/speed selection and sign-placement orchestration. Keep OSM loading/parsing in the existing sign data service and keep all 3D sign construction/frame-budget ownership in `road-furniture.js`. Preserve thresholds and placement constants exactly; require dedicated sign orchestration QA, existing sign/minimap regressions, stress and full Dev Integration.
+Re-measure the remaining responsibilities after `main.js` reached 2782 lines. Choose the next extraction by cohesion and risk, favoring UI/composition/plumbing when practical. Continue to defer frame-governor, route/hydro/vehicle behavior and C6 diagnostics unless the audit proves a smaller, safer boundary.
 
 ---
 
 # 7. Work log
+
+## 2026-08-30 — C5.4 completed: geographic sign orchestration extracted
+
+- C5.4 audit `33354840492` selected the existing `signs.js` fallback/orchestration boundary; no new competing subsystem was introduced.
+- Added `createGeographicSignOrchestrator(...)` and frozen exact fallback/placement policy while leaving OSM parsing in the sign data service and 3D construction in road furniture.
+- Clean integration `bf820b19`; Dev Integration registration `f1ef70bb`; resulting `main.js` = 2782 lines.
+- Candidate `33355404813` PASS; permanent gate `33355486837` PASS; final Dev Integration `33355510959` PASS 73/73.
+- Discovery: stale V21.25 minimap sign-readout QA was migrated to current road-furniture → main → route-lifecycle → minimap ownership; accepted 5 s readout + 1.1 s fade remains protected.
+- Next focus: C5.5 fresh audit before another extraction.
 
 ## 2026-08-30 — C5.4 audit completed; geographic-sign boundary selected
 
