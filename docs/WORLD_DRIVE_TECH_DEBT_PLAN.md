@@ -830,7 +830,7 @@ C5 completion record:
 
 ### C6 — Consolidate diagnostic globals **[P2]**
 
-Status: **IN PROGRESS — C6.1/C6.2/C6.3/C6.4/C6.5 DONE; C6.6 physics-shadow boundary selected (2026-08-31)**
+Status: **IN PROGRESS — C6.1/C6.2/C6.3/C6.4/C6.5/C6.6 DONE; C6.7 remaining-global audit next (2026-08-31)**
 
 Audit baseline:
 - audit branch `audit/diagnostics-c6`; strengthened audit run `33386461640`: PASS diagnostic inventory, import/debt audit, active forest runtime/stress, P9.37 frame pacing, P9.39 hitch attribution, P9.41 frame-runtime attribution and production build;
@@ -1034,6 +1034,18 @@ C6.6 selected boundary — canonical physics-shadow diagnostics with DevTools co
 - do not change `createPerWheelShadowSolver`, 120 Hz cadence, wheel/contact calculations, predicted force payload, authoritative chassis equations, or frame-loop timing;
 - candidate validation must include C6.1–C6.6, the full V21.27 shadow solver QA, 288 driving cases, full stress, runtime import/debt audit and production build before integration.
 
+C6.6 completion record — canonical physics-shadow diagnostics with DevTools compatibility:
+- initial read-only audit run `33402410942` passed the C6.6 ownership inventory and then stopped only in stale `qa/V21_27_PHYSICS_SHADOW_QA.mjs` source-location assertions; the discovery was recorded before QA migration;
+- corrected audit run `33423627814`: PASS C6.6 ownership, C6.1–C6.5 diagnostics regressions, modernized V21.27 shadow QA, 288 driving cases, full V21.31 stress, runtime import/debt audit and production build;
+- candidate branch `cleanup/diagnostics-c6-6`; candidate run `33424053996`: PASS C6.1–C6.6, V21.27 shadow solver, 288 driving cases, full stress, import/debt audit, production build and diff hygiene; candidate materialization `97bb250f`;
+- final runtime + permanent gate integration commit `e39db981`: authoritative callable moved to `WorldDriveDiagnostics.physics.shadow`, while `WorldDrivePhysicsShadow` remains a live DevTools delegate through `installDiagnosticAlias`;
+- permanent C6.6 gate run `33424264700`: PASS C6.1–C6.6, V21.27 physics-shadow regression, 288 driving cases, full stress, runtime import/debt audit and production build;
+- Dev Integration registration commit `b96b7530`; final Dev Integration run `33424376553`: PASS **81/81**, including C6.6, full stress, 288 driving cases, R2–R20, forest/frame pacing, M4.14/M4.15 WebGL, live route smoke, production build and code split;
+- V21.27 QA now verifies current `driving-runtime-base.js` ownership rather than forcing the shadow solver back into the canonical wrapper;
+- `createPerWheelShadowSolver({hz:120,maxSubSteps:8})`, shadow advance timing, predicted-force diagnostics and non-authoritative semantics are unchanged;
+- human validation: not required for C6.6 itself because only diagnostics publication/compatibility ownership changed; user will perform full in-game validation after the entire plan is executed before any main promotion;
+- Result: **C6.6 DONE**. Next is a fresh read-only inventory/risk ranking of remaining diagnostic globals before selecting C6.7.
+
 ---
 
 # 4. Items intentionally NOT scheduled for immediate deletion
@@ -1074,13 +1086,23 @@ These rules are mandatory while working this plan:
 
 # 6. Recommended next task
 
-**Next: C6.6 — implement canonical physics-shadow diagnostics.**
+**Next: C6.7 — audit the remaining diagnostic globals.**
 
-Move only diagnostic publication: bind the existing physics-shadow callable to `WorldDriveDiagnostics.physics.shadow`, retain `WorldDrivePhysicsShadow` as a live DevTools compatibility delegate, permanently modernize the V21.27 QA to current base-runtime ownership, and preserve all shadow-solver math/cadence/non-authoritative behavior.
+Start read-only from current `dev`. Recount remaining independent globals after C6.1–C6.6, map writers/runtime readers/QA source-string contracts, and rank the remaining traffic/multiplayer/streaming/forest compatibility surfaces by migration risk before selecting another boundary.
 
 ---
 
 # 7. Work log
+
+## 2026-08-31 — C6.6 completed: canonical physics-shadow diagnostics
+
+- Initial audit `33402410942` exposed only stale V21.27 source-location QA; corrected audit `33423627814` PASS.
+- Candidate `33424053996` PASS; materialized runtime `97bb250f`.
+- Runtime/permanent gate integration `e39db981`; permanent gate `33424264700` PASS.
+- Dev Integration registration `b96b7530`; final `33424376553` PASS 81/81.
+- Canonical `WorldDriveDiagnostics.physics.shadow` is authoritative; `WorldDrivePhysicsShadow` remains a live DevTools compatibility delegate.
+- Shadow solver 120 Hz math/cadence/non-authoritative semantics are unchanged.
+- C6.7 begins with a fresh remaining-global audit.
 
 ## 2026-08-31 — C6.5 completed: canonical engine-input telemetry
 
