@@ -1,0 +1,84 @@
+name: Cleanup C6.7 Multiplayer Local Gear Candidate
+
+on:
+  push:
+    branches:
+      - cleanup/diagnostics-c6-7
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  qa:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Materialize C6.7 canonical multiplayer local gear
+        run: node tools/cleanup-c6-7-multiplayer-local-gear.mjs
+      - name: C6.7 multiplayer local-gear diagnostics QA
+        run: node qa-diagnostics-c6-7.mjs
+      - name: C6.1-C6.6 diagnostics regressions
+        run: |
+          node qa-diagnostics-c6-1.mjs
+          node qa-diagnostics-c6-2.mjs
+          node qa-diagnostics-c6-3.mjs
+          node qa-diagnostics-c6-4.mjs
+          node qa-diagnostics-c6-5.mjs
+          node qa-diagnostics-c6-6.mjs
+      - name: C2 transmission ownership QA
+        run: node qa-transmission-c2.mjs
+      - name: DNR and direction regressions
+        run: |
+          node qa/V21_29_DNR_BRAKE_SELECTOR_QA.mjs
+          node qa/V21_29_BODY_RELATIVE_TRANSMISSION_QA.mjs
+          node qa/V21_29_TRANSMISSION_DIRECTION_QA.mjs
+      - name: Multiplayer exact-gear protocol QA
+        run: node qa/V21_31_MULTIPLAYER_M3_PROTOCOL_QA.mjs
+      - name: Shared multiplayer traffic regressions
+        run: |
+          node qa-traffic-mp1.mjs
+          node qa-traffic-mp1-live.mjs
+      - name: Driving dynamics simulation matrix
+        run: node qa/DEV_DRIVING_SIM_QA.mjs
+      - name: Full V21.31 regression stress
+        run: npm run qa:stress
+      - name: M4.15 network to WebGL reverse QA
+        shell: bash
+        run: |
+          npx vite --host 127.0.0.1 --port 5188 --strictPort >/tmp/c67-vite.log 2>&1 &
+          VITE_PID=$!
+          WORLD_DRIVE_MP_PORT=8081 node server/multiplayer-server.mjs >/tmp/c67-relay.log 2>&1 &
+          RELAY_PID=$!
+          cleanup(){ kill "$VITE_PID" "$RELAY_PID" >/dev/null 2>&1 || true; echo '--- Vite ---'; cat /tmp/c67-vite.log || true; echo '--- Relay ---'; cat /tmp/c67-relay.log || true; }
+          trap cleanup EXIT
+          READY=0
+          for i in {1..100}; do
+            if curl -fsS http://127.0.0.1:5188/qa/m415-render.html >/dev/null 2>&1 && curl -fsS http://127.0.0.1:8081/ >/dev/null 2>&1; then READY=1; break; fi
+            sleep 0.1
+          done
+          test "$READY" = "1"
+          M415_URL=http://127.0.0.1:5188/qa/m415-render.html xvfb-run -a ./node_modules/.bin/electron --no-sandbox qa/m415-electron-main.cjs
+      - name: Runtime import and debt audit
+        run: node qa/DEV_INTEGRATION_AUDIT.mjs
+      - name: Production build
+        run: npm run build
+      - name: Diff hygiene
+        run: git diff --check
+      - name: Commit materialized C6.7 candidate
+        shell: bash
+        run: |
+          if git diff --quiet -- src/multiplayer.js; then exit 0; fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add src/multiplayer.js
+          git commit -m 'Cleanup C6.7: centralize multiplayer local-gear telemetry'
+          git push origin HEAD:cleanup/diagnostics-c6-7
