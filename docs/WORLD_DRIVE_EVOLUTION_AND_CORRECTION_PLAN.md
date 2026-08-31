@@ -1,130 +1,111 @@
 # World Drive — Evolution & Correction Plan
 
-Date created: 2026-08-31
-Repository: `Zohltar/world-drive`
-Canonical work branch: `dev`
-Stable release branch: `main`
-Stable baseline at plan creation: `main` @ `111df5d84bf7fd700590abbd9c129b303ac92fad` — `Release V21.31 post-C6 stable`
-Audit/development baseline immediately before this document: `dev` @ `290d16e328b7c0756fecffc34e5a80479304be82`
-Status: **ACTIVE — canonical post-C6 source of truth**
+Date created: 2026-08-31  
+Repository: `Zohltar/world-drive`  
+Canonical work branch: `dev`  
+Stable branch: `main`  
+Stable baseline: `111df5d84bf7fd700590abbd9c129b303ac92fad` — `Release V21.31 post-C6 stable`  
+Status: **ACTIVE — canonical execution and restart source of truth**
 
-> This document supersedes `WORLD_DRIVE_TECH_DEBT_PLAN_D.md` as the active execution plan. The older Plan D remains historical audit evidence.
+> This file supersedes the completed A/B/C cleanup plans and the original post-C6 Plan D. Historical documents are under `docs/archive/`.
 >
-> The objective is no longer cleanup for cleanup's sake. World Drive has a validated stable baseline. Future work should improve repository structure, clarify ownership, correct proven defects, and evolve systems without regressing gameplay, visual quality, physics, streaming smoothness, or multiplayer behavior.
+> The goal is no longer cleanup for cleanup’s sake. Keep the validated game behavior stable while improving structure, clarifying ownership, correcting proven defects, and enabling future evolution.
 
 ---
 
-# 0. Mandatory continuity / restart protocol
+# 0. Mandatory restart protocol
 
-This section exists specifically so a new ChatGPT conversation can resume work correctly even if all conversational context is lost.
+At the start of every new World Drive conversation involving code, architecture, QA, GitHub or technical planning:
 
-At the beginning of **every new World Drive conversation** involving code, architecture, QA, GitHub or technical planning:
+1. Read this file from the **current `dev` branch** before proposing code changes.
+2. Read the live HEAD of `dev` and `main`.
+3. Read **CURRENT CHECKPOINT** below.
+4. Inspect the latest `Dev Integration QA` for the exact current `dev` HEAD.
+5. If the checkpoint names an audit/candidate branch, inspect that branch and its latest workflow result.
+6. Read the completion/work-log entries for the active phase.
+7. Resume the exact **Next action** unless the user explicitly changes priority.
+8. If chat memory disagrees with GitHub, **GitHub + this file win**.
+9. Never mark an item DONE until commits, QA evidence and any required human validation are recorded here.
+10. Before ending a meaningful work session, update this checkpoint with the exact branch/SHA, validation state, discoveries, prohibitions and next action.
 
-1. Read this file from the current `dev` branch **before proposing or changing code**.
-2. Read the live GitHub HEAD of both `dev` and `main`.
-3. Read the **CURRENT CHECKPOINT** section below.
-4. Inspect the latest `Dev Integration QA` run for the exact current `dev` HEAD.
-5. If the checkpoint names a candidate/audit branch, inspect that branch and its latest workflow result before creating anything new.
-6. Read the work-log entries for the active item.
-7. Resume the exact `Next action` written in the checkpoint unless the user explicitly changes priority.
-8. Never assume old chat memory is newer than this file + live GitHub state.
-9. Never mark an item DONE until its completion record, commit(s), QA evidence and any required human validation are written into this document.
-10. Before ending a meaningful work session, update **CURRENT CHECKPOINT** so a future conversation knows exactly where work stopped.
-
-If chat memory and GitHub disagree, **GitHub + this file win**.
+A future session must never infer progress from task names alone. It must verify branch + SHA + workflow evidence.
 
 ---
 
-# 1. CURRENT CHECKPOINT — update after every meaningful work session
+# 1. CURRENT CHECKPOINT
 
-**Plan phase:** R — Source tree organization
+**Plan phase:** R — Source tree organization  
+**Active item:** R2 — move multiplayer into `src/multiplayer/`  
+**State:** **READ-ONLY AUDIT NEXT — no runtime file moved yet**  
+**Current validated dev baseline before this documentation update:** `9a26072353a41991dd636e8a6610f23b4ff5a1ff`  
+**Stable fallback:** `main` @ `111df5d84bf7fd700590abbd9c129b303ac92fad`  
+**Last green full integration:** Dev Integration run `33444437121` on `9a26072353a41991dd636e8a6610f23b4ff5a1ff` — PASS  
+**Human validation:** post-C6 gameplay validation PASS; no human validation required for R1 because it changed QA/audit code only.
 
-**Active item:** R1 — inventory and path-contract audit
+**R1 result:**
+- 116 source code files under `src/`;
+- 116/116 runtime-reachable from `src/main.js`;
+- 106 JS files directly in `src/` root;
+- 10 nested code files;
+- 0 browser-graph orphans;
+- 0 unresolved reachable relative imports;
+- 0 unclassified root JS files after corrected ownership classification;
+- dynamic imports and exact `src/...` path contracts are now inventoried permanently by `qa/DEV_INTEGRATION_AUDIT.mjs`.
 
-**State:** NOT STARTED
+**Next action:** create a narrow R2 audit branch from current `dev`. Map every importer, dynamic import, QA source-path assertion and workflow trigger involving the multiplayer family. Freeze the lazy/code-split contract. Only after that audit is green may a **path-only** candidate move the multiplayer family into `src/multiplayer/`.
 
-**Working branch:** `dev` until the R1 audit creates a narrow `audit/...` branch.
-
-**Stable fallback:** `main` @ `111df5d84bf7fd700590abbd9c129b303ac92fad`
-
-**Known validated development baseline before plan creation:** `290d16e328b7c0756fecffc34e5a80479304be82`
-
-**Last known full integration evidence before this plan:** Dev Integration QA on the post-C6 development baseline passed, including the runtime import/debt audit, ownership gates, C6.1–C6.12, full V21.31 stress, 288-case driving matrix, terrain, traffic, forest/frame pacing, multiplayer WebGL paths and production build.
-
-**Human validation:** PASS after C6; user reported normal gameplay was good before promotion to `main`.
-
-**Next action:** perform R1 as a **read-only repository/path audit**. Build an exact module inventory, current import graph, source-root file list, dynamic-import/path-sensitive QA list and proposed folder ownership map. Do not move runtime files during R1.
-
-**Do not do yet:** do not start D1 historical-layer renaming and do not move terrain/streaming files before R1 establishes path contracts.
+**Do not do during R2:**
+- do not rename `m3`/`v18` historical layers;
+- do not flatten multiplayer implementation layers;
+- do not change packet/state transforms;
+- do not change smoothing/support math;
+- do not change GLB/presentation behavior;
+- do not change traffic authority behavior.
 
 ---
 
-# 2. Operating principles
+# 2. Stable baseline / release rule
 
-## 2.1 Stable means stable
+`main` is the rollback/reference branch. New work happens on `dev` or narrow `audit/...` / `cleanup/...` branches.
 
-`main` is the rollback/reference branch. New architecture, reorganization and fixes happen on `dev` or narrow audit/candidate branches first.
-
-Never move `main` forward until:
-- the integrated `dev` HEAD is green;
-- required human validation is complete;
+Never advance `main` unless:
+- the actual integrated `dev` HEAD is green;
+- required human gameplay validation is complete;
 - the user explicitly approves promotion.
 
-## 2.2 No mixed-intent commits
-
-A commit should do one thing:
-- path-only/module move;
-- responsibility rename;
-- QA modernization;
-- bug correction;
-- behavior evolution;
-- documentation/checkpoint update.
-
-Do not hide behavior changes inside repository reorganization.
-
-## 2.3 Preserve accepted behavior by default
-
-Structural work must preserve:
-- driving feel and R2–R23 physics invariants;
-- braking in curves;
-- crest/jump/landing behavior;
-- road/terrain geometry and banking;
-- imagery quality and cache behavior;
-- forest density/frame pacing;
-- traffic behavior;
-- multiplayer exact gear/state/rendering;
-- authored vehicle lights and presentation;
-- HUD/minimap sign readout;
-- startup and route-loading behavior.
-
-A change to those behaviors requires its own explicit correction/evolution item.
-
-## 2.4 Move first only when ownership is understood
-
-A messy root directory is worth fixing, but path reorganization must follow a dependency audit. Historical filenames may still be real runtime owners.
-
-## 2.5 Tests protect behavior, not obsolete locations
-
-When a path-only move makes an old source-location assertion fail:
-- preserve the behavioral invariant;
-- update the QA to the new canonical path;
-- never restore obsolete architecture merely to satisfy an old string assertion.
+The current stable post-C6 build is V21.31 with `worldDriveChannel: stable`; `dev` uses `worldDriveChannel: dev`.
 
 ---
 
-# 3. Target source-tree architecture
+# 3. Operating principles
 
-This is the intended **direction**, not permission to move everything at once.
+1. **One intent per commit.** Path move, ownership rename, QA modernization, bug correction, behavior evolution and documentation are separate intents.
+2. **Structural work must not tune behavior.** Preserve accepted physics, visuals, terrain, imagery, frame pacing, traffic and multiplayer behavior.
+3. **Move first, rename historical layers later.** Phase R organizes paths; Phase O clarifies historical production names after path stability.
+4. **Audit before editing.** Each R/O item starts with an exact import/writer/reader/QA/path-contract audit.
+5. **Tests protect behavior, not obsolete locations.** Update stale source-location assertions instead of restoring old architecture.
+6. **Candidate before dev.** Material changes go through a narrow candidate branch and focused QA before integration.
+7. **Full Dev Integration on actual final dev HEAD.** Candidate green alone is not completion.
+8. **Human validation where meaningful.** Terrain/streaming, visual/handling and user-facing behavior changes require the appropriate real-game test.
+9. **Keep documentation current.** Every meaningful completion/discovery updates this file in the same work session.
+10. **No silent debt discoveries.** Material new debt is added to this plan before moving on.
+
+---
+
+# 4. Target source-tree direction
+
+This is a design map, not permission for one giant move.
 
 ```text
 src/
-  main.js                    # composition/bootstrap root
+  main.js
+  assets/
 
   app/
     application-settings.js
     loaded-settings-application.js
-    version.js
     diagnostics.js
+    version.js
 
   input/
     keyboard-controls.js
@@ -150,37 +131,33 @@ src/
     cache.js
     overpass.js
     desktop-overpass-transport.js
-    elevation.js
 
   audio/
     audio.js
-    audio-core.js            # eventual responsibility name for audio-base.js if audit supports it
+    audio-base.js        # responsibility rename deferred to Phase O
 
   traffic/
-    civil-traffic.js
-    civil-traffic-local.js
-    civil-traffic-pool.js
-    civil-traffic-preload.js
-    civil-traffic-network-bridge.js
+    civil-traffic*.js
 
   multiplayer/
-    client.js                # eventual responsibility name; not an automatic rename
-    client-core.js           # only if ownership audit supports it
-    visuals.js
-    visual-presentation.js
-    visual-support.js
-    vehicle-adapter.js
-    vehicle-registry.js
-    support-math.js
-    fallback-visual.js
+    multiplayer.js
+    multiplayer-client-m3.js
+    multiplayer-visuals.js
+    multiplayer-visuals-m3.js
+    multiplayer-visuals-v18.js
+    multiplayer-fallback-visual.js
+    multiplayer-support-math.js
+    multiplayer-vehicle-adapter.js
+    multiplayer-vehicle-registry.js
 
   vehicles/
-    system.js
-    visuals.js
-    presentation.js
-    authored-registry.js
-    render-contract.js
-    glb-entries.js
+    vehicle-system.js
+    vehicle-visuals.js
+    vehicle-presentation*.js
+    vehicle-authored-registry.js
+    vehicle-render-contract.js
+    vehicle-glb-entries.js
+    deferred-glb-system.js
     models/
       civic-glb.js
       countach-glb.js
@@ -193,108 +170,68 @@ src/
       truck-trailer.js
 
   physics/
-    # existing focused physics modules remain here
-    vehicle-dynamics.js
-    vehicle-dynamics-core.js
-    vehicle-dynamics-traction-steering.js
-    driving-runtime.js
-    driving-runtime-core.js   # eventual responsibility rename only after audit
-    transmission-controller.js
-    transmission-network-state.js
-    transmission-runtime-bridge.js
+    # existing focused modules plus, after R5:
+    vehicle-dynamics*.js
+    driving-runtime*.js
+    transmission-*.js
     wheel-ground-support.js
     skidmarks.js
 
   world/
     road/
-      road-geometry.js
-      road-furniture.js
-      signs.js
-      bridges.js
-
     terrain/
-      terrain.js
-      # historical active layers renamed only after ownership audit
-
     imagery/
-      imagery.js
-
     scenery/
-      scenery-data.js
-      scenery-renderer.js
-
     forest/
-      forest-authored-lite.js
-      forest-chunk-streamer.js
-      forest-chunk-streamer-core.js
-      forest-proxy-assets.js
-      forest-streaming-policy.js
-      forest-terrain-sampler.js
-      forest-water-assets.js
-      frame-runtime-profiler.js
-
     water/
-      water-data.js
-      water-renderer.js
-
     streaming/
-      world-streaming.js
-      streaming-coordinator.js
-      local-world-builder.js
 
   styles/
     styles.css
     v21-ui.css
 ```
 
-Notes:
-- This tree is a **design map**, not a one-commit migration target.
-- Exact final folder names may be adjusted by R1 if the import graph reveals better boundaries.
-- `main.js` should remain at `src/main.js` as the obvious browser entry/composition root.
-- Asset paths remain under `src/assets/` unless a separate asset-organization audit proves a move is safe and useful.
+`src/main.js` remains the obvious browser/composition entry point. `src/assets/` is not moved during Phase R unless a separate asset audit justifies it.
 
 ---
 
-# 4. PHASE R — Organize `src/` by responsibility
+# 5. PHASE R — Source tree organization
 
-Goal: reduce the overloaded `src/` root while making subsystem ownership immediately visible.
-
-This phase is structural. **No behavior tuning is allowed inside R items.**
+Goal: reduce the overloaded `src/` root while making subsystem ownership obvious. **No behavior tuning is allowed in Phase R.**
 
 ## R1 — Exact path/import/QA inventory [P0]
 
-Status: **NEXT**
+Status: **DONE — 2026-08-31**
 
-Create a read-only audit that records:
-- every production JS/CSS file under `src/`;
-- runtime reachability from `src/main.js`;
-- static imports;
-- dynamic imports;
-- path strings used by QA/source assertions;
-- build/Electron references to `src/...` paths;
-- files loaded indirectly rather than by ES import;
-- current file sizes and major dependency fan-in/fan-out;
-- proposed subsystem/folder for each root-level module.
+Implementation:
+- extended permanent `qa/DEV_INTEGRATION_AUDIT.mjs` instead of creating a second long-term audit;
+- inventory now records root/nested source layout, reachability, unresolved imports, dynamic imports, ownership buckets, exact `src/...` path contracts in QA/CI/Electron/build files, file sizes and fan-in/fan-out;
+- every root JS file must classify into a proposed responsibility domain.
 
-Special attention:
-- lazy `import()` paths in multiplayer;
-- Electron/preload paths;
-- QA that opens source files by exact filename;
-- CSS imports and asset-relative URLs;
-- path-scoped GitHub Actions triggers.
+Audit history:
+- temporary branch `audit/source-tree-r1` created with standalone audit/workflow; its new Actions run remained queued and was superseded by the permanent Dev Integration approach;
+- `21a8c9800b36aa1d2e87cb2d45e5e034bcbda5ef` — first permanent R1 extension;
+- run `33444264399` failed only because the new ownership classifier omitted 15 legitimate root modules; no runtime/subsystem failure occurred;
+- `9a26072353a41991dd636e8a6610f23b4ff5a1ff` — corrected classifier;
+- Dev Integration run `33444437121` — **PASS**, including all A/B/C/C6 gates, full stress, 288 driving cases, physics R2–R20, terrain, traffic, forest/frame pacing, M4.14/M4.15, live route smoke and production build/code split.
 
-Acceptance:
-- exact inventory committed as QA/report artifact;
-- zero runtime change;
-- production build PASS;
-- runtime import/debt audit PASS;
-- proposed folder map has no unclassified root JS file except deliberately retained entrypoints.
+Measured baseline:
+- 116 source code files;
+- 116 runtime reachable;
+- 106 root JS files;
+- 10 nested code files;
+- zero browser-graph orphans;
+- zero unresolved reachable relative imports;
+- zero unclassified root JS files.
 
-## R2 — Move multiplayer into `src/multiplayer/` [P1]
+Runtime behavior change: **none**.  
+Human validation: **not required**.
 
-Status: PENDING R1
+## R2 — Multiplayer folder migration [P1]
 
-Candidate set includes:
+Status: **AUDIT NEXT**
+
+Candidate family:
 - `multiplayer.js`
 - `multiplayer-client-m3.js`
 - `multiplayer-visuals.js`
@@ -305,446 +242,215 @@ Candidate set includes:
 - `multiplayer-vehicle-adapter.js`
 - `multiplayer-vehicle-registry.js`
 
-Rules:
-- path move first; responsibility renaming only if explicitly included in a small sub-item;
-- preserve lazy code splitting exactly;
-- preserve packet/state semantics exactly.
+Known path-sensitive contract:
+- `multiplayer-visuals.js` lazily executes `import('./multiplayer-visuals-m3.js')`; moving files must preserve lazy loading and production code splitting.
 
-Validation:
-- multiplayer protocol + exact gear;
+Required R2 audit before source move:
+- exact inbound/outbound production imports;
+- all dynamic imports;
+- all QA files that import/open/regex exact multiplayer paths;
+- all path-scoped workflow triggers;
+- any civil-traffic/multiplayer cross-boundary imports;
+- Electron/build references if any;
+- current production code-split expectations.
+
+Candidate rule: **path-only move**. Keep current filenames during R2.
+
+Required validation:
+- multiplayer support math/registry;
+- exact gear/M3 protocol;
 - shared/live traffic;
-- adapter/registry/support math;
+- vehicle adapter;
 - M4.14 authored reverse WebGL;
 - M4.15 network-to-WebGL reverse;
-- production code-split QA;
+- C6 multiplayer diagnostics;
+- production build + code split;
 - full Dev Integration.
 
-Human validation: recommended quick multiplayer/session smoke if available because dynamic import paths change.
+Human validation: quick multiplayer/session smoke recommended if available; not mandatory for a strictly path-only move if all network/WebGL/code-split integration is green.
 
-## R3 — Move civil traffic into `src/traffic/` [P1]
+## R3 — Civil traffic folder migration [P1]
 
 Status: PENDING R2
 
-Move the full `civil-traffic*` family together.
-
-Preserve:
+Move the full `civil-traffic*` family into `src/traffic/` while preserving:
 - R7 local engine;
-- pool/preload semantics;
-- Traffic MP1 authority/follower behavior;
+- pool/preload behavior;
+- Traffic MP1 authority/follower semantics;
 - network bridge;
-- canonical diagnostics;
-- `WorldDriveTrafficSpawn` command contract.
+- C6 diagnostics;
+- `WorldDriveTrafficSpawn` functional command.
 
-Validation:
-- all traffic QAs + C6 traffic diagnostics + multiplayer shared/live traffic + Dev Integration.
-
-## R4 — Move vehicle presentation/model modules into `src/vehicles/` [P1/P2]
+## R4 — Vehicle/presentation/model folder migration [P1/P2]
 
 Status: PENDING R3
 
-First structural lot:
-- vehicle system/visual/presentation/registry/render-contract/GLB entry files;
-- authored model files into `src/vehicles/models/`;
-- truck/trailer into `src/vehicles/truck/` if R1 confirms no path-sensitive asset assumptions.
+Move vehicle system/visual/presentation/registry/render-contract/GLB entry modules, authored models into `src/vehicles/models/`, and truck/trailer into `src/vehicles/truck/` after an exact dynamic-path audit.
 
-Do **not** combine this structural move with suspension/anti-roll refactoring.
+Important known contract: `vehicle-authored-registry.js` contains hard-coded `modulePath` strings and dynamic `import()` callbacks for ID.4, WRX, Civic, Sonata, F1, Countach, i3 and truck/trailer. These exact paths must migrate together.
 
-Validation:
-- all authored-vehicle light/presentation QA;
-- vehicle switching;
-- truck/trailer QA;
-- anti-roll/suspension/jump regressions;
-- multiplayer adapter paths;
-- build/code split;
-- Dev Integration.
+Do not combine R4 with suspension/anti-roll refactoring.
 
-Human validation: quick vehicle-switch + lights + camera/presentation spot-check.
-
-## R5 — Consolidate physics/runtime modules under `src/physics/` [P2]
+## R5 — Physics/runtime folder consolidation [P2]
 
 Status: PENDING R4
 
-Potential moves:
-- `vehicle-dynamics*.js`
-- `driving-runtime*.js`
-- `transmission-*.js`
-- `wheel-ground-support.js`
-- `skidmarks.js`
+Move `vehicle-dynamics*`, `driving-runtime*`, `transmission-*`, `wheel-ground-support.js` and `skidmarks.js` under `src/physics/` with **zero equation/constant changes**.
 
-No physics equations or constants may change in this phase.
+Required: complete relevant R-series tests, 288-case matrix, stress and Dev Integration.
 
-Validation:
-- complete R2–R23 regression set;
-- 288-case matrix;
-- full stress;
-- transmission/clutch/wheelspin;
-- suspension/ground-support/skid alignment;
-- Dev Integration.
-
-Human validation: not required for pure path-only changes if complete physics/integration QA is green; required if any behavior diff is introduced.
-
-## R6 — Move road/scenery/forest/water domains under `src/world/` [P2]
+## R6 — Road/scenery/forest/water folder migration [P2]
 
 Status: PENDING R5
 
-Perform as separate sub-lots, not one giant commit:
+Sub-lots:
 - R6a road/signs/bridges;
 - R6b scenery renderer/data;
-- R6c forest modules;
-- R6d water modules.
+- R6c forest;
+- R6d water.
 
-Preserve forest frame-pacing and road-sign scheduling exactly.
+Preserve road-sign scheduling and forest frame-pacing exactly.
 
-Validation: relevant subsystem QA + full Dev Integration after each integrated sub-lot.
-
-## R7 — Move app/input/ui/routing/services modules [P2]
+## R7 — App/input/ui/routing/services folder migration [P2]
 
 Status: PENDING R6
 
-These are lower gameplay risk but high import fan-out. Use R1 dependency data to choose ordering.
+Lower gameplay risk but high import fan-out. Preserve CSS paths, settings identity/persistence, startup order, controls and desktop Overpass behavior.
 
-Keep `src/main.js` as the composition root.
-
-Special checks:
-- CSS path imports;
-- settings persistence identity;
-- keyboard/gamepad bindings;
-- route startup order;
-- desktop Overpass bridge;
-- Electron packaging/build.
-
-## R8 — Terrain / imagery / local-world / streaming folder move [P3 — last structural move]
+## R8 — Terrain/imagery/local-world/streaming folder migration [P3 — LAST]
 
 Status: DEFERRED UNTIL R2–R7 STABLE
 
-Move the performance-sensitive families into responsibility folders **without flattening them yet**.
-
 Families:
-- `terrain*`
-- `imagery*`
-- `local-world-builder*`
-- `streaming-coordinator*`
-- `world-streaming.js`
+- `terrain*`;
+- `imagery*`;
+- `local-world-builder*`;
+- `streaming-coordinator*`;
+- `world-streaming.js`.
 
-Required before source move:
-- dedicated path-contract audit;
-- freeze dynamic/runtime bridge expectations;
-- full terrain/imagery/streaming regression baseline.
+These are performance sensitive. Require dedicated path/runtime-contract audit and a long-route human validation after integration: imagery ON/OFF, cache reuse, several world refreshes, FPS/hitch observation.
 
-Required after integration:
-- full Dev Integration;
-- production build;
-- long-route human validation with imagery ON/OFF, cache reuse, several world refreshes, FPS/hitch observation.
-
-## R9 — Root cleanliness permanent gate [P2]
+## R9 — Permanent root-cleanliness gate [P2]
 
 Status: PENDING R8
 
-After structural migration stabilizes, add a permanent QA allowlist for files permitted directly under `src/`.
-
-Expected minimal root surface should be approximately:
-- `main.js`;
-- possibly a small number of deliberate compatibility/bootstrap entrypoints if R1 proves they are justified.
-
-The gate should fail if new subsystem implementation files are later added casually to `src/` root.
+After migration, add an allowlist for files permitted directly under `src/`. Expected minimal root is approximately `main.js` plus only explicitly justified bootstrap/compatibility entry points.
 
 ---
 
-# 5. PHASE O — Remove historical production naming / clarify ownership
+# 6. PHASE O — Responsibility naming / historical layer cleanup
 
-Begin only after the relevant modules are in their responsibility directories. This phase incorporates and supersedes the active execution portion of Plan D.
+Begin after the relevant Phase R folder is stable. Do not merge these renames into path moves.
 
-## O1 — Multiplayer visual ownership names [P1]
-
-Historical targets:
-- `multiplayer-visuals-v18.js`
-- `multiplayer-visuals-m3.js`
-
-Goal:
-- `visual-support` should own support chassis/terrain solve;
-- authored remote presentation/smoothing should have a responsibility name;
-- lazy facade remains the public boundary.
-
-No network/rendering behavior change.
-
-## O2 — Road-furniture ownership names [P1/P2]
-
-Historical targets:
-- `road-furniture-p930.js`
-- `road-furniture-p937.js`
-
-Preserve two real responsibilities:
-- incremental sign construction;
-- idle/coalesced scheduling + combined diagnostics.
-
-Do not flatten solely to reduce file count.
-
-## O3 — Vehicle-presentation ownership [P2]
-
-Historical target:
-- `vehicle-presentation-v21.29.js`
-
-Establish explicit ownership for:
-- suspension/ground-following presentation;
-- airborne/landing presentation;
-- anti-roll visual coupling.
-
-Human visual/handling spot-check required if more than naming/import ownership changes.
-
-## O4 — Scenery-renderer ownership names [P2]
-
-Historical targets:
-- `scenery-renderer-p9.js`
-- `scenery-renderer-p933.js`
-
-Preserve:
-- actual scenery/forest rendering;
-- route-aware startup readiness;
-- directional front/rear coverage;
-- timeout behavior;
-- C6 diagnostic aliases until a separate compatibility decision is made.
-
-## O5 — Audio core naming [P2]
-
-Historical/generic target:
-- `audio-base.js`
-
-Rename only if audit confirms the current two-module split is valuable. Tire/skid audio remains a separate modern layer unless a behavior-focused refactor justifies otherwise.
-
-## O6 — Driving runtime ownership map and naming [P2/P3]
-
-Historical/generic target:
-- `driving-runtime-base.js`
-
-Start read-only. The public `driving-runtime.js` owns substantial modern behavior and must not be merged blindly.
-
-Any changes require full driving/transmission/traffic/lighting regression coverage.
-
-## O7 — Terrain / imagery / local-world / streaming historical layers [P3]
-
-This is the final naming/architecture cleanup, not a cosmetic sweep.
-
-Before altering names/boundaries, document exact ownership of:
-- terrain base road-bed;
-- horizon preparation/commit;
-- transition preparation/install;
-- imagery rendered-ground sampler and prefetch;
-- prepared local-world staging/commit;
-- forest retention;
-- adaptive streaming/hitch attribution;
-- live P9.23 runtime bridge.
-
-Human long-route validation is mandatory after any material integration.
+- **O1 Multiplayer visuals:** replace misleading `m3`/`v18` production names with responsibility names while preserving lazy facade, support solver and authored presentation separation.
+- **O2 Road furniture:** replace `p930`/`p937` names while preserving incremental sign construction vs idle/coalesced scheduling.
+- **O3 Vehicle presentation:** remove `vehicle-presentation-v21.29.js` historical ownership name; preserve suspension/airborne/landing and anti-roll behavior.
+- **O4 Scenery renderer:** replace `p9`/`p933` names while preserving route-aware startup readiness and forest rendering.
+- **O5 Audio:** replace generic `audio-base.js` only if an ownership audit confirms a useful core/wrapper split.
+- **O6 Driving runtime:** map `driving-runtime-base.js` vs public runtime before any rename/flattening; physics/runtime-sensitive.
+- **O7 Terrain/imagery/local-world/streaming:** only after R8 and performance baselines; no cosmetic big-bang flattening.
 
 ---
 
-# 6. PHASE C — Correction pipeline for newly discovered bugs
+# 7. PHASE C — Corrections / maintenance
 
-The project currently has no known user-visible regression after C6 human validation. This section defines how future defects enter the plan without derailing structural work.
+Corrections can interrupt R/O when a real defect is found. They must be isolated from structural commits.
 
-## Priority
+## C-M1 — Dependency/security audit [P1/P2]
 
-### C-P0 — release blocker
-Examples:
-- crash/startup failure;
-- route cannot load;
-- corrupted persistent data;
-- catastrophic physics regression;
-- stable multiplayer unusable;
-- production build broken.
+Status: **NEW — NOT STARTED**
 
-Action: stop structural work immediately and fix first.
+Discovery during R1 CI:
+- `npm ci` reported 25 dependency vulnerabilities: 3 low, 21 high, 1 critical.
 
-### C-P1 — major gameplay/visual/performance regression
-Examples:
-- braking/steering/jump behavior materially wrong;
-- terrain intersects road;
-- severe hitches/micro-stutters return;
-- imagery or cache stops functioning;
-- traffic/network behavior incorrect;
-- vehicle lights/presentation visibly broken.
+Rules:
+- inspect the exact `npm audit` dependency tree;
+- distinguish shipped/runtime risk from dev/build-only transitive dependencies;
+- do **not** run blind `npm audit fix --force`;
+- evaluate Electron/Forge/Vite updates with packaging/build QA;
+- handle security-relevant runtime exposure first.
 
-Action: normally interrupt the active structural item, create a dedicated fix branch, reproduce with QA, fix, validate, integrate, then resume from the checkpoint.
+This is a separate maintenance item and must not be mixed into Phase R file moves.
 
-### C-P2 — moderate defect / quality problem
-Examples:
-- localized visual artifact;
-- UI inconsistency;
-- minor vehicle-model issue;
-- non-critical diagnostic/tooling problem.
+## C-M2 — GitHub Actions runtime hygiene [P2/P3]
 
-Action: record here and schedule around the current structural item unless the user prioritizes it.
+Status: **NEW — NOT STARTED**
 
-### C-P3 — polish / idea
-Record separately. Do not mix with cleanup merely because the same file is being touched.
-
-## Mandatory bug workflow
-
-1. Record reproduction and expected behavior.
-2. Identify last known good baseline when possible.
-3. Add or modernize a regression test before/with the fix.
-4. Keep fix commit separate from directory/ownership movement.
-5. Run domain QA + full Dev Integration when core runtime is touched.
-6. Human-test user-visible fixes before promotion to stable.
-7. Update CURRENT CHECKPOINT and work log before resuming interrupted structural work.
+GitHub Actions currently warns that Node 20-based action runtimes are deprecated/being forced to Node 24. Audit `actions/checkout`, `actions/setup-node` and other actions when appropriate. Preserve workflow behavior and path-scoped gates.
 
 ---
 
-# 7. PHASE E — Feature evolution after architecture stabilizes
+# 8. PHASE E — Feature evolution
 
-Feature work may happen before all O items finish if the user prioritizes it, but each feature should enter this plan explicitly before implementation.
+New gameplay/features are allowed after a stable structural checkpoint. Every feature gets:
+- explicit behavior goal;
+- narrow branch;
+- dedicated QA where feasible;
+- full Dev Integration for core changes;
+- human validation for user-visible behavior.
 
-Potential evolution domains, not automatically approved work:
-- richer traffic behavior/variety;
-- multiplayer/session evolution;
-- route and world-generation improvements;
-- more authored vehicles;
-- vehicle-specific lighting/presentation improvements;
-- better road metadata/signage;
-- cache/offline robustness;
-- driving-physics evolution based on observed gameplay, not test chasing;
-- UI/settings improvements.
-
-Rule: architecture cleanup must never be used as an excuse to sneak in feature behavior, and feature work must not opportunistically reorganize unrelated subsystems.
+Never hide feature work inside R/O maintenance.
 
 ---
 
-# 8. Validation matrix
+# 9. Validation matrix
 
-## Path-only / responsibility-only move
-Minimum:
-- exact import/path audit;
-- relevant subsystem QA;
-- production build;
-- code-split QA if dynamic imports are involved;
-- full Dev Integration on final integrated `dev` HEAD.
-
-## Physics/runtime behavior
-Minimum:
-- relevant dedicated R tests;
-- transmission/wheelspin/support tests as applicable;
-- `DEV_DRIVING_SIM_QA` 288 cases;
-- full stress;
-- production build;
-- Dev Integration;
-- human driving test when behavior changes.
-
-## Terrain/imagery/streaming
-Minimum:
-- terrain/road/imagery/forest/frame-pacing QA;
-- live route smoke;
-- full stress;
-- production build;
-- Dev Integration;
-- human long-route test mandatory for material changes.
-
-## Multiplayer
-Minimum:
-- protocol/exact gear;
-- traffic shared/live;
-- registry/adapter/support;
-- M4.14/M4.15 WebGL paths;
-- code split;
-- Dev Integration;
-- human session smoke when connection/loading behavior changes.
-
-## Vehicle visuals/lights
-Minimum:
-- authored vehicle presentation/light QA;
-- reverse/brake/night/indicator coverage where relevant;
-- suspension/anti-roll if presentation changes;
-- Dev Integration;
-- human visual spot-check for material rendering changes.
+| Change type | Minimum automated validation | Human validation |
+|---|---|---|
+| docs/audit only | relevant audit + build when applicable | no |
+| path-only multiplayer | multiplayer + M4.14/M4.15 + code split + Dev Integration | quick smoke recommended |
+| path-only traffic | traffic + shared/live MP + Dev Integration | optional |
+| path-only vehicle | presentation/lights/truck/MP adapter + Dev Integration | quick spot-check |
+| physics/runtime | dedicated R-tests + 288 matrix + stress + Dev Integration | required if behavior changes |
+| road/forest | subsystem + frame pacing + Dev Integration | required if visible/perf behavior changes |
+| terrain/imagery/streaming | complete subsystem + stress + build + Dev Integration | **long-route mandatory** |
+| dependency/toolchain | build/package + affected QA + Dev Integration | desktop/package smoke when relevant |
 
 ---
 
-# 9. Branch / commit convention
+# 10. Branch conventions
 
-Recommended branch prefixes:
-- `audit/...` — read-only analysis, scanners, reports;
-- `structure/...` — path/folder changes only;
-- `cleanup/...` — ownership/naming cleanup;
-- `fix/...` — proven defect correction;
-- `feature/...` — intentional new behavior.
+- read-only investigation: `audit/<scope>`
+- structural/cleanup candidate: `cleanup/<scope>`
+- bug correction: `fix/<scope>`
+- feature evolution: `feature/<scope>`
 
-For risky changes:
-1. branch from current green `dev`;
-2. candidate QA;
-3. materialize narrow commit;
-4. integrate to `dev` only when green;
-5. run permanent/domain gate;
-6. run full Dev Integration on actual final `dev` HEAD;
-7. perform required human validation;
-8. update this document.
+Do not do experimental work directly on `main`.
 
 ---
 
-# 10. Completion record template
+# 11. Completion record template
 
-Every completed item must add a record using this shape:
+For every completed item, append/update a record containing:
 
-```text
-## YYYY-MM-DD — <item> completed
-
-- Starting dev HEAD:
-- Audit branch / run:
-- Candidate branch:
-- Runtime/path commits:
-- QA commits:
-- Candidate workflow run:
-- Permanent gate run:
+- Item:
+- Date:
+- Audit branch/run:
+- Candidate branch/run:
+- Integrated dev commit:
 - Final Dev Integration run:
-- Human validation: PASS / NOT REQUIRED / PENDING
-- Behavior changes: none / explicit summary
-- Files/modules moved or renamed:
+- Files moved/changed:
+- Behavior changed: yes/no; if yes, exact intended change:
 - Material discoveries:
-- Deferred follow-ups:
+- Human validation: required/not required + result:
 - Result:
-- Next item:
-```
+- Next item/action:
 
-If an item is interrupted by a bug or conversation end, write an **IN PROGRESS checkpoint** instead of pretending it is complete.
-
----
-
-# 11. Conversation-end checkpoint template
-
-Before a long session ends or context becomes large, update section 1 with:
-
-```text
-Active item:
-State: AUDIT / CANDIDATE / INTEGRATED / HUMAN VALIDATION / DONE
-Working branch:
-Working HEAD:
-Candidate branch + HEAD:
-Last green workflow + run ID:
-Last failed workflow + exact failure, if any:
-Runtime files changed:
-QA files changed:
-Important discoveries:
-What must NOT be changed:
-Human validation status:
-Next exact action:
-```
-
-This is mandatory continuity metadata, not optional documentation polish.
+For an interrupted item, CURRENT CHECKPOINT must additionally contain:
+- exact active branch + SHA;
+- last green run;
+- last failed run and precise reason;
+- source files already modified;
+- QA files already modified;
+- invariants that must not change;
+- exact next action.
 
 ---
 
-# 12. Immediate roadmap
+# 12. Roadmap summary
 
-Execution order unless the user changes priority:
+Current sequence:
 
-1. **R1** exact source/path/import/QA audit.
-2. **R2** multiplayer folder migration.
-3. **R3** civil-traffic folder migration.
-4. **R4** vehicles/models/truck folder migration.
-5. **R5** physics/runtime root cleanup.
-6. **R6** road/scenery/forest/water world folders.
-7. **R7** app/input/ui/routing/services folders.
-8. **R8** terrain/imagery/local-world/streaming move with mandatory human long-route validation.
-9. **R9** permanent `src/` root-cleanliness gate.
-10. **O1–O7** responsibility/historical naming cleanup, starting with multiplayer and road furniture.
-11. Continue with corrections/features according to observed gameplay and user priorities.
+**R1 DONE → R2 multiplayer → R3 traffic → R4 vehicles → R5 physics/runtime → R6 world road/scenery/forest/water → R7 app/UI/services → R8 terrain/imagery/streaming → R9 root gate → Phase O historical naming → corrections/features as prioritized.**
 
-The order deliberately puts the most performance-sensitive world-generation/streaming move late, after the repository has already proven the folder-migration process on safer domains.
+Maintenance items C-M1/C-M2 are tracked separately and may be prioritized when appropriate, but must not contaminate structural commits.
