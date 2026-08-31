@@ -64,6 +64,7 @@ import {
   getWorldCacheStats,
   clearWorldDriveCache
 } from './cache.js';
+import { createApplicationSettingsController } from './application-settings.js';
 import { createOverpassClient } from './overpass.js';
 import { createSignDataService, createGeographicSignOrchestrator } from './signs.js';
 import { createBridgeManager } from './bridges.js';
@@ -181,47 +182,19 @@ const $=id=>document.getElementById(id);
 const loading=$('loading'),loadingText=$('loadingText'),statusEl=$('status'),notice=$('notice'),routingStatus=$('routingStatus');
 
 // ---------- V21 application settings / startup state ----------
-let appSettings=
-  JSON.parse(
-    JSON.stringify(
-      DEFAULT_WORLD_SETTINGS
-    )
-  );
+const settingsController=createApplicationSettingsController({
+  defaults:DEFAULT_WORLD_SETTINGS,
+  store:WorldSettings,
+  saveDelayMs:120
+});
+const appSettings=settingsController.settings;
+const queueSettingsSave=()=>settingsController.queueSave();
+const cloneDefaultControls=()=>settingsController.cloneDefaultControls();
 
-let settingsLoaded=false;
-let settingsSaveTimer=null;
 let gameStarted=false;
 let v21MenuOpen=false;
 let keyboardRebindAction=null;
 let v21MenuSystem=null;
-
-function queueSettingsSave(){
-  if(!settingsLoaded)return;
-
-  clearTimeout(settingsSaveTimer);
-
-  settingsSaveTimer=setTimeout(
-    ()=>{
-      WorldSettings
-        .save(appSettings)
-        .catch(error=>
-          console.warn(
-            'Settings save failed',
-            error
-          )
-        );
-    },
-    120
-  );
-}
-
-function cloneDefaultControls(){
-  return JSON.parse(
-    JSON.stringify(
-      DEFAULT_WORLD_SETTINGS.controls
-    )
-  );
-}
 
 // ---------- startup UI ----------
 const startupUi=createStartupUi({
@@ -2732,10 +2705,7 @@ addEventListener('resize',()=>{camera.aspect=innerWidth/innerHeight;camera.updat
      'Lecture IndexedDB…'
    );
 
-   appSettings=
-     await WorldSettings.load();
-
-   settingsLoaded=true;
+   await settingsController.load();
 
    setV21BootProgress(
      'settings',
