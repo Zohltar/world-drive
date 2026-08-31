@@ -10,8 +10,8 @@ export function createLoadedSettingsApplication({
   toggleImagery,
   applyDisplayDistanceProfile,
   applyDisplayVisibility,
-  assistStatusEl=null,
-  transmissionModeSelect=null,
+  getAssistStatusEl=()=>null,
+  getTransmissionModeSelect=()=>null,
   syncRuntimeControls
 }){
   if(!settings||typeof settings!=='object'){
@@ -43,11 +43,13 @@ export function createLoadedSettingsApplication({
 
     applyDisplayVisibility();
 
+    const assistStatusEl=getAssistStatusEl();
     if(assistStatusEl){
       assistStatusEl.textContent=
         'Assist: '+(assist?'ON':'OFF');
     }
 
+    const transmissionModeSelect=getTransmissionModeSelect();
     if(transmissionModeSelect){
       transmissionModeSelect.value=transmissionMode;
     }
