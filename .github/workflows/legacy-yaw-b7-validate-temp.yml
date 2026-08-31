@@ -7,6 +7,7 @@ on:
     paths:
       - 'qa/apply-legacy-yaw-b7-temp.mjs'
       - 'qa-yaw-fallback-b7.mjs'
+      - 'qa-grip-f1-front-slip-r21.mjs'
       - '.github/workflows/legacy-yaw-b7-validate-temp.yml'
   workflow_dispatch:
 
@@ -49,6 +50,6 @@ jobs:
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add src/physics/yaw-authority.js src/driving-runtime-base.js qa-yaw-fallback-b7.mjs qa-yaw-authority-b5.mjs qa-grip-fwd-power-r16.mjs qa-grip-f1-legacy-r23.mjs
+          git add src/physics/yaw-authority.js src/driving-runtime-base.js qa-yaw-fallback-b7.mjs qa-yaw-authority-b5.mjs qa-grip-fwd-power-r16.mjs qa-grip-f1-front-slip-r21.mjs qa-grip-f1-legacy-r23.mjs
           git diff --cached --quiet || git commit -m 'Cleanup B7: clarify grip-loss fallback yaw ownership'
           git push
