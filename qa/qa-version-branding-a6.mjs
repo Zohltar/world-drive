@@ -21,7 +21,7 @@ assert.equal(branding.WORLD_DRIVE_VERSION,expectedDisplay,'web display version d
 assert.equal(branding.WORLD_DRIVE_CHANNEL,pkg.worldDriveChannel,'web channel diverged from package.json');
 assert.equal(branding.WORLD_DRIVE_VERSION_LABEL,expectedLabel,'web version label diverged');
 assert.equal(branding.WORLD_DRIVE_TITLE,expectedTitle,'web title diverged');
-assert.ok(versionSource.includes("from '../../package.json' with {type:'json'}"),'web branding must import authoritative package metadata');
+assert.ok(versionSource.includes("from '../package.json' with {type:'json'}"),'web branding must import authoritative package metadata');
 assert.ok(!/WORLD_DRIVE_VERSION\s*=\s*['"]\d/.test(versionSource),'web version must not return to a hard-coded numeric constant');
 assert.ok(!/WORLD_DRIVE_CHANNEL\s*=\s*['"](?:dev|stable)/.test(versionSource),'web channel must not return to a hard-coded constant');
 assert.ok(!versionSource.includes('MutationObserver'),'legacy DOM-wide branding observer must remain removed');
