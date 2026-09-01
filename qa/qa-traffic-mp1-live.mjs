@@ -3,7 +3,7 @@ import {spawn} from 'node:child_process';
 import {createRequire} from 'node:module';
 
 const require=createRequire(import.meta.url);
-const {createMultiplayerRuntime}=require('./electron/multiplayer-runtime.cjs');
+const {createMultiplayerRuntime}=require('../electron/multiplayer-runtime.cjs');
 
 if(typeof WebSocket!=='function')throw new Error('Node 22 WebSocket global required for live MP traffic QA');
 
