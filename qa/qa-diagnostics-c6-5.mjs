@@ -15,7 +15,7 @@ expect(rootA===rootB,'C6.5 must preserve stable diagnostics-root identity');
 expect(physicsA===rootB.physics,'C6.5 must preserve stable physics-category identity');
 
 const source=fs.readFileSync(new URL('../src/transmission-controller.js',import.meta.url),'utf8');
-expect(source.includes("import {ensureWorldDriveDiagnostics} from '../diagnostics.js';"),
+expect(source.includes("import {ensureWorldDriveDiagnostics} from './diagnostics.js';"),
   'transmission controller must import canonical diagnostics root');
 expect(!source.includes('WorldDriveEngineInput'),'legacy engine-input global remains');
 expect(source.includes("const engineInputDiagnostics=typeof window==='undefined'?null:ensureWorldDriveDiagnostics().physics;"),
