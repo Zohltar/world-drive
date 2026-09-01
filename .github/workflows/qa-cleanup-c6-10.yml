@@ -6,10 +6,10 @@ on:
       - cleanup/diagnostics-c6-10
       - dev
     paths:
-      - 'src/civil-traffic-preload.js'
-      - 'src/civil-traffic-pool.js'
-      - 'src/civil-traffic-local.js'
-      - 'src/civil-traffic.js'
+      - 'src/traffic/civil-traffic-preload.js'
+      - 'src/traffic/civil-traffic-pool.js'
+      - 'src/traffic/civil-traffic-local.js'
+      - 'src/traffic/civil-traffic.js'
       - 'src/diagnostics.js'
       - 'qa-diagnostics-c6-*.mjs'
       - 'qa-traffic-*.mjs'
