@@ -8,8 +8,8 @@ on:
       - 'src/main.js'
       - 'src/application-settings.js'
       - 'src/loaded-settings-application.js'
-      - 'qa-main-c5-settings.mjs'
-      - 'qa-main-c5-loaded-settings.mjs'
+      - 'qa/qa-main-c5-settings.mjs'
+      - 'qa/qa-main-c5-loaded-settings.mjs'
       - 'qa/V21_25_UI_INIT_ORDER_QA.mjs'
       - 'qa/V21_25_UI_REFACTOR_QA.mjs'
       - 'qa/V21_26_ENVIRONMENT_REFACTOR_QA.mjs'
@@ -31,9 +31,9 @@ jobs:
           cache: npm
       - run: npm ci
       - name: C5.6 loaded settings semantics QA
-        run: node qa-main-c5-loaded-settings.mjs
+        run: node qa/qa-main-c5-loaded-settings.mjs
       - name: C5.5 stable settings identity QA
-        run: node qa-main-c5-settings.mjs
+        run: node qa/qa-main-c5-settings.mjs
       - name: V21.25 UI init-order QA
         run: node qa/V21_25_UI_INIT_ORDER_QA.mjs
       - name: V21.25 UI refactor QA
