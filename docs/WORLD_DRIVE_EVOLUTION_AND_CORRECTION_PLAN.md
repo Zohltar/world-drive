@@ -29,73 +29,57 @@ At the start of every World Drive coding/architecture/QA conversation:
 
 **Plan phase:** R — Source tree organization  
 **Active item:** R3 — civil traffic folder migration  
-**State:** **READ-ONLY AUDIT NEXT — no traffic runtime file moved yet**  
-**Current validated dev HEAD before R3:** `902057b04a7a6987e19cd5a40a2e9c67f4e89cdf`  
-**Last green full integration:** Dev Integration run `33455977023` on that exact HEAD — **PASS (88/88 functional steps)**  
-**Human validation:** R2 multiplayer smoke — **PASS, user reported “tout est beau”**.
+**State:** **AUTOMATION DONE — HUMAN TRAFFIC SMOKE REQUIRED BEFORE R4**  
+**Integrated R3 runtime/dev HEAD before this documentation commit:** `5467089b2aa10340b70fbefdb2a6a9ed0df3117a`  
+**Stable fallback:** `main` @ `111df5d84bf7fd700590abbd9c129b303ac92fad`  
+**Last green full integration:** Dev Integration run `33460390294` on `5467089b2aa10340b70fbefdb2a6a9ed0df3117a` — **PASS (89/89 functional steps)**  
+**Human validation:** R2 multiplayer smoke — PASS. R3 traffic smoke — **PENDING**.
 
-## R2 completion
+## R3 automation completion
 
-R2 is **DONE**.
+The full traffic implementation family now lives under `src/traffic/`:
+- `civil-traffic.js`
+- `civil-traffic-local.js`
+- `civil-traffic-network-bridge.js`
+- `civil-traffic-pool.js`
+- `civil-traffic-preload.js`
 
-Final architecture:
-- public lazy/compatibility facades remain at root:
-  - `src/multiplayer.js`
-  - `src/multiplayer-visuals.js`
-- seven implementation modules now live under `src/multiplayer/`:
-  - `multiplayer-client-m3.js`
-  - `multiplayer-visuals-m3.js`
-  - `multiplayer-visuals-v18.js`
-  - `multiplayer-fallback-visual.js`
-  - `multiplayer-support-math.js`
-  - `multiplayer-vehicle-adapter.js`
-  - `multiplayer-vehicle-registry.js`
-- lazy loading and production code splitting preserved;
-- historical `m3` / `v18` names intentionally deferred to Phase O;
-- permanent gate: `qa-source-tree-r2-multiplayer.mjs` in Dev Integration.
+No `civil-traffic*.js` implementation remains directly under `src/`.
+
+External boundaries:
+- `src/driving-runtime.js` imports `./traffic/civil-traffic.js`;
+- `src/multiplayer.js` imports `./traffic/civil-traffic-network-bridge.js`.
+
+Move-sensitive contracts preserved:
+- pool -> preload remains a lazy sibling `import('./civil-traffic-preload.js')`;
+- Sonata `import.meta.url` paths correctly moved one directory deeper to `../assets/2006_hyundai_sonata.glb`;
+- generic passenger-pack URLs remain application-relative `./assets/traffic/...`;
+- `fetch(url,{cache:'force-cache'})` preserved;
+- preload remains sequential Sonata -> generic pack;
+- R7 local engine behavior preserved;
+- max active agents remains 2;
+- right-hand lane logic/cooldowns unchanged;
+- Traffic MP1 authority/follower, sanitization and live relay behavior unchanged;
+- canonical diagnostics remain `traffic.network`, `traffic.preload`, `traffic.runtime`, `traffic.pool`;
+- compatibility `WorldDriveTraffic` / `WorldDriveTrafficPool` retained;
+- functional `WorldDriveTrafficSpawn` retained.
+
+Permanent gate:
+- `qa-source-tree-r3-traffic.mjs`;
+- registered in `.github/workflows/qa-dev-integration.yml` immediately after the R2 boundary gate.
 
 Evidence:
-- audit run `33444942008` — PASS;
-- candidate exact-head run `33455749888` — PASS;
-- integrated runtime commit `1eef3825e8ea56b28ac49e8e17e828fbbf1c042d`;
-- Dev Integration `33455822616` — PASS;
-- final documented HEAD Dev Integration `33455977023` — PASS;
-- human smoke — PASS.
+- R3 audit branch: `audit/source-tree-r3-traffic`;
+- audit runs `33459624185` and `33459656074` — PASS;
+- candidate branch: `cleanup/source-tree-r3-traffic`;
+- final candidate gate run `33460300489` — PASS;
+- candidate traffic behavior/build gate run `33460198735` — PASS;
+- integrated `dev` commit `5467089b2aa10340b70fbefdb2a6a9ed0df3117a`;
+- final Dev Integration `33460390294` — PASS, including R2/R3 boundaries, A–C6, full stress, 288-case driving matrix, traffic local/pool/preload/shared/live, terrain, forest/frame pacing, M4.14/M4.15, route smoke, production build and code split.
 
-## R3 next action
+**Human test requested now:** short normal-game traffic smoke. Verify startup, several minutes of driving, civil traffic presence/variety, lane/respawn behavior, no new stutter/FPS issue, and shared multiplayer traffic if convenient.
 
-Create `audit/source-tree-r3-traffic` from current `dev` and perform a **read-only** audit of the complete traffic family before any move.
-
-Traffic family currently expected:
-- `src/civil-traffic.js`
-- `src/civil-traffic-local.js`
-- `src/civil-traffic-pool.js`
-- `src/civil-traffic-preload.js`
-- `src/civil-traffic-network-bridge.js`
-
-Audit must freeze:
-- every production importer/imported dependency;
-- dynamic preload import path(s);
-- every QA exact-path contract;
-- every workflow path trigger;
-- multiplayer/traffic cross-boundary imports;
-- diagnostics ownership and compatibility globals;
-- functional `WorldDriveTrafficSpawn` command;
-- R7 local engine behavior;
-- pool/preload behavior;
-- Traffic MP1 authority/follower semantics;
-- live relay behavior.
-
-**Do not do during R3 audit/candidate:**
-- do not rename `civil-traffic*` responsibilities;
-- do not change spawn density, lane logic or agent cap;
-- do not alter traffic authority election or snapshot sanitization;
-- do not alter GLB preload timing/sequence;
-- do not remove compatibility globals;
-- do not change multiplayer protocol;
-- do not mix dependency/toolchain maintenance into the path move.
-
-**Next action:** run R3 audit, lock its path/behavior boundary, then create a narrow path-only candidate under `src/traffic/` if the audit is green.
+**Next action after human PASS:** mark R3 DONE and start **R4 read-only vehicle/presentation/model path audit**. Do not move vehicle files before that audit is green.
 
 ---
 
@@ -119,7 +103,7 @@ Never advance `main` unless:
 5. **Tests protect behavior, not obsolete locations.** Retarget stale path assertions instead of restoring old architecture.
 6. **Candidate before dev.** Material structural work goes through a narrow candidate + focused QA.
 7. **Full Dev Integration on the actual final `dev` HEAD.** Candidate green alone is not completion.
-8. **Periodic human checkpoints.** User explicitly wants human validation from time to time; use it after meaningful structural clusters and whenever behavior/visual/performance risk rises.
+8. **Periodic human checkpoints.** Use them after meaningful structural clusters and whenever behavior/visual/performance risk rises.
 9. **No silent debt discoveries.** New material debt gets recorded here before moving on.
 
 ---
@@ -162,52 +146,54 @@ Public bootstrap/compatibility facades may remain at root when they provide a us
 
 **DONE — 2026-08-31**
 
-Permanent `qa/DEV_INTEGRATION_AUDIT.mjs` now records:
-- source reachability;
-- unresolved relative imports;
-- root/nested layout;
-- dynamic imports;
-- ownership buckets;
-- exact QA/CI path contracts;
-- size/fan-in/fan-out.
+Permanent `qa/DEV_INTEGRATION_AUDIT.mjs` records source reachability, unresolved relative imports, root/nested layout, dynamic imports, ownership buckets, QA/CI path contracts and size/fan-in/fan-out.
 
-Baseline: 116/116 runtime reachable, zero browser-graph orphans, zero unresolved reachable imports.
-
+Baseline: 116/116 runtime reachable, zero browser-graph orphans, zero unresolved reachable imports.  
 Key run: `33444437121` — PASS.
 
 ## R2 — Multiplayer folder migration [P1]
 
 **DONE — automation + human PASS**
 
-See CURRENT CHECKPOINT completion record above.
+Root public lazy facades retained:
+- `src/multiplayer.js`
+- `src/multiplayer-visuals.js`
+
+Seven internal implementations live under `src/multiplayer/`. Lazy loading/code splitting preserved. Permanent gate: `qa-source-tree-r2-multiplayer.mjs`.
+
+Evidence includes candidate run `33455749888`, Dev Integration `33455977023`, and human smoke PASS (“tout est beau”).
 
 ## R3 — Civil traffic folder migration [P1]
 
-**ACTIVE — READ-ONLY AUDIT NEXT**
+**AUTOMATION DONE — HUMAN PASS PENDING**
 
-Target after green audit: move the full `civil-traffic*` implementation family into `src/traffic/`, retaining any justified public facade only if audit evidence supports it.
-
-Required automated validation after candidate move:
-- permanent R3 folder/path boundary QA;
-- sparse traffic;
-- pool variety;
-- preload;
-- shared Traffic MP1;
-- live shared traffic relay;
-- C6.9/C6.10/C6.12 diagnostics;
-- multiplayer protocol/client regression where traffic crosses the boundary;
-- production build;
-- full Dev Integration.
-
-Human checkpoint: optional for a pure path move, but a short traffic smoke is a good periodic checkpoint before R4 if convenient.
+See CURRENT CHECKPOINT above.
 
 ## R4 — Vehicle/presentation/model folder migration [P1/P2]
 
-**PENDING R3**
+**PENDING R3 HUMAN PASS**
 
-Move vehicle system/visual/presentation/registry/render-contract/GLB entry modules, models into `src/vehicles/models/`, truck/trailer into `src/vehicles/truck/` after exact dynamic-path audit.
+Start with a read-only exact-path/dynamic-import/asset/QA audit.
 
-Important: `vehicle-authored-registry.js` owns hard-coded `modulePath` strings + dynamic imports. Move those contracts atomically. Do not combine with suspension/anti-roll refactoring.
+Candidate families to classify:
+- `vehicle-system.js`;
+- `vehicle-visuals.js`;
+- `vehicle-presentation*.js`;
+- `vehicle-authored-registry.js`;
+- `vehicle-render-contract.js`;
+- `vehicle-glb-entries.js`;
+- `deferred-glb-system.js`;
+- authored vehicle model controllers (`*-glb.js`);
+- `truck-trailer.js`.
+
+Target direction:
+- common vehicle modules under `src/vehicles/`;
+- authored model controllers under `src/vehicles/models/`;
+- truck/trailer under `src/vehicles/truck/`.
+
+Important: `vehicle-authored-registry.js` owns hard-coded `modulePath` strings + dynamic imports. Move these contracts atomically. Do not combine R4 with suspension/anti-roll tuning or historical-name cleanup.
+
+Human checkpoint after R4 will be a vehicle/lighting/truck spot-check because that migration has higher visible risk than R3.
 
 ## R5 — Physics/runtime folder consolidation [P2]
 
@@ -337,4 +323,4 @@ If an item is interrupted, CURRENT CHECKPOINT must include:
 
 # 12. Roadmap summary
 
-**R1 DONE → R2 DONE (automation + human PASS) → R3 traffic ACTIVE → R4 vehicles → R5 physics/runtime → R6 road/scenery/forest/water → R7 app/UI/services → R8 terrain/imagery/streaming → R9 root gate → Phase O historical naming → maintenance/features as prioritized.**
+**R1 DONE → R2 DONE (automation + human PASS) → R3 automation DONE / human PASS pending → R4 vehicles → R5 physics/runtime → R6 road/scenery/forest/water → R7 app/UI/services → R8 terrain/imagery/streaming → R9 root gate → Phase O historical naming → maintenance/features as prioritized.**
