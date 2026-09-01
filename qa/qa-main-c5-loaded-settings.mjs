@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import {fileURLToPath,pathToFileURL} from 'node:url';
 
-const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)));
+const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
 const mainPath=path.join(root,'src','main.js');
 const modulePath=path.join(root,'src','loaded-settings-application.js');
 
