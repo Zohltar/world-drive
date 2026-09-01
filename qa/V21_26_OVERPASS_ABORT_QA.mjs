@@ -9,21 +9,36 @@ const desktopTransportPath=path.join(root,'src','desktop-overpass-transport.js')
 const overpassSource=fs.readFileSync(modulePath,'utf8').replace(/\r\n/g,'\n');
 const desktopTransportSource=fs.readFileSync(desktopTransportPath,'utf8').replace(/\r\n/g,'\n');
 
+// V21.31 stress hardening changed the public mirror set. Keep this historical
+// abort/failover QA aligned with the current production endpoints rather than
+// pinning the superseded Private.coffee fallback from V21.26.
 assert.match(
   overpassSource,
-  /https:\/\/overpass\.private\.coffee\/api\/interpreter/,
-  'current Private.coffee Overpass fallback endpoint missing'
+  /https:\/\/overpass-api\.de\/api\/interpreter/,
+  'primary Overpass API endpoint missing'
+);
+assert.match(
+  overpassSource,
+  /https:\/\/overpass\.kumi\.systems\/api\/interpreter/,
+  'current Kumi Overpass fallback endpoint missing'
+);
+assert.match(
+  overpassSource,
+  /https:\/\/overpass\.nchc\.org\.tw\/api\/interpreter/,
+  'current NCHC Overpass fallback endpoint missing'
 );
 assert.doesNotMatch(
   overpassSource,
-  /https:\/\/overpass\.kumi\.systems\/api\/interpreter/,
-  'legacy Kumi Overpass endpoint still configured as a browser fallback'
+  /https:\/\/overpass\.private\.coffee\/api\/interpreter/,
+  'superseded Private.coffee endpoint returned to the browser fallback set'
 );
-assert.match(
-  desktopTransportSource,
-  /'overpass\.private\.coffee'/,
-  'desktop Overpass proxy does not recognize the current fallback host'
-);
+for(const host of ['overpass-api.de','overpass.kumi.systems','overpass.nchc.org.tw']){
+  assert.match(
+    desktopTransportSource,
+    new RegExp(`'${host.replaceAll('.','\\.')}'`),
+    `desktop Overpass proxy does not recognize current host ${host}`
+  );
+}
 
 const { createOverpassClient }=await import(`${pathToFileURL(modulePath).href}?qa=${Date.now()}`);
 
@@ -68,7 +83,9 @@ try{
   );
   assert.equal(abortWarnings.length,0,'expected AbortError polluted console.warn');
 
-  // Genuine network/runtime failure: keep warning visible.
+  // Genuine network/runtime failure: keep warning visible and recover via the
+  // next mirror. V21.31 serialization intentionally made the warning generic;
+  // label is retained only for API compatibility.
   const networkCalls=[];
   const networkWarnings=[];
   globalThis.fetch=async endpoint=>{
@@ -94,11 +111,16 @@ try{
   });
 
   assert.deepEqual(recovered,{elements:[{id:1}]},'fallback endpoint recovery changed');
+  assert.deepEqual(
+    networkCalls,
+    ['https://qa-overpass-1.invalid','https://qa-overpass-2.invalid'],
+    'genuine network failure no longer falls through to the next Overpass endpoint'
+  );
   assert.equal(networkWarnings.length,1,'genuine Overpass network failure should remain visible');
-  assert.match(String(networkWarnings[0][0]),/OSM scenery Overpass failed/,'warning label changed');
+  assert.equal(networkWarnings[0][0],'Overpass request failed','current generic Overpass warning changed');
 
   console.log('V21.26 OVERPASS ABORT QA: PASS');
-  console.log('Current endpoint fallback / desktop proxy host / AbortError silence / genuine failure warning verified');
+  console.log('Current mirror set / desktop proxy hosts / AbortError silence / genuine failure warning verified');
 }finally{
   globalThis.fetch=originalFetch;
   console.warn=originalWarn;
