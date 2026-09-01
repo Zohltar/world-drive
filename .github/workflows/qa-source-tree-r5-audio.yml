@@ -1,0 +1,42 @@
+name: Source Tree R5 Audio QA
+
+on:
+  push:
+    branches:
+      - cleanup/source-tree-r5-audio
+      - dev
+    paths:
+      - 'src/audio/**'
+      - 'src/audio.js'
+      - 'src/audio-base.js'
+      - 'src/main.js'
+      - 'qa/V21_29_SKID_AUDIO_CURVE_QA.mjs'
+      - 'qa/V21_29_SKID_AUDIO_LINK_QA.mjs'
+      - 'qa-source-tree-r5-audio.mjs'
+      - '.github/workflows/qa-source-tree-r5-audio.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  qa:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: R5 audio source-tree boundary QA
+        run: node qa-source-tree-r5-audio.mjs
+      - name: Runtime import/source-tree audit
+        run: node qa/DEV_INTEGRATION_AUDIT.mjs
+      - name: Skid audio curve QA
+        run: node qa/V21_29_SKID_AUDIO_CURVE_QA.mjs
+      - name: Skid audio linkage QA
+        run: node qa/V21_29_SKID_AUDIO_LINK_QA.mjs
+      - name: Production build
+        run: npm run build
