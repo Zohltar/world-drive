@@ -7,7 +7,7 @@ on:
     paths:
       - 'src/main.js'
       - 'src/world-materials.js'
-      - 'qa-main-c5-materials.mjs'
+      - 'qa/qa-main-c5-materials.mjs'
       - '.github/workflows/qa-cleanup-c5-materials.yml'
   workflow_dispatch:
 
@@ -26,11 +26,11 @@ jobs:
           cache: npm
       - run: npm ci
       - name: C5.1 world materials ownership and behavior QA
-        run: node qa-main-c5-materials.mjs
+        run: node qa/qa-main-c5-materials.mjs
       - name: Terrain visual ownership QA
         run: |
-          node qa-terrain-r1-legacy-ownership.mjs
-          node qa-terrain-r2-road-imagery.mjs
+          node qa/qa-terrain-r1-legacy-ownership.mjs
+          node qa/qa-terrain-r2-road-imagery.mjs
           node qa/V21_31_LEGACY_TERRAIN_AUTHORITY_QA.mjs
       - name: Driving dynamics simulation matrix
         run: node qa/DEV_DRIVING_SIM_QA.mjs
