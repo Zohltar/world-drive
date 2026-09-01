@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 
 const source=fs.readFileSync('src/traffic/civil-traffic-network-bridge.js','utf8');
-if(!source.includes("import {ensureWorldDriveDiagnostics} from './diagnostics.js';"))throw new Error('traffic-network diagnostics import missing');
+if(!source.includes("import {ensureWorldDriveDiagnostics} from '../diagnostics.js';"))throw new Error('traffic-network diagnostics import missing');
 if(!source.includes('const trafficDiagnostics=ensureWorldDriveDiagnostics().traffic;'))throw new Error('canonical traffic diagnostics category missing');
 if(!source.includes('trafficDiagnostics.network=()=>{'))throw new Error('canonical traffic-network callable missing');
 if(/globalThis\.WorldDriveTrafficNetwork\s*=/.test(source))throw new Error('legacy WorldDriveTrafficNetwork writer remains');
