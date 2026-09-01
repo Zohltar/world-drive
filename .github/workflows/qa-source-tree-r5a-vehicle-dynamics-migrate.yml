@@ -22,7 +22,7 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - name: Move R5a vehicle dynamics and retarget paths
+      - name: Move R5a vehicle dynamics and retarget source/QA paths
         shell: bash
         run: |
           set -euo pipefail
@@ -51,16 +51,15 @@ jobs:
               'src/vehicle-dynamics-core.js':'src/physics/vehicle-dynamics-core.js',
               'src/vehicle-dynamics.js':'src/physics/vehicle-dynamics.js',
           }
-          roots=[Path('qa'),Path('.github/workflows')]
           excluded={
+              Path('qa-vehicle-dynamics-c1.mjs'),
               Path('qa-source-tree-r5-physics-runtime-audit.mjs'),
-              Path('.github/workflows/qa-source-tree-r5-physics-runtime-audit.yml'),
-              Path('.github/workflows/qa-source-tree-r5a-vehicle-dynamics-migrate.yml'),
           }
           files=[]
-          for root in roots:
-              if not root.exists(): continue
-              files.extend(p for p in root.rglob('*') if p.is_file() and p.suffix in {'.js','.mjs','.yml','.yaml'})
+          qa_dir=Path('qa')
+          if qa_dir.exists():
+              files.extend(p for p in qa_dir.rglob('*') if p.is_file() and p.suffix in {'.js','.mjs'})
+          files.extend(p for p in Path('.').glob('qa-*.mjs') if p.is_file())
           for p in files:
               if p in excluded: continue
               s=p.read_text()
@@ -83,14 +82,20 @@ jobs:
         run: npm run qa:stress
       - name: Driving dynamics simulation matrix
         run: node qa/DEV_DRIVING_SIM_QA.mjs
+      - name: Grip R21 front-slip counter-yaw QA
+        run: node qa-grip-f1-front-slip-r21.mjs
+      - name: Grip R22 steering compression QA
+        run: node qa-grip-f1-steering-r22.mjs
+      - name: Grip R23 legacy F1 authority QA
+        run: node qa-grip-f1-legacy-r23.mjs
       - name: Production build
         run: npm run build
       - name: Production code split QA
         run: node qa/BUILD_V21_31_CODE_SPLIT_QA.mjs
-      - name: Commit R5a migration
+      - name: Commit R5a source and QA migration
         run: |
           git config user.name 'world-drive-qa'
           git config user.email 'world-drive-qa@users.noreply.github.com'
-          git add src qa .github/workflows
+          git add src qa qa-*.mjs
           git commit -m 'Structure R5a: move vehicle dynamics under src/physics' || exit 0
           git push origin HEAD:cleanup/source-tree-r5a-vehicle-dynamics
