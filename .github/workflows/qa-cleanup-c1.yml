@@ -8,14 +8,14 @@ on:
       - 'src/physics/vehicle-dynamics-core.js'
       - 'src/physics/vehicle-dynamics-traction-steering.js'
       - 'src/physics/vehicle-dynamics.js'
-      - 'qa-vehicle-dynamics-c1.mjs'
-      - 'qa-grip-steering-curve-r3.mjs'
-      - 'qa-grip-steering-input-r13.mjs'
-      - 'qa-grip-f1-steering-r22.mjs'
-      - 'qa-grip-f1-legacy-r23.mjs'
-      - 'qa-wheelspin-state-b6.mjs'
-      - 'qa-momentum-direction-b4.mjs'
-      - 'qa-grip-handbrake-r1.mjs'
+      - 'qa/qa-vehicle-dynamics-c1.mjs'
+      - 'qa/qa-grip-steering-curve-r3.mjs'
+      - 'qa/qa-grip-steering-input-r13.mjs'
+      - 'qa/qa-grip-f1-steering-r22.mjs'
+      - 'qa/qa-grip-f1-legacy-r23.mjs'
+      - 'qa/qa-wheelspin-state-b6.mjs'
+      - 'qa/qa-momentum-direction-b4.mjs'
+      - 'qa/qa-grip-handbrake-r1.mjs'
       - '.github/workflows/qa-cleanup-b4.yml'
       - '.github/workflows/qa-grip-r23.yml'
       - '.github/workflows/qa-cleanup-c1.yml'
@@ -34,16 +34,16 @@ jobs:
           node-version: 22
       - run: npm ci
       - name: C1 ownership boundary
-        run: node qa-vehicle-dynamics-c1.mjs
+        run: node qa/qa-vehicle-dynamics-c1.mjs
       - name: Steering wheelspin momentum and R23 regressions
         run: |
-          node qa-grip-steering-curve-r3.mjs
-          node qa-grip-steering-input-r13.mjs
-          node qa-grip-f1-steering-r22.mjs
-          node qa-grip-f1-legacy-r23.mjs
-          node qa-wheelspin-state-b6.mjs
-          node qa-momentum-direction-b4.mjs
-          node qa-grip-handbrake-r1.mjs
+          node qa/qa-grip-steering-curve-r3.mjs
+          node qa/qa-grip-steering-input-r13.mjs
+          node qa/qa-grip-f1-steering-r22.mjs
+          node qa/qa-grip-f1-legacy-r23.mjs
+          node qa/qa-wheelspin-state-b6.mjs
+          node qa/qa-momentum-direction-b4.mjs
+          node qa/qa-grip-handbrake-r1.mjs
       - name: Vehicle dynamics regression set
         run: |
           node qa/V21_29_ALL_COMBUSTION_CLUTCH_QA.mjs
