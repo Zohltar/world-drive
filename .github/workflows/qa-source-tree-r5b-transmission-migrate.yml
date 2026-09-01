@@ -1,0 +1,126 @@
+name: Source Tree R5b Transmission Migrate
+
+on:
+  push:
+    branches:
+      - cleanup/source-tree-r5b-transmission
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  migrate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Move R5b transmission modules and retarget source/QA paths
+        shell: bash
+        run: |
+          set -euo pipefail
+          for f in transmission-controller.js transmission-network-state.js transmission-runtime-bridge.js; do
+            test -f "src/$f"
+            test ! -e "src/physics/$f"
+            git mv "src/$f" "src/physics/$f"
+          done
+          python - <<'PY'
+          from pathlib import Path, PurePosixPath
+          import posixpath, re
+
+          mapping={
+            'src/transmission-controller.js':'src/physics/transmission-controller.js',
+            'src/transmission-network-state.js':'src/physics/transmission-network-state.js',
+            'src/transmission-runtime-bridge.js':'src/physics/transmission-runtime-bridge.js',
+          }
+          inverse={v:k for k,v in mapping.items()}
+          rel_js=re.compile(r"(['\"])(\.\.?/[^'\"]+\.js)\1")
+
+          def norm(p): return posixpath.normpath(str(p).replace('\\','/'))
+          def relspec(frm,to):
+            r=posixpath.relpath(to,posixpath.dirname(frm))
+            return r if r.startswith('.') else './'+r
+
+          for p in Path('src').rglob('*.js'):
+            new_from=p.as_posix()
+            old_from=inverse.get(new_from,new_from)
+            s=p.read_text()
+            def repl(m):
+              spec=m.group(2)
+              old_target=norm(posixpath.join(posixpath.dirname(old_from),spec))
+              if old_from==new_from and old_target not in mapping:
+                return m.group(0)
+              new_target=mapping.get(old_target,old_target)
+              new_spec=relspec(new_from,new_target)
+              return f"{m.group(1)}{new_spec}{m.group(1)}"
+            out=rel_js.sub(repl,s)
+            if out!=s:p.write_text(out)
+
+          replacements={old:new for old,new in mapping.items()}
+          excluded={Path('qa-source-tree-r5a-vehicle-dynamics.mjs')}
+          files=[]
+          q=Path('qa')
+          if q.exists():files.extend(p for p in q.rglob('*') if p.is_file() and p.suffix in {'.js','.mjs'})
+          files.extend(p for p in Path('.').glob('qa-*.mjs') if p.is_file())
+          for p in files:
+            if p in excluded:continue
+            s=p.read_text();out=s
+            for old,new in replacements.items():out=out.replace(old,new)
+            if out!=s:p.write_text(out)
+          PY
+          test ! -e src/transmission-controller.js
+          test ! -e src/transmission-network-state.js
+          test ! -e src/transmission-runtime-bridge.js
+          grep -F "from '../diagnostics.js'" src/physics/transmission-controller.js
+          grep -F "from './transmission-runtime-bridge.js'" src/physics/transmission-controller.js
+          grep -F "from './transmission-network-state.js'" src/physics/transmission-controller.js
+          grep -F "from './transmission-network-state.js'" src/physics/transmission-runtime-bridge.js
+      - name: R5a dynamics boundary QA
+        run: node qa-source-tree-r5a-vehicle-dynamics.mjs
+      - name: Runtime import/source-tree audit
+        run: node qa/DEV_INTEGRATION_AUDIT.mjs
+      - name: C2 transmission ownership QA
+        run: node qa-transmission-c2.mjs
+      - name: Transmission refactor QA
+        run: node qa/V21_26_TRANSMISSION_REFACTOR_QA.mjs
+      - name: Exact DNR direction QA
+        run: |
+          node qa/V21_29_TRANSMISSION_DIRECTION_QA.mjs
+          node qa/V21_29_DNR_BRAKE_SELECTOR_QA.mjs
+      - name: Clutch/runtime bridge QA
+        run: |
+          node qa/V21_29_CLUTCH_BRIDGE_QA.mjs
+          node qa/V21_29_ALL_COMBUSTION_CLUTCH_QA.mjs
+          node qa/V21_29_SEMI_AUTO_CLUTCH_QA.mjs
+          node qa/V21_29_BODY_RELATIVE_TRANSMISSION_QA.mjs
+      - name: Multiplayer exact gear protocol QA
+        run: |
+          node qa/V21_31_MULTIPLAYER_M3_PROTOCOL_QA.mjs
+          node qa/V21_31_MULTIPLAYER_M3_CLIENT_QA.mjs
+      - name: Diagnostics gear QA
+        run: |
+          node qa-diagnostics-c6-5.mjs
+          node qa-diagnostics-c6-7.mjs
+          node qa-diagnostics-c6-8.mjs
+      - name: Full V21.31 regression stress
+        run: npm run qa:stress
+      - name: Driving dynamics simulation matrix
+        run: node qa/DEV_DRIVING_SIM_QA.mjs
+      - name: Production build
+        run: npm run build
+      - name: Production code split QA
+        run: node qa/BUILD_V21_31_CODE_SPLIT_QA.mjs
+      - name: Commit R5b source and QA migration
+        run: |
+          git config user.name 'world-drive-qa'
+          git config user.email 'world-drive-qa@users.noreply.github.com'
+          git add src qa qa-*.mjs
+          git commit -m 'Structure R5b: move transmission under src/physics' || exit 0
+          git push origin HEAD:cleanup/source-tree-r5b-transmission
