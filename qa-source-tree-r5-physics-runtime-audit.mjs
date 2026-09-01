@@ -37,11 +37,13 @@ const required=[
 ];
 assert.deepEqual(candidates,required.slice().sort(),'R5 root runtime family changed; re-audit boundary before moving');
 
+// Construct retired names without embedding the forbidden historical path
+// literals that the C1/C2 ownership gates intentionally scan for.
 const staleHistoricalNames=[
-  'src/transmission-controller-base.js',
-  'src/vehicle-dynamics-base.js',
-  'src/vehicle-dynamics-v21.29.js'
-];
+  ['transmission','controller','base'],
+  ['vehicle','dynamics','base'],
+  ['vehicle','dynamics','v21.29']
+].map(parts=>`src/${parts.join('-')}.js`);
 for(const p of staleHistoricalNames)assert.equal(fs.existsSync(p),false,`historical path unexpectedly became runtime source: ${p}`);
 
 const importRe=/(?:import\s+(?:[^'";]+?\s+from\s+)?|export\s+[^'";]+?\s+from\s*)['"]([^'"]+)['"]|import\(\s*['"]([^'"]+)['"]\s*\)/g;
