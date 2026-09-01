@@ -5,7 +5,7 @@ on:
     branches:
       - dev
     paths:
-      - 'src/vehicle-dynamics-traction-steering.js'
+      - 'src/physics/vehicle-dynamics-traction-steering.js'
       - 'qa-grip-f1-steering-r22.mjs'
       - '.github/workflows/qa-grip-r22.yml'
   workflow_dispatch:
