@@ -1,0 +1,45 @@
+name: R5 Audio Main Path One-Shot
+
+on:
+  push:
+    branches:
+      - cleanup/source-tree-r5-audio
+    paths:
+      - 'scripts/r5-audio-main-path.mjs'
+      - '.github/workflows/r5-audio-main-path.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Patch main audio import
+        run: node scripts/r5-audio-main-path.mjs
+      - name: Runtime import/source-tree audit
+        run: node qa/DEV_INTEGRATION_AUDIT.mjs
+      - name: Skid audio curve QA
+        run: node qa/V21_29_SKID_AUDIO_CURVE_QA.mjs
+      - name: Skid audio linkage QA
+        run: node qa/V21_29_SKID_AUDIO_LINK_QA.mjs
+      - name: Production build
+        run: npm run build
+      - name: Commit main path migration
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/main.js
+          git diff --cached --check
+          git commit -m "R5: point main at audio module directory"
+          git push origin HEAD:cleanup/source-tree-r5-audio
