@@ -38,6 +38,8 @@ jobs:
         run: node qa-source-tree-r3-traffic.mjs
       - name: Source tree audio boundary QA
         run: node qa-source-tree-audio.mjs
+      - name: Source tree R5a vehicle dynamics boundary QA
+        run: node qa-source-tree-r5a-vehicle-dynamics.mjs
       - name: Cleanup A6 version/build branding QA
         run: node qa-version-branding-a6.mjs
       - name: Cleanup A7 repository hygiene QA
