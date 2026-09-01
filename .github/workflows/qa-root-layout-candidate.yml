@@ -1,0 +1,104 @@
+name: QA Root Layout Candidate
+
+on:
+  push:
+    branches:
+      - cleanup/qa-root-layout
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  qa:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: QA root layout and source graph
+        run: |
+          node qa/QA_ROOT_LAYOUT_QA.mjs
+          node qa/DEV_INTEGRATION_AUDIT.mjs
+          node qa/qa-source-tree-r2-multiplayer.mjs
+          node qa/qa-source-tree-r3-traffic.mjs
+          node qa/qa-source-tree-audio.mjs
+          node qa/qa-source-tree-r5a-vehicle-dynamics.mjs
+      - name: Ownership and diagnostics moved QA
+        run: |
+          node qa/qa-version-branding-a6.mjs
+          node qa/qa-repo-hygiene-a7.mjs
+          node qa/qa-local-world-current-a8.mjs
+          node qa/qa-maneuver-state-b3.mjs
+          node qa/qa-momentum-direction-b4.mjs
+          node qa/qa-yaw-authority-b5.mjs
+          node qa/qa-wheelspin-state-b6.mjs
+          node qa/qa-yaw-fallback-b7.mjs
+          node qa/qa-vehicle-dynamics-c1.mjs
+          node qa/qa-transmission-c2.mjs
+          node qa/qa-road-geometry-c3.mjs
+          node qa/qa-forest-c4.mjs
+          node qa/qa-main-c5-materials.mjs
+          node qa/qa-main-c5-sky-lighting.mjs
+          node qa/qa-main-c5-world-scene.mjs
+          node qa/qa-main-c5-geographic-signs.mjs
+          node qa/qa-main-c5-settings.mjs
+          node qa/qa-main-c5-loaded-settings.mjs
+          for f in qa/qa-diagnostics-c6-{1..12}.mjs; do node "$f"; done
+      - name: Driving and traffic moved QA
+        run: |
+          node qa/qa-grip-handbrake-r1.mjs
+          node qa/qa-grip-steering-curve-r3.mjs
+          node qa/qa-grip-drift-r4.mjs
+          node qa/qa-grip-offroad-r5.mjs
+          node qa/qa-grip-jump-r6.mjs
+          node qa/qa-grip-countersteer-r7.mjs
+          node qa/qa-grip-braking-r8.mjs
+          node qa/qa-grip-braking-r9.mjs
+          node qa/qa-grip-uphill-r10.mjs
+          node qa/qa-grip-high-speed-r11.mjs
+          node qa/qa-grip-fleet-high-speed-r12.mjs
+          node qa/qa-grip-steering-input-r13.mjs
+          node qa/qa-wheel-ground-reentry-r14.mjs
+          node qa/qa-skid-contact-alignment-r15.mjs
+          node qa/qa-grip-fwd-power-r16.mjs
+          node qa/qa-grip-ev-jturn-r17.mjs
+          node qa/qa-grip-ev-maneuver-r18.mjs
+          node qa/qa-grip-jturn-legacy-r19.mjs
+          node qa/qa-grip-handbrake-lateral-r20.mjs
+          node qa/qa-grip-full-runtime-180-probe-r20.mjs
+          node qa/qa-grip-f1-front-slip-r21.mjs
+          node qa/qa-grip-f1-steering-r22.mjs
+          node qa/qa-grip-f1-legacy-r23.mjs
+          node qa/qa-steering-rack-current.mjs
+          node qa/qa-traffic-r1.mjs
+          node qa/qa-traffic-pool-r1.mjs
+          node qa/qa-traffic-preload-p1.mjs
+          node qa/qa-traffic-mp1.mjs
+          node qa/qa-traffic-mp1-live.mjs
+      - name: Forest and streaming moved QA
+        run: |
+          node qa/qa-forest-active-stress.mjs
+          node qa/qa-forest-active-runtime.mjs
+          node qa/qa-forest-p929-frame-budget.mjs
+          node qa/qa-forest-p935-front-startup.mjs
+          node qa/qa-forest-p936-rolling-prefetch.mjs
+          node qa/qa-p937-combined-frame-pacing.mjs
+          node qa/qa-p938-forest-retention.mjs
+          node qa/qa-p939-hitch-attribution.mjs
+          node qa/qa-forest-p940-maintenance.mjs
+          node qa/qa-p941-frame-runtime-attribution.mjs
+          node qa/qa-p942-browser-long-frame.mjs
+          node qa/qa-road-signs-p930-runtime.mjs
+      - name: Full V21.31 regression stress
+        run: npm run qa:stress
+      - name: Driving dynamics simulation matrix
+        run: node qa/DEV_DRIVING_SIM_QA.mjs
+      - name: Production build
+        run: npm run build
+      - name: Production code split QA
+        run: node qa/BUILD_V21_31_CODE_SPLIT_QA.mjs
