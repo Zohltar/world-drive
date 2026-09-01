@@ -8,10 +8,10 @@ on:
       - 'src/main.js'
       - 'src/sky-lighting.js'
       - 'src/environment-controller.js'
-      - 'qa-main-c5-sky-lighting.mjs'
+      - 'qa/qa-main-c5-sky-lighting.mjs'
       - 'qa/V21_26_ENVIRONMENT_REFACTOR_QA.mjs'
-      - 'qa-sonata-night-body-r1.mjs'
-      - 'qa-wrx-night-tail-r1.mjs'
+      - 'qa/qa-sonata-night-body-r1.mjs'
+      - 'qa/qa-wrx-night-tail-r1.mjs'
       - '.github/workflows/qa-cleanup-c5-sky-lighting.yml'
   workflow_dispatch:
 
@@ -30,13 +30,13 @@ jobs:
           cache: npm
       - run: npm ci
       - name: C5.2 sky lighting ownership and behavior QA
-        run: node qa-main-c5-sky-lighting.mjs
+        run: node qa/qa-main-c5-sky-lighting.mjs
       - name: Environment controller regression QA
         run: node qa/V21_26_ENVIRONMENT_REFACTOR_QA.mjs
       - name: Sonata night body lighting QA
-        run: node qa-sonata-night-body-r1.mjs
+        run: node qa/qa-sonata-night-body-r1.mjs
       - name: WRX rear night running lights QA
-        run: node qa-wrx-night-tail-r1.mjs
+        run: node qa/qa-wrx-night-tail-r1.mjs
       - name: Driving dynamics simulation matrix
         run: node qa/DEV_DRIVING_SIM_QA.mjs
       - name: Full V21.31 regression stress
