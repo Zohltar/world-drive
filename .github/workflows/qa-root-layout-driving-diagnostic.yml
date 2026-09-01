@@ -1,4 +1,4 @@
-name: QA Root Layout Driving Diagnostic
+name: QA Root Layout Forest Diagnostic
 
 on:
   push:
@@ -20,41 +20,24 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - name: Identify moved driving and traffic QA failures
+      - name: Identify moved forest and streaming QA failures
         shell: bash
         run: |
           set +e
           failed=0
           tests=(
-            qa/qa-grip-handbrake-r1.mjs
-            qa/qa-grip-steering-curve-r3.mjs
-            qa/qa-grip-drift-r4.mjs
-            qa/qa-grip-offroad-r5.mjs
-            qa/qa-grip-jump-r6.mjs
-            qa/qa-grip-countersteer-r7.mjs
-            qa/qa-grip-braking-r8.mjs
-            qa/qa-grip-braking-r9.mjs
-            qa/qa-grip-uphill-r10.mjs
-            qa/qa-grip-high-speed-r11.mjs
-            qa/qa-grip-fleet-high-speed-r12.mjs
-            qa/qa-grip-steering-input-r13.mjs
-            qa/qa-wheel-ground-reentry-r14.mjs
-            qa/qa-skid-contact-alignment-r15.mjs
-            qa/qa-grip-fwd-power-r16.mjs
-            qa/qa-grip-ev-jturn-r17.mjs
-            qa/qa-grip-ev-maneuver-r18.mjs
-            qa/qa-grip-jturn-legacy-r19.mjs
-            qa/qa-grip-handbrake-lateral-r20.mjs
-            qa/qa-grip-full-runtime-180-probe-r20.mjs
-            qa/qa-grip-f1-front-slip-r21.mjs
-            qa/qa-grip-f1-steering-r22.mjs
-            qa/qa-grip-f1-legacy-r23.mjs
-            qa/qa-steering-rack-current.mjs
-            qa/qa-traffic-r1.mjs
-            qa/qa-traffic-pool-r1.mjs
-            qa/qa-traffic-preload-p1.mjs
-            qa/qa-traffic-mp1.mjs
-            qa/qa-traffic-mp1-live.mjs
+            qa/qa-forest-active-stress.mjs
+            qa/qa-forest-active-runtime.mjs
+            qa/qa-forest-p929-frame-budget.mjs
+            qa/qa-forest-p935-front-startup.mjs
+            qa/qa-forest-p936-rolling-prefetch.mjs
+            qa/qa-p937-combined-frame-pacing.mjs
+            qa/qa-p938-forest-retention.mjs
+            qa/qa-p939-hitch-attribution.mjs
+            qa/qa-forest-p940-maintenance.mjs
+            qa/qa-p941-frame-runtime-attribution.mjs
+            qa/qa-p942-browser-long-frame.mjs
+            qa/qa-road-signs-p930-runtime.mjs
           )
           for test in "${tests[@]}"; do
             if node "$test" >/tmp/qa-root-layout-test.log 2>&1; then
