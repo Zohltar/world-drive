@@ -3,14 +3,14 @@ import fs from 'node:fs';
 
 const facadeSource=fs.readFileSync('src/multiplayer-visuals.js','utf8');
 const loadedSource=fs.readFileSync('src/multiplayer/multiplayer-visuals-m3.js','utf8');
-assert.ok(facadeSource.includes("import {ensureWorldDriveDiagnostics} from '../diagnostics.js';"),'multiplayer visual facade diagnostics root import missing');
-assert.ok(loadedSource.includes("import {ensureWorldDriveDiagnostics} from '../../diagnostics.js';"),'moved multiplayer visual diagnostics root import missing');
+assert.ok(facadeSource.includes("import {ensureWorldDriveDiagnostics} from './diagnostics.js';"),'multiplayer visual facade diagnostics root import missing');
+assert.ok(loadedSource.includes("import {ensureWorldDriveDiagnostics} from '../diagnostics.js';"),'moved multiplayer visual diagnostics root import missing');
 for(const source of [facadeSource,loadedSource]){
   assert.ok(!source.includes('__WORLD_DRIVE_MULTIPLAYER_HD_VISUALS__'),'legacy multiplayer HD diagnostics global remains');
 }
 assert.ok(facadeSource.includes('ensureWorldDriveDiagnostics().multiplayer.hdVisuals=diagnostics'),'lazy multiplayer visual diagnostics canonical writer missing');
 assert.ok(loadedSource.includes('ensureWorldDriveDiagnostics().multiplayer.hdVisuals=diagnostics'),'loaded multiplayer visual diagnostics canonical writer missing');
-assert.ok(facadeSource.includes("const module=await import('../multiplayer/multiplayer-visuals-m3.js')"),'lazy multiplayer visual load boundary changed');
+assert.ok(facadeSource.includes("const module=await import('./multiplayer/multiplayer-visuals-m3.js')"),'lazy multiplayer visual load boundary changed');
 assert.ok(loadedSource.includes('installPresentationSmoothing(THREE,support,perf)'),'presentation smoothing path changed');
 assert.ok(loadedSource.includes('createRemoteVehicleAdapter({'),'authored remote adapter path changed');
 assert.ok(loadedSource.includes('support.root.scale.set(VEHICLE_RENDER_ROOT_SCALE'),'shared render scale path changed');
