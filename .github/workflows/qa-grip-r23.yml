@@ -6,7 +6,7 @@ on:
       - dev
     paths:
       - 'src/driving-runtime-base.js'
-      - 'src/vehicle-dynamics-core.js'
+      - 'src/physics/vehicle-dynamics-core.js'
       - 'src/vehicles/vehicle-system.js'
       - 'qa-grip-f1-legacy-r23.mjs'
       - 'qa-grip-f1-front-slip-r21.mjs'
