@@ -45,8 +45,8 @@ function walk(dir){
 }
 
 const allowedOldPathFiles=new Set([
-  'qa-vehicle-dynamics-c1.mjs',
-  'qa-source-tree-r5a-vehicle-dynamics.mjs'
+  'qa/qa-vehicle-dynamics-c1.mjs',
+  'qa/qa-source-tree-r5a-vehicle-dynamics.mjs'
 ]);
 const stale=[];
 const scanFiles=[
