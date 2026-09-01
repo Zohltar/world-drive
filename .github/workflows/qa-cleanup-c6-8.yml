@@ -8,7 +8,7 @@ on:
       - 'src/multiplayer.js'
       - 'src/diagnostics.js'
       - 'src/transmission-network-state.js'
-      - 'src/civil-traffic-network-bridge.js'
+      - 'src/traffic/civil-traffic-network-bridge.js'
       - 'qa-diagnostics-c6-7.mjs'
       - 'qa-diagnostics-c6-8.mjs'
       - 'qa/V21_31_MULTIPLAYER_M3_PROTOCOL_QA.mjs'
