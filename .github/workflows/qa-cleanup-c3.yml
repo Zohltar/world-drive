@@ -6,15 +6,15 @@ on:
       - dev
     paths:
       - 'src/road-geometry*.js'
-      - 'qa-road-geometry-c3.mjs'
+      - 'qa/qa-road-geometry-c3.mjs'
       - 'qa/V21_25_ROAD_GEOMETRY_REFACTOR_QA.mjs'
       - 'qa/V21_31_ROAD_SMOOTHING_QA.mjs'
       - 'qa/V21_31_SUPERELEVATION_QA.mjs'
       - 'qa/V21_31_SUPERELEVATION_ENVELOPE_QA.mjs'
       - 'qa/V21_31_LEGACY_TERRAIN_AUTHORITY_QA.mjs'
-      - 'qa-road-banking-r1.mjs'
-      - 'qa-terrain-r1-legacy-ownership.mjs'
-      - 'qa-terrain-r2-road-imagery.mjs'
+      - 'qa/qa-road-banking-r1.mjs'
+      - 'qa/qa-terrain-r1-legacy-ownership.mjs'
+      - 'qa/qa-terrain-r2-road-imagery.mjs'
       - '.github/workflows/qa-cleanup-c3.yml'
   workflow_dispatch:
 
@@ -33,7 +33,7 @@ jobs:
           cache: npm
       - run: npm ci
       - name: C3 road geometry ownership
-        run: node qa-road-geometry-c3.mjs
+        run: node qa/qa-road-geometry-c3.mjs
       - name: Historical V21.25 road behavior QA
         run: node qa/V21_25_ROAD_GEOMETRY_REFACTOR_QA.mjs
       - name: Active V21.31 road regressions
@@ -42,9 +42,9 @@ jobs:
           node qa/V21_31_SUPERELEVATION_QA.mjs
           node qa/V21_31_SUPERELEVATION_ENVELOPE_QA.mjs
           node qa/V21_31_LEGACY_TERRAIN_AUTHORITY_QA.mjs
-          node qa-road-banking-r1.mjs
-          node qa-terrain-r1-legacy-ownership.mjs
-          node qa-terrain-r2-road-imagery.mjs
+          node qa/qa-road-banking-r1.mjs
+          node qa/qa-terrain-r1-legacy-ownership.mjs
+          node qa/qa-terrain-r2-road-imagery.mjs
       - name: Driving dynamics simulation matrix
         run: node qa/DEV_DRIVING_SIM_QA.mjs
       - name: Production build
