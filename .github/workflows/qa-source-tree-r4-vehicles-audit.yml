@@ -8,7 +8,6 @@ on:
     paths:
       - 'src/**'
       - 'qa/**'
-      - 'qa-*.mjs'
       - '.github/workflows/**'
   workflow_dispatch:
 
@@ -30,7 +29,7 @@ jobs:
       - name: Install
         run: npm ci
       - name: R4 vehicle source-tree audit
-        run: node qa-source-tree-r4-vehicles-audit.mjs
+        run: node qa/qa-source-tree-r4-vehicles-audit.mjs
       - name: Runtime import/source-tree audit
         run: node qa/DEV_INTEGRATION_AUDIT.mjs
       - name: Lazy authored GLB QA
@@ -46,21 +45,21 @@ jobs:
       - name: Route placement finite QA
         run: node qa/V21_31_ROUTE_PLACEMENT_FINITE_QA.mjs
       - name: WRX night-tail lighting QA
-        run: node qa-wrx-night-tail-r1.mjs
+        run: node qa/qa-wrx-night-tail-r1.mjs
       - name: Sonata night-body lighting QA
-        run: node qa-sonata-night-body-r1.mjs
+        run: node qa/qa-sonata-night-body-r1.mjs
       - name: Anti-roll presentation QA
         run: node qa/V21_30_ANTI_ROLL_VISUAL_QA.mjs
       - name: Crest/jump presentation QA
-        run: node qa-grip-jump-r6.mjs
+        run: node qa/qa-grip-jump-r6.mjs
       - name: Truck trailer regression QA
         run: node qa/V21_23_0_TRUCK_TRAILER_QA.mjs
       - name: Truck trailer physics boundary QA
         run: node qa/V21_28_TRUCK_TRAILER_PHYSICS_QA.mjs
       - name: Presentation diagnostics QA
-        run: node qa-diagnostics-c6-2.mjs
+        run: node qa/qa-diagnostics-c6-2.mjs
       - name: Multiplayer HD visual diagnostics QA
-        run: node qa-diagnostics-c6-11.mjs
+        run: node qa/qa-diagnostics-c6-11.mjs
       - name: Production build
         run: npm run build
       - name: Production code split QA

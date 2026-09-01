@@ -8,10 +8,10 @@ on:
       - 'src/driving-runtime-base.js'
       - 'src/physics/vehicle-dynamics-core.js'
       - 'src/vehicles/vehicle-system.js'
-      - 'qa-grip-f1-legacy-r23.mjs'
-      - 'qa-grip-f1-front-slip-r21.mjs'
-      - 'qa-grip-f1-steering-r22.mjs'
-      - 'qa-steering-rack-current.mjs'
+      - 'qa/qa-grip-f1-legacy-r23.mjs'
+      - 'qa/qa-grip-f1-front-slip-r21.mjs'
+      - 'qa/qa-grip-f1-steering-r22.mjs'
+      - 'qa/qa-steering-rack-current.mjs'
       - '.github/workflows/qa-grip-r23.yml'
   workflow_dispatch:
 
@@ -25,10 +25,10 @@ jobs:
           node-version: 22
       - run: npm ci
       - name: F1 legacy ownership regression
-        run: node qa-grip-f1-legacy-r23.mjs
+        run: node qa/qa-grip-f1-legacy-r23.mjs
       - name: F1 front-slip regression
-        run: node qa-grip-f1-front-slip-r21.mjs
+        run: node qa/qa-grip-f1-front-slip-r21.mjs
       - name: F1 ultra-high-speed steering regression
-        run: node qa-grip-f1-steering-r22.mjs
+        run: node qa/qa-grip-f1-steering-r22.mjs
       - name: Current steering-rack timing regression
-        run: node qa-steering-rack-current.mjs
+        run: node qa/qa-steering-rack-current.mjs

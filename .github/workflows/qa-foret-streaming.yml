@@ -27,50 +27,50 @@ jobs:
       - name: Install
         run: npm ci
       - name: Active forest policy/stress QA
-        run: node qa-forest-active-stress.mjs
+        run: node qa/qa-forest-active-stress.mjs
       - name: Active forest runtime QA
-        run: node qa-forest-active-runtime.mjs
+        run: node qa/qa-forest-active-runtime.mjs
       - name: P9.17 load smoothing QA
-        run: node qa-streaming-p917-load-smoothing.mjs
+        run: node qa/qa-streaming-p917-load-smoothing.mjs
       - name: P9.18 loading QA
-        run: node qa-streaming-p918-loading.mjs
+        run: node qa/qa-streaming-p918-loading.mjs
       - name: P9.19 elevation QA
-        run: node qa-streaming-p919-elevation.mjs
+        run: node qa/qa-streaming-p919-elevation.mjs
       - name: P9.20 world phases QA
-        run: node qa-streaming-p920-world-phases.mjs
+        run: node qa/qa-streaming-p920-world-phases.mjs
       - name: P9.21 terrain reuse QA
-        run: node qa-streaming-p921-terrain-reuse.mjs
+        run: node qa/qa-streaming-p921-terrain-reuse.mjs
       - name: P9.22 road transition QA
-        run: node qa-streaming-p922-road-transition.mjs
+        run: node qa/qa-streaming-p922-road-transition.mjs
       - name: Forest route cache reset QA
-        run: node qa-forest-route-cache-reset.mjs
+        run: node qa/qa-forest-route-cache-reset.mjs
       - name: P9.23 prepared refresh QA
-        run: node qa-streaming-p923-prepared-refresh.mjs
+        run: node qa/qa-streaming-p923-prepared-refresh.mjs
       - name: P9.23 scheduler QA
-        run: node qa-streaming-p923-scheduler.mjs
+        run: node qa/qa-streaming-p923-scheduler.mjs
       - name: P9.24 frame budget QA
-        run: node qa-streaming-p924-frame-budget.mjs
+        run: node qa/qa-streaming-p924-frame-budget.mjs
       - name: P9.25 scenery and prep QA
-        run: node qa-streaming-p925-scenery-and-prep.mjs
+        run: node qa/qa-streaming-p925-scenery-and-prep.mjs
       - name: P9.26 horizon QA
-        run: node qa-streaming-p926-horizon.mjs
+        run: node qa/qa-streaming-p926-horizon.mjs
       - name: P9.27 road transition QA
-        run: node qa-streaming-p927-road-transition.mjs
+        run: node qa/qa-streaming-p927-road-transition.mjs
       - name: P9.29 forest frame-budget QA
-        run: node qa-forest-p929-frame-budget.mjs
+        run: node qa/qa-forest-p929-frame-budget.mjs
       - name: P9.30 road-sign runtime QA
-        run: node qa-road-signs-p930-runtime.mjs
+        run: node qa/qa-road-signs-p930-runtime.mjs
       - name: P9.31 forest ahead-priority QA
-        run: node qa-forest-p931-ahead-priority.mjs
+        run: node qa/qa-forest-p931-ahead-priority.mjs
       - name: P9.32 hidden-generation QA
-        run: node qa-forest-p932-hidden-generation.mjs
+        run: node qa/qa-forest-p932-hidden-generation.mjs
       - name: P9.33 startup forest gate QA
-        run: node qa-forest-p933-startup-gate.mjs
+        run: node qa/qa-forest-p933-startup-gate.mjs
       - name: P9.35 forward-majority startup QA
-        run: node qa-forest-p935-front-startup.mjs
+        run: node qa/qa-forest-p935-front-startup.mjs
       - name: P9.36 rolling forest prefetch QA
-        run: node qa-forest-p936-rolling-prefetch.mjs
+        run: node qa/qa-forest-p936-rolling-prefetch.mjs
       - name: P9.37 combined frame-pacing QA
-        run: node qa-p937-combined-frame-pacing.mjs
+        run: node qa/qa-p937-combined-frame-pacing.mjs
       - name: Production build
         run: npm run build

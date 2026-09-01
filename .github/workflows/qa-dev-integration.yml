@@ -32,172 +32,174 @@ jobs:
         run: npm ci
       - name: Runtime import and debt audit
         run: node qa/DEV_INTEGRATION_AUDIT.mjs
+      - name: QA root layout boundary
+        run: node qa/QA_ROOT_LAYOUT_QA.mjs
       - name: Source tree R2 multiplayer boundary QA
-        run: node qa-source-tree-r2-multiplayer.mjs
+        run: node qa/qa-source-tree-r2-multiplayer.mjs
       - name: Source tree R3 traffic boundary QA
-        run: node qa-source-tree-r3-traffic.mjs
+        run: node qa/qa-source-tree-r3-traffic.mjs
       - name: Source tree audio boundary QA
-        run: node qa-source-tree-audio.mjs
+        run: node qa/qa-source-tree-audio.mjs
       - name: Source tree R5a vehicle dynamics boundary QA
-        run: node qa-source-tree-r5a-vehicle-dynamics.mjs
+        run: node qa/qa-source-tree-r5a-vehicle-dynamics.mjs
       - name: Cleanup A6 version/build branding QA
-        run: node qa-version-branding-a6.mjs
+        run: node qa/qa-version-branding-a6.mjs
       - name: Cleanup A7 repository hygiene QA
-        run: node qa-repo-hygiene-a7.mjs
+        run: node qa/qa-repo-hygiene-a7.mjs
       - name: Cleanup A8 current local-world ownership QA
-        run: node qa-local-world-current-a8.mjs
+        run: node qa/qa-local-world-current-a8.mjs
       - name: Cleanup B3 maneuver-state ownership QA
-        run: node qa-maneuver-state-b3.mjs
+        run: node qa/qa-maneuver-state-b3.mjs
       - name: Cleanup B4 momentum-direction ownership QA
-        run: node qa-momentum-direction-b4.mjs
+        run: node qa/qa-momentum-direction-b4.mjs
       - name: Cleanup B5 yaw-authority ownership QA
-        run: node qa-yaw-authority-b5.mjs
+        run: node qa/qa-yaw-authority-b5.mjs
       - name: Cleanup B6 wheelspin ownership QA
-        run: node qa-wheelspin-state-b6.mjs
+        run: node qa/qa-wheelspin-state-b6.mjs
       - name: Cleanup B7 grip-loss fallback ownership QA
-        run: node qa-yaw-fallback-b7.mjs
+        run: node qa/qa-yaw-fallback-b7.mjs
       - name: Cleanup C1 vehicle dynamics ownership QA
-        run: node qa-vehicle-dynamics-c1.mjs
+        run: node qa/qa-vehicle-dynamics-c1.mjs
       - name: Cleanup C2 transmission ownership QA
-        run: node qa-transmission-c2.mjs
+        run: node qa/qa-transmission-c2.mjs
       - name: Cleanup C3 road geometry ownership QA
-        run: node qa-road-geometry-c3.mjs
+        run: node qa/qa-road-geometry-c3.mjs
       - name: Cleanup C4 forest ownership QA
-        run: node qa-forest-c4.mjs
+        run: node qa/qa-forest-c4.mjs
       - name: Cleanup C5.1 world materials ownership QA
-        run: node qa-main-c5-materials.mjs
+        run: node qa/qa-main-c5-materials.mjs
       - name: Cleanup C5.2 sky lighting ownership QA
-        run: node qa-main-c5-sky-lighting.mjs
+        run: node qa/qa-main-c5-sky-lighting.mjs
       - name: Cleanup C5.3 world scene ownership QA
-        run: node qa-main-c5-world-scene.mjs
+        run: node qa/qa-main-c5-world-scene.mjs
       - name: Cleanup C5.4 geographic sign orchestration QA
-        run: node qa-main-c5-geographic-signs.mjs
+        run: node qa/qa-main-c5-geographic-signs.mjs
       - name: Cleanup C5.5 stable settings identity QA
-        run: node qa-main-c5-settings.mjs
+        run: node qa/qa-main-c5-settings.mjs
       - name: Cleanup C5.6 loaded settings application QA
-        run: node qa-main-c5-loaded-settings.mjs
+        run: node qa/qa-main-c5-loaded-settings.mjs
       - name: Cleanup C6.1 diagnostics root QA
-        run: node qa-diagnostics-c6-1.mjs
+        run: node qa/qa-diagnostics-c6-1.mjs
       - name: Cleanup C6.2 presentation diagnostics QA
-        run: node qa-diagnostics-c6-2.mjs
+        run: node qa/qa-diagnostics-c6-2.mjs
       - name: Cleanup C6.3 wheelspin diagnostics QA
-        run: node qa-diagnostics-c6-3.mjs
+        run: node qa/qa-diagnostics-c6-3.mjs
       - name: Cleanup C6.4 road-sign diagnostics QA
-        run: node qa-diagnostics-c6-4.mjs
+        run: node qa/qa-diagnostics-c6-4.mjs
       - name: Cleanup C6.5 engine-input diagnostics QA
-        run: node qa-diagnostics-c6-5.mjs
+        run: node qa/qa-diagnostics-c6-5.mjs
       - name: Cleanup C6.6 physics-shadow diagnostics QA
-        run: node qa-diagnostics-c6-6.mjs
+        run: node qa/qa-diagnostics-c6-6.mjs
       - name: Cleanup C6.7 multiplayer local-gear diagnostics QA
-        run: node qa-diagnostics-c6-7.mjs
+        run: node qa/qa-diagnostics-c6-7.mjs
       - name: Cleanup C6.8 multiplayer wire diagnostics QA
-        run: node qa-diagnostics-c6-8.mjs
+        run: node qa/qa-diagnostics-c6-8.mjs
       - name: Cleanup C6.9 traffic-network diagnostics QA
-        run: node qa-diagnostics-c6-9.mjs
+        run: node qa/qa-diagnostics-c6-9.mjs
       - name: Cleanup C6.10 traffic-preload diagnostics QA
-        run: node qa-diagnostics-c6-10.mjs
+        run: node qa/qa-diagnostics-c6-10.mjs
       - name: Cleanup C6.11 multiplayer HD visual diagnostics QA
-        run: node qa-diagnostics-c6-11.mjs
+        run: node qa/qa-diagnostics-c6-11.mjs
       - name: Cleanup C6.12 traffic runtime diagnostics QA
-        run: node qa-diagnostics-c6-12.mjs
+        run: node qa/qa-diagnostics-c6-12.mjs
       - name: Full V21.31 regression stress
         run: npm run qa:stress
       - name: Driving dynamics simulation matrix
         run: node qa/DEV_DRIVING_SIM_QA.mjs
       - name: Grip R2 physical handbrake recovery QA
-        run: node qa-grip-handbrake-r1.mjs
+        run: node qa/qa-grip-handbrake-r1.mjs
       - name: Grip R3 speed-sensitive steering curve QA
-        run: node qa-grip-steering-curve-r3.mjs
+        run: node qa/qa-grip-steering-curve-r3.mjs
       - name: Grip R4 drift anti-spin cleanup QA
-        run: node qa-grip-drift-r4.mjs
+        run: node qa/qa-grip-drift-r4.mjs
       - name: Grip R5 off-road lateral physics QA
-        run: node qa-grip-offroad-r5.mjs
+        run: node qa/qa-grip-offroad-r5.mjs
       - name: Grip R6 airborne physics QA
-        run: node qa-grip-jump-r6.mjs
+        run: node qa/qa-grip-jump-r6.mjs
       - name: Grip R7 countersteer tire-force coupling QA
-        run: node qa-grip-countersteer-r7.mjs
+        run: node qa/qa-grip-countersteer-r7.mjs
       - name: Grip R8 hard braking steering QA
-        run: node qa-grip-braking-r8.mjs
+        run: node qa/qa-grip-braking-r8.mjs
       - name: Grip R9 reverse and J-turn braking QA
-        run: node qa-grip-braking-r9.mjs
+        run: node qa/qa-grip-braking-r9.mjs
       - name: Grip R10 uphill load-transfer stability QA
-        run: node qa-grip-uphill-r10.mjs
+        run: node qa/qa-grip-uphill-r10.mjs
       - name: Grip R11 high-speed trajectory stability QA
-        run: node qa-grip-high-speed-r11.mjs
+        run: node qa/qa-grip-high-speed-r11.mjs
       - name: Grip R12 fleet high-speed crab-drift QA
-        run: node qa-grip-fleet-high-speed-r12.mjs
+        run: node qa/qa-grip-fleet-high-speed-r12.mjs
       - name: Grip R13 progressive high-speed steering input QA
-        run: node qa-grip-steering-input-r13.mjs
+        run: node qa/qa-grip-steering-input-r13.mjs
       - name: Grip R14 road reentry vertical support QA
-        run: node qa-wheel-ground-reentry-r14.mjs
+        run: node qa/qa-wheel-ground-reentry-r14.mjs
       - name: Skid R15 per-vehicle tire-mark alignment QA
-        run: node qa-skid-contact-alignment-r15.mjs
+        run: node qa/qa-skid-contact-alignment-r15.mjs
       - name: Grip R16 FWD power-understeer counter-yaw QA
-        run: node qa-grip-fwd-power-r16.mjs
+        run: node qa/qa-grip-fwd-power-r16.mjs
       - name: Grip R17 EV handbrake and J-turn momentum QA
         shell: bash
         run: |
-          node qa-grip-ev-jturn-r17.mjs
+          node qa/qa-grip-ev-jturn-r17.mjs
           ! grep -nE '\brequestedDriveAccel\s*\*=' src/driving-runtime-base.js
           grep -n 'requestedBodyDriveAccel\*=' src/driving-runtime-base.js
       - name: Grip R18 EV handbrake and J-turn rotation QA
-        run: node qa-grip-ev-maneuver-r18.mjs
+        run: node qa/qa-grip-ev-maneuver-r18.mjs
       - name: Grip R19 legacy J-turn rotation-wall QA
-        run: node qa-grip-jturn-legacy-r19.mjs
+        run: node qa/qa-grip-jturn-legacy-r19.mjs
       - name: Grip R20 handbrake locked-tire rotation QA
         run: |
-          node qa-grip-handbrake-lateral-r20.mjs
-          node qa-grip-full-runtime-180-probe-r20.mjs
+          node qa/qa-grip-handbrake-lateral-r20.mjs
+          node qa/qa-grip-full-runtime-180-probe-r20.mjs
       - name: Cleanup A2 common WRX tire stability QA
-        run: node qa-grip-wrx-tire-stability-a2.mjs
+        run: node qa/qa-grip-wrx-tire-stability-a2.mjs
       - name: Terrain R1 visual ownership QA
-        run: node qa-terrain-r1-legacy-ownership.mjs
+        run: node qa/qa-terrain-r1-legacy-ownership.mjs
       - name: Terrain R2 road imagery alignment QA
-        run: node qa-terrain-r2-road-imagery.mjs
+        run: node qa/qa-terrain-r2-road-imagery.mjs
       - name: Road banking limits QA
-        run: node qa-road-banking-r1.mjs
+        run: node qa/qa-road-banking-r1.mjs
       - name: Sparse civil traffic QA
-        run: node qa-traffic-r1.mjs
+        run: node qa/qa-traffic-r1.mjs
       - name: Civil traffic variety pool QA
-        run: node qa-traffic-pool-r1.mjs
+        run: node qa/qa-traffic-pool-r1.mjs
       - name: Civil traffic startup preload QA
-        run: node qa-traffic-preload-p1.mjs
+        run: node qa/qa-traffic-preload-p1.mjs
       - name: Shared multiplayer civil traffic QA
-        run: node qa-traffic-mp1.mjs
+        run: node qa/qa-traffic-mp1.mjs
       - name: Live shared multiplayer traffic QA
-        run: node qa-traffic-mp1-live.mjs
+        run: node qa/qa-traffic-mp1-live.mjs
       - name: Sonata night body lighting QA
-        run: node qa-sonata-night-body-r1.mjs
+        run: node qa/qa-sonata-night-body-r1.mjs
       - name: WRX rear night running lights QA
-        run: node qa-wrx-night-tail-r1.mjs
+        run: node qa/qa-wrx-night-tail-r1.mjs
       - name: Crest launch regression
         run: node qa/V21_27_CREST_LAUNCH_QA.mjs
       - name: Oblique landing regression
         run: node qa/V21_27_OBLIQUE_LANDING_QA.mjs
       - name: Active forest policy/stress QA
-        run: node qa-forest-active-stress.mjs
+        run: node qa/qa-forest-active-stress.mjs
       - name: Active forest runtime mock
-        run: node qa-forest-active-runtime.mjs
+        run: node qa/qa-forest-active-runtime.mjs
       - name: Active P9.29 forest frame-budget and diagnostics QA
-        run: node qa-forest-p929-frame-budget.mjs
+        run: node qa/qa-forest-p929-frame-budget.mjs
       - name: Forest startup/front-load QA
-        run: node qa-forest-p935-front-startup.mjs
+        run: node qa/qa-forest-p935-front-startup.mjs
       - name: Forest rolling prefetch QA
-        run: node qa-forest-p936-rolling-prefetch.mjs
+        run: node qa/qa-forest-p936-rolling-prefetch.mjs
       - name: Combined frame-pacing QA
-        run: node qa-p937-combined-frame-pacing.mjs
+        run: node qa/qa-p937-combined-frame-pacing.mjs
       - name: Prepared forest-retention QA
-        run: node qa-p938-forest-retention.mjs
+        run: node qa/qa-p938-forest-retention.mjs
       - name: Hitch attribution QA
-        run: node qa-p939-hitch-attribution.mjs
+        run: node qa/qa-p939-hitch-attribution.mjs
       - name: Forest queue maintenance QA
-        run: node qa-forest-p940-maintenance.mjs
+        run: node qa/qa-forest-p940-maintenance.mjs
       - name: Frame-runtime attribution QA
-        run: node qa-p941-frame-runtime-attribution.mjs
+        run: node qa/qa-p941-frame-runtime-attribution.mjs
       - name: Browser long-frame attribution QA
-        run: node qa-p942-browser-long-frame.mjs
+        run: node qa/qa-p942-browser-long-frame.mjs
       - name: Road-sign runtime QA
-        run: node qa-road-signs-p930-runtime.mjs
+        run: node qa/qa-road-signs-p930-runtime.mjs
       - name: M4.14 authored reverse WebGL pixel QA
         shell: bash
         run: |

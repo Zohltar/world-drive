@@ -5,7 +5,7 @@ on:
     branches: ['dev']
     paths:
       - 'src/driving-runtime-base.js'
-      - 'qa-grip-f1-front-slip-r21.mjs'
+      - 'qa/qa-grip-f1-front-slip-r21.mjs'
       - '.github/workflows/qa-grip-r21.yml'
   workflow_dispatch:
 
@@ -24,4 +24,4 @@ jobs:
           cache: npm
       - run: npm ci
       - name: F1 high-speed front-slip counter-yaw regression
-        run: node qa-grip-f1-front-slip-r21.mjs
+        run: node qa/qa-grip-f1-front-slip-r21.mjs

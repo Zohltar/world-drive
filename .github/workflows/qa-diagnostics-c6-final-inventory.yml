@@ -7,7 +7,7 @@ on:
       - dev
     paths:
       - 'src/**'
-      - 'qa-diagnostics-c6-final-inventory.mjs'
+      - 'qa/qa-diagnostics-c6-final-inventory.mjs'
       - '.github/workflows/qa-diagnostics-c6-final-inventory.yml'
   workflow_dispatch:
 
@@ -23,4 +23,4 @@ jobs:
         with:
           node-version: 22
       - name: Final C6 global boundary
-        run: node qa-diagnostics-c6-final-inventory.mjs
+        run: node qa/qa-diagnostics-c6-final-inventory.mjs
