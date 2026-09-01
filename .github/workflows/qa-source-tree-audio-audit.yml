@@ -3,7 +3,7 @@ name: Source Tree Audio Audit
 on:
   push:
     branches:
-      - audit/source-tree-audio
+      - cleanup/source-tree-audio
   workflow_dispatch:
 
 jobs:
@@ -16,7 +16,7 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - name: Audio source-tree audit
+      - name: Audio source-tree boundary QA
         run: node qa-source-tree-audio.mjs
       - name: Skid audio linkage QA
         run: node qa/V21_29_SKID_AUDIO_LINK_QA.mjs
