@@ -1,0 +1,54 @@
+name: Source Tree R4 Vehicle Audit
+
+on:
+  push:
+    branches:
+      - audit/source-tree-r4-vehicles
+    paths:
+      - 'src/**'
+      - 'qa/**'
+      - 'qa-*.mjs'
+      - '.github/workflows/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  qa:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install
+        run: npm ci
+      - name: R4 vehicle source-tree audit
+        run: node qa-source-tree-r4-vehicles-audit.mjs
+      - name: Runtime import/source-tree audit
+        run: node qa/DEV_INTEGRATION_AUDIT.mjs
+      - name: Lazy authored GLB QA
+        run: node qa/V21_31_LAZY_GLB_QA.mjs
+      - name: Authored vehicle registry QA
+        run: node qa/V21_31_MULTIPLAYER_M3_REGISTRY_QA.mjs
+      - name: Multiplayer authored adapter QA
+        run: node qa/V21_31_MULTIPLAYER_M4_ADAPTER_QA.mjs
+      - name: Sonata controller ownership QA
+        run: node qa/V21_31_SONATA_CONTROLLER_OWNERSHIP_QA.mjs
+      - name: Truck trailer regression QA
+        run: node qa/V21_23_0_TRUCK_TRAILER_QA.mjs
+      - name: Truck trailer physics boundary QA
+        run: node qa/V21_28_TRUCK_TRAILER_PHYSICS_QA.mjs
+      - name: Presentation diagnostics QA
+        run: node qa-diagnostics-c6-2.mjs
+      - name: Multiplayer HD visual diagnostics QA
+        run: node qa-diagnostics-c6-11.mjs
+      - name: Production build
+        run: npm run build
+      - name: Production code split QA
+        run: node qa/BUILD_V21_31_CODE_SPLIT_QA.mjs
