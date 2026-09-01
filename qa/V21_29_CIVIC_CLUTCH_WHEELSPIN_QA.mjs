@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import {
   longitudinalTractionLimit,
   estimateWheelGripUsage
-} from '../src/vehicle-dynamics.js';
+} from '../src/physics/vehicle-dynamics.js';
 
 function fail(message){throw new Error(message);}
 

@@ -6,7 +6,7 @@ import {
   vehicleLayout,
   yawResponseRate,
   GRAVITY
-} from '../src/vehicle-dynamics.js';
+} from '../src/physics/vehicle-dynamics.js';
 
 const __dirname=path.dirname(fileURLToPath(import.meta.url));
 const root=path.resolve(__dirname,'..');

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import {createVehicleSystem,validateVehicleProfiles} from '../src/vehicles/vehicle-system.js';
-import {GRAVITY,steeringCommand,lateralDynamicsEnvelope,estimateWheelGripUsage} from '../src/vehicle-dynamics.js';
+import {GRAVITY,steeringCommand,lateralDynamicsEnvelope,estimateWheelGripUsage} from '../src/physics/vehicle-dynamics.js';
 import {bodyRelativeSteeringSpeed} from '../src/driving-runtime.js';
 
 const validation=validateVehicleProfiles();

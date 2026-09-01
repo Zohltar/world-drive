@@ -1,5 +1,5 @@
 import {createVehicleSystem} from '../src/vehicles/vehicle-system.js';
-import {steeringCommand,lateralDynamicsEnvelope} from '../src/vehicle-dynamics.js';
+import {steeringCommand,lateralDynamicsEnvelope} from '../src/physics/vehicle-dynamics.js';
 
 const fail=(msg)=>{throw new Error(msg)};
 const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));

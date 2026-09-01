@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import {createVehicleSystem} from '../src/vehicles/vehicle-system.js';
-import {GRAVITY,dynamicAxleLoads,steeringCommand,lateralDynamicsEnvelope,estimateWheelGripUsage} from '../src/vehicle-dynamics.js';
+import {GRAVITY,dynamicAxleLoads,steeringCommand,lateralDynamicsEnvelope,estimateWheelGripUsage} from '../src/physics/vehicle-dynamics.js';
 import {combinationDynamics,createTrailerState,stepTrailerArticulation} from '../src/vehicles/truck/truck-trailer.js';
 
 const system=createVehicleSystem({initialId:'wrx'});

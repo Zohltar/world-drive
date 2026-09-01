@@ -4,7 +4,7 @@
 // pure math so it can be stress-tested outside the renderer and reused later
 // by trucks, multi-axle vehicles and articulated combinations.
 
-export {limitMomentumHeadingDelta} from './physics/momentum-direction.js';
+export {limitMomentumHeadingDelta} from './momentum-direction.js';
 
 export const GRAVITY=9.80665;
 

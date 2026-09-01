@@ -1,5 +1,5 @@
 import {createVehicleSystem} from '../src/vehicles/vehicle-system.js';
-import {steeringCommand,lateralDynamicsEnvelope,estimateWheelGripUsage,yawResponseRate,clampDynamics,longitudinalTractionLimit} from '../src/vehicle-dynamics.js';
+import {steeringCommand,lateralDynamicsEnvelope,estimateWheelGripUsage,yawResponseRate,clampDynamics,longitudinalTractionLimit} from '../src/physics/vehicle-dynamics.js';
 const DEG=180/Math.PI;
 const V=createVehicleSystem({initialId:'wrx'}).physics;
 const contacts=[{front:false,side:'left',axleIndex:1,contact:true,contactFactor:1},{front:true,side:'left',axleIndex:0,contact:true,contactFactor:1},{front:false,side:'right',axleIndex:1,contact:true,contactFactor:1},{front:true,side:'right',axleIndex:0,contact:true,contactFactor:1}];

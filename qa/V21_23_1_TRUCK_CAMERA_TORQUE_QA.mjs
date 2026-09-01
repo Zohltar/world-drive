@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import {createVehicleSystem,validateVehicleProfiles} from '../src/vehicles/vehicle-system.js';
-import {GRAVITY,longitudinalTractionLimit} from '../src/vehicle-dynamics.js';
+import {GRAVITY,longitudinalTractionLimit} from '../src/physics/vehicle-dynamics.js';
 import {combinationDynamics,driveAccelScaleAtSpeed} from '../src/vehicles/truck/truck-trailer.js';
 
 const validation=validateVehicleProfiles();

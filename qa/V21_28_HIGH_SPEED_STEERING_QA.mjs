@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { steeringCommand } from '../src/vehicle-dynamics.js';
+import { steeringCommand } from '../src/physics/vehicle-dynamics.js';
 
 const WRX={
   wheelbase:2.65,

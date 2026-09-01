@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import {createVehicleSystem} from '../src/vehicles/vehicle-system.js';
-import {estimateWheelGripUsage} from '../src/vehicle-dynamics.js';
+import {estimateWheelGripUsage} from '../src/physics/vehicle-dynamics.js';
 
 const system=createVehicleSystem({initialId:'wrx'});
 const fleet=system.list();

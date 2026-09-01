@@ -15,7 +15,7 @@ assert.ok(main.includes("version:'21.23.2-candidate'"));
 const unchanged={
   'src/terrain.js':'dac3de9d375c8bc314ea3c065ad69554e22e2b715fb1e012bf91a0c77c0e8a7f',
   'src/imagery.js':'e3df74bd976b078c4f8ac2e32384c4ea2589a61dbdfc1064d855657ca2f88d46',
-  'src/vehicle-dynamics.js':'b8898f7f99061e35563862362e3f1afa02171a788d6a94a2fe7ffb1ab835ddb4',
+  'src/physics/vehicle-dynamics.js':'b8898f7f99061e35563862362e3f1afa02171a788d6a94a2fe7ffb1ab835ddb4',
   'src/vehicles/vehicle-presentation.js':'60cedf69ce50716155ea11da313a8d1949a2019ae2bc9a7394e8b7c2d4133f08'
 };
 for(const [path,expected] of Object.entries(unchanged)){

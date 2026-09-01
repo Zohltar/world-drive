@@ -62,7 +62,7 @@ has(cb,'tempColor.lerp(neutralColor,haze*.18);','far atmospheric desaturation ch
 // Physics/presentation remain byte-for-byte V21.21.27 baseline.
 const expected={
   '../src/vehicles/vehicle-system.js':'c74d7d0ad8b10cef33312e282ae6b5a6fbcc0c301079b7eb8b2ab94a2aa5b89b',
-  '../src/vehicle-dynamics.js':'b8898f7f99061e35563862362e3f1afa02171a788d6a94a2fe7ffb1ab835ddb4',
+  '../src/physics/vehicle-dynamics.js':'b8898f7f99061e35563862362e3f1afa02171a788d6a94a2fe7ffb1ab835ddb4',
   '../src/vehicles/vehicle-presentation.js':'60cedf69ce50716155ea11da313a8d1949a2019ae2bc9a7394e8b7c2d4133f08'
 };
 for(const [path,hash] of Object.entries(expected)){

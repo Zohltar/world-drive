@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import {createVehicleSystem} from './src/vehicles/vehicle-system.js';
-import {steeringCommand,advanceSteeringRack,yawResponseRate} from './src/vehicle-dynamics.js';
+import {steeringCommand,advanceSteeringRack,yawResponseRate} from './src/physics/vehicle-dynamics.js';
 
 const ids=['id4','wrx','civic','sonata','f1_2010','countach_80','i3_2017'];
 for(const id of ids){

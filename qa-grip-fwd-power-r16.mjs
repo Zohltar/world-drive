@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import {createVehicleSystem} from './src/vehicles/vehicle-system.js';
 import {createPerWheelShadowSolver} from './src/physics/per-wheel-shadow-solver.js';
-import {lateralDynamicsEnvelope,estimateWheelGripUsage} from './src/vehicle-dynamics.js';
+import {lateralDynamicsEnvelope,estimateWheelGripUsage} from './src/physics/vehicle-dynamics.js';
 import {gripLossFallbackYawAcceleration} from './src/driving-runtime-base.js';
 
 function contactsFor(vehicle){

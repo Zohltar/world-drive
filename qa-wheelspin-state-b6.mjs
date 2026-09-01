@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import {createVehicleSystem} from './src/vehicles/vehicle-system.js';
-import {longitudinalTractionLimit,estimateWheelGripUsage} from './src/vehicle-dynamics.js';
+import {longitudinalTractionLimit,estimateWheelGripUsage} from './src/physics/vehicle-dynamics.js';
 import {
   createWheelspinState,
   drivenWheelSlipLevels,
@@ -129,9 +129,9 @@ approx(cleanFallback.requestedPropulsionAccel,1.1,1e-12,'stale raw demand leaked
 approx(cleanFallback.appliedPropulsionAccel,1.1,1e-12,'fallback applied propulsion changed');
 approx(cleanFallback.propulsionSaturationRatio,1,1e-12,'fallback saturation must be 1');
 
-const dynamics=fs.readFileSync('src/vehicle-dynamics-traction-steering.js','utf8');
+const dynamics=fs.readFileSync('src/physics/vehicle-dynamics-traction-steering.js','utf8');
 const runtime=fs.readFileSync('src/driving-runtime.js','utf8');
-const wrapper=fs.readFileSync('src/vehicle-dynamics.js','utf8');
+const wrapper=fs.readFileSync('src/physics/vehicle-dynamics.js','utf8');
 assert.doesNotMatch(dynamics,/latestRawDriveDemandAccel|latestAppliedDriveAccel/,'hidden traction→grip module state remains');
 assert.doesNotMatch(dynamics,/WorldDriveWheelSpinTelemetry/,'deprecated wheelspin telemetry global remains');
 assert.doesNotMatch(wrapper,/WorldDriveWheelSpinTelemetry/,'canonical dynamics still depends on deprecated wheelspin telemetry global');

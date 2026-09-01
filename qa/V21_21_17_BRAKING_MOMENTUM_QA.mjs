@@ -3,7 +3,7 @@ import {
   estimateWheelGripUsage,
   longitudinalTractionLimit,
   limitMomentumHeadingDelta
-} from '../src/vehicle-dynamics.js';
+} from '../src/physics/vehicle-dynamics.js';
 
 const DEG=180/Math.PI;
 const V=createVehicleSystem({initialId:'wrx'}).physics;

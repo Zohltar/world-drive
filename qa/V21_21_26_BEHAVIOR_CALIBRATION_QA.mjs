@@ -8,7 +8,7 @@ import {
   longitudinalTractionLimit,
   estimateWheelGripUsage,
   aerodynamicLoad
-} from '../src/vehicle-dynamics.js';
+} from '../src/physics/vehicle-dynamics.js';
 
 const IDS=['id4','wrx','civic','sonata','f1_2010','countach_80','i3_2017'];
 const CONTACTS=[

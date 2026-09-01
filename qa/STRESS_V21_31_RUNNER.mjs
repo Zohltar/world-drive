@@ -11,7 +11,7 @@ import {
   steeringCommand,
   antiRollAxleGripScales,
   lowSpeedYawAuthority
-} from '../src/vehicle-dynamics.js';
+} from '../src/physics/vehicle-dynamics.js';
 
 const ROOT=new URL('../',import.meta.url);
 const qaDir=new URL('./',import.meta.url);

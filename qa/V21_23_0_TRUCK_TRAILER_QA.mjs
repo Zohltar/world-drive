@@ -7,7 +7,7 @@ import {
   steeringCommand,
   longitudinalTractionLimit,
   lateralDynamicsEnvelope
-} from '../src/vehicle-dynamics.js';
+} from '../src/physics/vehicle-dynamics.js';
 import {
   combinationDynamics,
   createTrailerState,

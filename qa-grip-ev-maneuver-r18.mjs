@@ -7,7 +7,7 @@ import {
   shouldCanonicalizeMomentumHeading,
   bodyRelativeSteeringSpeed
 } from './src/driving-runtime-base.js';
-import {steeringCommand,lateralDynamicsEnvelope} from './src/vehicle-dynamics.js';
+import {steeringCommand,lateralDynamicsEnvelope} from './src/physics/vehicle-dynamics.js';
 
 function contactsFor(vehicle){
   const half=(Number(vehicle.trackWidth)||1.55)*.5;

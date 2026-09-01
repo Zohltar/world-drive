@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import {antiRollCalibration,antiRollAxleGripScales} from '../src/vehicle-dynamics.js';
+import {antiRollCalibration,antiRollAxleGripScales} from '../src/physics/vehicle-dynamics.js';
 
 const WRX={drivetrain:'AWD',vehicleClass:'passenger',frontWeightBias:.58,suspensionResponse:18,cgHeight:.50,wheelbase:2.65,trackWidth:1.56,massKg:1510};
 const CIVIC={drivetrain:'FWD',vehicleClass:'passenger',frontWeightBias:.61,suspensionResponse:15,cgHeight:.50,wheelbase:2.70,trackWidth:1.55,massKg:1345};

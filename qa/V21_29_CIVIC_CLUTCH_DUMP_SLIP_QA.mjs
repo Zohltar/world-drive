@@ -1,7 +1,7 @@
 import {
   longitudinalTractionLimit,
   estimateWheelGripUsage
-} from '../src/vehicle-dynamics.js';
+} from '../src/physics/vehicle-dynamics.js';
 
 const civic={
   drivetrain:'FWD',

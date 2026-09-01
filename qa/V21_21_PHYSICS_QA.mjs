@@ -13,7 +13,7 @@ import {
   fitWheelSupportPlane,
   yawResponseRate,
   dynamicsDiagnostics
-} from '../src/vehicle-dynamics.js';
+} from '../src/physics/vehicle-dynamics.js';
 
 const EPS=1e-9;
 const approx=(a,b,t=1e-8)=>Math.abs(a-b)<=t;

@@ -1,4 +1,4 @@
-import { antiRollCalibration } from '../src/vehicle-dynamics.js';
+import { antiRollCalibration } from '../src/physics/vehicle-dynamics.js';
 
 function assert(cond,msg){ if(!cond)throw new Error(msg); }
 

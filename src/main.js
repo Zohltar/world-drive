@@ -104,7 +104,7 @@ import {
   estimateWheelGripUsage,
   yawResponseRate,
   laneKeepAssistCommand
-} from './vehicle-dynamics.js';
+} from './physics/vehicle-dynamics.js';
 
 
 

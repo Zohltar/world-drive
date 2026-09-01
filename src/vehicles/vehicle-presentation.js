@@ -1,5 +1,5 @@
 import { createVehiclePresentation as createBaseVehiclePresentation } from './vehicle-presentation-v21.29.js';
-import { antiRollCalibration } from '../vehicle-dynamics.js';
+import { antiRollCalibration } from '../physics/vehicle-dynamics.js';
 
 function clamp(v,min,max){return Math.max(min,Math.min(max,Number(v)||0));}
 function smoothstep01(v){const t=clamp(v,0,1);return t*t*(3-2*t);}

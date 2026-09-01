@@ -7,7 +7,7 @@ import {
   longitudinalTractionLimit,
   estimateWheelGripUsage,
   computeGradeAcceleration
-} from '../src/vehicle-dynamics.js';
+} from '../src/physics/vehicle-dynamics.js';
 
 const validation=validateVehicleProfiles();
 assert.equal(validation.ok,true,validation.errors.join('\n'));

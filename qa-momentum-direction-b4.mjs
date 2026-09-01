@@ -70,7 +70,7 @@ function legacyAdvance(args={}){
 
 const momentum=await import(`./src/physics/momentum-direction.js?b4=${Date.now()}`);
 const runtime=await import(`./src/driving-runtime.js?b4=${Date.now()}`);
-const dynamics=await import(`./src/vehicle-dynamics.js?b4=${Date.now()}`);
+const dynamics=await import(`./src/physics/vehicle-dynamics.js?b4=${Date.now()}`);
 
 for(const a of [
   {speed:20,heading:0,velocityHeading:0},
@@ -120,7 +120,7 @@ for(let i=0;i<25000;i++){
 }
 
 const base=fs.readFileSync('src/driving-runtime-base.js','utf8');
-const dynBase=fs.readFileSync('src/vehicle-dynamics-core.js','utf8');
+const dynBase=fs.readFileSync('src/physics/vehicle-dynamics-core.js','utf8');
 const main=fs.readFileSync('src/main.js','utf8');
 const owned=fs.readFileSync('src/physics/momentum-direction.js','utf8');
 for(const name of [

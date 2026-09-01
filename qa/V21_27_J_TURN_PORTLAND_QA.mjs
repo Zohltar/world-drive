@@ -3,7 +3,7 @@ import {
   steeringCommand,
   lateralDynamicsEnvelope,
   limitMomentumHeadingDelta
-} from '../src/vehicle-dynamics.js';
+} from '../src/physics/vehicle-dynamics.js';
 import {bodyRelativeLongitudinalSpeed} from '../src/driving-runtime.js';
 import {jTurnEntryEligible} from '../src/physics/maneuver-state.js';
 

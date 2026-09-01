@@ -8,7 +8,7 @@ import {
   estimateWheelGripUsage,
   fitWheelSupportPlane,
   yawResponseRate
-} from '../src/vehicle-dynamics.js';
+} from '../src/physics/vehicle-dynamics.js';
 import {createVehicleSystem,validateVehicleProfiles} from '../src/vehicles/vehicle-system.js';
 
 const finite=(v)=>Number.isFinite(v);

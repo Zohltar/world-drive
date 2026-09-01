@@ -4,7 +4,7 @@ import {
   clampDynamics,computeGradeAcceleration,longitudinalTractionLimit,
   steeringCommand,advanceSteeringRack,lateralDynamicsEnvelope,estimateWheelGripUsage,
   yawResponseRate,limitMomentumHeadingDelta,laneKeepAssistCommand
-} from './src/vehicle-dynamics.js';
+} from './src/physics/vehicle-dynamics.js';
 import {angleDelta} from './src/routing.js';
 
 const DEG=180/Math.PI;

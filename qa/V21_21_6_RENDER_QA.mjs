@@ -27,7 +27,7 @@ assert(main.includes("renderer.info.autoReset=false"),'aggregated renderer diagn
 
 const expected={
   'src/terrain.js':'700e933712c17b8110f93ca8d1998d051748b5bc897538e9c0f91594b4227ada',
-  'src/vehicle-dynamics.js':'9974af2b3986fac12458eb4058d7d898b78e24254f833961f1c9513d2169c9d2',
+  'src/physics/vehicle-dynamics.js':'9974af2b3986fac12458eb4058d7d898b78e24254f833961f1c9513d2169c9d2',
   'src/vehicles/vehicle-system.js':'a19e373bbc3898b4874098e505284cbbd574faf85451c9ba42fabc162338ecf6',
   'src/vehicles/vehicle-presentation.js':'58dcf00b415c06fa0b30251afbac0463551510711e0411554128ae18c6977b3a',
   'electron/main.cjs':'c88c40acfacbd024e8e581133c463880aff0c38cebc34f5ae02083a99571f006',

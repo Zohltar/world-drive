@@ -1,4 +1,4 @@
-import {laneKeepAssistCommand, clampDynamics} from '../src/vehicle-dynamics.js';
+import {laneKeepAssistCommand, clampDynamics} from '../src/physics/vehicle-dynamics.js';
 import fs from 'node:fs';
 
 const fail=(m)=>{throw new Error(m)};

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { createVehicleSystem } from '../src/vehicles/vehicle-system.js';
-import { estimateWheelGripUsage } from '../src/vehicle-dynamics.js';
+import { estimateWheelGripUsage } from '../src/physics/vehicle-dynamics.js';
 
 const contacts=[
   {front:false,side:'left',axleIndex:1,contact:true,contactFactor:1},

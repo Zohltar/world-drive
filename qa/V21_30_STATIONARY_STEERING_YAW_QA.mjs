@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { lowSpeedYawAuthority } from '../src/vehicle-dynamics.js';
+import { lowSpeedYawAuthority } from '../src/physics/vehicle-dynamics.js';
 
 assert.equal(lowSpeedYawAuthority(0),0,'standstill must have zero steering yaw authority');
 assert.equal(lowSpeedYawAuthority(.18),0,'parking deadband must remain yaw-free');

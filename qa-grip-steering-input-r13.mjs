@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import {createVehicleSystem,validateVehicleProfiles} from './src/vehicles/vehicle-system.js';
-import {steeringCommand} from './src/vehicle-dynamics.js';
+import {steeringCommand} from './src/physics/vehicle-dynamics.js';
 
 const validation=validateVehicleProfiles();
 assert.equal(validation.ok,true,validation.errors.join('\n'));

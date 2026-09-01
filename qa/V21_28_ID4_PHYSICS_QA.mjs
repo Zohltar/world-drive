@@ -5,7 +5,7 @@ import {
   steeringCommand,
   lateralDynamicsEnvelope,
   estimateWheelGripUsage
-} from '../src/vehicle-dynamics.js';
+} from '../src/physics/vehicle-dynamics.js';
 import {bodyRelativeSteeringSpeed} from '../src/driving-runtime.js';
 
 const DEG=180/Math.PI;

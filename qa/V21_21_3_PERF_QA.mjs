@@ -1,5 +1,5 @@
 import { performance } from 'node:perf_hooks';
-import * as dyn from '../src/vehicle-dynamics.js';
+import * as dyn from '../src/physics/vehicle-dynamics.js';
 
 const CELL=48;
 function buildProfile(){

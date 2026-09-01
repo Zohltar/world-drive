@@ -12,7 +12,7 @@ import {
   advanceJTurnLatchedState,
   jTurnTransientSteeringSpeed
 } from './src/physics/maneuver-state.js';
-import {steeringCommand,lateralDynamicsEnvelope} from './src/vehicle-dynamics.js';
+import {steeringCommand,lateralDynamicsEnvelope} from './src/physics/vehicle-dynamics.js';
 
 const DEG=Math.PI/180;
 const speed=-12;

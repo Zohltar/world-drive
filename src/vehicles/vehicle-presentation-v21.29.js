@@ -1,4 +1,4 @@
-import { aerodynamicLoad, fitWheelSupportPlane } from '../vehicle-dynamics.js';
+import { aerodynamicLoad, fitWheelSupportPlane } from '../physics/vehicle-dynamics.js';
 import { ackermannSteeringAngles, ackermannAngleForSide } from '../physics/steering-geometry.js';
 import { horizontalTravelDirection, crestLaunchDecision, airborneLandingDecision } from '../physics/airborne-dynamics.js';
 

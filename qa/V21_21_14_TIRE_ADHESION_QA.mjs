@@ -4,7 +4,7 @@ import {
   steeringCommand,
   lateralDynamicsEnvelope,
   yawResponseRate
-} from '../src/vehicle-dynamics.js';
+} from '../src/physics/vehicle-dynamics.js';
 
 const DEG=180/Math.PI;
 const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));

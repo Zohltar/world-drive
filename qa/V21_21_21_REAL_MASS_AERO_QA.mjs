@@ -5,7 +5,7 @@ import {
   lateralDynamicsEnvelope,
   longitudinalTractionLimit,
   vehicleLayout
-} from '../src/vehicle-dynamics.js';
+} from '../src/physics/vehicle-dynamics.js';
 
 const expectedMasses={
   id4:2226,

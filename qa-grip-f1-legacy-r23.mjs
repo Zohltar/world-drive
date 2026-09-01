@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import {createVehicleSystem} from './src/vehicles/vehicle-system.js';
-import {steeringCommand,estimateWheelGripUsage,GRAVITY} from './src/vehicle-dynamics.js';
+import {steeringCommand,estimateWheelGripUsage,GRAVITY} from './src/physics/vehicle-dynamics.js';
 
 const sys=createVehicleSystem({initialId:'f1_2010'});
 const f1=sys.physics;
@@ -20,7 +20,7 @@ assert.ok(Math.abs(full300.target-1)<1e-12,'R23 must preserve full-stick mechani
 const runtime=fs.readFileSync('src/driving-runtime-base.js','utf8');
 const yawAuthority=fs.readFileSync('src/physics/yaw-authority.js','utf8');
 const momentum=fs.readFileSync('src/physics/momentum-direction.js','utf8');
-const dynamicsCore=fs.readFileSync('src/vehicle-dynamics-core.js','utf8');
+const dynamicsCore=fs.readFileSync('src/physics/vehicle-dynamics-core.js','utf8');
 assert.match(runtime,/const useLegacyDriftAssist=VEHICLE\?\.legacyDriftAssist!==false;/,'runtime lacks explicit legacy-drift ownership switch');
 // Cleanup B5 moved both legacy RWD yaw injection and R16/R21 fallback filtering
 // into the single local-chassis yaw authority owner.
