@@ -6,7 +6,7 @@ on:
       - dev
     paths:
       - src/diagnostics.js
-      - src/deferred-glb-system.js
+      - src/vehicles/deferred-glb-system.js
       - qa-diagnostics-c6-1.mjs
       - qa-diagnostics-c6-2.mjs
       - .github/workflows/qa-cleanup-c6-2.yml
