@@ -4,7 +4,7 @@ import path from 'node:path';
 import {spawnSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
 
-const root=path.dirname(fileURLToPath(import.meta.url));
+const root=fileURLToPath(new URL('../',import.meta.url));
 const read=relative=>fs.readFileSync(path.join(root,relative),'utf8');
 const exists=relative=>fs.existsSync(path.join(root,relative));
 const syntax=relative=>{
@@ -67,14 +67,14 @@ for(const marker of [
 ])assert.ok(entry.includes(marker),`current P9.37/P9.38 ownership marker missing: ${marker}`);
 
 for(const qa of [
-  'qa-streaming-p923-prepared-refresh.mjs',
-  'qa-streaming-p923-scheduler.mjs',
-  'qa-streaming-p924-frame-budget.mjs',
-  'qa-streaming-p925-scenery-and-prep.mjs',
-  'qa-streaming-p926-horizon.mjs',
-  'qa-streaming-p927-road-transition.mjs',
-  'qa-p937-combined-frame-pacing.mjs',
-  'qa-p938-forest-retention.mjs'
+  'qa/qa-streaming-p923-prepared-refresh.mjs',
+  'qa/qa-streaming-p923-scheduler.mjs',
+  'qa/qa-streaming-p924-frame-budget.mjs',
+  'qa/qa-streaming-p925-scenery-and-prep.mjs',
+  'qa/qa-streaming-p926-horizon.mjs',
+  'qa/qa-streaming-p927-road-transition.mjs',
+  'qa/qa-p937-combined-frame-pacing.mjs',
+  'qa/qa-p938-forest-retention.mjs'
 ])assert.ok(exists(qa),`current local-world/frame-pacing QA missing: ${qa}`);
 
 assert.doesNotMatch(environmentQa,/V21_26_LOCAL_WORLD_REFACTOR_QA/,
@@ -90,7 +90,7 @@ function walk(dir){
       walk(rel);
       continue;
     }
-    if(rel==='qa-local-world-current-a8.mjs')continue;
+    if(rel==='qa/qa-local-world-current-a8.mjs')continue;
     if(!/\.(?:mjs|js|yml|yaml)$/.test(rel))continue;
     const source=read(rel);
     if(source.includes('V21_26_LOCAL_WORLD_REFACTOR_QA'))offenders.push(rel);
