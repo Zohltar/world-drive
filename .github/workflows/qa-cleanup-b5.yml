@@ -7,8 +7,8 @@ on:
     paths:
       - 'src/physics/yaw-authority.js'
       - 'src/driving-runtime-base.js'
-      - 'qa-yaw-authority-b5.mjs'
-      - 'qa-grip-f1-legacy-r23.mjs'
+      - 'qa/qa-yaw-authority-b5.mjs'
+      - 'qa/qa-grip-f1-legacy-r23.mjs'
       - '.github/workflows/qa-cleanup-b5.yml'
   workflow_dispatch:
 
@@ -25,14 +25,14 @@ jobs:
           node-version: 22
       - run: npm ci
       - name: B5 yaw ownership and numerical equivalence
-        run: node qa-yaw-authority-b5.mjs
+        run: node qa/qa-yaw-authority-b5.mjs
       - name: Critical yaw / drift regressions
         run: |
-          node qa-grip-countersteer-r7.mjs
-          node qa-grip-high-speed-r11.mjs
-          node qa-grip-fwd-power-r16.mjs
-          node qa-grip-ev-jturn-r17.mjs
-          node qa-grip-jturn-legacy-r19.mjs
-          node qa-grip-handbrake-lateral-r20.mjs
-          node qa-grip-f1-front-slip-r21.mjs
-          node qa-grip-f1-legacy-r23.mjs
+          node qa/qa-grip-countersteer-r7.mjs
+          node qa/qa-grip-high-speed-r11.mjs
+          node qa/qa-grip-fwd-power-r16.mjs
+          node qa/qa-grip-ev-jturn-r17.mjs
+          node qa/qa-grip-jturn-legacy-r19.mjs
+          node qa/qa-grip-handbrake-lateral-r20.mjs
+          node qa/qa-grip-f1-front-slip-r21.mjs
+          node qa/qa-grip-f1-legacy-r23.mjs
