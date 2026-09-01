@@ -62,7 +62,7 @@ same(rootAfter.presentation.localAuthored(),{
 expect(implementationUpdates===0,'async fallback window behavior unexpectedly changed');
 
 const source=fs.readFileSync(new URL('../src/vehicles/deferred-glb-system.js',import.meta.url),'utf8');
-expect(source.includes("import {ensureWorldDriveDiagnostics} from '../../diagnostics.js';"),
+expect(source.includes("import {ensureWorldDriveDiagnostics} from '../diagnostics.js';"),
   'deferred GLB system must consume canonical diagnostics root');
 expect(source.includes('presentationDiagnostics.localAuthored=readLocalAuthoredPresentationState;'),
   'canonical local-authored presentation binding missing');
