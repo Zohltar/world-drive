@@ -3,7 +3,7 @@ import path from 'node:path';
 import {spawnSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
 
-const root=path.dirname(fileURLToPath(import.meta.url));
+const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
 const entryPath=path.join(root,'src','forest-chunk-streamer.js');
 const implPath=path.join(root,'src','forest-chunk-streamer-core.js');
 const wrapperPath=path.join(root,'src','forest-chunk-streamer.js');
@@ -19,7 +19,7 @@ function checkSyntax(file){
 const entry=read(entryPath),impl=read(implPath),wrapper=read(wrapperPath),coordinator=read(coordinatorPath);
 for(const file of [entryPath,implPath,wrapperPath,coordinatorPath])checkSyntax(file);
 
-expect(entry.includes("from '../forest-chunk-streamer-core.js'"),'canonical forest streamer must compose the frame-budget core');
+expect(entry.includes("from './forest-chunk-streamer-core.js'"),'canonical forest streamer must compose the frame-budget core');
 for(const marker of [
   'candidateIndex',
   'processBuilderCandidate',
