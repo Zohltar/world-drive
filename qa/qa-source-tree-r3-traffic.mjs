@@ -33,25 +33,25 @@ const preload=read('src/traffic/civil-traffic-preload.js');
 const driving=read('src/driving-runtime.js');
 const multiplayer=read('src/multiplayer.js');
 
-assert(driving.includes("from '../traffic/civil-traffic.js'"),'driving runtime must consume traffic from src/traffic');
-assert(multiplayer.includes("from '../traffic/civil-traffic-network-bridge.js'"),'multiplayer must consume the moved traffic network bridge');
-assert(!driving.includes("from '../civil-traffic.js'"),'legacy root traffic import returned in driving runtime');
-assert(!multiplayer.includes("from '../civil-traffic-network-bridge.js'"),'legacy root network-bridge import returned in multiplayer');
+assert(driving.includes("from './traffic/civil-traffic.js'"),'driving runtime must consume traffic from src/traffic');
+assert(multiplayer.includes("from './traffic/civil-traffic-network-bridge.js'"),'multiplayer must consume the moved traffic network bridge');
+assert(!driving.includes("from './civil-traffic.js'"),'legacy root traffic import returned in driving runtime');
+assert(!multiplayer.includes("from './civil-traffic-network-bridge.js'"),'legacy root network-bridge import returned in multiplayer');
 
-assert(facade.includes("export * from '../civil-traffic-local.js'"),'traffic facade/local export boundary drift');
-assert(facade.includes("from '../civil-traffic-local.js'"),'traffic facade/local import boundary drift');
-assert(facade.includes("from '../civil-traffic-network-bridge.js'"),'traffic facade/network bridge boundary drift');
-assert(local.includes("from '../civil-traffic-pool.js'"),'local engine/pool boundary drift');
-assert(preload.includes("from '../civil-traffic-pool.js'"),'preload/pool boundary drift');
-assert(pool.includes("import('../civil-traffic-preload.js')"),'traffic startup preload must remain a dynamic sibling import');
+assert(facade.includes("export * from './civil-traffic-local.js'"),'traffic facade/local export boundary drift');
+assert(facade.includes("from './civil-traffic-local.js'"),'traffic facade/local import boundary drift');
+assert(facade.includes("from './civil-traffic-network-bridge.js'"),'traffic facade/network bridge boundary drift');
+assert(local.includes("from './civil-traffic-pool.js'"),'local engine/pool boundary drift');
+assert(preload.includes("from './civil-traffic-pool.js'"),'preload/pool boundary drift');
+assert(pool.includes("import('./civil-traffic-preload.js')"),'traffic startup preload must remain a dynamic sibling import');
 
 for(const source of [facade,network,preload]){
-  assert(source.includes("from '../../diagnostics.js'"),'moved traffic diagnostics import must cross one directory');
-  assert(!source.includes("from '../diagnostics.js'"),'stale traffic diagnostics path returned');
+  assert(source.includes("from '../diagnostics.js'"),'moved traffic diagnostics import must cross one directory');
+  assert(!source.includes("from './diagnostics.js'"),'stale traffic diagnostics path returned');
 }
 for(const source of [local,preload]){
-  assert(source.includes("new URL('../../assets/2006_hyundai_sonata.glb',import.meta.url).href"),'moved Sonata import.meta.url contract drift');
-  assert(!source.includes("new URL('../assets/2006_hyundai_sonata.glb',import.meta.url).href"),'stale Sonata import.meta.url path returned');
+  assert(source.includes("new URL('../assets/2006_hyundai_sonata.glb',import.meta.url).href"),'moved Sonata import.meta.url contract drift');
+  assert(!source.includes("new URL('./assets/2006_hyundai_sonata.glb',import.meta.url).href"),'stale Sonata import.meta.url path returned');
 }
 assert(pool.includes("GENERIC_PASSENGER_PACK_URL='./assets/traffic/generic_passenger_car_pack_traffic.glb'"),'application-relative generic traffic pack URL must not change');
 assert(pool.includes("GENERIC_PASSENGER_PACK_FALLBACK_URL='./assets/traffic/generic_passenger_car_pack.glb'"),'application-relative generic traffic fallback URL must not change');
