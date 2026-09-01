@@ -4,18 +4,21 @@ import path from 'node:path';
 
 const ROOT=process.cwd();
 const read=p=>fs.readFileSync(path.join(ROOT,p),'utf8').replace(/\r\n/g,'\n');
-const audioPath='src/audio.js';
-const basePath='src/audio-base.js';
+const audioPath='src/audio/audio.js';
+const basePath='src/audio/audio-base.js';
+const oldRoot=['src/audio.js','src/audio-base.js'];
 
 for(const file of [audioPath,basePath])assert.ok(fs.existsSync(file),`audio source missing: ${file}`);
+for(const file of oldRoot)assert.equal(fs.existsSync(file),false,`legacy root audio module returned: ${file}`);
 
 const main=read('src/main.js');
 const audio=read(audioPath);
 const base=read(basePath);
 
-assert.match(main,/from '\.\/audio\.js'/,'main must import the public audio module');
-assert.match(audio,/from '\.\/audio-base\.js'/,'audio facade must import audio-base as sibling before migration');
-assert.match(audio,/export \* from '\.\/audio-base\.js'/,'audio facade must preserve audio-base exports');
+assert.match(main,/from '\.\/audio\/audio\.js'/,'main must import the moved public audio module');
+assert.doesNotMatch(main,/from '\.\/audio\.js'/,'legacy root audio import returned to main');
+assert.match(audio,/from '\.\/audio-base\.js'/,'moved audio facade must keep audio-base as sibling');
+assert.match(audio,/export \* from '\.\/audio-base\.js'/,'moved audio facade must preserve audio-base exports');
 assert.doesNotMatch(audio,/import\(/,'audio facade must not hide dynamic imports');
 assert.doesNotMatch(base,/import\(/,'audio-base must not hide dynamic imports');
 
@@ -29,38 +32,30 @@ for(const marker of [
 assert.doesNotMatch(audio,/new URL\([^\n]*import\.meta\.url/,'audio facade unexpectedly owns import.meta.url asset depth');
 assert.doesNotMatch(base,/new URL\([^\n]*import\.meta\.url/,'audio-base unexpectedly owns import.meta.url asset depth');
 
-const importers=[];
+const rootImporters=[];
 for(const entry of fs.readdirSync('src',{withFileTypes:true})){
   if(!entry.isFile()||!entry.name.endsWith('.js'))continue;
   const file=`src/${entry.name}`;
-  if(file===audioPath||file===basePath)continue;
   const text=read(file);
-  if(/['"]\.\/audio\.js['"]/.test(text)||/['"]\.\/audio-base\.js['"]/.test(text))importers.push(file);
+  if(/['"]\.\/audio\/audio\.js['"]/.test(text))rootImporters.push(file);
 }
-assert.deepEqual(importers,['src/main.js'],'audio public boundary changed unexpectedly');
+assert.deepEqual(rootImporters,['src/main.js'],'audio public boundary changed unexpectedly');
 
-const contractFiles=[];
-const roots=['qa','.github/workflows'];
-for(const root of roots){
-  if(!fs.existsSync(root))continue;
-  const walk=dir=>{
-    for(const entry of fs.readdirSync(dir,{withFileTypes:true})){
-      const p=path.join(dir,entry.name);
-      if(entry.isDirectory())walk(p);
-      else if(/\.(mjs|js|yml|yaml)$/.test(entry.name)){
-        const text=fs.readFileSync(p,'utf8');
-        if(text.includes('src/audio.js')||text.includes('src/audio-base.js'))contractFiles.push(p.replaceAll('\\','/'));
-      }
-    }
-  };
-  walk(root);
+const expectedContracts=[
+  'qa/V21_29_SKID_AUDIO_CURVE_QA.mjs',
+  'qa/V21_29_SKID_AUDIO_LINK_QA.mjs'
+];
+for(const file of expectedContracts){
+  const text=read(file);
+  assert.ok(text.includes('src/audio/audio.js'),`audio QA path not retargeted: ${file}`);
+  assert.equal(text.includes('../src/audio.js'),false,`legacy audio QA path returned: ${file}`);
 }
-contractFiles.sort();
 
-console.log('SOURCE TREE AUDIO AUDIT: PASS',JSON.stringify({
+console.log('SOURCE TREE AUDIO QA: PASS',JSON.stringify({
   runtimeFiles:[audioPath,basePath],
+  removedRootFiles:oldRoot,
   publicImporter:'src/main.js',
   dynamicImports:0,
-  assetPolicy:'application-relative URLs stay ./assets/audio/... after module move',
-  qaCiPathContracts:contractFiles
+  assetPolicy:'application-relative URLs remain ./assets/audio/... after module move',
+  qaPathContracts:expectedContracts
 },null,2));
