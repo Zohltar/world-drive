@@ -3,7 +3,7 @@ import path from 'node:path';
 import {spawnSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
 
-const root=path.dirname(fileURLToPath(import.meta.url));
+const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
 const implPath=path.join(root,'src','forest-chunk-streamer-core.js');
 const wrapperPath=path.join(root,'src','forest-chunk-streamer.js');
 
