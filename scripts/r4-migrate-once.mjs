@@ -40,12 +40,6 @@ function replaceRequired(file,from,to){
   write(file,text.replaceAll(from,to));
 }
 
-function replaceOptional(file,from,to){
-  if(!exists(file))return;
-  const text=read(file);
-  if(text.includes(from))write(file,text.replaceAll(from,to));
-}
-
 // Production composition/import boundaries.
 const sourceReplacements={
   'src/main.js':[
@@ -143,6 +137,19 @@ replaceRequired(
   'qa/V21_31_LAZY_GLB_QA.mjs',
   "truck.indexOf(\"const modelUrl=new URL('./assets/saia_ltl_freight_truck_half_trailer.glb'\")",
   "truck.indexOf(\"const modelUrl=new URL('../../assets/saia_ltl_freight_truck_half_trailer.glb'\")"
+);
+
+// M4 source-text ownership checks follow the nested multiplayer modules' new
+// relative imports into src/vehicles/. Runtime adapter/render behavior is unchanged.
+replaceRequired(
+  'qa/V21_31_MULTIPLAYER_M4_ADAPTER_QA.mjs',
+  "adapter.includes(\"from '../vehicle-authored-registry.js'\")",
+  "adapter.includes(\"from '../vehicles/vehicle-authored-registry.js'\")"
+);
+replaceRequired(
+  'qa/V21_31_MULTIPLAYER_M4_ADAPTER_QA.mjs',
+  "visuals.includes(\"from '../vehicle-render-contract.js'\")",
+  "visuals.includes(\"from '../vehicles/vehicle-render-contract.js'\")"
 );
 
 // Post-move R4 audit now validates the target folders instead of the old root.
