@@ -29,6 +29,33 @@ jobs:
         run: npm ci
       - name: Prepare atomic R4 source-tree move
         run: node scripts/r4-migrate-once.mjs
+      - name: Refresh current placement QA contract
+        run: |
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          const file='qa/V21_26_VEHICLE_PLACEMENT_REFACTOR_QA.mjs';
+          let text=fs.readFileSync(file,'utf8');
+          const replacements=[
+            [
+              String.raw`/const placedFrame=roadProfileFrameAtCum\(p\.cum\)/,`,
+              String.raw`/const placedFrame=roadProfileFrameAtCum\(targetCum\)/,`
+            ],
+            [
+              String.raw`/placedFrame\?\.y\?\?roadHeightAt\(state\.absX,state\.absZ\)/,`,
+              String.raw`/const roadY=validPlacedFrame[\s\S]*?\?Number\(placedFrame\.y\)[\s\S]*?:roadHeightAt\(state\.absX,state\.absZ\)/,`
+            ],
+            [
+              'roadProfileFrameAtCum:cum=>({x:11,z:21,angle:.4,y:5,cum}),',
+              'roadProfileFrameAtCum:cum=>({px:11,pz:21,pitch:0,angle:.4,y:5,cum}),' 
+            ]
+          ];
+          for(const [from,to] of replacements){
+            if(!text.includes(from))throw new Error(`R4 placement QA contract missing: ${from}`);
+            text=text.replace(from,to);
+          }
+          fs.writeFileSync(file,text);
+          console.log('R4 placement QA contract refreshed');
+          NODE
       - name: R4 post-move audit
         run: node qa-source-tree-r4-vehicles-audit.mjs
       - name: Runtime import/source-tree audit
