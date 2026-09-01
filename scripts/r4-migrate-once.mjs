@@ -152,6 +152,20 @@ replaceRequired(
   "visuals.includes(\"from '../vehicles/vehicle-render-contract.js'\")"
 );
 
+// V21.26 placement QA has two path contracts assembled as code rather than as
+// simple src/... literals, so retarget them explicitly without changing any
+// placement/reset behavior assertions.
+replaceRequired(
+  'qa/V21_26_VEHICLE_PLACEMENT_REFACTOR_QA.mjs',
+  "const modulePath=path.join(root,'src','vehicle-placement-controller.js');",
+  "const modulePath=path.join(root,'src','vehicles','vehicle-placement-controller.js');"
+);
+replaceRequired(
+  'qa/V21_26_VEHICLE_PLACEMENT_REFACTOR_QA.mjs',
+  "/import \\{ createVehiclePlacementController \\} from '\\.\\/vehicle-placement-controller\\.js';/",
+  "/import \\{ createVehiclePlacementController \\} from '\\.\\/vehicles\\/vehicle-placement-controller\\.js';/"
+);
+
 // Post-move R4 audit now validates the target folders instead of the old root.
 const audit='qa-source-tree-r4-vehicles-audit.mjs';
 replaceRequired(audit,"const expectedDynamic='./'+path.posix.basename(pair.modulePath);","const expectedDynamic='./'+path.posix.relative('src/vehicles',pair.modulePath);");
