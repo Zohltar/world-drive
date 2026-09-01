@@ -9,7 +9,7 @@ on:
       - 'src/transmission-controller-base.js'
       - 'src/transmission-runtime-bridge.js'
       - 'src/transmission-network-state.js'
-      - 'qa-transmission-c2.mjs'
+      - 'qa/qa-transmission-c2.mjs'
       - 'qa/V21_26_TRANSMISSION_REFACTOR_QA.mjs'
       - 'qa/V21_26_AUTOPILOT_TRANSMISSION_QA.mjs'
       - 'qa/V21_29_DNR_BRAKE_SELECTOR_QA.mjs'
@@ -38,7 +38,7 @@ jobs:
           node-version: 22
       - run: npm ci
       - name: C2 ownership and exact selector semantics
-        run: node qa-transmission-c2.mjs
+        run: node qa/qa-transmission-c2.mjs
       - name: Transmission regressions
         run: |
           node qa/V21_26_TRANSMISSION_REFACTOR_QA.mjs
