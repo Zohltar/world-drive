@@ -32,7 +32,7 @@ jobs:
             git mv "src/$f" "src/physics/$f"
           done
           python - <<'PY'
-          from pathlib import Path, PurePosixPath
+          from pathlib import Path
           import posixpath, re
 
           mapping={
@@ -74,6 +74,16 @@ jobs:
             s=p.read_text();out=s
             for old,new in replacements.items():out=out.replace(old,new)
             if out!=s:p.write_text(out)
+
+          # Public multiplayer.js remains at src root. Its source-text QA must
+          # therefore expect the new physics-relative transmission state import.
+          client_qa=Path('qa/V21_31_MULTIPLAYER_M3_CLIENT_QA.mjs')
+          s=client_qa.read_text()
+          old="from './transmission-network-state.js'"
+          new="from './physics/transmission-network-state.js'"
+          if old not in s:
+            raise SystemExit('missing multiplayer entry transmission assertion')
+          client_qa.write_text(s.replace(old,new))
           PY
           test ! -e src/transmission-controller.js
           test ! -e src/transmission-network-state.js
