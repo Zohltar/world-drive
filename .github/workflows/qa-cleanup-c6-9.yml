@@ -6,14 +6,14 @@ on:
       - cleanup/diagnostics-c6-9
       - dev
     paths:
-      - 'src/civil-traffic-network-bridge.js'
+      - 'src/traffic/civil-traffic-network-bridge.js'
       - 'src/diagnostics.js'
       - 'src/multiplayer.js'
       - 'src/transmission-network-state.js'
-      - 'src/civil-traffic.js'
-      - 'src/civil-traffic-local.js'
-      - 'src/civil-traffic-pool.js'
-      - 'src/civil-traffic-preload.js'
+      - 'src/traffic/civil-traffic.js'
+      - 'src/traffic/civil-traffic-local.js'
+      - 'src/traffic/civil-traffic-pool.js'
+      - 'src/traffic/civil-traffic-preload.js'
       - 'qa-diagnostics-c6-*.mjs'
       - 'qa-traffic-*.mjs'
       - 'qa/V21_29_DNR_BRAKE_SELECTOR_QA.mjs'
