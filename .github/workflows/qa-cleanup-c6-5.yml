@@ -7,8 +7,8 @@ on:
     paths:
       - 'src/transmission-controller.js'
       - 'src/diagnostics.js'
-      - 'qa-diagnostics-c6-5.mjs'
-      - 'qa-transmission-c2.mjs'
+      - 'qa/qa-diagnostics-c6-5.mjs'
+      - 'qa/qa-transmission-c2.mjs'
       - 'qa/V21_29_DNR_BRAKE_SELECTOR_QA.mjs'
       - 'qa/V21_29_BODY_RELATIVE_TRANSMISSION_QA.mjs'
       - 'qa/V21_29_TRANSMISSION_DIRECTION_QA.mjs'
@@ -34,15 +34,15 @@ jobs:
           cache: npm
       - run: npm ci
       - name: C6.5 engine-input diagnostics QA
-        run: node qa-diagnostics-c6-5.mjs
+        run: node qa/qa-diagnostics-c6-5.mjs
       - name: C6.1-C6.4 diagnostics regressions
         run: |
-          node qa-diagnostics-c6-1.mjs
-          node qa-diagnostics-c6-2.mjs
-          node qa-diagnostics-c6-3.mjs
-          node qa-diagnostics-c6-4.mjs
+          node qa/qa-diagnostics-c6-1.mjs
+          node qa/qa-diagnostics-c6-2.mjs
+          node qa/qa-diagnostics-c6-3.mjs
+          node qa/qa-diagnostics-c6-4.mjs
       - name: C2 transmission ownership QA
-        run: node qa-transmission-c2.mjs
+        run: node qa/qa-transmission-c2.mjs
       - name: DNR and direction transmission regressions
         run: |
           node qa/V21_29_DNR_BRAKE_SELECTOR_QA.mjs
