@@ -241,7 +241,7 @@ Do not disturb current forest frame-pacing behavior just to simplify names.
 Completion record:
 - Audit branch: `audit/code-debt-a5`; strict active-path/reference audit confirmed `forest-chunk-streamer.js -> forest-chunk-streamer-p929-wrapper.js -> forest-chunk-streamer-p929.js` and no active import of the historical P9.12/P9.28 streamers.
 - Historical truth check: the old P9.28 QA was already stale and failed because it still required the public entry point to route through P9.28. The old P9.12 stress QA still contained useful generic invariants, so those were migrated instead of discarded.
-- Migrated coverage: new `qa-forest-active-stress.mjs` preserves chunk-ring/burst/refresh/matrix-memory/StaticDrawUsage/double-buffer invariants against the active P9.29/P9.40 implementation; `qa-forest-active-runtime.mjs` replaces the misleading P9.12-named runtime mock; `qa-forest-p929-frame-budget.mjs` now also owns the useful zero-polling, policy-neutral and >20 ms hitch-feed diagnostics invariants.
+- Migrated coverage: new `qa/qa-forest-active-stress.mjs` preserves chunk-ring/burst/refresh/matrix-memory/StaticDrawUsage/double-buffer invariants against the active P9.29/P9.40 implementation; `qa/qa-forest-active-runtime.mjs` replaces the misleading P9.12-named runtime mock; `qa/qa-forest-p929-frame-budget.mjs` now also owns the useful zero-polling, policy-neutral and >20 ms hitch-feed diagnostics invariants.
 - Final atomic cleanup commit on `dev`: `8e903c1a` — added active QA and permanent CI gates, updated forest workflows, removed `src/forest-chunk-streamer-p912.js`, `src/forest-chunk-streamer-p928.js`, `qa-forest-p912-stress.mjs`, `qa-forest-p928-instrumentation.mjs` and the stale `qa-forest-p912-runtime.mjs` filename.
 - Important exception: `src/forest-terrain-sampler-p912.js` remains ACTIVE and intentionally retained; the current P9.29/P9.40 streamer imports its optimized terrain sampler despite the historical filename.
 - Candidate audit run `33332587396`: PASS including strict reference audit, active stress/runtime/P9.29 diagnostics, P935/P936/P939/P940/P941, runtime debt audit and build.
@@ -272,7 +272,7 @@ Acceptance:
 - no stale hard-coded V21.xx strings in runtime branding code except intentional migration docs/tests.
 
 Completion record:
-- Initial atomic branding commit: `9ab5ed8c` — aligned package/lock to semver `21.31.0`, made web branding and Electron title/User-Agent derive from `package.json`, removed hard-coded V21.25 HTML labels, and added permanent `qa-version-branding-a6.mjs`.
+- Initial atomic branding commit: `9ab5ed8c` — aligned package/lock to semver `21.31.0`, made web branding and Electron title/User-Agent derive from `package.json`, removed hard-coded V21.25 HTML labels, and added permanent `qa/qa-version-branding-a6.mjs`.
 - Final semantic cleanup: `7f757ca5` — development channel is explicitly `dev` on `dev`, and the legacy DOM-wide MutationObserver/version-text rewrite was removed. Static HTML now exposes only explicit branding placeholders.
 - Source of truth: `package.json` owns `version` + `worldDriveChannel`; `package-lock.json` mirrors the machine version; `src/version.js` and Electron derive from the package metadata.
 - QA: candidate branding audit `33333279610` PASS; initial Dev Integration `33333169584` PASS 58 steps; final Dev Integration `33334578131` PASS 58 steps with `V21.31 dev`, Grip R2–R20, forest, WebGL, live route smoke and production build/code split.
@@ -299,7 +299,7 @@ Required correction:
 Completion record:
 - Final commit: `7f2320ef` — removed obsolete V20.13 PowerShell version patchers and `index.html.encoding-backup`; archived historical V21.25 cleanup and V21.24 packaging notes under `docs/archive/`; replaced stale root `README_PACKAGING.md` with current A6-based packaging instructions.
 - Additional audit finding: the unversioned root `README_PACKAGING.md` was itself a V21.24.64 snapshot, so it was archived as `docs/archive/README_PACKAGING_V21_24_64.md` rather than retained as current guidance.
-- Permanent gate: `qa-repo-hygiene-a7.mjs` prevents the removed root debris/version patchers from returning and verifies current packaging documentation.
+- Permanent gate: `qa/qa-repo-hygiene-a7.mjs` prevents the removed root debris/version patchers from returning and verifies current packaging documentation.
 - Audit run `33334758106`: PASS A6 branding, A7 hygiene, runtime debt audit, production build and code split.
 - Final Dev Integration run `33334825498`: PASS all 59 steps including A6/A7 gates, V21.31 stress, 288 driving cases, Grip R2–R20, forest/frame pacing, WebGL, live route smoke and build/code split.
 - Result: repository root now contains current entry points/docs only; historical notes are clearly marked as archives.
@@ -319,7 +319,7 @@ Problem discovered during C2:
 Correction completed:
 - retired `qa/V21_26_LOCAL_WORLD_REFACTOR_QA.mjs`;
 - removed the nested meta-regression from `qa/V21_26_ENVIRONMENT_REFACTOR_QA.mjs`, which now validates its own environment-controller contract directly;
-- added `qa-local-world-current-a8.mjs` to verify useful orchestration invariants against their current owners instead of the obsolete public-entry layout;
+- added `qa/qa-local-world-current-a8.mjs` to verify useful orchestration invariants against their current owners instead of the obsolete public-entry layout;
 - retained explicit coverage for prepared terrain (P9.23), frame budget/scenery prep (P9.24/P9.25), horizon (P9.26), road transition (P9.27), combined frame pacing / road prebuild (P9.37) and prepared forest retention (P9.38);
 - added permanent `qa-cleanup-a8.yml`;
 - expanded Dev Integration so A8, B7, C1 and C2 ownership gates run on every integration pass.
@@ -357,7 +357,7 @@ Required correction:
 
 Completion record:
 - Final dev commit: `3c38bdf6` — removed the no-op `postSpinSteeringAuthority()` helper, its runtime variable and all four ×1 multipliers from bicycle yaw, requested/signed lateral acceleration and RWD power-oversteer yaw.
-- QA migration: `qa-grip-drift-r4.mjs` now forbids the legacy helper/indirection from returning; stale V21.28 fleet and ID.4 QA were migrated to verify full reverse-relative steering speed directly instead of importing the removed helper.
+- QA migration: `qa/qa-grip-drift-r4.mjs` now forbids the legacy helper/indirection from returning; stale V21.28 fleet and ID.4 QA were migrated to verify full reverse-relative steering speed directly instead of importing the removed helper.
 - Candidate run `33335148086`: PASS R4/R7/R11/R12/R19/R20 runtime 180°, full V21.31 stress, driving simulation matrix and production build.
 - Final Dev Integration run `33335226308`: PASS all 59 steps including R2–R20, 288 driving cases, forest/frame pacing, M4.14/M4.15 WebGL, live route smoke and production build/code split.
 - Validation history: targeted B1 testing exposed every hidden consumer before merge (requested/signed lateral acceleration, RWD power-oversteer and two stale V21.28 QA), so no compatibility shim was retained.
@@ -411,7 +411,7 @@ Reason:
 
 Completion record:
 - Runtime extraction commit: `d619c505` — added `src/physics/maneuver-state.js`, moved J-turn entry/exit/latch helpers plus rear-handbrake slip transient state out of `driving-runtime-base.js`, and preserved their original frame ordering.
-- Permanent CI gate commit / current validated HEAD: `c01b0c7f` — added `qa-maneuver-state-b3.mjs` to Dev Integration.
+- Permanent CI gate commit / current validated HEAD: `c01b0c7f` — added `qa/qa-maneuver-state-b3.mjs` to Dev Integration.
 - Ownership boundary: maneuver-state owns only J-turn latch memory and rear-handbrake slip memory/transitions; tire-force solver, general yaw physics, momentum direction and vehicle calibration remain outside this module.
 - Historical QA cleanup: `V21_27_HANDRAKE_180_LOW_SPEED_QA.mjs` was updated to current R4 semantics (handbrake-held spin keeps steering-speed magnitude; released steering follows body-longitudinal cosine through 90 degrees) and its brittle 20 km/h transition bound was widened around the unchanged current formula.
 - Candidate validation run `33337076416`: PASS B3 ownership QA, maneuver regressions, full V21.31 stress, 288-case driving matrix and production build.
@@ -451,7 +451,7 @@ Completion record:
 - Planned extraction boundary: body-relative longitudinal/steering projection, true-stop canonicalization, opposing body-drive crossing reconstruction, low-speed momentum following, force-derived trajectory rotation and momentum-heading rotation limiting move into `src/physics/momentum-direction.js` while global state storage remains unchanged.
 - R23 prerequisite completed before extraction: source `ff36b40c`, permanent F1 ownership QA `52023fe9`, stale F1 QA cleanup `c6933883`, current steering-rack gate `acb467ff`; R23 workflow `33342416319` PASS and Dev Integration `33342416332` PASS 60/60.
 - Candidate source commit: `c1b780e3`; integration source commit on `dev`: `aaa3b009`.
-- Numerical-equivalence QA: `qa-momentum-direction-b4.mjs` compares the extracted owner against the exact pre-B4 equations over 25,000 deterministic randomized states; candidate run `33343053835` PASS with max error exactly 0.
+- Numerical-equivalence QA: `qa/qa-momentum-direction-b4.mjs` compares the extracted owner against the exact pre-B4 equations over 25,000 deterministic randomized states; candidate run `33343053835` PASS with max error exactly 0.
 - R11 and R23 source-location QA were migrated to the new momentum owner; equations/thresholds were unchanged.
 - Permanent B4 gate commit: `877f0398`; gate run `33343158212` PASS.
 - Dev Integration commit: `0e895fb1`; final run `33343173064` PASS all 61 steps, including 288 driving cases, 80,000 stress samples, R9/R11/R17/R18/R19/R20/R21/R23, WebGL, live route smoke and production build/code split.
@@ -483,7 +483,7 @@ Completion record:
 - Ownership audit branch: `audit/yaw-b5`; audit workflow commit `3fe7c458`; audit run `33343248476` PASS.
 - Audit result: local player chassis yaw authority was concentrated in `src/driving-runtime-base.js`. Multiplayer peer extrapolation and articulated trailer yaw are separate domains and remain outside B5.
 - Candidate source commit: `812780c7` on `cleanup/yaw-b5`.
-- Numerical-equivalence QA: `qa-yaw-authority-b5.mjs` compares the extracted owner against the exact pre-B5 equations over 30,000 deterministic randomized states; final candidate run `33343672832` PASS with max error exactly 0.
+- Numerical-equivalence QA: `qa/qa-yaw-authority-b5.mjs` compares the extracted owner against the exact pre-B5 equations over 30,000 deterministic randomized states; final candidate run `33343672832` PASS with max error exactly 0.
 - Critical regressions PASS in the candidate: R7, R11, R16, R17, R19, R20, R21 and R23, plus the 288-case driving matrix, 80,000-sample stress suite and production build.
 - Integration source commit on `dev`: `d02987ad`.
 - Permanent B5 gate commit: `3f52ebba`; gate run `33343954812` PASS.
@@ -520,7 +520,7 @@ Completion record:
 - Ownership audit branch: `audit/wheelspin-b6`; audit workflow commit `de7e72f4`; audit run `33344102940` PASS. The audit confirmed three old layers: V21.29 hidden demand globals, runtime persistent wheelspin, and global telemetry/observer coupling.
 - Interim plan sync commit: `0f2ae313` recorded the audit and intended ownership before source changes.
 - Candidate source commit: `54d4f516` on `cleanup/wheelspin-b6`; candidate validation run `33344433491` PASS.
-- `qa-wheelspin-state-b6.mjs` validates 42,000 deterministic persistent-state transitions against the exact pre-B6 equations with max error 0 and explicitly interleaves unrelated traction calls to prove grip call-order independence.
+- `qa/qa-wheelspin-state-b6.mjs` validates 42,000 deterministic persistent-state transitions against the exact pre-B6 equations with max error 0 and explicitly interleaves unrelated traction calls to prove grip call-order independence.
 - V21.29 clutch/wheelspin coverage migrated to explicit demand inputs: Civic clutch-dump slip, Civic wheelspin, runtime wheelspin ownership and V21.31 airborne tire-state QA.
 - Full candidate validation PASS: complete V21.29 combustion clutch/wheelspin suite, R9/R11/R16/R17/R18/R19/R20/R21/R23, 288-case driving matrix, 80,000-sample stress and production build.
 - Integration source commit on `dev`: `d4423346`.
@@ -547,7 +547,7 @@ Required correction completed:
 
 Completion record:
 - Source clarification commit: `b5511a86` — clarified grip-loss fallback yaw ownership.
-- Permanent QA commit / validated B7 HEAD: `7ae77cd3` — added `qa-yaw-fallback-b7.mjs` and permanent B7 workflow coverage.
+- Permanent QA commit / validated B7 HEAD: `7ae77cd3` — added `qa/qa-yaw-fallback-b7.mjs` and permanent B7 workflow coverage.
 - Numerical QA: 30,000 deterministic fallback/authority samples, max equivalence error 0; low-authority fallback remains materially active where intended, then hands off to physical authority.
 - Dedicated B7 run `33345155340`: PASS.
 - Dev Integration run `33345155259`: PASS.
@@ -608,7 +608,7 @@ Correction completed:
 - preserved body-relative drive direction, clutch/free-rev, rev limiter, manual/automatic shifting and autopilot behavior;
 - modernized stale `V21_26_TRANSMISSION_REFACTOR_QA` assumptions to the current runtime input bridge and exact D/N/R contract;
 - detached its unrelated historical environment meta-regression, which was handled separately as A8;
-- added permanent `qa-transmission-c2.mjs` and `qa-cleanup-c2.yml`.
+- added permanent `qa/qa-transmission-c2.mjs` and `qa-cleanup-c2.yml`.
 
 Completion record:
 - Audit branch `audit/transmission-c2`; audit runs `33347455580` and `33347531229`: current D/N/R, clutch/wheelspin, multiplayer and production-build contracts PASS; old V21.26 QA proven stale on the untouched baseline.
@@ -632,7 +632,7 @@ Correction completed:
 - modernized stale V21.25 source-location assumptions instead of reintroducing old contracts;
 - updated the old profile-frame assertion from historical `z` to current `pz`;
 - confirmed `roadSurfaceAt()` owns geometric surface height while the physical +0.10 m road-support offset remains intentionally owned by `wheel-ground-support.js`;
-- added permanent `qa-road-geometry-c3.mjs` / `qa-cleanup-c3.yml` ownership coverage.
+- added permanent `qa/qa-road-geometry-c3.mjs` / `qa-cleanup-c3.yml` ownership coverage.
 
 Completion record:
 - Integration commit: `386c4d80` — canonical road geometry consolidation.
@@ -772,7 +772,7 @@ C5.6 audit completed — selected boundary: loaded-settings runtime/UI applicati
 - selected the cohesive settings-application responsibility deliberately left in `main.js` during C5.5: applying already-loaded settings to transmission mode, assist state, road-speed-limit state, imagery enablement, display distance, display visibility and synchronized runtime UI.
 
 C5.6 material discovery — stale C5.5 implementation-location assertion:
-- first candidate run reached the new C5.6 semantics QA successfully, then `qa-main-c5-settings.mjs` failed only because C5.5 explicitly asserted that `async function applyLoadedV21Settings()` must remain implemented inside `main.js`;
+- first candidate run reached the new C5.6 semantics QA successfully, then `qa/qa-main-c5-settings.mjs` failed only because C5.5 explicitly asserted that `async function applyLoadedV21Settings()` must remain implemented inside `main.js`;
 - that assertion was intentionally valid for C5.5, whose scope stopped before runtime/UI application, but becomes stale when C5.6 deliberately extracts exactly that responsibility;
 - C5.5 must continue protecting stable root/nested identity, in-place IndexedDB load, 120 ms debounce and keyboard/environment shared references, while C5.6 becomes authoritative for runtime/UI settings-application semantics and startup order;
 - do not reintroduce the old implementation into `main.js` merely to satisfy the C5.5 source-location check.
@@ -874,7 +874,7 @@ C6.1 material discovery — stale dormant V21.22.3 hitch-free QA:
 - C6.1 runtime diagnostics code is not to be changed to satisfy these unrelated historical assertions.
 
 C6.1 material discovery — stale P9.29 hitch-hook location assertion:
-- after the V21.22.3 QA was modernized to current owners, candidate run `33387555920` passed C6.1, C4 and V21.22.3 then stopped in `qa-forest-p929-frame-budget.mjs`;
+- after the V21.22.3 QA was modernized to current owners, candidate run `33387555920` passed C6.1, C4 and V21.22.3 then stopped in `qa/qa-forest-p929-frame-budget.mjs`;
 - P9.29 still requires the exact historical direct call `globalThis.__WORLD_DRIVE_P928_RECORD_HITCH__?.({...})` in `streaming-coordinator.js`;
 - the actual invariant remains valid: every >20 ms gameplay hitch must feed the active forest hitch recorder, but C6.1 intentionally prefers `WorldDriveDiagnostics.forest.recordHitch` and retains P9.28 only as a compatibility fallback;
 - modernize P9.29 to protect the >20 ms threshold plus canonical-first/fallback hook semantics rather than the old source location.
@@ -966,7 +966,7 @@ C6.4 read-only audit — road-sign diagnostic globals:
 - corrected run `33397131467`: PASS exact global inventory, P9.30 runtime signs, P9.37 combined frame pacing, C5.4 geographic sign orchestration, V21.25 minimap sign readout, runtime import/debt audit and production build;
 - exactly two road-sign diagnostic globals remain: `__WORLD_DRIVE_P930_ROAD_SIGNS__` and `__WORLD_DRIVE_P937_ROAD_SIGNS__`;
 - P9.30 has one writer in `src/road-furniture-p930.js`, zero runtime readers and zero QA/source-string consumers; its current diagnostic mode is `p930-incremental-sign-build`;
-- P9.37 has one writer in `src/road-furniture-p937.js`, zero runtime readers and exactly one QA/source-string consumer in `qa-p937-combined-frame-pacing.mjs`; its current mode is `p937-idle-sign-collection`;
+- P9.37 has one writer in `src/road-furniture-p937.js`, zero runtime readers and exactly one QA/source-string consumer in `qa/qa-p937-combined-frame-pacing.mjs`; its current mode is `p937-idle-sign-collection`;
 - P9.37 already composes `base.diagnostics()` and spreads the complete P9.30 payload before adding its own P9.37 scheduling section, so the P9.30 global is externally redundant even though the P9.30 diagnostic function remains an internal API;
 - accepted behavior remains green: P9.30 runtime built 4 signs with bounded slices/commit, P9.37 coalesced idle refresh stayed intact, C5.4 sign placement policy stayed intact, and minimap readout remains 5 s + fade with bidirectional rearm.
 
@@ -1075,7 +1075,7 @@ C6.7 completed — canonical multiplayer local-gear telemetry:
 
 C6.8 material discovery — C6.7 intentionally pins wire compatibility:
 - first C6.8 audit run `33428001193` stopped in the new inventory assertion before subsystem regressions because the audit expected only the historical M3 protocol QA to mention `__WORLD_DRIVE_MULTIPLAYER_WIRE__`;
-- the fresh scan correctly found four QA references across two files: three in `qa-diagnostics-c6-7.mjs` and one in `qa/V21_31_MULTIPLAYER_M3_PROTOCOL_QA.mjs`;
+- the fresh scan correctly found four QA references across two files: three in `qa/qa-diagnostics-c6-7.mjs` and one in `qa/V21_31_MULTIPLAYER_M3_PROTOCOL_QA.mjs`;
 - this is not a runtime regression: C6.7 deliberately kept wire diagnostics out of scope, so its permanent QA asserts that the legacy wire callable remained unchanged and available while local-gear telemetry moved;
 - C6.8 must therefore modernize both QA contracts if canonical wire ownership is selected. C6.7 should continue protecting local-gear isolation and that C6.7 itself did not alter packet/wire behavior, but it must stop pinning the old global name once C6.8 becomes authoritative for wire diagnostics;
 - do not weaken or bypass either test, and do not change packet transforms, traffic merge order, incoming legacy upgrade order, counters, timestamps or copy semantics merely to satisfy source-location assertions.
@@ -1099,7 +1099,7 @@ C6.8 completion record — canonical multiplayer wire diagnostics:
 - first read-only audit run `33428001193` stopped only because the new audit expected one legacy-name QA reference; it correctly exposed four references across C6.7 and V21.31 M3 QA, and that material discovery was recorded before any QA modernization;
 - corrected audit run `33428333975`: PASS one-writer/zero-runtime-reader inventory, C6.1-C6.7, M3 protocol, shared/live traffic, runtime import/debt audit and production build;
 - candidate branch `cleanup/diagnostics-c6-8`; candidate run `33428652377`: PASS C6.1-C6.8, C2/DNR/direction, M3 exact-gear protocol, shared/live traffic, 288 driving cases, full V21.31 stress, M4.15 network-to-WebGL reverse, import/debt audit, production build and strict three-file diff hygiene;
-- materialized candidate commit `9b06d182`: changed only `src/multiplayer.js`, `qa-diagnostics-c6-7.mjs` and `qa/V21_31_MULTIPLAYER_M3_PROTOCOL_QA.mjs`;
+- materialized candidate commit `9b06d182`: changed only `src/multiplayer.js`, `qa/qa-diagnostics-c6-7.mjs` and `qa/V21_31_MULTIPLAYER_M3_PROTOCOL_QA.mjs`;
 - final runtime + permanent gate integration commit `0017c593`: moved the unchanged wire observer callable to `WorldDriveDiagnostics.multiplayer.wire`, removed `__WORLD_DRIVE_MULTIPLAYER_WIRE__`, added dedicated permanent C6.8 QA and CI gate;
 - permanent C6.8 gate run `33428839319`: PASS C6.1-C6.8, C2, D/N/R, M3 protocol, shared/live traffic, 288 driving cases, full stress, import/debt audit and production build;
 - Dev Integration registration commit `a434656f`; final Dev Integration run `33429038521`: PASS **83/83**, including C6.8 at step 31, full stress, 288 driving cases, R2-R20, traffic/multiplayer, forest/frame pacing, M4.14/M4.15 WebGL, live route smoke, production build and production code-split QA;

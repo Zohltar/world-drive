@@ -113,7 +113,7 @@ Dev Integration run:
 A fresh source inventory was run after C6.12. A permanent boundary QA now fails if a new direct global surface appears or if ownership of the retained surfaces changes unexpectedly.
 
 Permanent gate:
-- `qa-diagnostics-c6-final-inventory.mjs`
+- `qa/qa-diagnostics-c6-final-inventory.mjs`
 - `.github/workflows/qa-diagnostics-c6-final-inventory.yml`
 
 Retained direct World Drive surfaces are intentionally limited to:

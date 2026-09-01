@@ -24,6 +24,6 @@ Avant une release stable :
 
 1. Mettre à jour `package.json` (`version` et `worldDriveChannel: "stable"`).
 2. Mettre à jour `package-lock.json` via npm afin qu'il reflète la même version.
-3. Exécuter `node qa-version-branding-a6.mjs`.
+3. Exécuter `node qa/qa-version-branding-a6.mjs`.
 4. Exécuter la Dev Integration QA complète et le build de production.
 5. Ne promouvoir vers `main` qu'après validation.

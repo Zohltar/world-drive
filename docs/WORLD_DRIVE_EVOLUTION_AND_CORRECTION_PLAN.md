@@ -108,7 +108,7 @@ Preserved contracts:
 - application-relative MP3 URLs remain byte-for-byte `./assets/audio/...` after the module move;
 - tire-squeal / brake-squeal linkage and curves remain unchanged.
 
-Permanent gate: `qa-source-tree-audio.mjs`, included in Dev Integration.
+Permanent gate: `qa/qa-source-tree-audio.mjs`, included in Dev Integration.
 
 Evidence:
 - read-only audio audit run `33465393725` — PASS;
@@ -241,7 +241,7 @@ Root public lazy facades retained:
 - `src/multiplayer.js`;
 - `src/multiplayer-visuals.js`.
 
-Seven internal implementations live under `src/multiplayer/`. Lazy loading/code splitting preserved. Permanent gate: `qa-source-tree-r2-multiplayer.mjs`.
+Seven internal implementations live under `src/multiplayer/`. Lazy loading/code splitting preserved. Permanent gate: `qa/qa-source-tree-r2-multiplayer.mjs`.
 
 Evidence includes candidate run `33455749888`, Dev Integration `33455977023`, and human smoke PASS (“tout est beau”).
 
@@ -256,7 +256,7 @@ The full traffic implementation family lives under `src/traffic/`:
 - `civil-traffic-pool.js`;
 - `civil-traffic-preload.js`.
 
-Permanent gate: `qa-source-tree-r3-traffic.mjs`.
+Permanent gate: `qa/qa-source-tree-r3-traffic.mjs`.
 
 Evidence includes audit runs `33459624185`, `33459656074`, candidate runs `33460198735`, `33460300489`, Dev Integration `33460497791`, and human traffic smoke PASS.
 
@@ -274,7 +274,7 @@ The move preserved lazy authored GLB loading, multiplayer authored-controller pa
 
 `audio.js` and `audio-base.js` now live under `src/audio/` as exact content-preserving renames. MP3 URL literals remain application-relative `./assets/audio/...` and therefore were deliberately not depth-adjusted.
 
-Permanent gate: `qa-source-tree-audio.mjs`.
+Permanent gate: `qa/qa-source-tree-audio.mjs`.
 
 ## R5 — Physics/runtime folder consolidation [P2]
 
