@@ -1,0 +1,133 @@
+name: QA Root Layout Migrate
+
+on:
+  push:
+    branches:
+      - cleanup/qa-root-layout
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  migrate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Move root QA files into qa and retarget non-workflow references
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          import json, re, subprocess
+
+          root=Path('.')
+          qa_dir=root/'qa'
+          qa_dir.mkdir(exist_ok=True)
+          qa_name=re.compile(r'^(?:qa[-_].*|.*_QA)\.(?:m?js)$',re.I)
+          moved=[]
+          for p in sorted(root.iterdir()):
+            if p.is_file() and qa_name.match(p.name):
+              target=qa_dir/p.name
+              if target.exists():
+                raise SystemExit(f'target already exists: {target}')
+              subprocess.run(['git','mv',p.as_posix(),target.as_posix()],check=True)
+              moved.append(p.name)
+          if not moved:
+            raise SystemExit('no root QA files found')
+
+          # Files moved one directory deeper: retarget only module-relative source references.
+          replacements=[
+            ("from './src/","from '../src/"),("from \"./src/","from \"../src/"),
+            ("import './src/","import '../src/"),("import \"./src/","import \"../src/"),
+            ("import('./src/","import('../src/"),("import(\"./src/","import(\"../src/"),
+            ("import(`./src/","import(`../src/"),
+            ("new URL('./src/","new URL('../src/"),("new URL(\"./src/","new URL(\"../src/"),
+            ("new URL(`./src/","new URL(`../src/"),
+          ]
+          for name in moved:
+            p=qa_dir/name
+            s=p.read_text()
+            out=s
+            for old,new in replacements:
+              out=out.replace(old,new)
+            if out!=s:p.write_text(out)
+
+          # Retarget references outside qa/. Workflows are modified only long enough to
+          # validate and report them; they are reset before the Actions-authored commit.
+          tracked=subprocess.check_output(['git','ls-files'],text=True).splitlines()
+          for rel in tracked:
+            p=Path(rel)
+            if rel.startswith('qa/'):
+              continue
+            try:
+              raw=p.read_bytes()
+              text=raw.decode('utf-8')
+            except Exception:
+              continue
+            out=text
+            for name in moved:
+              out=out.replace(name,f'qa/{name}')
+            if out!=text:
+              p.write_text(out)
+
+          workflow_files=subprocess.check_output(['git','diff','--name-only','--','.github/workflows'],text=True).splitlines()
+          stale_in_qa=[]
+          for p in qa_dir.rglob('*'):
+            if not p.is_file() or p.suffix not in {'.js','.mjs','.cjs'}: continue
+            text=p.read_text(errors='ignore')
+            for name in moved:
+              if f'../{name}' in text or f'node {name}' in text:
+                stale_in_qa.append({'file':p.as_posix(),'name':name})
+
+          report={'moved':moved,'count':len(moved),'workflowFiles':workflow_files,'staleQaDirRefs':stale_in_qa}
+          (qa_dir/'QA_ROOT_MIGRATION_REPORT.json').write_text(json.dumps(report,indent=2)+'\n')
+
+          gate=r'''import fs from 'node:fs';
+import path from 'node:path';
+import assert from 'node:assert/strict';
+const root=process.cwd();
+const qaName=/^(?:qa[-_].*|.*_QA)\.(?:m?js)$/i;
+const rootQa=fs.readdirSync(root,{withFileTypes:true}).filter(e=>e.isFile()&&qaName.test(e.name)).map(e=>e.name);
+assert.deepEqual(rootQa,[],`QA files remain at project root: ${rootQa.join(', ')}`);
+const workflowDir=path.join(root,'.github','workflows');
+const stale=[];
+if(fs.existsSync(workflowDir))for(const name of fs.readdirSync(workflowDir)){
+  if(!/\.ya?ml$/i.test(name))continue;
+  const text=fs.readFileSync(path.join(workflowDir,name),'utf8');
+  for(const m of text.matchAll(/(^|[^\w/])((?:qa[-_][A-Za-z0-9_.-]*|[A-Za-z0-9_.-]*_QA)\.(?:m?js))/g))stale.push(`${name}: ${m[2]}`);
+}
+assert.deepEqual(stale,[],`workflow references still target root QA files:\n${stale.join('\n')}`);
+console.log('QA ROOT LAYOUT QA: PASS',{rootQaFiles:0,workflowStaleRefs:0});
+'''
+          (qa_dir/'QA_ROOT_LAYOUT_QA.mjs').write_text(gate)
+          print(json.dumps(report,indent=2))
+          PY
+          node qa/QA_ROOT_LAYOUT_QA.mjs
+          find qa -maxdepth 1 -type f -name 'qa-*.mjs' -print0 | xargs -0 -n1 node --check
+          node qa/DEV_INTEGRATION_AUDIT.mjs
+          npm run build
+      - name: Preserve workflow retarget list and reset workflow edits
+        shell: bash
+        run: |
+          set -euo pipefail
+          git checkout -- .github/workflows
+          git status --short
+      - name: Commit QA layout migration
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'world-drive-qa'
+          git config user.email 'world-drive-qa@users.noreply.github.com'
+          git add -A -- ':!.github/workflows'
+          git commit -m 'Structure QA: move root tests under qa directory'
+          git push origin HEAD:cleanup/qa-root-layout
