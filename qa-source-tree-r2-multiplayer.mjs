@@ -36,16 +36,16 @@ assert.match(client,/from '\.\/multiplayer-vehicle-registry\.js'/,'moved client 
 const visuals=fs.readFileSync('src/multiplayer/multiplayer-visuals-m3.js','utf8');
 assert.match(visuals,/from '\.\/multiplayer-visuals-v18\.js'/,'M4 implementation must keep support implementation as sibling');
 assert.match(visuals,/from '\.\/multiplayer-vehicle-adapter\.js'/,'M4 implementation must keep adapter as sibling');
-assert.match(visuals,/from '\.\.\/vehicle-render-contract\.js'/,'M4 implementation must reach vehicle render contract through parent path');
+assert.match(visuals,/from '\.\.\/vehicles\/vehicle-render-contract\.js'/,'M4 implementation must reach the R4 vehicle render contract through the vehicles boundary');
 assert.match(visuals,/from '\.\.\/diagnostics\.js'/,'M4 implementation must reach diagnostics through parent path');
 
 const adapter=fs.readFileSync('src/multiplayer/multiplayer-vehicle-adapter.js','utf8');
-assert.match(adapter,/from '\.\.\/vehicle-system\.js'/,'moved adapter must reach vehicle system through parent path');
-assert.match(adapter,/from '\.\.\/vehicle-authored-registry\.js'/,'moved adapter must reach authored registry through parent path');
+assert.match(adapter,/from '\.\.\/vehicles\/vehicle-system\.js'/,'moved adapter must reach the R4 vehicle system through the vehicles boundary');
+assert.match(adapter,/from '\.\.\/vehicles\/vehicle-authored-registry\.js'/,'moved adapter must reach the R4 authored registry through the vehicles boundary');
 
 const registry=fs.readFileSync('src/multiplayer/multiplayer-vehicle-registry.js','utf8');
-assert.match(registry,/from '\.\.\/vehicle-system\.js'/,'moved registry must reach vehicle system through parent path');
-assert.match(registry,/from '\.\.\/vehicle-authored-registry\.js'/,'moved registry must reach authored registry through parent path');
+assert.match(registry,/from '\.\.\/vehicles\/vehicle-system\.js'/,'moved registry must reach the R4 vehicle system through the vehicles boundary');
+assert.match(registry,/from '\.\.\/vehicles\/vehicle-authored-registry\.js'/,'moved registry must reach the R4 authored registry through the vehicles boundary');
 
 console.log('SOURCE TREE R2 MULTIPLAYER QA: PASS',JSON.stringify({
   rootFacades:ROOT_FACADES,
