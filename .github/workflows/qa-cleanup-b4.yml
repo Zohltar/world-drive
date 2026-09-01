@@ -7,7 +7,7 @@ on:
     paths:
       - 'src/physics/momentum-direction.js'
       - 'src/driving-runtime-base.js'
-      - 'src/vehicle-dynamics-core.js'
+      - 'src/physics/vehicle-dynamics-core.js'
       - 'src/main.js'
       - 'qa-momentum-direction-b4.mjs'
       - 'qa-grip-high-speed-r11.mjs'
