@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - audit/source-tree-r4-vehicles
+      - cleanup/source-tree-r4-vehicles
     paths:
       - 'src/**'
       - 'qa/**'
@@ -40,6 +41,18 @@ jobs:
         run: node qa/V21_31_MULTIPLAYER_M4_ADAPTER_QA.mjs
       - name: Sonata controller ownership QA
         run: node qa/V21_31_SONATA_CONTROLLER_OWNERSHIP_QA.mjs
+      - name: Vehicle placement refactor QA
+        run: node qa/V21_26_VEHICLE_PLACEMENT_REFACTOR_QA.mjs
+      - name: Route placement finite QA
+        run: node qa/V21_31_ROUTE_PLACEMENT_FINITE_QA.mjs
+      - name: WRX night-tail lighting QA
+        run: node qa-wrx-night-tail-r1.mjs
+      - name: Sonata night-body lighting QA
+        run: node qa-sonata-night-body-r1.mjs
+      - name: Anti-roll presentation QA
+        run: node qa/V21_30_ANTI_ROLL_VISUAL_QA.mjs
+      - name: Crest/jump presentation QA
+        run: node qa-grip-jump-r6.mjs
       - name: Truck trailer regression QA
         run: node qa/V21_23_0_TRUCK_TRAILER_QA.mjs
       - name: Truck trailer physics boundary QA
