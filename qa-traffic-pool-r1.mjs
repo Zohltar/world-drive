@@ -9,7 +9,7 @@ import {
   civilTrafficCanonicalNodeName,
   civilTrafficChooseVehicleId,
   genericPassengerPackIds
-} from './src/civil-traffic-pool.js';
+} from './src/traffic/civil-traffic-pool.js';
 
 const ids=CIVIL_TRAFFIC_VEHICLE_POOL.map(entry=>entry.id);
 const expected=['sonata','compact','coupe','hatchback','minivan','offroad','pickup','sedan','sport','suv','wagon'];
@@ -56,7 +56,7 @@ const syntheticTemplates=buildGenericPassengerTemplates(syntheticScene);
 assert.equal(syntheticTemplates.size,10,'all sanitized pack body names must produce traffic templates');
 for(const id of genericPassengerPackIds())assert.ok(syntheticTemplates.has(id),`sanitized pack extraction missing ${id}`);
 
-const poolSource=fs.readFileSync(new URL('./src/civil-traffic-pool.js',import.meta.url),'utf8');
+const poolSource=fs.readFileSync(new URL('./src/traffic/civil-traffic-pool.js',import.meta.url),'utf8');
 for(const name of ['Compact Body','Coupe Body','Hatchback Body','minivan body','Offroad Body','Pickup Body','Sedan Body','Sport body','SUV Body','Wagon Body']){
   assert.ok(poolSource.includes(`bodyName:'${name}'`),`missing supplied pack body ${name}`);
 }
@@ -64,8 +64,8 @@ assert.ok(!poolSource.includes('node.name===entry.bodyName'),'pack extraction mu
 assert.ok(poolSource.includes('assembly.rotation.x=-Math.PI/2'),'pack extraction must convert source -Y forward / Z-up into World Drive +Z forward / Y-up');
 assert.ok(poolSource.includes('.slice(0,4)'),'each pack body must bind its four nearest authored wheels');
 
-const facadeSource=fs.readFileSync(new URL('./src/civil-traffic.js',import.meta.url),'utf8');
-const localSource=fs.readFileSync(new URL('./src/civil-traffic-local.js',import.meta.url),'utf8');
+const facadeSource=fs.readFileSync(new URL('./src/traffic/civil-traffic.js',import.meta.url),'utf8');
+const localSource=fs.readFileSync(new URL('./src/traffic/civil-traffic-local.js',import.meta.url),'utf8');
 const trafficSource=`${facadeSource}\n${localSource}`;
 assert.ok(localSource.includes("mode:'traffic-r7-variety-pool'"),'local diagnostics must retain variety-pool mode');
 assert.ok(localSource.includes('buildGenericPassengerTemplates'),'local traffic engine must build templates from the supplied pack');

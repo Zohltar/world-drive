@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 
-const facade=fs.readFileSync('src/civil-traffic.js','utf8');
-const local=fs.readFileSync('src/civil-traffic-local.js','utf8');
+const facade=fs.readFileSync('src/traffic/civil-traffic.js','utf8');
+const local=fs.readFileSync('src/traffic/civil-traffic-local.js','utf8');
 
 assert.ok(facade.includes("import {ensureWorldDriveDiagnostics,installDiagnosticAlias} from './diagnostics.js';"),'traffic facade diagnostics helpers missing');
 assert.ok(facade.includes('trafficDiagnostics.runtime=diagnostics;'),'canonical traffic runtime diagnostics writer missing');

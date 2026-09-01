@@ -6,7 +6,7 @@ import {
   publishLocalCivilTrafficSnapshot,
   readCivilTrafficMultiplayerBridge
 } from './civil-traffic-network-bridge.js';
-import {ensureWorldDriveDiagnostics,installDiagnosticAlias} from './diagnostics.js';
+import {ensureWorldDriveDiagnostics,installDiagnosticAlias} from '../diagnostics.js';
 
 // Traffic MP1 facade.
 // Offline and authoritative multiplayer clients run the exact validated R7 local

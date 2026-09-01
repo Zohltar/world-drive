@@ -5,7 +5,7 @@ import {
   consumeCivilTrafficMultiplayerPayload,
   mergeCivilTrafficIntoOutgoingState,
   resetCivilTrafficMultiplayerBridge
-} from './civil-traffic-network-bridge.js';
+} from './traffic/civil-traffic-network-bridge.js';
 
 // Lightweight multiplayer public entrypoint.
 // Wire/compatibility guards remain tiny and always available, while the full

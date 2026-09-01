@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 
-const source=fs.readFileSync('src/civil-traffic-network-bridge.js','utf8');
+const source=fs.readFileSync('src/traffic/civil-traffic-network-bridge.js','utf8');
 if(!source.includes("import {ensureWorldDriveDiagnostics} from './diagnostics.js';"))throw new Error('traffic-network diagnostics import missing');
 if(!source.includes('const trafficDiagnostics=ensureWorldDriveDiagnostics().traffic;'))throw new Error('canonical traffic diagnostics category missing');
 if(!source.includes('trafficDiagnostics.network=()=>{'))throw new Error('canonical traffic-network callable missing');
@@ -14,7 +14,7 @@ if(!source.includes("if(!base||typeof base!=='object'||!connected||!ownId||autho
 
 try{delete globalThis.WorldDriveDiagnostics;}catch{}
 try{delete globalThis.WorldDriveTrafficNetwork;}catch{}
-const mod=await import(`./src/civil-traffic-network-bridge.js?c69=${Date.now()}`);
+const mod=await import(`./src/traffic/civil-traffic-network-bridge.js?c69=${Date.now()}`);
 const root=globalThis.WorldDriveDiagnostics;
 if(typeof root?.traffic?.network!=='function')throw new Error('canonical traffic network callable not installed');
 if(globalThis.WorldDriveTrafficNetwork!==undefined)throw new Error('legacy WorldDriveTrafficNetwork global was recreated');

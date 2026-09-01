@@ -1,4 +1,4 @@
-import {ensureWorldDriveDiagnostics} from './diagnostics.js';
+import {ensureWorldDriveDiagnostics} from '../diagnostics.js';
 
 // World Drive Traffic MP1 — tiny multiplayer bridge for shared civil traffic.
 // No rendering or physics lives here. The bridge only tracks multiplayer peer

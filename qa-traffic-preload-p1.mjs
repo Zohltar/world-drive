@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import * as THREE from 'three';
-import {buildGenericPassengerTemplates} from './src/civil-traffic-pool.js';
+import {buildGenericPassengerTemplates} from './src/traffic/civil-traffic-pool.js';
 
-const preloadSource=fs.readFileSync(new URL('./src/civil-traffic-preload.js',import.meta.url),'utf8');
-const poolSource=fs.readFileSync(new URL('./src/civil-traffic-pool.js',import.meta.url),'utf8');
+const preloadSource=fs.readFileSync(new URL('./src/traffic/civil-traffic-preload.js',import.meta.url),'utf8');
+const poolSource=fs.readFileSync(new URL('./src/traffic/civil-traffic-pool.js',import.meta.url),'utf8');
 
 assert.ok(preloadSource.includes('GLTFLoader.prototype.loadAsync=function'),'traffic preload must reuse parsed GLTFs through the shared GLTFLoader module');
 assert.ok(preloadSource.includes("fetch(url,{cache:'force-cache'})"),'traffic assets must be fetched once through browser cache');

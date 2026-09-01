@@ -77,16 +77,16 @@ const expected=new Map([
   ['WorldDriveFramePacing',['diagnostic-alias:src/main.js']],
   ['WorldDrivePhysicsShadow',['diagnostic-alias:src/main.js']],
   ['WorldDriveTraffic',[
-    'direct-write:src/civil-traffic-local.js',
-    'diagnostic-alias:src/civil-traffic.js'
+    'direct-write:src/traffic/civil-traffic-local.js',
+    'diagnostic-alias:src/traffic/civil-traffic.js'
   ]],
   ['WorldDriveTrafficPool',[
-    'direct-write:src/civil-traffic-local.js',
-    'diagnostic-alias:src/civil-traffic.js'
+    'direct-write:src/traffic/civil-traffic-local.js',
+    'diagnostic-alias:src/traffic/civil-traffic.js'
   ]],
   ['WorldDriveTrafficSpawn',[
-    'direct-write:src/civil-traffic-local.js',
-    'direct-write:src/civil-traffic.js'
+    'direct-write:src/traffic/civil-traffic-local.js',
+    'direct-write:src/traffic/civil-traffic.js'
   ]]
 ]);
 

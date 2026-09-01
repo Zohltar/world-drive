@@ -1,5 +1,5 @@
 import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
-import {ensureWorldDriveDiagnostics} from './diagnostics.js';
+import {ensureWorldDriveDiagnostics} from '../diagnostics.js';
 import {
   GENERIC_PASSENGER_PACK_URL,
   GENERIC_PASSENGER_PACK_FALLBACK_URL,
@@ -55,7 +55,7 @@ async function parseBuffer(buffer,url){
 }
 
 async function preloadSonata(){
-  const url=new URL('./assets/2006_hyundai_sonata.glb',import.meta.url).href;
+  const url=new URL('../assets/2006_hyundai_sonata.glb',import.meta.url).href;
   state.phase='sonata-fetch';
   const fetched=await fetchBuffer(url);
   state.sonata.fetchMs=fetched.fetchMs;

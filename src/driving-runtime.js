@@ -8,7 +8,7 @@ import {
   consumeClutchShockMultiplier,
   readTransmissionRuntimeState
 } from './transmission-runtime-bridge.js';
-import {createCivilTrafficSystem} from './civil-traffic.js';
+import {createCivilTrafficSystem} from './traffic/civil-traffic.js';
 import {shouldAutoClutchForServiceBrake} from './physics/longitudinal-control.js';
 import {
   createWheelspinState,

@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import {civilTrafficPreloadDiagnostics} from './src/civil-traffic-preload.js';
+import {civilTrafficPreloadDiagnostics} from './src/traffic/civil-traffic-preload.js';
 
-const source=fs.readFileSync('src/civil-traffic-preload.js','utf8');
+const source=fs.readFileSync('src/traffic/civil-traffic-preload.js','utf8');
 assert.ok(source.includes("import {ensureWorldDriveDiagnostics} from './diagnostics.js';"),'diagnostics root import missing');
 assert.ok(source.includes('ensureWorldDriveDiagnostics().traffic.preload=civilTrafficPreloadDiagnostics;'),'canonical traffic preload diagnostics writer missing');
 assert.ok(!source.includes('globalThis.WorldDriveTrafficPreload'),'legacy WorldDriveTrafficPreload writer remains');

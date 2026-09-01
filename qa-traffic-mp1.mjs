@@ -8,7 +8,7 @@ import {
   readCivilTrafficMultiplayerBridge,
   resetCivilTrafficMultiplayerBridge,
   sanitizeCivilTrafficNetworkSnapshot
-} from './src/civil-traffic-network-bridge.js';
+} from './src/traffic/civil-traffic-network-bridge.js';
 
 resetCivilTrafficMultiplayerBridge();
 
@@ -65,7 +65,7 @@ publishLocalCivilTrafficSnapshot({routeLength:4200,agents:[]});
 const p1Outgoing=mergeCivilTrafficIntoOutgoingState({type:'state',seq:1});
 assert.equal(p1Outgoing.trafficState?.agents?.length,0,'empty traffic state must synchronize despawns too');
 
-const facade=fs.readFileSync(new URL('./src/civil-traffic.js',import.meta.url),'utf8');
+const facade=fs.readFileSync(new URL('./src/traffic/civil-traffic.js',import.meta.url),'utf8');
 const multiplayer=fs.readFileSync(new URL('./src/multiplayer.js',import.meta.url),'utf8');
 const relay=fs.readFileSync(new URL('./server/multiplayer-server.mjs',import.meta.url),'utf8');
 const electronRelay=fs.readFileSync(new URL('./electron/multiplayer-runtime.cjs',import.meta.url),'utf8');

@@ -435,7 +435,7 @@ export function createCivilTrafficSystem({
 
   async function loadSonataTemplate(loader){
     try{
-      const url=new URL('./assets/2006_hyundai_sonata.glb',import.meta.url).href;
+      const url=new URL('../assets/2006_hyundai_sonata.glb',import.meta.url).href;
       const gltf=await loader.loadAsync(url);
       const root=gltf.scene||gltf.scenes?.[0];
       if(!root)throw new Error('Traffic Sonata GLB sans scène');

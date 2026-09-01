@@ -12,7 +12,7 @@ import {
   civilTrafficCurveSpeed,
   civilTrafficFirstSpawnSec,
   civilTrafficCooldownSec
-} from './src/civil-traffic.js';
+} from './src/traffic/civil-traffic.js';
 
 assert.equal(CIVIL_TRAFFIC_MAX_ACTIVE,2,'Traffic must remain capped at two active cars');
 assert.ok(CIVIL_TRAFFIC_LANE_OFFSET_M>1.5&&CIVIL_TRAFFIC_LANE_OFFSET_M<2.0,'traffic lane center must stay inside a two-lane 7.5 m road');
@@ -48,8 +48,8 @@ assert.equal(civilTrafficCooldownSec(0),CIVIL_TRAFFIC_COOLDOWN_MIN_SEC);
 assert.equal(civilTrafficCooldownSec(1),CIVIL_TRAFFIC_COOLDOWN_MAX_SEC);
 assert.ok(CIVIL_TRAFFIC_COOLDOWN_MIN_SEC>=30,'normal traffic cadence must stay deliberately sparse');
 
-const facadeSource=fs.readFileSync(new URL('./src/civil-traffic.js',import.meta.url),'utf8');
-const localSource=fs.readFileSync(new URL('./src/civil-traffic-local.js',import.meta.url),'utf8');
+const facadeSource=fs.readFileSync(new URL('./src/traffic/civil-traffic.js',import.meta.url),'utf8');
+const localSource=fs.readFileSync(new URL('./src/traffic/civil-traffic-local.js',import.meta.url),'utf8');
 const source=`${facadeSource}\n${localSource}`;
 assert.ok(source.includes("getObjectByName('Object_7')"),'traffic must reuse the authored front Sonata lens mesh');
 assert.ok(source.includes("getObjectByName('Object_46')"),'traffic must reuse the authored inner rear Sonata lens mesh');
