@@ -79,7 +79,7 @@ assert.ok(electronRelay.includes('trafficState:safeTrafficState(message.trafficS
 assert.ok(electronRelay.includes("value.protocol!=='traffic-mp1'"),'Electron relay must reject unrelated traffic payloads');
 
 const require=createRequire(import.meta.url);
-const electronRuntime=require('./electron/multiplayer-runtime.cjs');
+const electronRuntime=require('../electron/multiplayer-runtime.cjs');
 assert.equal(typeof electronRuntime.createMultiplayerRuntime,'function','Electron multiplayer runtime must remain loadable after traffic relay extension');
 assert.equal(typeof electronRuntime.sanitizeRemoteHost,'function');
 
