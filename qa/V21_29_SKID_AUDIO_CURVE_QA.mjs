@@ -1,4 +1,4 @@
-import {skidLinkedTireLevel} from '../src/audio.js';
+import {skidLinkedTireLevel} from '../src/audio/audio.js';
 function fail(m){throw new Error(m);}
 
 const quiet=skidLinkedTireLevel({wheelGripUsage:[.90,.90,.90,.90],tireSquealLevel:.3});

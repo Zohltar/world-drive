@@ -1,11 +1,11 @@
 import fs from 'node:fs';
 function fail(message){throw new Error(message);}
 
-const audio=fs.readFileSync(new URL('../src/audio.js',import.meta.url),'utf8');
+const audio=fs.readFileSync(new URL('../src/audio/audio.js',import.meta.url),'utf8');
 for(const marker of ['skidLinkedTireLevel','preSkidCue','visibleSkidCue','skidFrontLevel','skidRearLevel','tire-squeal.mp3']){
   if(!audio.includes(marker))fail(`Missing skid-linked audio marker: ${marker}`);
 }
-const {skidLinkedTireLevel}=await import('../src/audio.js');
+const {skidLinkedTireLevel}=await import('../src/audio/audio.js');
 
 const quiet=skidLinkedTireLevel({tireSquealLevel:0,wheelGripUsage:[.2,.2,.2,.2]});
 const belowThreshold=skidLinkedTireLevel({tireSquealLevel:.55,wheelGripUsage:[.93,.93,.93,.93]});
