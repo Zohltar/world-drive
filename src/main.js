@@ -43,7 +43,7 @@ import {
   WORLD_DRIVE_VERSION_LABEL,
   WORLD_DRIVE_TITLE
 } from './version.js';
-import { createVehicleAudio, computeTransmissionState, computeGearRedlineSpeeds } from './audio.js';
+import { createVehicleAudio, computeTransmissionState, computeGearRedlineSpeeds } from './audio/audio.js';
 import { createGamepadController } from './gamepad.js';
 import { createKeyboardControls } from './keyboard-controls.js';
 import { createDrivingRuntime } from './driving-runtime.js';
