@@ -9,6 +9,7 @@ on:
       - '.github/workflows/r4-migrate-once.yml'
       - 'qa/V21_26_VEHICLE_PLACEMENT_REFACTOR_QA.mjs'
       - 'qa/V21_26_WHEEL_GROUND_SUPPORT_REFACTOR_QA.mjs'
+      - 'qa/V21_26_OVERPASS_ABORT_QA.mjs'
 
 permissions:
   contents: write
