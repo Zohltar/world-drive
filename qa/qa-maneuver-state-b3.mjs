@@ -34,7 +34,7 @@ assert.equal(snap.jTurnLatchedActive,false,'snapshot must expose owned J-turn la
 
 const runtimeSource=fs.readFileSync('src/driving-runtime-base.js','utf8');
 const maneuverSource=fs.readFileSync('src/physics/maneuver-state.js','utf8');
-assert.ok(runtimeSource.includes("from '../physics/maneuver-state.js'"),'runtime must import maneuver-state module');
+assert.ok(runtimeSource.includes("from './physics/maneuver-state.js'"),'runtime must import maneuver-state module');
 assert.ok(runtimeSource.includes('const maneuverState=createManeuverState();'),'runtime must instantiate one maneuver-state owner');
 assert.ok(!runtimeSource.includes('let rearHandbrakeSlipState=0'),'runtime must not own rear handbrake slip memory');
 assert.ok(!runtimeSource.includes('let jTurnLatchedActive=false'),'runtime must not own J-turn latch memory');
