@@ -21,7 +21,7 @@ expect(!Object.prototype.hasOwnProperty.call(globalThis,'WorldDriveRuntimeWheels
   'legacy wheelspin diagnostic global should no longer be installed');
 
 const source=fs.readFileSync(new URL('../src/driving-runtime.js',import.meta.url),'utf8');
-expect(source.includes("import {ensureWorldDriveDiagnostics} from '../diagnostics.js';"),
+expect(source.includes("import {ensureWorldDriveDiagnostics} from './diagnostics.js';"),
   'driving runtime must import canonical diagnostics root');
 expect(source.includes('const wheelspinDiagnostics=ensureWorldDriveDiagnostics().wheelspin;'),
   'driving runtime must bind the stable canonical wheelspin category');
