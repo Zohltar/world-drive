@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import {civilTrafficPreloadDiagnostics} from '../src/traffic/civil-traffic-preload.js';
 
 const source=fs.readFileSync('src/traffic/civil-traffic-preload.js','utf8');
-assert.ok(source.includes("import {ensureWorldDriveDiagnostics} from '../../diagnostics.js';"),'diagnostics root import missing');
+assert.ok(source.includes("import {ensureWorldDriveDiagnostics} from '../diagnostics.js';"),'diagnostics root import missing');
 assert.ok(source.includes('ensureWorldDriveDiagnostics().traffic.preload=civilTrafficPreloadDiagnostics;'),'canonical traffic preload diagnostics writer missing');
 assert.ok(!source.includes('globalThis.WorldDriveTrafficPreload'),'legacy WorldDriveTrafficPreload writer remains');
 assert.ok(source.includes('state.pack.promise=state.sonata.promise'),'sequential Sonata -> pack preload contract changed');
