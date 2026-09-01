@@ -1,0 +1,96 @@
+name: Source Tree R5a Vehicle Dynamics Migrate
+
+on:
+  push:
+    branches:
+      - cleanup/source-tree-r5a-vehicle-dynamics
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  migrate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Move R5a vehicle dynamics and retarget paths
+        shell: bash
+        run: |
+          set -euo pipefail
+          for f in vehicle-dynamics.js vehicle-dynamics-core.js vehicle-dynamics-traction-steering.js; do
+            test -f "src/$f"
+            test ! -e "src/physics/$f"
+            git mv "src/$f" "src/physics/$f"
+          done
+          python - <<'PY'
+          from pathlib import Path
+
+          def replace_exact(path, old, new):
+              p=Path(path)
+              s=p.read_text()
+              if old not in s:
+                  raise SystemExit(f'missing expected token {old!r} in {path}')
+              p.write_text(s.replace(old,new))
+
+          replace_exact('src/main.js', "from './vehicle-dynamics.js'", "from './physics/vehicle-dynamics.js'")
+          for path in ['src/vehicles/vehicle-presentation.js','src/vehicles/vehicle-presentation-v21.29.js']:
+              replace_exact(path, "../vehicle-dynamics.js", "../physics/vehicle-dynamics.js")
+          replace_exact('src/physics/vehicle-dynamics-core.js', "./physics/momentum-direction.js", "./momentum-direction.js")
+
+          replacements={
+              'src/vehicle-dynamics-traction-steering.js':'src/physics/vehicle-dynamics-traction-steering.js',
+              'src/vehicle-dynamics-core.js':'src/physics/vehicle-dynamics-core.js',
+              'src/vehicle-dynamics.js':'src/physics/vehicle-dynamics.js',
+          }
+          roots=[Path('qa'),Path('.github/workflows')]
+          excluded={
+              Path('qa-source-tree-r5-physics-runtime-audit.mjs'),
+              Path('.github/workflows/qa-source-tree-r5-physics-runtime-audit.yml'),
+              Path('.github/workflows/qa-source-tree-r5a-vehicle-dynamics-migrate.yml'),
+          }
+          files=[]
+          for root in roots:
+              if not root.exists(): continue
+              files.extend(p for p in root.rglob('*') if p.is_file() and p.suffix in {'.js','.mjs','.yml','.yaml'})
+          for p in files:
+              if p in excluded: continue
+              s=p.read_text()
+              out=s
+              for old,new in replacements.items(): out=out.replace(old,new)
+              if out!=s: p.write_text(out)
+          PY
+          test ! -e src/vehicle-dynamics.js
+          test ! -e src/vehicle-dynamics-core.js
+          test ! -e src/vehicle-dynamics-traction-steering.js
+          grep -F "from './physics/vehicle-dynamics.js'" src/main.js
+          grep -F "../physics/vehicle-dynamics.js" src/vehicles/vehicle-presentation.js
+          grep -F "../physics/vehicle-dynamics.js" src/vehicles/vehicle-presentation-v21.29.js
+          grep -F "./momentum-direction.js" src/physics/vehicle-dynamics-core.js
+      - name: Runtime import/source-tree audit
+        run: node qa/DEV_INTEGRATION_AUDIT.mjs
+      - name: Vehicle dynamics ownership QA
+        run: node qa-vehicle-dynamics-c1.mjs
+      - name: Full V21.31 regression stress
+        run: npm run qa:stress
+      - name: Driving dynamics simulation matrix
+        run: node qa/DEV_DRIVING_SIM_QA.mjs
+      - name: Production build
+        run: npm run build
+      - name: Production code split QA
+        run: node qa/BUILD_V21_31_CODE_SPLIT_QA.mjs
+      - name: Commit R5a migration
+        run: |
+          git config user.name 'world-drive-qa'
+          git config user.email 'world-drive-qa@users.noreply.github.com'
+          git add src qa .github/workflows
+          git commit -m 'Structure R5a: move vehicle dynamics under src/physics' || exit 0
+          git push origin HEAD:cleanup/source-tree-r5a-vehicle-dynamics
