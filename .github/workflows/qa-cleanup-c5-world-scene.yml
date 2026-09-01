@@ -10,10 +10,10 @@ on:
       - 'src/terrain*.js'
       - 'src/local-world-builder*.js'
       - 'src/streaming-coordinator*.js'
-      - 'qa-main-c5-world-scene.mjs'
-      - 'qa-local-world-current-a8.mjs'
-      - 'qa-terrain-r1-legacy-ownership.mjs'
-      - 'qa-terrain-r2-road-imagery.mjs'
+      - 'qa/qa-main-c5-world-scene.mjs'
+      - 'qa/qa-local-world-current-a8.mjs'
+      - 'qa/qa-terrain-r1-legacy-ownership.mjs'
+      - 'qa/qa-terrain-r2-road-imagery.mjs'
       - 'qa/V21_31_ROAD_SMOOTHING_QA.mjs'
       - 'qa/V21_31_SUPERELEVATION_QA.mjs'
       - '.github/workflows/qa-cleanup-c5-world-scene.yml'
@@ -34,13 +34,13 @@ jobs:
           cache: npm
       - run: npm ci
       - name: C5.3 world scene ownership and behavior QA
-        run: node qa-main-c5-world-scene.mjs
+        run: node qa/qa-main-c5-world-scene.mjs
       - name: Current local-world ownership QA
-        run: node qa-local-world-current-a8.mjs
+        run: node qa/qa-local-world-current-a8.mjs
       - name: Terrain visual ownership QA
-        run: node qa-terrain-r1-legacy-ownership.mjs
+        run: node qa/qa-terrain-r1-legacy-ownership.mjs
       - name: Terrain road imagery alignment QA
-        run: node qa-terrain-r2-road-imagery.mjs
+        run: node qa/qa-terrain-r2-road-imagery.mjs
       - name: V21.31 road smoothing regression
         run: node qa/V21_31_ROAD_SMOOTHING_QA.mjs
       - name: V21.31 superelevation regression
