@@ -6,8 +6,8 @@ on:
       - dev
     paths:
       - 'src/physics/wheelspin-state.js'
-      - 'src/vehicle-dynamics-traction-steering.js'
-      - 'src/vehicle-dynamics.js'
+      - 'src/physics/vehicle-dynamics-traction-steering.js'
+      - 'src/physics/vehicle-dynamics.js'
       - 'src/driving-runtime-base.js'
       - 'src/driving-runtime.js'
       - 'qa-wheelspin-state-b6.mjs'
