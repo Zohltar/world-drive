@@ -150,16 +150,19 @@ assert.ok(reverseLong.state.jackknifeRatio<=1+1e-12);
   assert.ok(deg(maxArt)<60,'normal forward turn should remain below jackknife range');
 }
 
-// Static integration checks: truck module is wired into the same vehicle loop,
-// with a truck-specific reverse cap and no hard-coded four-wheel reset left in
-// placeAt/resetToRoad.
+// Static integration checks: current ownership keeps truck composition in main,
+// loaded longitudinal scaling in the driving runtime, and release branding in
+// the canonical version module rather than a historical hard-coded candidate.
 const main=fs.readFileSync(new URL('../src/main.js',import.meta.url),'utf8');
+const drivingRuntime=fs.readFileSync(new URL('../src/driving-runtime-base.js',import.meta.url),'utf8');
+const versionSource=fs.readFileSync(new URL('../src/version.js',import.meta.url),'utf8');
 assert.match(main,/createTruckTrailerSystem/);
-assert.match(main,/truckTrailerSystem\.longitudinalScales\(\)/);
+assert.match(drivingRuntime,/truckTrailerSystem\.longitudinalScales\(\)/);
 assert.match(main,/truckTrailerSystem\.update\(/);
 assert.match(main,/truckTrailerSystem\.adjustCamera\(/);
 assert.match(main,/vehicleReverseLimitMps\(\)/);
-assert.match(main,/version:'21\.23\.0-candidate'/);
+assert.match(main,/version:WORLD_DRIVE_VERSION/);
+assert.match(versionSource,/import packageInfo from '\.\.\/package\.json' with \{type:'json'\}/);
 assert.doesNotMatch(main,/function resetToRoad\(\)[^]*wheelGripUsage=\[0,0,0,0\]/);
 
 console.log('V21.23.0 TRUCK + TRAILER QA: PASS');
