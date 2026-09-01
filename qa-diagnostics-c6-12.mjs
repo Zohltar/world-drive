@@ -4,7 +4,7 @@ import fs from 'node:fs';
 const facade=fs.readFileSync('src/traffic/civil-traffic.js','utf8');
 const local=fs.readFileSync('src/traffic/civil-traffic-local.js','utf8');
 
-assert.ok(facade.includes("import {ensureWorldDriveDiagnostics,installDiagnosticAlias} from './diagnostics.js';"),'traffic facade diagnostics helpers missing');
+assert.ok(facade.includes("import {ensureWorldDriveDiagnostics,installDiagnosticAlias} from '../diagnostics.js';"),'traffic facade diagnostics helpers missing');
 assert.ok(facade.includes('trafficDiagnostics.runtime=diagnostics;'),'canonical traffic runtime diagnostics writer missing');
 assert.ok(facade.includes('trafficDiagnostics.pool=poolDiagnostics;'),'canonical traffic pool diagnostics writer missing');
 assert.ok(facade.includes("installDiagnosticAlias('WorldDriveTraffic',()=>trafficDiagnostics.runtime);"),'WorldDriveTraffic compatibility delegate missing');
