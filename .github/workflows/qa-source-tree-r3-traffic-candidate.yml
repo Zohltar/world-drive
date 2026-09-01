@@ -1,0 +1,64 @@
+name: Source Tree R3 Traffic Candidate
+
+on:
+  push:
+    branches:
+      - cleanup/source-tree-r3-traffic
+    paths:
+      - 'src/**'
+      - 'qa/**'
+      - 'qa-*.mjs'
+      - '.github/workflows/qa-source-tree-r3-traffic-candidate.yml'
+      - '.github/workflows/qa-cleanup-c6-8.yml'
+      - '.github/workflows/qa-cleanup-c6-9.yml'
+      - '.github/workflows/qa-cleanup-c6-10.yml'
+      - '.github/workflows/qa-cleanup-c6-12.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  qa:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install
+        run: npm ci
+      - name: R3 traffic folder boundary
+        run: node qa-source-tree-r3-traffic.mjs
+      - name: Runtime import/source-tree audit
+        run: node qa/DEV_INTEGRATION_AUDIT.mjs
+      - name: Sparse civil traffic
+        run: node qa-traffic-r1.mjs
+      - name: Civil traffic pool
+        run: node qa-traffic-pool-r1.mjs
+      - name: Civil traffic preload
+        run: node qa-traffic-preload-p1.mjs
+      - name: Shared multiplayer traffic
+        run: node qa-traffic-mp1.mjs
+      - name: Live shared multiplayer traffic
+        run: node qa-traffic-mp1-live.mjs
+      - name: C6.8 multiplayer wire diagnostics
+        run: node qa-diagnostics-c6-8.mjs
+      - name: C6.9 traffic-network diagnostics
+        run: node qa-diagnostics-c6-9.mjs
+      - name: C6.10 traffic-preload diagnostics
+        run: node qa-diagnostics-c6-10.mjs
+      - name: C6.12 traffic runtime diagnostics
+        run: node qa-diagnostics-c6-12.mjs
+      - name: C6 final global boundary
+        run: node qa-diagnostics-c6-final-inventory.mjs
+      - name: Multiplayer protocol
+        run: node qa/V21_31_MULTIPLAYER_M3_PROTOCOL_QA.mjs
+      - name: Production build
+        run: npm run build
+      - name: Production code split
+        run: node qa/BUILD_V21_31_CODE_SPLIT_QA.mjs
