@@ -14,7 +14,7 @@ assert.ok(preloadSource.includes('state.pack.promise=state.sonata.promise'),'Son
 assert.ok(preloadSource.includes('ensureWorldDriveDiagnostics().traffic.preload=civilTrafficPreloadDiagnostics'),'startup preload timings must be exposed through canonical runtime diagnostics');
 assert.ok(!preloadSource.includes('WorldDriveTrafficPreload'),'legacy traffic-preload diagnostics global must remain retired');
 assert.ok(poolSource.includes('const GENERIC_TEMPLATE_CACHE=new WeakMap()'),'generic template extraction must be cached per parsed pack scene');
-assert.ok(poolSource.includes("import('../civil-traffic-preload.js')"),'browser runtime must start traffic preload from module startup');
+assert.ok(poolSource.includes("import('./civil-traffic-preload.js')"),'browser runtime must start traffic preload from module startup');
 assert.ok(poolSource.includes("typeof window!=='undefined'"),'Node QA must not trigger browser asset preloading');
 
 // Lock actual WeakMap reuse semantics with one complete synthetic sanitized pack.
