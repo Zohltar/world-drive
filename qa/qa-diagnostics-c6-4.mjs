@@ -3,7 +3,7 @@ import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {ensureWorldDriveDiagnostics} from '../src/diagnostics.js';
 
-const root=path.dirname(fileURLToPath(import.meta.url));
+const root=fileURLToPath(new URL('../',import.meta.url));
 const read=rel=>fs.readFileSync(path.join(root,rel),'utf8');
 const expect=(value,message)=>{if(!value)throw new Error(message);};
 
@@ -15,11 +15,11 @@ expect(diagnosticsB.roadSigns===roadSignsA,'roadSigns category identity changed'
 
 const p930=read('src/road-furniture-p930.js');
 const p937=read('src/road-furniture-p937.js');
-const p937Qa=read('qa-p937-combined-frame-pacing.mjs');
+const p937Qa=read('qa/qa-p937-combined-frame-pacing.mjs');
 
 expect(!p930.includes('__WORLD_DRIVE_P930_ROAD_SIGNS__'),'legacy P9.30 road-sign global remains');
 expect(!p937.includes('__WORLD_DRIVE_P937_ROAD_SIGNS__'),'legacy P9.37 road-sign global remains');
-expect(p937.includes("import {ensureWorldDriveDiagnostics} from '../diagnostics.js';"),'P9.37 must import canonical diagnostics root');
+expect(p937.includes("import {ensureWorldDriveDiagnostics} from './diagnostics.js';"),'P9.37 must import canonical diagnostics root');
 expect(p937.includes('const roadSignDiagnostics=ensureWorldDriveDiagnostics().roadSigns;'),'P9.37 must bind stable roadSigns category');
 expect(p937.includes('roadSignDiagnostics.snapshot=diagnostics;'),'P9.37 must publish the existing combined diagnostic function canonically');
 expect((p937.match(/roadSignDiagnostics\.snapshot=diagnostics;/g)||[]).length===1,'canonical road-sign snapshot must have one writer');
