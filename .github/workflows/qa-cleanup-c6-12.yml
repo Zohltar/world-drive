@@ -6,9 +6,9 @@ on:
       - cleanup/diagnostics-c6-12
       - dev
     paths:
-      - 'src/civil-traffic.js'
-      - 'src/civil-traffic-local.js'
-      - 'src/civil-traffic-network-bridge.js'
+      - 'src/traffic/civil-traffic.js'
+      - 'src/traffic/civil-traffic-local.js'
+      - 'src/traffic/civil-traffic-network-bridge.js'
       - 'src/diagnostics.js'
       - 'qa-diagnostics-c6-*.mjs'
       - 'qa-traffic-*.mjs'
