@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import {publishTransmissionNetworkGear,resetTransmissionNetworkGear} from '../src/transmission-network-state.js';
 
 const source=fs.readFileSync('src/multiplayer.js','utf8');
-if(!source.includes("import {ensureWorldDriveDiagnostics} from '../diagnostics.js';"))throw new Error('multiplayer diagnostics import missing');
+if(!source.includes("import {ensureWorldDriveDiagnostics} from './diagnostics.js';"))throw new Error('multiplayer diagnostics import missing');
 if(!source.includes('const multiplayerDiagnostics=ensureWorldDriveDiagnostics().multiplayer;'))throw new Error('canonical multiplayer diagnostics category missing');
 if(!source.includes('multiplayerDiagnostics.wire=()=>({'))throw new Error('canonical wire callable missing');
 if(/globalThis\.__WORLD_DRIVE_MULTIPLAYER_WIRE__\s*=/.test(source))throw new Error('legacy wire diagnostics writer remains');
