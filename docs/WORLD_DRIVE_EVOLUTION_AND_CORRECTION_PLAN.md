@@ -28,16 +28,16 @@ At the start of every World Drive coding/architecture/QA conversation:
 # 1. CURRENT CHECKPOINT
 
 **Plan phase:** R — Source tree organization  
-**Active item:** R4/R4.5 — combined human validation checkpoint before R5 physics/runtime  
-**State:** **AUTOMATION DONE — HUMAN VALIDATION REQUIRED BEFORE R5**  
-**Current validated dev HEAD before this documentation commit:** `340b1212bf5eb53b44cedd34df37fa22f0f84824`  
+**Active item:** R5 — physics/runtime folder consolidation  
+**State:** **READ-ONLY AUDIT ACTIVE — NO R5 RUNTIME FILE MOVED**  
+**Current validated dev HEAD before this documentation commit:** `92624147b821323efc0d5513d6af47f2814633b1`  
 **Stable fallback:** `main` @ `111df5d84bf7fd700590abbd9c129b303ac92fad`  
-**Last green full integration:** Dev Integration run `33465706009` on `340b1212bf5eb53b44cedd34df37fa22f0f84824` — **PASS (90/90 functional steps)**  
-**Human validation:** R2 multiplayer smoke — PASS. R3 traffic smoke — PASS. R4 vehicles — **PENDING**. R4.5 audio — **PENDING**.
+**Last green full integration:** Dev Integration run `33465873634` on `92624147b821323efc0d5513d6af47f2814633b1` — **PASS (90/90 functional steps)**  
+**Human validation:** R2 multiplayer — PASS. R3 traffic — PASS. R4 vehicles — **PASS**. R4.5 audio — **PASS**. User reported combined R4/R4.5 smoke: **“pass”**.
 
-## R4 automation completion
+## R4 completion
 
-R4 vehicle/presentation/model folder migration is **AUTOMATION DONE — HUMAN PASS PENDING**.
+R4 vehicle/presentation/model folder migration is **DONE — automation + human PASS**.
 
 Seventeen implementation files now live under responsibility folders:
 - common vehicle modules under `src/vehicles/`;
@@ -88,13 +88,14 @@ Historical QA debt discovered and modernized without runtime behavior changes:
 Evidence:
 - focused R4 candidate run `33464463621` — PASS;
 - integrated vehicle-state `dev` @ `b718675b8d88a810c168216bf57be97546e35719`;
-- Dev Integration `33465049654` — PASS, 89/89.
+- Dev Integration `33465049654` — PASS, 89/89;
+- combined human vehicle/audio smoke — PASS.
 
 No physics constants/equations, lighting tuning, GLB scaling, materials or multiplayer protocol semantics were intentionally changed.
 
 ## R4.5 audio completion
 
-R4.5 is **AUTOMATION DONE — HUMAN PASS PENDING**. The user explicitly approved this small low-risk structural lot before R5 physics.
+R4.5 is **DONE — automation + human PASS**.
 
 Moved as exact content-preserving renames:
 - `src/audio.js` -> `src/audio/audio.js`;
@@ -107,7 +108,7 @@ Preserved contracts:
 - application-relative MP3 URLs remain byte-for-byte `./assets/audio/...` after the module move;
 - tire-squeal / brake-squeal linkage and curves remain unchanged.
 
-Permanent gate: `qa-source-tree-audio.mjs`, now included in Dev Integration.
+Permanent gate: `qa-source-tree-audio.mjs`, included in Dev Integration.
 
 Evidence:
 - read-only audio audit run `33465393725` — PASS;
@@ -115,27 +116,52 @@ Evidence:
 - successful atomic migration run `33465478566`;
 - focused final candidate run `33465652119` — PASS;
 - integrated `dev` @ `340b1212bf5eb53b44cedd34df37fa22f0f84824`;
-- Dev Integration `33465706009` — **PASS, 90/90**.
+- Dev Integration `33465706009` — PASS, 90/90;
+- exact documentation-head Dev Integration `33465873634` — PASS, 90/90;
+- combined human vehicle/audio smoke — PASS.
 
 GitHub recognized both audio modules as 100% renames with zero content changes.
 
-## Exact next action
+## R5 audit boundary
 
-Perform one **combined 5–10 minute human smoke** for R4 vehicles + R4.5 audio on current `dev`.
+Begin R5 with a **read-only exact-path/import/QA/CI audit**. No path move, physics tuning, equation edit or constant change until the audit is green and the candidate boundary is frozen.
 
-Do not start R5 physics/runtime until the user reports PASS.
+Candidate family to classify:
+- `vehicle-dynamics.js`;
+- `vehicle-dynamics-core.js`;
+- `vehicle-dynamics-traction-steering.js`;
+- `driving-runtime.js`;
+- `driving-runtime-base.js`;
+- `transmission-controller.js`;
+- `transmission-network-state.js`;
+- `transmission-runtime-bridge.js`;
+- `wheel-ground-support.js`;
+- `skidmarks.js`.
 
-Human spot-check should cover:
-- normal startup / route load;
-- several authored vehicles load and scale/placement correctly;
-- WRX/Civic-or-ID.4/F1 and truck/trailer if practical;
-- brake/reverse/night/indicator lighting on a few vehicles;
-- truck camera/steering/trailer still feel normal;
-- audio enable/disable and general engine/EV/F1 sound;
-- tire squeal during a hard turn/skid and brake squeal if easy to trigger;
-- no missing-audio errors, new stutter or FPS degradation.
+Already nested `src/physics/` modules are **not relocation targets**; audit them only as dependency boundaries:
+- airborne/braking/drift/fixed-step/longitudinal/maneuver/momentum/per-wheel/steering/surface/tire/wheelspin/yaw modules.
 
-After human PASS: mark R4 + R4.5 DONE, then create a narrow **read-only R5 physics/runtime audit**. No R5 runtime file move or physics tuning before that audit.
+Audit must freeze:
+- every production importer and outbound dependency;
+- every QA/CI hard-coded path contract;
+- cross-boundaries into `src/vehicles/`, `src/multiplayer/`, routing and `main.js`;
+- R2–R23 behavior gates and 288-case simulation matrix coverage;
+- diagnostic ownership and `Number(null)`/gear semantics;
+- skidmark/contact alignment;
+- wheel-ground R14 re-entry support;
+- no hidden `import.meta.url`/asset-depth sensitivity;
+- whether any root physics facade should intentionally remain at root rather than move.
+
+**Do not do during R5 audit/candidate:**
+- no tire/friction/load-transfer/yaw/steering/brake tuning;
+- no transmission shift/clutch/gear semantic changes;
+- no handbrake/J-turn/drift behavior changes;
+- no wheel support/re-entry tuning;
+- no skidmark visual tuning;
+- no historical naming cleanup;
+- no dependency/toolchain maintenance mixed into R5.
+
+**Exact next action:** create `audit/source-tree-r5-physics-runtime` from current `dev`, inventory the full root physics/runtime family and all QA/CI path contracts, then run a focused read-only R5 audit before creating any candidate branch.
 
 ---
 
@@ -236,40 +262,29 @@ Evidence includes audit runs `33459624185`, `33459656074`, candidate runs `33460
 
 ## R4 — Vehicle/presentation/model folder migration [P1/P2]
 
-**AUTOMATION DONE — HUMAN PASS PENDING**
+**DONE — automation + human PASS**
 
 Seventeen implementation files now live under `src/vehicles/`, `src/vehicles/models/`, and `src/vehicles/truck/` as recorded in CURRENT CHECKPOINT.
 
 The move preserved lazy authored GLB loading, multiplayer authored-controller parity, lights/material bindings, placement, truck/trailer and presentation behavior. Historical production names such as `vehicle-presentation-v21.29.js` remain intentionally unchanged until Phase O.
 
-Human checkpoint: quick vehicle/lighting/truck spot-check, combined with R4.5 audio below.
-
 ## R4.5 — Audio folder migration [P2]
 
-**AUTOMATION DONE — HUMAN PASS PENDING**
+**DONE — automation + human PASS**
 
 `audio.js` and `audio-base.js` now live under `src/audio/` as exact content-preserving renames. MP3 URL literals remain application-relative `./assets/audio/...` and therefore were deliberately not depth-adjusted.
 
 Permanent gate: `qa-source-tree-audio.mjs`.
 
-Human checkpoint is combined with R4 to avoid unnecessary test interruptions.
-
 ## R5 — Physics/runtime folder consolidation [P2]
 
-**BLOCKED ONLY BY R4/R4.5 HUMAN SPOT-CHECK**
+**ACTIVE — READ-ONLY AUDIT**
 
-After human PASS, begin with a **read-only exact-path/import/QA/CI audit** before any move.
-
-Candidate family to classify:
-- `vehicle-dynamics*`;
-- `driving-runtime*`;
-- `transmission-*`;
-- `wheel-ground-support.js`;
-- `skidmarks.js`.
+Audit the ten root physics/runtime modules listed in CURRENT CHECKPOINT before any move. Target direction is `src/physics/`, but the audit may retain a root facade if it provides a meaningful stable public boundary.
 
 Any path-only candidate must make **zero equation/constant changes** and preserve all accepted R2–R23 driving behavior.
 
-Requires R-tests, 288-case matrix, stress, build and full integration. Human driving validation is required if any behavior changes; a pure path move may use the next periodic human checkpoint if all automated gates are green.
+Requires R-tests, 288-case matrix, stress, build and full integration. Human driving validation is required if any behavior changes; for a provably pure path move, use the next periodic human checkpoint after automation is green.
 
 ## R6 — Road/scenery/forest/water migration [P2]
 
@@ -392,4 +407,4 @@ If an item is interrupted, CURRENT CHECKPOINT must include:
 
 # 12. Roadmap summary
 
-**R1 DONE → R2 DONE + human PASS → R3 DONE + human PASS → R4 vehicles automation DONE / human pending → R4.5 audio automation DONE / human pending → R5 physics/runtime after combined human PASS → R6 road/scenery/forest/water → R7 app/UI/services → R8 terrain/imagery/streaming → R9 root gate → Phase O historical naming → maintenance/features as prioritized.**
+**R1 DONE → R2 DONE + human PASS → R3 DONE + human PASS → R4 vehicles DONE + human PASS → R4.5 audio DONE + human PASS → R5 physics/runtime ACTIVE / read-only audit → R6 road/scenery/forest/water → R7 app/UI/services → R8 terrain/imagery/streaming → R9 root gate → Phase O historical naming → maintenance/features as prioritized.**
