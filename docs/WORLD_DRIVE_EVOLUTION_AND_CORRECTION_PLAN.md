@@ -28,50 +28,23 @@ At the start of every World Drive coding/architecture/QA conversation:
 # 1. CURRENT CHECKPOINT
 
 **Plan phase:** R — Source tree organization  
-**Active item:** R4 — vehicle/presentation/model folder migration  
-**State:** **READ-ONLY AUDIT ACTIVE — no R4 runtime file moved yet**  
-**Current validated dev HEAD before this documentation commit:** `7b0ca71385f89edbe5ab6fba9b883f018ea422e3`  
+**Active item:** R4/R4.5 — combined human validation checkpoint before R5 physics/runtime  
+**State:** **AUTOMATION DONE — HUMAN VALIDATION REQUIRED BEFORE R5**  
+**Current validated dev HEAD before this documentation commit:** `340b1212bf5eb53b44cedd34df37fa22f0f84824`  
 **Stable fallback:** `main` @ `111df5d84bf7fd700590abbd9c129b303ac92fad`  
-**Last green full integration:** Dev Integration run `33460497791` on `7b0ca71385f89edbe5ab6fba9b883f018ea422e3` — **PASS (89/89 functional steps)**  
-**Human validation:** R2 multiplayer smoke — PASS. R3 traffic smoke — **PASS, user reported “pass”**.
+**Last green full integration:** Dev Integration run `33465706009` on `340b1212bf5eb53b44cedd34df37fa22f0f84824` — **PASS (90/90 functional steps)**  
+**Human validation:** R2 multiplayer smoke — PASS. R3 traffic smoke — PASS. R4 vehicles — **PENDING**. R4.5 audio — **PENDING**.
 
-## R3 completion
+## R4 automation completion
 
-R3 is **DONE — automation + human PASS**.
+R4 vehicle/presentation/model folder migration is **AUTOMATION DONE — HUMAN PASS PENDING**.
 
-The full traffic implementation family lives under `src/traffic/`:
-- `civil-traffic.js`;
-- `civil-traffic-local.js`;
-- `civil-traffic-network-bridge.js`;
-- `civil-traffic-pool.js`;
-- `civil-traffic-preload.js`.
+Seventeen implementation files now live under responsibility folders:
+- common vehicle modules under `src/vehicles/`;
+- authored model controllers under `src/vehicles/models/`;
+- truck/trailer under `src/vehicles/truck/`.
 
-Preserved contracts include:
-- lazy pool -> preload import;
-- corrected Sonata `import.meta.url` asset depth;
-- application-relative generic pack URLs;
-- sequential preload and force-cache behavior;
-- R7 local engine behavior;
-- max active agents = 2;
-- lane/cooldown behavior;
-- Traffic MP1 authority/follower + live relay semantics;
-- diagnostics + compatibility globals + `WorldDriveTrafficSpawn`.
-
-Permanent gate: `qa-source-tree-r3-traffic.mjs` in Dev Integration.
-
-Evidence:
-- audit runs `33459624185`, `33459656074` — PASS;
-- candidate runs `33460198735`, `33460300489` — PASS;
-- integrated `dev` runtime commit `5467089b2aa10340b70fbefdb2a6a9ed0df3117a`;
-- documented validated HEAD `7b0ca71385f89edbe5ab6fba9b883f018ea422e3`;
-- Dev Integration `33460497791` — PASS, 89/89;
-- human traffic smoke — PASS.
-
-## R4 next action
-
-Create `audit/source-tree-r4-vehicles` from current `dev` and perform a **read-only exact-path/dynamic-import/asset/QA/CI audit** before moving any vehicle file.
-
-Candidate families to classify, not yet approved for movement:
+Moved common modules:
 - `vehicle-system.js`;
 - `vehicle-visuals.js`;
 - `vehicle-presentation.js`;
@@ -80,32 +53,89 @@ Candidate families to classify, not yet approved for movement:
 - `vehicle-render-contract.js`;
 - `vehicle-glb-entries.js`;
 - `deferred-glb-system.js`;
-- `vehicle-placement-controller.js`;
-- authored model controllers: `civic-glb.js`, `countach-glb.js`, `f1-glb.js`, `i3-glb.js`, `id4-glb.js`, `sonata-glb.js`, `wrx-glb.js`;
+- `vehicle-placement-controller.js`.
+
+Moved authored controllers:
+- `civic-glb.js`;
+- `countach-glb.js`;
+- `f1-glb.js`;
+- `i3-glb.js`;
+- `id4-glb.js`;
+- `sonata-glb.js`;
+- `wrx-glb.js`.
+
+Moved truck module:
 - `truck-trailer.js`.
 
-Audit must freeze:
-- all production importers/imported dependencies;
-- all dynamic imports and hard-coded `modulePath` strings;
-- all `import.meta.url` / asset URL depth contracts;
-- exact QA path contracts and CI path triggers;
-- multiplayer vehicle adapter/registry/visual boundaries;
-- deferred/lazy GLB loading and production code splitting;
-- vehicle lighting/material/controller contracts;
-- truck/trailer model and physics-facing boundaries;
-- presentation suspension/airborne/landing/anti-roll behavior;
-- whether `vehicle-placement-controller.js` belongs in R4 or should remain with runtime/physics consolidation.
+Preserved contracts include:
+- all authored registry `modulePath` + dynamic-import pairs;
+- lazy GLB loading and production code splitting;
+- `import.meta.url` asset depth for authored models/truck;
+- multiplayer adapter/registry/render-contract boundaries;
+- vehicle lighting/material/controller behavior;
+- truck/trailer behavior;
+- placement stable-start logic;
+- suspension, anti-roll, airborne and landing presentation behavior.
 
-**Do not do during R4 audit/candidate:**
-- no physics equation/constant changes;
-- no suspension/anti-roll tuning;
-- no lighting/material tuning;
-- no GLB/model replacement or rescaling;
-- no historical-name cleanup (`v21.29`, etc. stays Phase O);
-- no multiplayer protocol changes;
-- no dependency/toolchain maintenance mixed into the move.
+Historical QA debt discovered and modernized without runtime behavior changes:
+- V21.23 truck QA updated to the accepted V21.23.2+ hairpin steering calibration;
+- `longitudinalScales()` ownership updated to current `driving-runtime-base.js` responsibility;
+- V21.26 placement QA updated to current `targetCum` / `px,pz` contract;
+- V21.26 wheel-ground QA updated to accepted R14 core/outer blend support;
+- V21.26 Overpass QA updated from the retired Private.coffee fallback to the current `overpass-api.de`, Kumi and NCHC mirror set;
+- R2/C6/code-split path assertions retargeted to the new vehicle folders.
 
-**Next action:** complete R4 audit and lock a path/behavior boundary. Only then create a narrow path-only candidate under `src/vehicles/`, `src/vehicles/models/`, and `src/vehicles/truck/` if audit evidence is green.
+Evidence:
+- focused R4 candidate run `33464463621` — PASS;
+- integrated vehicle-state `dev` @ `b718675b8d88a810c168216bf57be97546e35719`;
+- Dev Integration `33465049654` — PASS, 89/89.
+
+No physics constants/equations, lighting tuning, GLB scaling, materials or multiplayer protocol semantics were intentionally changed.
+
+## R4.5 audio completion
+
+R4.5 is **AUTOMATION DONE — HUMAN PASS PENDING**. The user explicitly approved this small low-risk structural lot before R5 physics.
+
+Moved as exact content-preserving renames:
+- `src/audio.js` -> `src/audio/audio.js`;
+- `src/audio-base.js` -> `src/audio/audio-base.js`.
+
+Preserved contracts:
+- `main.js` is the sole public production importer;
+- `audio.js` and `audio-base.js` remain sibling modules;
+- no dynamic imports were introduced;
+- application-relative MP3 URLs remain byte-for-byte `./assets/audio/...` after the module move;
+- tire-squeal / brake-squeal linkage and curves remain unchanged.
+
+Permanent gate: `qa-source-tree-audio.mjs`, now included in Dev Integration.
+
+Evidence:
+- read-only audio audit run `33465393725` — PASS;
+- first atomic migration run `33465459572` validated the move but its final push lost a clean ref race to the trigger commit; no code defect;
+- successful atomic migration run `33465478566`;
+- focused final candidate run `33465652119` — PASS;
+- integrated `dev` @ `340b1212bf5eb53b44cedd34df37fa22f0f84824`;
+- Dev Integration `33465706009` — **PASS, 90/90**.
+
+GitHub recognized both audio modules as 100% renames with zero content changes.
+
+## Exact next action
+
+Perform one **combined 5–10 minute human smoke** for R4 vehicles + R4.5 audio on current `dev`.
+
+Do not start R5 physics/runtime until the user reports PASS.
+
+Human spot-check should cover:
+- normal startup / route load;
+- several authored vehicles load and scale/placement correctly;
+- WRX/Civic-or-ID.4/F1 and truck/trailer if practical;
+- brake/reverse/night/indicator lighting on a few vehicles;
+- truck camera/steering/trailer still feel normal;
+- audio enable/disable and general engine/EV/F1 sound;
+- tire squeal during a hard turn/skid and brake squeal if easy to trigger;
+- no missing-audio errors, new stutter or FPS degradation.
+
+After human PASS: mark R4 + R4.5 DONE, then create a narrow **read-only R5 physics/runtime audit**. No R5 runtime file move or physics tuning before that audit.
 
 ---
 
@@ -193,28 +223,53 @@ Evidence includes candidate run `33455749888`, Dev Integration `33455977023`, an
 
 **DONE — automation + human PASS**
 
-See CURRENT CHECKPOINT completion record above.
+The full traffic implementation family lives under `src/traffic/`:
+- `civil-traffic.js`;
+- `civil-traffic-local.js`;
+- `civil-traffic-network-bridge.js`;
+- `civil-traffic-pool.js`;
+- `civil-traffic-preload.js`.
+
+Permanent gate: `qa-source-tree-r3-traffic.mjs`.
+
+Evidence includes audit runs `33459624185`, `33459656074`, candidate runs `33460198735`, `33460300489`, Dev Integration `33460497791`, and human traffic smoke PASS.
 
 ## R4 — Vehicle/presentation/model folder migration [P1/P2]
 
-**ACTIVE — READ-ONLY AUDIT**
+**AUTOMATION DONE — HUMAN PASS PENDING**
 
-Start with a read-only exact-path/dynamic-import/asset/QA audit. Target direction after a green audit:
-- common vehicle modules under `src/vehicles/`;
-- authored model controllers under `src/vehicles/models/`;
-- truck/trailer under `src/vehicles/truck/`.
+Seventeen implementation files now live under `src/vehicles/`, `src/vehicles/models/`, and `src/vehicles/truck/` as recorded in CURRENT CHECKPOINT.
 
-Important: `vehicle-authored-registry.js` owns hard-coded `modulePath` strings + dynamic imports. Move those contracts atomically. Do not combine R4 with suspension/anti-roll refactoring or historical-name cleanup.
+The move preserved lazy authored GLB loading, multiplayer authored-controller parity, lights/material bindings, placement, truck/trailer and presentation behavior. Historical production names such as `vehicle-presentation-v21.29.js` remain intentionally unchanged until Phase O.
 
-Human checkpoint after R4 will be a vehicle/lighting/truck spot-check because that migration has higher visible risk than R3.
+Human checkpoint: quick vehicle/lighting/truck spot-check, combined with R4.5 audio below.
+
+## R4.5 — Audio folder migration [P2]
+
+**AUTOMATION DONE — HUMAN PASS PENDING**
+
+`audio.js` and `audio-base.js` now live under `src/audio/` as exact content-preserving renames. MP3 URL literals remain application-relative `./assets/audio/...` and therefore were deliberately not depth-adjusted.
+
+Permanent gate: `qa-source-tree-audio.mjs`.
+
+Human checkpoint is combined with R4 to avoid unnecessary test interruptions.
 
 ## R5 — Physics/runtime folder consolidation [P2]
 
-**PENDING R4**
+**BLOCKED ONLY BY R4/R4.5 HUMAN SPOT-CHECK**
 
-Move `vehicle-dynamics*`, `driving-runtime*`, `transmission-*`, `wheel-ground-support.js`, `skidmarks.js` under `src/physics/` with **zero equation/constant changes**.
+After human PASS, begin with a **read-only exact-path/import/QA/CI audit** before any move.
 
-Requires R-tests, 288-case matrix, stress and full integration.
+Candidate family to classify:
+- `vehicle-dynamics*`;
+- `driving-runtime*`;
+- `transmission-*`;
+- `wheel-ground-support.js`;
+- `skidmarks.js`.
+
+Any path-only candidate must make **zero equation/constant changes** and preserve all accepted R2–R23 driving behavior.
+
+Requires R-tests, 288-case matrix, stress, build and full integration. Human driving validation is required if any behavior changes; a pure path move may use the next periodic human checkpoint if all automated gates are green.
 
 ## R6 — Road/scenery/forest/water migration [P2]
 
@@ -305,6 +360,7 @@ Feature work is allowed after stable structural checkpoints. Every feature needs
 | multiplayer path-only | MP + M4.14/M4.15 + code split + full integration | periodic smoke |
 | traffic path-only | traffic + shared/live MP + full integration | periodic smoke |
 | vehicle path-only | presentation/lights/truck/MP adapter + full integration | quick spot-check |
+| audio path-only | audio boundary + skid audio + build + full integration | combine with nearby checkpoint |
 | physics/runtime | R-tests + 288 matrix + stress + full integration | required if behavior changes |
 | road/forest | subsystem + frame pacing + full integration | if visible/perf risk |
 | terrain/imagery/streaming | complete subsystem + stress/build/full integration | **long-route mandatory** |
@@ -336,4 +392,4 @@ If an item is interrupted, CURRENT CHECKPOINT must include:
 
 # 12. Roadmap summary
 
-**R1 DONE → R2 DONE → R3 DONE (automation + human PASS) → R4 vehicles ACTIVE / audit → R5 physics/runtime → R6 road/scenery/forest/water → R7 app/UI/services → R8 terrain/imagery/streaming → R9 root gate → Phase O historical naming → maintenance/features as prioritized.**
+**R1 DONE → R2 DONE + human PASS → R3 DONE + human PASS → R4 vehicles automation DONE / human pending → R4.5 audio automation DONE / human pending → R5 physics/runtime after combined human PASS → R6 road/scenery/forest/water → R7 app/UI/services → R8 terrain/imagery/streaming → R9 root gate → Phase O historical naming → maintenance/features as prioritized.**
