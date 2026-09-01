@@ -5,9 +5,9 @@ on:
     branches:
       - dev
     paths:
-      - 'src/vehicle-dynamics-core.js'
-      - 'src/vehicle-dynamics-traction-steering.js'
-      - 'src/vehicle-dynamics.js'
+      - 'src/physics/vehicle-dynamics-core.js'
+      - 'src/physics/vehicle-dynamics-traction-steering.js'
+      - 'src/physics/vehicle-dynamics.js'
       - 'qa-vehicle-dynamics-c1.mjs'
       - 'qa-grip-steering-curve-r3.mjs'
       - 'qa-grip-steering-input-r13.mjs'
