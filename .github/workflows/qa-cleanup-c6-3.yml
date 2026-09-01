@@ -8,8 +8,8 @@ on:
       - 'src/diagnostics.js'
       - 'src/driving-runtime.js'
       - 'src/physics/wheelspin-state.js'
-      - 'qa-diagnostics-c6-3.mjs'
-      - 'qa-wheelspin-state-b6.mjs'
+      - 'qa/qa-diagnostics-c6-3.mjs'
+      - 'qa/qa-wheelspin-state-b6.mjs'
       - 'qa/V21_29_RUNTIME_WHEELSPIN_QA.mjs'
       - 'qa/V21_29_CIVIC_CLUTCH_WHEELSPIN_QA.mjs'
       - '.github/workflows/qa-cleanup-c6-3.yml'
@@ -30,9 +30,9 @@ jobs:
           cache: npm
       - run: npm ci
       - name: C6.3 wheelspin diagnostics QA
-        run: node qa-diagnostics-c6-3.mjs
+        run: node qa/qa-diagnostics-c6-3.mjs
       - name: B6 wheelspin ownership QA
-        run: node qa-wheelspin-state-b6.mjs
+        run: node qa/qa-wheelspin-state-b6.mjs
       - name: V21.29 runtime wheelspin QA
         run: node qa/V21_29_RUNTIME_WHEELSPIN_QA.mjs
       - name: Civic clutch wheelspin QA
