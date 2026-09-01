@@ -64,8 +64,9 @@ jobs:
           replace('src/driving-runtime.js',"from './civil-traffic.js'","from './traffic/civil-traffic.js'")
           replace('src/multiplayer.js',"from './civil-traffic-network-bridge.js'","from './traffic/civil-traffic-network-bridge.js'")
 
-          # QA/CI path contracts only. The R3 audit script is intentionally
-          # excluded because it is rewritten as the permanent post-move boundary.
+          # QA source-path contracts only. Workflow trigger/path updates are done
+          # separately through the GitHub connector because Actions tokens cannot
+          # modify workflow files.
           contract_files=[
               'qa-diagnostics-c6-10.mjs',
               'qa-diagnostics-c6-12.mjs',
@@ -75,10 +76,6 @@ jobs:
               'qa-traffic-pool-r1.mjs',
               'qa-traffic-preload-p1.mjs',
               'qa-traffic-r1.mjs',
-              '.github/workflows/qa-cleanup-c6-10.yml',
-              '.github/workflows/qa-cleanup-c6-12.yml',
-              '.github/workflows/qa-cleanup-c6-8.yml',
-              '.github/workflows/qa-cleanup-c6-9.yml',
           ]
           for path in contract_files:
               p=Path(path)
