@@ -31,7 +31,7 @@ jobs:
       - name: Install
         run: npm ci
       - name: Prepare atomic R4 source-tree move
-        run: node scripts/r4-migrate-once.mjs
+        run: node scripts/r4-migrate-final.mjs
       - name: R4 post-move audit
         run: node qa-source-tree-r4-vehicles-audit.mjs
       - name: Runtime import/source-tree audit
