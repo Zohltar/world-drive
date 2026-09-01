@@ -28,7 +28,7 @@ jobs:
           set -euo pipefail
           python - <<'PY'
           from pathlib import Path
-          import json, re, subprocess
+          import json, posixpath, re, subprocess
 
           root=Path('.')
           qa_dir=root/'qa'
@@ -45,27 +45,54 @@ jobs:
           if not moved:
             raise SystemExit('no root QA files found')
 
-          replacements=[
-            ("from './src/","from '../src/"),("from \"./src/","from \"../src/"),
-            ("import './src/","import '../src/"),("import \"./src/","import \"../src/"),
-            ("import('./src/","import('../src/"),("import(\"./src/","import(\"../src/"),
-            ("import(`./src/","import(`../src/"),
-            ("new URL('./src/","new URL('../src/"),("new URL(\"./src/","new URL(\"../src/"),
-            ("new URL(`./src/","new URL(`../src/"),
-          ]
-          for name in moved:
-            p=qa_dir/name
-            s=p.read_text()
-            out=s
-            for old,new in replacements:
-              out=out.replace(old,new)
-            if out!=s:p.write_text(out)
+          mapping={name:f'qa/{name}' for name in moved}
+          def norm(p): return posixpath.normpath(p.replace('\\','/'))
+          def relspec(frm,to,had_trailing_slash=False):
+            r=posixpath.relpath(to,posixpath.dirname(frm))
+            if r=='.': r='./'
+            elif not r.startswith('.'): r='./'+r
+            if had_trailing_slash and not r.endswith('/'):
+              r+='/'
+            return r
 
+          # Preserve module/new-URL targets exactly while each QA moves root -> qa/.
+          patterns=[
+            re.compile(r"(?P<prefix>\bfrom\s*)(?P<q>['\"])(?P<spec>\.\.?/[^'\"]*)(?P=q)"),
+            re.compile(r"(?P<prefix>\bimport\s*)(?P<q>['\"])(?P<spec>\.\.?/[^'\"]*)(?P=q)"),
+            re.compile(r"(?P<prefix>\bimport\s*\(\s*)(?P<q>['\"`])(?P<spec>\.\.?/[^'\"`]*) (?P=q)".replace('*) ', '* )').replace('* )','*)')),
+            re.compile(r"(?P<prefix>\bnew\s+URL\s*\(\s*)(?P<q>['\"`])(?P<spec>\.\.?/[^'\"`]*) (?P=q)".replace('*) ', '* )').replace('* )','*)')),
+          ]
+          # Replace the two generated regexes above with straightforward compiled forms.
+          patterns[2]=re.compile(r"(?P<prefix>\bimport\s*\(\s*)(?P<q>['\"`])(?P<spec>\.\.?/[^'\"`]*)(?P=q)")
+          patterns[3]=re.compile(r"(?P<prefix>\bnew\s+URL\s*\(\s*)(?P<q>['\"`])(?P<spec>\.\.?/[^'\"`]*)(?P=q)")
+
+          for name in moved:
+            new_from=f'qa/{name}'
+            old_from=name
+            p=Path(new_from)
+            text=p.read_text()
+            out=text
+            for rx in patterns:
+              def repl(m):
+                spec=m.group('spec')
+                old_target=norm(posixpath.join(posixpath.dirname(old_from),spec))
+                new_target=mapping.get(old_target,old_target)
+                new_spec=relspec(new_from,new_target,spec.endswith('/'))
+                return f"{m.group('prefix')}{m.group('q')}{new_spec}{m.group('q')}"
+              out=rx.sub(repl,out)
+            # Workflow/source-text assertions that execute a moved QA must use qa/<name>.
+            for target_name in moved:
+              out=out.replace(f'node {target_name}',f'node qa/{target_name}')
+            if out!=text:
+              p.write_text(out)
+
+          # Retarget references outside qa/. Workflows are modified for validation/reporting,
+          # then reset before the Actions-authored commit because GITHUB_TOKEN cannot push them.
           tracked=subprocess.check_output(['git','ls-files'],text=True).splitlines()
           for rel in tracked:
-            p=Path(rel)
             if rel.startswith('qa/'):
               continue
+            p=Path(rel)
             try:
               text=p.read_text()
             except Exception:
@@ -100,7 +127,7 @@ jobs:
             "const workflowDir=path.join(root,'.github','workflows');",
             "const stale=[];",
             "if(fs.existsSync(workflowDir))for(const name of fs.readdirSync(workflowDir)){",
-            "  if(!/\\.ya?ml$/i.test(name))continue;",
+            "  if(name==='qa-root-layout-migrate.yml'||!/\\.ya?ml$/i.test(name))continue;",
             "  const text=fs.readFileSync(path.join(workflowDir,name),'utf8');",
             "  for(const m of text.matchAll(/(^|[^\\w/])((?:qa[-_][A-Za-z0-9_.-]*|[A-Za-z0-9_.-]*_QA)\\.(?:m?js))/g))stale.push(`${name}: ${m[2]}`);",
             "}",
@@ -111,6 +138,7 @@ jobs:
           print(json.dumps(report,indent=2))
           PY
           node qa/QA_ROOT_LAYOUT_QA.mjs
+          test "$(find . -maxdepth 1 -type f \( -name 'qa-*.mjs' -o -name 'qa_*.mjs' -o -name '*_QA.mjs' \) | wc -l)" -eq 0
           find qa -maxdepth 1 -type f -name 'qa-*.mjs' -print0 | xargs -0 -n1 node --check
           node qa/DEV_INTEGRATION_AUDIT.mjs
           npm run build
