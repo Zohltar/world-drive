@@ -77,7 +77,7 @@ function scan(target){
   }
   if(!/\.(?:js|mjs|cjs|yml|yaml)$/i.test(target))return;
   const rel=target.replaceAll('\\','/');
-  if(rel==='qa-forest-c4.mjs')return;
+  if(rel==='qa/qa-forest-c4.mjs')return;
   const text=fs.readFileSync(target,'utf8');
   for(const oldName of oldNames){
     if(text.includes(oldName))offenders.push(`${rel}:${oldName}`);
