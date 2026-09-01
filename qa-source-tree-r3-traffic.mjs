@@ -75,6 +75,11 @@ assert(local.includes('globalThis.WorldDriveTraffic=diagnostics'),'direct-local 
 assert(local.includes('globalThis.WorldDriveTrafficPool'),'direct-local WorldDriveTrafficPool compatibility bootstrap missing');
 assert(local.includes('globalThis.WorldDriveTrafficSpawn'),'direct-local WorldDriveTrafficSpawn command missing');
 
+// This boundary is permanent: Dev Integration must keep invoking it after R3 closes.
+const devIntegration=read('.github/workflows/qa-dev-integration.yml');
+assert(devIntegration.includes('Source tree R3 traffic boundary QA'),'R3 boundary is not registered in Dev Integration');
+assert(devIntegration.includes('run: node qa-source-tree-r3-traffic.mjs'),'Dev Integration R3 command missing');
+
 console.log('SOURCE TREE R3 TRAFFIC BOUNDARY QA: PASS',{
   moved:MOVED,
   removedRoot:REMOVED_ROOT,
@@ -85,5 +90,6 @@ console.log('SOURCE TREE R3 TRAFFIC BOUNDARY QA: PASS',{
   maxAgents:2,
   diagnostics:['traffic.network','traffic.preload','traffic.runtime','traffic.pool'],
   compatibility:['WorldDriveTraffic','WorldDriveTrafficPool'],
-  functionalCommand:'WorldDriveTrafficSpawn'
+  functionalCommand:'WorldDriveTrafficSpawn',
+  devIntegrationPermanent:true
 });
