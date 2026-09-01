@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { createVehicleSystem, validateVehicleProfiles } from '../src/vehicle-system.js';
+import { createVehicleSystem, validateVehicleProfiles } from '../src/vehicles/vehicle-system.js';
 import {
   GRAVITY,
   clampDynamics,

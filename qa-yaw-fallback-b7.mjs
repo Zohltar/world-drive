@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import {blendDriftForce} from './src/physics/drift-force-coupling.js';
-import {createVehicleSystem} from './src/vehicle-system.js';
+import {createVehicleSystem} from './src/vehicles/vehicle-system.js';
 
 function referenceFallback({
   frictionYawAccel=0,yawRate=0,frontSlip=0,rearSlip=0,

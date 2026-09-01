@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 
-const src=fs.readFileSync(new URL('../src/vehicle-placement-controller.js',import.meta.url),'utf8');
+const src=fs.readFileSync(new URL('../src/vehicles/vehicle-placement-controller.js',import.meta.url),'utf8');
 
 const mustInclude=[
   'const frameX=placedFrame?.px;',

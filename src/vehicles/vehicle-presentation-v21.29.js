@@ -1,6 +1,6 @@
-import { aerodynamicLoad, fitWheelSupportPlane } from './vehicle-dynamics.js';
-import { ackermannSteeringAngles, ackermannAngleForSide } from './physics/steering-geometry.js';
-import { horizontalTravelDirection, crestLaunchDecision, airborneLandingDecision } from './physics/airborne-dynamics.js';
+import { aerodynamicLoad, fitWheelSupportPlane } from '../vehicle-dynamics.js';
+import { ackermannSteeringAngles, ackermannAngleForSide } from '../physics/steering-geometry.js';
+import { horizontalTravelDirection, crestLaunchDecision, airborneLandingDecision } from '../physics/airborne-dynamics.js';
 
 // World Drive V21.21.26 — vehicle presentation + aero-aware vertical dynamics.
 // Multi-wheel suspension support, airborne motion, body pose and projected contact shadow.

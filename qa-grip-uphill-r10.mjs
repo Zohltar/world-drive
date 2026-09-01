@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import {createVehicleSystem,validateVehicleProfiles} from './src/vehicle-system.js';
+import {createVehicleSystem,validateVehicleProfiles} from './src/vehicles/vehicle-system.js';
 import {createPerWheelShadowSolver} from './src/physics/per-wheel-shadow-solver.js';
 
 const validation=validateVehicleProfiles();

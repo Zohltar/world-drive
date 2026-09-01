@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import {createVehicleSystem} from '../src/vehicle-system.js';
+import {createVehicleSystem} from '../src/vehicles/vehicle-system.js';
 import {longitudinalTractionLimit, GRAVITY} from '../src/vehicle-dynamics.js';
 
 const IDS=['id4','wrx','civic','sonata','f1_2010','countach_80','i3_2017'];

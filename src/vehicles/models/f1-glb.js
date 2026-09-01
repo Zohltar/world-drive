@@ -292,7 +292,7 @@ export function createF1GlbSystem({
     try{
       const {GLTFLoader}=await import('three/addons/loaders/GLTFLoader.js');
       const loader=new GLTFLoader();
-      const url=new URL('./assets/f1_2010_ferrari.glb',import.meta.url).href;
+      const url=new URL('../../assets/f1_2010_ferrari.glb',import.meta.url).href;
       const gltf=await loader.loadAsync(url);
       root=gltf.scene||gltf.scenes?.[0];
       if(!root)throw new Error('F1 Ferrari GLB sans scène');

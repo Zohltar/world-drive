@@ -2,12 +2,12 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import {execFileSync} from 'node:child_process';
 
-for(const file of ['src/sonata-glb.js','src/vehicle-authored-registry.js']){
+for(const file of ['src/vehicles/models/sonata-glb.js','src/vehicles/vehicle-authored-registry.js']){
   execFileSync(process.execPath,['--check',file],{stdio:'pipe'});
 }
 
-const sonata=fs.readFileSync('src/sonata-glb.js','utf8');
-const registry=fs.readFileSync('src/vehicle-authored-registry.js','utf8');
+const sonata=fs.readFileSync('src/vehicles/models/sonata-glb.js','utf8');
+const registry=fs.readFileSync('src/vehicles/vehicle-authored-registry.js','utf8');
 
 assert(!registry.includes('restoreSonataBrakeGlowContract'),'authored registry must not patch Sonata rendering');
 assert(!registry.includes("vehicleId==='sonata'"),'authored registry must not special-case Sonata factory behavior');

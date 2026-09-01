@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import {fileURLToPath} from 'node:url';
 import {dirname,resolve} from 'node:path';
-import {createVehicleSystem,validateVehicleProfiles} from '../src/vehicle-system.js';
+import {createVehicleSystem,validateVehicleProfiles} from '../src/vehicles/vehicle-system.js';
 import {
   WORLD_DRIVE_VERSION,
   WORLD_DRIVE_CHANNEL,

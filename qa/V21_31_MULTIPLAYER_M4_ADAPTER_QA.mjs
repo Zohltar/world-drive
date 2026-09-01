@@ -1,14 +1,14 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import * as THREE from 'three';
-import {createVehicleSystem} from '../src/vehicle-system.js';
+import {createVehicleSystem} from '../src/vehicles/vehicle-system.js';
 import {getMultiplayerVehicleSpec} from '../src/multiplayer/multiplayer-vehicle-registry.js';
-import {VEHICLE_RENDER_ROOT_SCALE} from '../src/vehicle-render-contract.js';
+import {VEHICLE_RENDER_ROOT_SCALE} from '../src/vehicles/vehicle-render-contract.js';
 import {
   listAuthoredVehicleDescriptors,
   listAuthoredVehicleIds,
   loadAuthoredVehicleFactory
-} from '../src/vehicle-authored-registry.js';
+} from '../src/vehicles/vehicle-authored-registry.js';
 import {normalizeMultiplayerVehicleState} from '../src/multiplayer/multiplayer-vehicle-adapter.js';
 
 const liveVehicleSystem=createVehicleSystem({initialId:'wrx'});
@@ -88,18 +88,18 @@ for(const descriptor of descriptors){
   reports.push({id:descriptor.id,kind:descriptor.kind,capabilities:[...caps],wheelbase:spec.physics.wheelbase,supportContacts:spec.visual.supportContacts.length});
 }
 
-const entries=fs.readFileSync('src/vehicle-glb-entries.js','utf8');
+const entries=fs.readFileSync('src/vehicles/vehicle-glb-entries.js','utf8');
 const adapter=fs.readFileSync('src/multiplayer/multiplayer-vehicle-adapter.js','utf8');
 const visuals=fs.readFileSync('src/multiplayer/multiplayer-visuals-m3.js','utf8');
 const client=fs.readFileSync('src/multiplayer/multiplayer-client-m3.js','utf8');
-const localVisuals=fs.readFileSync('src/vehicle-visuals.js','utf8');
-const wrx=fs.readFileSync('src/wrx-glb.js','utf8');
-const sonata=fs.readFileSync('src/sonata-glb.js','utf8');
-const id4=fs.readFileSync('src/id4-glb.js','utf8');
+const localVisuals=fs.readFileSync('src/vehicles/vehicle-visuals.js','utf8');
+const wrx=fs.readFileSync('src/vehicles/models/wrx-glb.js','utf8');
+const sonata=fs.readFileSync('src/vehicles/models/sonata-glb.js','utf8');
+const id4=fs.readFileSync('src/vehicles/models/id4-glb.js','utf8');
 
 assert(entries.includes("from './vehicle-authored-registry.js'"),'local GLB entrypoint must use canonical authored registry');
 for(const legacy of ['./wrx-glb.js','./sonata-glb.js','./civic-glb.js','./id4-glb.js'])assert(!entries.includes(`import '${legacy}'`),`local entrypoint must not bypass registry: ${legacy}`);
-assert(adapter.includes("from '../vehicle-authored-registry.js'"),'remote adapter must resolve exact local authored controller registry');
+assert(adapter.includes("from '../vehicles/vehicle-authored-registry.js'"),'remote adapter must resolve exact local authored controller registry');
 assert(adapter.includes('loadAuthoredVehicleFactory(vehicleId)'),'remote adapter must instantiate the canonical local controller');
 assert(adapter.includes('createVehicleSystem({initialId:vehicleId})'),'every peer must own an isolated vehicleSystem');
 assert(adapter.includes("descriptor?.kind==='articulated-truck'"),'adapter must convert articulated truck through the same contract');
@@ -110,7 +110,7 @@ assert(adapter.includes('reverseRequested:optionalBoolean(system?.reverseRequest
 assert(adapter.includes('reverseMaterialCount:optionalCount(system?.reverseMaterialCount)'),'adapter diagnostics must expose authored reverse binding count when controller supports it');
 assert(adapter.includes('reverseGlowOpacity:optionalCount(system?.reverseGlowOpacity)'),'adapter diagnostics must expose authored shader output when available');
 assert(visuals.includes("from './multiplayer-vehicle-adapter.js'"),'multiplayer visuals must route through M4 adapter');
-assert(visuals.includes("from '../vehicle-render-contract.js'"),'remote visuals must consume shared local render transform contract');
+assert(visuals.includes("from '../vehicles/vehicle-render-contract.js'"),'remote visuals must consume shared local render transform contract');
 assert(visuals.includes('support.root.scale.set(VEHICLE_RENDER_ROOT_SCALE'),'remote authored root must use exact local car scale');
 assert(localVisuals.includes("from './vehicle-render-contract.js'"),'local visuals must consume shared render transform contract');
 assert(localVisuals.includes('car.scale.set(VEHICLE_RENDER_ROOT_SCALE'),'local car root must use shared render scale');

@@ -1,4 +1,4 @@
-import {readLocalAuthoredPresentationState} from './deferred-glb-system.js';
+import {readLocalAuthoredPresentationState} from './vehicles/deferred-glb-system.js';
 import {readTransmissionNetworkGear} from './transmission-network-state.js';
 import {ensureWorldDriveDiagnostics} from './diagnostics.js';
 import {

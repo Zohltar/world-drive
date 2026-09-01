@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import {createVehicleSystem,validateVehicleProfiles} from '../src/vehicle-system.js';
+import {createVehicleSystem,validateVehicleProfiles} from '../src/vehicles/vehicle-system.js';
 import {GRAVITY,steeringCommand,longitudinalTractionLimit} from '../src/vehicle-dynamics.js';
-import {combinationDynamics,driveAccelScaleAtSpeed,createTrailerState,stepTrailerArticulation} from '../src/truck-trailer.js';
+import {combinationDynamics,driveAccelScaleAtSpeed,createTrailerState,stepTrailerArticulation} from '../src/vehicles/truck/truck-trailer.js';
 
 const validation=validateVehicleProfiles();
 assert.equal(validation.ok,true,validation.errors.join('\n'));
@@ -68,7 +68,7 @@ assert.ok(at60.drive-at60.resist-GRAVITY*.06>-.08,'6% grade @ 60 km/h torque reg
   assert.ok(Math.abs(state.articulation)*180/Math.PI>15,'reverse articulation must still grow naturally');
 }
 
-const truckSrc=fs.readFileSync(new URL('../src/truck-trailer.js',import.meta.url),'utf8');
+const truckSrc=fs.readFileSync(new URL('../src/vehicles/truck/truck-trailer.js',import.meta.url),'utf8');
 const main=fs.readFileSync(new URL('../src/main.js',import.meta.url),'utf8');
 assert.match(main,/version:'21\.23\.2-candidate'/);
 assert.match(truckSrc,/\[2\.46,\.36,7\.75\]/,'enlarged tractor frame missing');

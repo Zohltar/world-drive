@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import {createVehicleSystem} from '../src/vehicle-system.js';
+import {createVehicleSystem} from '../src/vehicles/vehicle-system.js';
 import {getMultiplayerVehicleSpec,listMultiplayerVehicleSpecs,listMultiplayerVehicleIds} from '../src/multiplayer/multiplayer-vehicle-registry.js';
-import {getAuthoredVehicleDescriptor} from '../src/vehicle-authored-registry.js';
+import {getAuthoredVehicleDescriptor} from '../src/vehicles/vehicle-authored-registry.js';
 
 const vehicleSystem=createVehicleSystem({initialId:'wrx'});
 const authoritativeIds=vehicleSystem.list().map(v=>v.id);

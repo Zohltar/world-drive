@@ -8,7 +8,7 @@ import {
 import {regulateAbsWheelOmega} from './src/physics/braking-tire-control.js';
 import {bodyRelativeLongitudinalSpeed} from './src/driving-runtime-base.js';
 import {createPerWheelShadowSolver} from './src/physics/per-wheel-shadow-solver.js';
-import {createVehicleSystem,validateVehicleProfiles} from './src/vehicle-system.js';
+import {createVehicleSystem,validateVehicleProfiles} from './src/vehicles/vehicle-system.js';
 
 const DEG=Math.PI/180;
 const BRAKE=8.8;

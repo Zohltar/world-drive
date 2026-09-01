@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import {createVehicleSystem} from './src/vehicle-system.js';
+import {createVehicleSystem} from './src/vehicles/vehicle-system.js';
 import {lateralDynamicsEnvelope} from './src/vehicle-dynamics.js';
 import {
   offroadTireFriction,

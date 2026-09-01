@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import {createVehicleSystem} from './src/vehicle-system.js';
+import {createVehicleSystem} from './src/vehicles/vehicle-system.js';
 import {longitudinalTractionLimit,estimateWheelGripUsage} from './src/vehicle-dynamics.js';
 import {
   createWheelspinState,

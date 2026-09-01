@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { createVehicleSystem } from '../src/vehicle-system.js';
+import { createVehicleSystem } from '../src/vehicles/vehicle-system.js';
 import { estimateWheelGripUsage } from '../src/vehicle-dynamics.js';
 
 const contacts=[

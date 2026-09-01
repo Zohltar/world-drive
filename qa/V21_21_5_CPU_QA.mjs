@@ -11,7 +11,7 @@ import {
 const __dirname=path.dirname(fileURLToPath(import.meta.url));
 const root=path.resolve(__dirname,'..');
 const main=fs.readFileSync(path.join(root,'src/main.js'),'utf8');
-const presentation=fs.readFileSync(path.join(root,'src/vehicle-presentation.js'),'utf8');
+const presentation=fs.readFileSync(path.join(root,'src/vehicles/vehicle-presentation.js'),'utf8');
 
 function assert(ok,msg){if(!ok)throw new Error(msg);}
 function clamp(v,a,b){return Math.max(a,Math.min(b,v));}

@@ -9,7 +9,7 @@ import {
   fitWheelSupportPlane,
   yawResponseRate
 } from '../src/vehicle-dynamics.js';
-import {createVehicleSystem,validateVehicleProfiles} from '../src/vehicle-system.js';
+import {createVehicleSystem,validateVehicleProfiles} from '../src/vehicles/vehicle-system.js';
 
 const finite=(v)=>Number.isFinite(v);
 const assert=(ok,msg)=>{if(!ok)throw new Error(msg)};

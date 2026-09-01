@@ -1,4 +1,4 @@
-import {createVehicleSystem} from '../src/vehicle-system.js';
+import {createVehicleSystem} from '../src/vehicles/vehicle-system.js';
 import {steeringCommand,lateralDynamicsEnvelope} from '../src/vehicle-dynamics.js';
 
 const fail=(msg)=>{throw new Error(msg)};

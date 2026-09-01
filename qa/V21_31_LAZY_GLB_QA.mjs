@@ -2,13 +2,13 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 
 const passenger=[
-  ['civic','src/civic-glb.js','src/assets/2006_honda_civic_si.glb'],
-  ['countach','src/countach-glb.js','src/assets/countach_80.glb'],
-  ['f1','src/f1-glb.js','src/assets/f1_2010_ferrari.glb'],
-  ['i3','src/i3-glb.js','src/assets/2017_bmw_i3.glb'],
-  ['id4','src/id4-glb.js','src/assets/id4_2021_detailed.glb'],
-  ['sonata','src/sonata-glb.js','src/assets/2006_hyundai_sonata.glb'],
-  ['wrx','src/wrx-glb.js','src/assets/subaru_wrx_vb.glb']
+  ['civic','src/vehicles/models/civic-glb.js','src/assets/2006_honda_civic_si.glb'],
+  ['countach','src/vehicles/models/countach-glb.js','src/assets/countach_80.glb'],
+  ['f1','src/vehicles/models/f1-glb.js','src/assets/f1_2010_ferrari.glb'],
+  ['i3','src/vehicles/models/i3-glb.js','src/assets/2017_bmw_i3.glb'],
+  ['id4','src/vehicles/models/id4-glb.js','src/assets/id4_2021_detailed.glb'],
+  ['sonata','src/vehicles/models/sonata-glb.js','src/assets/2006_hyundai_sonata.glb'],
+  ['wrx','src/vehicles/models/wrx-glb.js','src/assets/subaru_wrx_vb.glb']
 ];
 
 for(const [id,path] of passenger){
@@ -19,12 +19,12 @@ for(const [id,path] of passenger){
   assert(!/\n\s*load\(\);\s*\n\s*return\s*\{/.test(text),`${id}: eager startup load still present`);
 }
 
-const truck=fs.readFileSync('src/truck-trailer.js','utf8');
+const truck=fs.readFileSync('src/vehicles/truck/truck-trailer.js','utf8');
 assert(truck.includes('let truckAssetLoadStarted=false;'),'truck: missing lazy-load guard');
 assert(truck.includes('function loadTruckAsset(){'),'truck: asset IIFE must be wrapped');
 assert(truck.includes('if(should&&!truckAssetReady&&!truckAssetLoadStarted)loadTruckAsset();'),'truck: first activation must start asset load');
 const truckFunction=truck.indexOf('function loadTruckAsset(){');
-const truckAsset=truck.indexOf("const modelUrl=new URL('./assets/saia_ltl_freight_truck_half_trailer.glb'");
+const truckAsset=truck.indexOf("const modelUrl=new URL('../../assets/saia_ltl_freight_truck_half_trailer.glb'");
 assert(truckFunction>=0&&truckAsset>truckFunction,'truck: Saia request must live inside lazy loader');
 
 const assets=[...passenger.map(([id,,asset])=>[id,asset]),['semi_6x4','src/assets/saia_ltl_freight_truck_half_trailer.glb']];

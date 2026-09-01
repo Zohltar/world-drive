@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import {createVehicleSystem,validateVehicleProfiles} from '../src/vehicle-system.js';
+import {createVehicleSystem,validateVehicleProfiles} from '../src/vehicles/vehicle-system.js';
 
 const vs=createVehicleSystem();
 const fleet=vs.list();
@@ -17,7 +17,7 @@ const fd=fs.openSync(asset,'r');
 const header=Buffer.alloc(4);fs.readSync(fd,header,0,4,0);fs.closeSync(fd);
 assert.equal(header.toString('ascii'),'glTF');
 
-const source=fs.readFileSync(new URL('../src/truck-trailer.js',import.meta.url),'utf8');
+const source=fs.readFileSync(new URL('../src/vehicles/truck/truck-trailer.js',import.meta.url),'utf8');
 assert.match(source,/saia_ltl_freight_truck_half_trailer\.glb/);
 assert.match(source,/assetTruckBody/);
 assert.match(source,/assetTrailerBody/);

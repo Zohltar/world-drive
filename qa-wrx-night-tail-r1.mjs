@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 
-const source=fs.readFileSync(new URL('./src/wrx-glb.js',import.meta.url),'utf8');
+const source=fs.readFileSync(new URL('./src/vehicles/models/wrx-glb.js',import.meta.url),'utf8');
 
 assert.ok(
   source.includes("const runningIntensity=night>.06 ? (.90+night*4.60) : .02;"),

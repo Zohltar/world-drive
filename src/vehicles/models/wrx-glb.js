@@ -1,4 +1,4 @@
-import { ackermannSteeringAngles, ackermannAngleForSide } from './physics/steering-geometry.js';
+import { ackermannSteeringAngles, ackermannAngleForSide } from '../../physics/steering-geometry.js';
 
 // World Drive V21.24.40 — WRX stronger visible rear night-running lights on outer red taillamps.
 // Night: only the outer left/right rear red lamps glow, now more visibly.
@@ -512,7 +512,7 @@ export function createWrxGlbSystem({
     try{
       const {GLTFLoader}=await import('three/addons/loaders/GLTFLoader.js');
       const loader=new GLTFLoader();
-      const url=new URL('./assets/subaru_wrx_vb.glb',import.meta.url).href;
+      const url=new URL('../../assets/subaru_wrx_vb.glb',import.meta.url).href;
       const gltf=await loader.loadAsync(url);
       root=gltf.scene||gltf.scenes?.[0];
       if(!root)throw new Error('WRX GLB sans scène');

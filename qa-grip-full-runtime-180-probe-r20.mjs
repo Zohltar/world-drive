@@ -1,5 +1,5 @@
 import {createDrivingRuntime} from './src/driving-runtime-base.js';
-import {createVehicleSystem} from './src/vehicle-system.js';
+import {createVehicleSystem} from './src/vehicles/vehicle-system.js';
 import {
   clampDynamics,
   computeGradeAcceleration,

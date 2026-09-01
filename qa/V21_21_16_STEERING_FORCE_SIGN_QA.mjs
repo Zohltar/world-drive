@@ -1,4 +1,4 @@
-import {createVehicleSystem} from '../src/vehicle-system.js';
+import {createVehicleSystem} from '../src/vehicles/vehicle-system.js';
 import {steeringCommand,lateralDynamicsEnvelope,estimateWheelGripUsage,yawResponseRate,clampDynamics,longitudinalTractionLimit} from '../src/vehicle-dynamics.js';
 const DEG=180/Math.PI;
 const V=createVehicleSystem({initialId:'wrx'}).physics;

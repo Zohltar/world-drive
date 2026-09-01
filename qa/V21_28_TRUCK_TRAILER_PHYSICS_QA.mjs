@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
-import {createVehicleSystem} from '../src/vehicle-system.js';
+import {createVehicleSystem} from '../src/vehicles/vehicle-system.js';
 import {GRAVITY,dynamicAxleLoads,steeringCommand,lateralDynamicsEnvelope,estimateWheelGripUsage} from '../src/vehicle-dynamics.js';
-import {combinationDynamics,createTrailerState,stepTrailerArticulation} from '../src/truck-trailer.js';
+import {combinationDynamics,createTrailerState,stepTrailerArticulation} from '../src/vehicles/truck/truck-trailer.js';
 
 const system=createVehicleSystem({initialId:'wrx'});
 assert.equal(system.select('semi_6x4'),true,'truck profile must exist');

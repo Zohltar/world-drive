@@ -9,7 +9,7 @@ function same(actual,expected,message){
 
 const rootBefore=ensureWorldDriveDiagnostics();
 const presentationBefore=rootBefore.presentation;
-const mod=await import(`./src/deferred-glb-system.js?c6_2=${Date.now()}`);
+const mod=await import(`./src/vehicles/deferred-glb-system.js?c6_2=${Date.now()}`);
 const rootAfter=ensureWorldDriveDiagnostics();
 
 expect(rootAfter===rootBefore,'C6.2 must preserve stable diagnostics-root identity');
@@ -61,7 +61,7 @@ same(rootAfter.presentation.localAuthored(),{
 },'deferred deactivation clear changed');
 expect(implementationUpdates===0,'async fallback window behavior unexpectedly changed');
 
-const source=fs.readFileSync(new URL('./src/deferred-glb-system.js',import.meta.url),'utf8');
+const source=fs.readFileSync(new URL('./src/vehicles/deferred-glb-system.js',import.meta.url),'utf8');
 expect(source.includes("import {ensureWorldDriveDiagnostics} from './diagnostics.js';"),
   'deferred GLB system must consume canonical diagnostics root');
 expect(source.includes('presentationDiagnostics.localAuthored=readLocalAuthoredPresentationState;'),

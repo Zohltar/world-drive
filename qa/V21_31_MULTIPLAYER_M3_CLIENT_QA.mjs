@@ -11,12 +11,12 @@ import {
   createDeferredGlbSystem,
   readLocalAuthoredPresentationState,
   resetLocalAuthoredPresentationState
-} from '../src/deferred-glb-system.js';
+} from '../src/vehicles/deferred-glb-system.js';
 
 for(const file of [
   'src/multiplayer.js','src/multiplayer/multiplayer-client-m3.js','src/multiplayer-visuals.js','src/multiplayer/multiplayer-visuals-m3.js',
-  'src/multiplayer/multiplayer-vehicle-adapter.js','src/deferred-glb-system.js','src/transmission-network-state.js',
-  'src/vehicle-authored-registry.js','src/vehicle-glb-entries.js','src/multiplayer/multiplayer-vehicle-registry.js','src/multiplayer/multiplayer-support-math.js'
+  'src/multiplayer/multiplayer-vehicle-adapter.js','src/vehicles/deferred-glb-system.js','src/transmission-network-state.js',
+  'src/vehicles/vehicle-authored-registry.js','src/vehicles/vehicle-glb-entries.js','src/multiplayer/multiplayer-vehicle-registry.js','src/multiplayer/multiplayer-support-math.js'
 ])execFileSync(process.execPath,['--check',file],{stdio:'pipe'});
 
 const entry=fs.readFileSync('src/multiplayer.js','utf8');
@@ -24,10 +24,10 @@ const client=fs.readFileSync('src/multiplayer/multiplayer-client-m3.js','utf8');
 const visualEntry=fs.readFileSync('src/multiplayer-visuals.js','utf8');
 const visuals=fs.readFileSync('src/multiplayer/multiplayer-visuals-m3.js','utf8');
 const adapter=fs.readFileSync('src/multiplayer/multiplayer-vehicle-adapter.js','utf8');
-const deferred=fs.readFileSync('src/deferred-glb-system.js','utf8');
+const deferred=fs.readFileSync('src/vehicles/deferred-glb-system.js','utf8');
 const transmissionNetwork=fs.readFileSync('src/transmission-network-state.js','utf8');
-const authoredRegistry=fs.readFileSync('src/vehicle-authored-registry.js','utf8');
-const localEntries=fs.readFileSync('src/vehicle-glb-entries.js','utf8');
+const authoredRegistry=fs.readFileSync('src/vehicles/vehicle-authored-registry.js','utf8');
+const localEntries=fs.readFileSync('src/vehicles/vehicle-glb-entries.js','utf8');
 const main=fs.readFileSync('src/main.js','utf8');
 
 assert(entry.includes("import('./multiplayer/multiplayer-client-m3.js')"),'public multiplayer client must lazy-load maintained client');

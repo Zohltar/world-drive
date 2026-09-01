@@ -1,5 +1,5 @@
-import {createVehicleSystem} from '../vehicle-system.js';
-import {getAuthoredVehicleDescriptor,loadAuthoredVehicleFactory} from '../vehicle-authored-registry.js';
+import {createVehicleSystem} from '../vehicles/vehicle-system.js';
+import {getAuthoredVehicleDescriptor,loadAuthoredVehicleFactory} from '../vehicles/vehicle-authored-registry.js';
 
 // Multiplayer M4.6 adapter.
 //

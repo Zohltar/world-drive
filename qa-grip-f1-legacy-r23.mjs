@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import {createVehicleSystem} from './src/vehicle-system.js';
+import {createVehicleSystem} from './src/vehicles/vehicle-system.js';
 import {steeringCommand,estimateWheelGripUsage,GRAVITY} from './src/vehicle-dynamics.js';
 
 const sys=createVehicleSystem({initialId:'f1_2010'});

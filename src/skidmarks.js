@@ -2,7 +2,7 @@
 // Local rubber is driven by independent per-wheel adhesion loss; multiplayer
 // keeps the compact front/rear aggregate state. V21.29 adds low-speed rubber
 // for genuine longitudinal wheelspin so clutch dumps can leave driven-wheel marks.
-import {VEHICLE_RENDER_ROOT_SCALE} from './vehicle-render-contract.js';
+import {VEHICLE_RENDER_ROOT_SCALE} from './vehicles/vehicle-render-contract.js';
 
 const AUTHORED_SKID_MODEL_SCALE=Object.freeze({
   id4:1,

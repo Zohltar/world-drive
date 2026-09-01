@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 
-const source=fs.readFileSync(new URL('./src/sonata-glb.js',import.meta.url),'utf8');
+const source=fs.readFileSync(new URL('./src/vehicles/models/sonata-glb.js',import.meta.url),'utf8');
 
 assert.ok(source.includes("mat.envMapIntensity=Math.max(1.25,Number(mat.envMapIntensity)||1.25)"),'pilotable Sonata exterior environment response must match civilian tuning');
 assert.ok(source.includes('preserve authored body color'),'pilotable Sonata exterior must explicitly preserve authored body color');

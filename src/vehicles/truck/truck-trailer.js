@@ -783,7 +783,7 @@ export function createTruckTrailerSystem({
     try{
       const {GLTFLoader}=await import('three/addons/loaders/GLTFLoader.js');
       const loader=new GLTFLoader();
-      const modelUrl=new URL('./assets/saia_ltl_freight_truck_half_trailer.glb',import.meta.url).href;
+      const modelUrl=new URL('../../assets/saia_ltl_freight_truck_half_trailer.glb',import.meta.url).href;
       const gltf=await loader.loadAsync(modelUrl);
       const sourceRoot=gltf.scene||gltf.scenes?.[0];
       if(!sourceRoot)throw new Error('GLB Saia sans scène');

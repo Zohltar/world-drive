@@ -1,4 +1,4 @@
-import {ensureWorldDriveDiagnostics} from './diagnostics.js';
+import {ensureWorldDriveDiagnostics} from '../diagnostics.js';
 
 // Lightweight async facade used by authored passenger vehicle systems.
 // The heavy per-vehicle module is imported only when that vehicle is selected.

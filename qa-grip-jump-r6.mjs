@@ -66,7 +66,7 @@ assert.equal(airborneLandingDecision({nextY:10.1,supportY:10,verticalVelocity:-2
 // while presentation must still receive velocityHeading for crest/air travel.
 const runtime=fs.readFileSync(new URL('./src/driving-runtime-base.js',import.meta.url),'utf8');
 const yawAuthority=fs.readFileSync(new URL('./src/physics/yaw-authority.js',import.meta.url),'utf8');
-const presentation=fs.readFileSync(new URL('./src/vehicle-presentation-v21.29.js',import.meta.url),'utf8');
+const presentation=fs.readFileSync(new URL('./src/vehicles/vehicle-presentation-v21.29.js',import.meta.url),'utf8');
 const main=fs.readFileSync(new URL('./src/main.js',import.meta.url),'utf8');
 assert.match(runtime,/advanceYawAuthority\(\{/,'runtime no longer delegates local yaw authority to B5 owner');
 assert.match(

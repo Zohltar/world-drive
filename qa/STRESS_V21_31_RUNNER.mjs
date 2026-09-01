@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import {readdirSync} from 'node:fs';
 import {spawnSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
-import {createVehicleSystem,validateVehicleProfiles} from '../src/vehicle-system.js';
+import {createVehicleSystem,validateVehicleProfiles} from '../src/vehicles/vehicle-system.js';
 import {
   MANIC2,MANIC5,R169_START,R169_END,R132_START,R132_END,
   YUNGAS_START,YUNGAS_END,YUNGAS_WAYPOINTS

@@ -2,9 +2,9 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 
 const main=fs.readFileSync('src/main.js','utf8');
-const entries=fs.readFileSync('src/vehicle-glb-entries.js','utf8');
-const registry=fs.readFileSync('src/vehicle-authored-registry.js','utf8');
-const facade=fs.readFileSync('src/deferred-glb-system.js','utf8');
+const entries=fs.readFileSync('src/vehicles/vehicle-glb-entries.js','utf8');
+const registry=fs.readFileSync('src/vehicles/vehicle-authored-registry.js','utf8');
+const facade=fs.readFileSync('src/vehicles/deferred-glb-system.js','utf8');
 
 const vehicles=[
   ['countach','countach-glb.js'],

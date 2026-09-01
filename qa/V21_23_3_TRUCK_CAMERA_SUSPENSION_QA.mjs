@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import {createVehicleSystem,validateVehicleProfiles} from '../src/vehicle-system.js';
+import {createVehicleSystem,validateVehicleProfiles} from '../src/vehicles/vehicle-system.js';
 import {steeringCommand,GRAVITY,longitudinalTractionLimit} from '../src/vehicle-dynamics.js';
-import {combinationDynamics,driveAccelScaleAtSpeed} from '../src/truck-trailer.js';
+import {combinationDynamics,driveAccelScaleAtSpeed} from '../src/vehicles/truck/truck-trailer.js';
 
 const validation=validateVehicleProfiles();
 assert.equal(validation.ok,true,validation.errors.join('\n'));
@@ -54,7 +54,7 @@ const drive=longitudinalTractionLimit({vehicle:v,requestedAccel:v.accel*scale,su
 const resist=v.rolling+combo.rollingResistanceAccel+(v.aero+combo.aeroDragCoeff)*speed*speed;
 assert.ok(drive-resist-GRAVITY*.10>0,'10% grade @ 40 km/h torque regression');
 
-const truckSrc=fs.readFileSync(new URL('../src/truck-trailer.js',import.meta.url),'utf8');
+const truckSrc=fs.readFileSync(new URL('../src/vehicles/truck/truck-trailer.js',import.meta.url),'utf8');
 const main=fs.readFileSync(new URL('../src/main.js',import.meta.url),'utf8');
 assert.match(main,/version:'21\.23\.3-candidate'/);
 assert.match(truckSrc,/const desiredDistance=38\.0/);

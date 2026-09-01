@@ -1,4 +1,4 @@
-import {createVehicleSystem} from '../src/vehicle-system.js';
+import {createVehicleSystem} from '../src/vehicles/vehicle-system.js';
 import {steeringCommand,lateralDynamicsEnvelope,estimateWheelGripUsage,yawResponseRate,clampDynamics,longitudinalTractionLimit} from '../src/vehicle-dynamics.js';
 const DEG=180/Math.PI,V=createVehicleSystem({initialId:'wrx'}).physics,fail=m=>{throw new Error(m)},angleDelta=(t,c)=>Math.atan2(Math.sin(t-c),Math.cos(t-c));
 const contacts=[{front:false,side:'left',axleIndex:1,contact:true,contactFactor:1},{front:true,side:'left',axleIndex:0,contact:true,contactFactor:1},{front:false,side:'right',axleIndex:1,contact:true,contactFactor:1},{front:true,side:'right',axleIndex:0,contact:true,contactFactor:1}];

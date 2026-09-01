@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import {normalizeMultiplayerVehicleState} from '../src/multiplayer/multiplayer-vehicle-adapter.js';
-import {listAuthoredVehicleDescriptors} from '../src/vehicle-authored-registry.js';
+import {listAuthoredVehicleDescriptors} from '../src/vehicles/vehicle-authored-registry.js';
 
 const states={
   day:{gear:1,braking:false,reversing:false,nightLevel:0,signalLeft:false,signalRight:false,signalBlink:false},

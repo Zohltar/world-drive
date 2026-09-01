@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import {createVehicleSystem,validateVehicleProfiles} from '../src/vehicle-system.js';
+import {createVehicleSystem,validateVehicleProfiles} from '../src/vehicles/vehicle-system.js';
 import {
   GRAVITY,
   vehicleLayout,
@@ -12,7 +12,7 @@ import {
   combinationDynamics,
   createTrailerState,
   stepTrailerArticulation
-} from '../src/truck-trailer.js';
+} from '../src/vehicles/truck/truck-trailer.js';
 
 const approx=(a,b,t=1e-8)=>Math.abs(a-b)<=t;
 const deg=r=>r*180/Math.PI;

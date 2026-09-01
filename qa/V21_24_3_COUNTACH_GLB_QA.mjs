@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 const main=fs.readFileSync(new URL('../src/main.js',import.meta.url),'utf8');
-const mod=fs.readFileSync(new URL('../src/countach-glb.js',import.meta.url),'utf8');
+const mod=fs.readFileSync(new URL('../src/vehicles/models/countach-glb.js',import.meta.url),'utf8');
 const attrib=fs.readFileSync(new URL('../src/assets/ATTRIBUTION_COUNTACH.md',import.meta.url),'utf8');
 const asset=new URL('../src/assets/countach_80.glb',import.meta.url);
 const checks=[

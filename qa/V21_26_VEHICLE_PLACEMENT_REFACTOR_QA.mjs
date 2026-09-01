@@ -6,9 +6,9 @@ import { pathToFileURL, fileURLToPath } from 'node:url';
 
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
 const mainPath=path.join(root,'src','main.js');
-const modulePath=path.join(root,'src','vehicle-placement-controller.js');
+const modulePath=path.join(root,'src','vehicles','vehicle-placement-controller.js');
 
-assert.ok(fs.existsSync(modulePath),'src/vehicle-placement-controller.js missing — run tools/refactor-main-vehicle-placement-v21-26.mjs first');
+assert.ok(fs.existsSync(modulePath),'src/vehicles/vehicle-placement-controller.js missing — run tools/refactor-main-vehicle-placement-v21-26.mjs first');
 
 const main=fs.readFileSync(mainPath,'utf8').replace(/\r\n/g,'\n');
 const placement=fs.readFileSync(modulePath,'utf8').replace(/\r\n/g,'\n');
@@ -21,7 +21,7 @@ syntaxCheck(mainPath);
 syntaxCheck(modulePath);
 
 for(const pattern of [
-  /import \{ createVehiclePlacementController \} from '\.\/vehicle-placement-controller\.js';/,
+  /import \{ createVehiclePlacementController \} from '\.\/vehicles\/vehicle-placement-controller\.js';/,
   /const vehiclePlacementState=\{\};/,
   /vehiclePlacementController=createVehiclePlacementController\(\{/,
   /function placeAt\(\.\.\.args\)\{return vehiclePlacementController\.placeAt\(\.\.\.args\);\}/,

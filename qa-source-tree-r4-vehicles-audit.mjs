@@ -8,26 +8,26 @@ const read=p=>fs.readFileSync(path.join(ROOT,p),'utf8');
 const exists=p=>fs.existsSync(path.join(ROOT,p));
 
 const COMMON=[
-  'src/vehicle-system.js',
-  'src/vehicle-visuals.js',
-  'src/vehicle-presentation.js',
-  'src/vehicle-presentation-v21.29.js',
-  'src/vehicle-authored-registry.js',
-  'src/vehicle-render-contract.js',
-  'src/vehicle-glb-entries.js',
-  'src/deferred-glb-system.js',
-  'src/vehicle-placement-controller.js'
+  'src/vehicles/vehicle-system.js',
+  'src/vehicles/vehicle-visuals.js',
+  'src/vehicles/vehicle-presentation.js',
+  'src/vehicles/vehicle-presentation-v21.29.js',
+  'src/vehicles/vehicle-authored-registry.js',
+  'src/vehicles/vehicle-render-contract.js',
+  'src/vehicles/vehicle-glb-entries.js',
+  'src/vehicles/deferred-glb-system.js',
+  'src/vehicles/vehicle-placement-controller.js'
 ];
 const MODELS=[
-  'src/civic-glb.js',
-  'src/countach-glb.js',
-  'src/f1-glb.js',
-  'src/i3-glb.js',
-  'src/id4-glb.js',
-  'src/sonata-glb.js',
-  'src/wrx-glb.js'
+  'src/vehicles/models/civic-glb.js',
+  'src/vehicles/models/countach-glb.js',
+  'src/vehicles/models/f1-glb.js',
+  'src/vehicles/models/i3-glb.js',
+  'src/vehicles/models/id4-glb.js',
+  'src/vehicles/models/sonata-glb.js',
+  'src/vehicles/models/wrx-glb.js'
 ];
-const TRUCK=['src/truck-trailer.js'];
+const TRUCK=['src/vehicles/truck/truck-trailer.js'];
 const CANDIDATES=[...COMMON,...MODELS,...TRUCK];
 for(const file of CANDIDATES)assert(exists(file),`R4 candidate missing: ${file}`);
 assert.equal(CANDIDATES.length,17,'R4 candidate inventory drift');
@@ -100,7 +100,7 @@ for(const file of CANDIDATES){
   }
 }
 
-const registry=read('src/vehicle-authored-registry.js');
+const registry=read('src/vehicles/vehicle-authored-registry.js');
 const descriptorPairs=[];
 const pairRe=/modulePath:'([^']+)'[^\n]*\n?[^]*?loadModule:\(\)=>import\('([^']+)'\)/g;
 // Match one descriptor at a time without relying on formatting outside the descriptor body.
@@ -115,23 +115,23 @@ while((descriptorMatch=descriptorRe.exec(registry))){
 assert.equal(descriptorPairs.length,8,`authored descriptor count drift: ${JSON.stringify(descriptorPairs)}`);
 for(const pair of descriptorPairs){
   assert(pair.modulePath&&pair.dynamicImport,`incomplete authored descriptor: ${JSON.stringify(pair)}`);
-  const expectedDynamic='./'+path.posix.basename(pair.modulePath);
+  const expectedDynamic='./'+path.posix.relative('src/vehicles',pair.modulePath);
   assert.equal(pair.dynamicImport,expectedDynamic,`modulePath/dynamic import mismatch: ${JSON.stringify(pair)}`);
 }
-assert.equal(dynamic.filter(row=>row.file==='src/vehicle-authored-registry.js').length,8,'authored registry dynamic import count drift');
-assert.equal(modulePaths.filter(row=>row.file==='src/vehicle-authored-registry.js').length,8,'authored registry modulePath count drift');
+assert.equal(dynamic.filter(row=>row.file==='src/vehicles/vehicle-authored-registry.js').length,8,'authored registry dynamic import count drift');
+assert.equal(modulePaths.filter(row=>row.file==='src/vehicles/vehicle-authored-registry.js').length,8,'authored registry modulePath count drift');
 
-const glbEntries=read('src/vehicle-glb-entries.js');
+const glbEntries=read('src/vehicles/vehicle-glb-entries.js');
 assert(glbEntries.includes("from './deferred-glb-system.js'"),'GLB entries/deferred facade boundary drift');
 assert(glbEntries.includes("from './vehicle-authored-registry.js'"),'GLB entries/authored registry boundary drift');
-const deferred=read('src/deferred-glb-system.js');
-assert(deferred.includes("from './diagnostics.js'"),'deferred GLB diagnostics boundary drift');
+const deferred=read('src/vehicles/deferred-glb-system.js');
+assert(deferred.includes("from '../diagnostics.js'"),'deferred GLB diagnostics boundary drift');
 assert(deferred.includes('publishLocalAuthoredPresentationState'),'local authored presentation bridge missing');
-const presentation=read('src/vehicle-presentation.js');
+const presentation=read('src/vehicles/vehicle-presentation.js');
 assert(presentation.includes("from './vehicle-presentation-v21.29.js'"),'vehicle presentation historical layer boundary drift');
-assert(presentation.includes("from './vehicle-dynamics.js'"),'vehicle presentation/physics calibration boundary drift');
-const presentationLegacy=read('src/vehicle-presentation-v21.29.js');
-for(const spec of ['./vehicle-dynamics.js','./physics/steering-geometry.js','./physics/airborne-dynamics.js']){
+assert(presentation.includes("from '../vehicle-dynamics.js'"),'vehicle presentation/physics calibration boundary drift');
+const presentationLegacy=read('src/vehicles/vehicle-presentation-v21.29.js');
+for(const spec of ['../vehicle-dynamics.js','../physics/steering-geometry.js','../physics/airborne-dynamics.js']){
   assert(presentationLegacy.includes(`from '${spec}'`)||presentationLegacy.includes(`from \"${spec}\"`),`presentation physics boundary missing: ${spec}`);
 }
 
@@ -168,9 +168,9 @@ const report={
   assetRefs,
   qaCiPathContracts:pathContracts,
   placementController:{
-    importers:reverse['src/vehicle-placement-controller.js'],
-    imports:edges['src/vehicle-placement-controller.js'],
-    note:'classification decision required by R4 audit'
+    importers:reverse['src/vehicles/vehicle-placement-controller.js'],
+    imports:edges['src/vehicles/vehicle-placement-controller.js'],
+    note:'R4 scope locked: vehicle placement belongs under src/vehicles/'
   }
 };
 

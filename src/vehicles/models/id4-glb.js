@@ -188,7 +188,7 @@ export function createId4GlbSystem({
     if(loadStarted)return;
     loadStarted=true;
     try{
-      const {GLTFLoader}=await import('three/addons/loaders/GLTFLoader.js'),loader=new GLTFLoader(),url=new URL('./assets/id4_2021_detailed.glb',import.meta.url).href,gltf=await loader.loadAsync(url);root=gltf.scene||gltf.scenes?.[0];if(!root)throw new Error('ID.4 detailed GLB sans scène');
+      const {GLTFLoader}=await import('three/addons/loaders/GLTFLoader.js'),loader=new GLTFLoader(),url=new URL('../../assets/id4_2021_detailed.glb',import.meta.url).href,gltf=await loader.loadAsync(url);root=gltf.scene||gltf.scenes?.[0];if(!root)throw new Error('ID.4 detailed GLB sans scène');
       root.name='volkswagen_id4_2021_detailed_root';root.traverse(obj=>{if(obj?.isMesh||obj?.isSkinnedMesh){obj.castShadow=true;obj.receiveShadow=true;for(const mat of (Array.isArray(obj.material)?obj.material:[obj.material])){if(!mat)continue;mat.dithering=true;if(mat.transparent)mat.depthWrite=false;}}});
       normalizeModel(root);host.add(root);const byName={};root.traverse(obj=>{if(obj?.isMesh||obj?.isSkinnedMesh)byName[obj.name]=obj;});createRearLedOverlays(root);for(const name of ['13_headlight_glass_glass_0','16_headlight_white_plastic_white_P_0'])if(byName[name])registerMeshMaterials(byName[name],headlightMaterials,0xffffff);prepareWheelAnimation(root);setLampState({});ready=true;loadError=null;applyVisibility();
     }catch(error){loadError=error;ready=false;console.warn('Detailed ID.4 GLB unavailable; procedural ID.4 fallback kept.',error);applyVisibility();}
