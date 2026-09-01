@@ -10,7 +10,7 @@ on:
       - 'src/physics/vehicle-dynamics.js'
       - 'src/driving-runtime-base.js'
       - 'src/driving-runtime.js'
-      - 'qa-wheelspin-state-b6.mjs'
+      - 'qa/qa-wheelspin-state-b6.mjs'
       - 'qa/V21_29_CIVIC_CLUTCH_DUMP_SLIP_QA.mjs'
       - 'qa/V21_29_CIVIC_CLUTCH_WHEELSPIN_QA.mjs'
       - 'qa/V21_29_RUNTIME_WHEELSPIN_QA.mjs'
@@ -31,7 +31,7 @@ jobs:
           node-version: 22
       - run: npm ci
       - name: B6 ownership and order-independence QA
-        run: node qa-wheelspin-state-b6.mjs
+        run: node qa/qa-wheelspin-state-b6.mjs
       - name: Clutch/wheelspin regressions
         run: |
           node qa/V21_29_ALL_COMBUSTION_CLUTCH_QA.mjs
