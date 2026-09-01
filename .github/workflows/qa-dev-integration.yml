@@ -32,6 +32,8 @@ jobs:
         run: npm ci
       - name: Runtime import and debt audit
         run: node qa/DEV_INTEGRATION_AUDIT.mjs
+      - name: Source tree R2 multiplayer boundary QA
+        run: node qa-source-tree-r2-multiplayer.mjs
       - name: Cleanup A6 version/build branding QA
         run: node qa-version-branding-a6.mjs
       - name: Cleanup A7 repository hygiene QA
