@@ -68,8 +68,11 @@ for(const pattern of [
   /state\.wheelLateralUsage=Array\(wheelCount\)\.fill\(0\)/,
   /state\.wheelLongitudinalUsage=Array\(wheelCount\)\.fill\(0\)/,
   /resetVehicleDynamics\(\{resetGripSolver:false\}\)/,
-  /const placedFrame=roadProfileFrameAtCum\(p\.cum\)/,
-  /placedFrame\?\.y\?\?roadHeightAt\(state\.absX,state\.absZ\)/,
+  /const targetCum=requestedFrac<=1e-6[\s\S]*?\?stableDepartureCum\(\)[\s\S]*?:p\.cum;/,
+  /const placedFrame=roadProfileFrameAtCum\(targetCum\)/,
+  /const frameX=placedFrame\?\.px;/,
+  /const frameZ=placedFrame\?\.pz;/,
+  /const roadY=validPlacedFrame[\s\S]*?\?Number\(placedFrame\.y\)[\s\S]*?:roadHeightAt\(state\.absX,state\.absZ\)/,
   /resetVehicleDynamics\(\{resetGripSolver:true\}\)/,
   /truckTrailerSystem\.resetPose\(/
 ]){
@@ -116,7 +119,7 @@ const controller=createVehiclePlacementController({
   skidMarks:{resetSource:id=>calls.push(`skid:${id}`)},
   recenterIfNeeded:(x,z,force)=>calls.push(`recenter:${x}:${z}:${force}`),
   ensureRoadProfileNear:(x,z)=>calls.push(`profile:${x}:${z}`),
-  roadProfileFrameAtCum:cum=>({x:11,z:21,angle:.4,y:5,cum}),
+  roadProfileFrameAtCum:cum=>({px:11,pz:21,pitch:0,angle:.4,y:5,cum}),
   roadHeightAt:()=>999,
   ROAD_SURFACE_OFFSET:.10,
   TIRE_VISUAL_CLEARANCE:.02,
@@ -188,4 +191,4 @@ assert.equal(overpassRegression.status,0,`Overpass abort handling regressed:\n${
 
 console.log('V21.26 VEHICLE PLACEMENT REFACTOR QA: PASS');
 console.log(`main.js: ${mainLines} lines; vehicle-placement-controller.js: ${placement.split('\n').length} lines`);
-console.log('placeAt / reset-to-road / per-wheel state reset / lazy drawMap init / cumulative-profile placement ordering verified');
+console.log('placeAt / stable-start cumulative placement / reset-to-road / per-wheel state reset / lazy drawMap init / cumulative-profile ordering verified');
