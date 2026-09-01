@@ -3,13 +3,13 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { pathToFileURL, fileURLToPath } from 'node:url';
-import {publishTransmissionRuntimeState} from '../src/transmission-runtime-bridge.js';
+import {publishTransmissionRuntimeState} from '../src/physics/transmission-runtime-bridge.js';
 
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
 const mainPath=path.join(root,'src','main.js');
-const modulePath=path.join(root,'src','transmission-controller.js');
+const modulePath=path.join(root,'src','physics','transmission-controller.js');
 
-assert.ok(fs.existsSync(modulePath),'src/transmission-controller.js missing — run tools/refactor-main-transmission-v21-26.mjs first');
+assert.ok(fs.existsSync(modulePath),'src/physics/transmission-controller.js missing — run tools/refactor-main-transmission-v21-26.mjs first');
 
 const main=fs.readFileSync(mainPath,'utf8').replace(/\r\n/g,'\n');
 const transmission=fs.readFileSync(modulePath,'utf8').replace(/\r\n/g,'\n');
@@ -21,7 +21,7 @@ function syntaxCheck(file){
 syntaxCheck(mainPath);
 syntaxCheck(modulePath);
 
-assert.match(main,/import \{ createTransmissionController \} from '\.\/transmission-controller\.js';/,'main.js missing transmission controller import');
+assert.match(main,/import \{ createTransmissionController \} from '\.\/physics\/transmission-controller\.js';/,'main.js missing transmission controller import');
 assert.match(main,/let transmissionController=null;/,'main.js missing transmission controller facade');
 assert.match(main,/const transmissionStateBridge=\{\};/,'main.js missing live transmission-state bridge');
 assert.match(main,/transmissionController=createTransmissionController\(\{/,'main.js missing transmission controller initialization');
@@ -159,7 +159,6 @@ const mainLines=main.split('\n').length;
 assert.ok(mainLines<3800,`main.js is still unexpectedly large after transmission extraction: ${mainLines} lines`);
 
 // C2: historical environment meta-regression retired; transmission coverage is direct.
-
 
 console.log('V21.26 TRANSMISSION REFACTOR QA: PASS');
 console.log(`main.js: ${mainLines} lines; transmission-controller.js: ${transmission.split('\n').length} lines`);
