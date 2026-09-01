@@ -3,7 +3,7 @@ import path from 'node:path';
 import {spawnSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
 
-const root=path.dirname(fileURLToPath(import.meta.url));
+const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
 const localPath=path.join(root,'src','local-world-builder.js');
 const furnitureEntry=path.join(root,'src','road-furniture.js');
 const furnitureWrapper=path.join(root,'src','road-furniture-p937.js');
@@ -33,7 +33,7 @@ for(const marker of [
 
 expect(local.includes('preparedObjects+=tasks.length'),'P9.37 must account for seven staged road objects');
 expect(local.includes('prepared.p937RoadStage=await prepareRoadStage(prepared)'),'P9.37 road preparation must complete before commit');
-expect(entry.includes("from '../road-furniture-p937.js'"),'road-furniture entry must route through P9.37');
+expect(entry.includes("from './road-furniture-p937.js'"),'road-furniture entry must route through P9.37');
 expect(base.includes('P9.30 keeps sign appearance unchanged'),'P9.30 sign implementation must remain preserved');
 
 for(const marker of [
