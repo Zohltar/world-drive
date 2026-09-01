@@ -33,7 +33,7 @@ assert.doesNotMatch(main,/from '\.\/(?:vehicle-dynamics|physics\/vehicle-dynamic
 const forbidden=['src/vehicle-dynamics-base.js','src/vehicle-dynamics-v21.29.js'];
 const stale=[];
 function inspectFile(file){
-  if(file==='qa-vehicle-dynamics-c1.mjs')return;
+  if(file==='qa/qa-vehicle-dynamics-c1.mjs')return;
   const text=read(file);
   for(const needle of forbidden){
     if(text.includes(needle))stale.push(`${file}: ${needle}`);
