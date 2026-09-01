@@ -24,9 +24,9 @@ jobs:
       - name: Install
         run: npm ci
       - name: C5.4 geographic sign ownership and behavior QA
-        run: node qa-main-c5-geographic-signs.mjs
+        run: node qa/qa-main-c5-geographic-signs.mjs
       - name: Road-sign incremental runtime QA
-        run: node qa-road-signs-p930-runtime.mjs
+        run: node qa/qa-road-signs-p930-runtime.mjs
       - name: Minimap refactor QA
         run: node qa/V21_25_MINIMAP_REFACTOR_QA.mjs
       - name: Minimap sign readout QA
