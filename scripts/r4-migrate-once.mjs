@@ -136,6 +136,15 @@ for(const file of contractFiles){
   write(file,text);
 }
 
+// Lazy-GLB semantics stay identical, but the truck controller now sits two
+// directories below src/, so its source-level import.meta.url asset contract
+// must expect ../../assets/ rather than ./assets/.
+replaceRequired(
+  'qa/V21_31_LAZY_GLB_QA.mjs',
+  "truck.indexOf(\"const modelUrl=new URL('./assets/saia_ltl_freight_truck_half_trailer.glb'\")",
+  "truck.indexOf(\"const modelUrl=new URL('../../assets/saia_ltl_freight_truck_half_trailer.glb'\")"
+);
+
 // Post-move R4 audit now validates the target folders instead of the old root.
 const audit='qa-source-tree-r4-vehicles-audit.mjs';
 replaceRequired(audit,"const expectedDynamic='./'+path.posix.basename(pair.modulePath);","const expectedDynamic='./'+path.posix.relative('src/vehicles',pair.modulePath);");
