@@ -1,0 +1,52 @@
+name: Source Tree R3 Traffic Audit
+
+on:
+  push:
+    branches:
+      - audit/source-tree-r3-traffic
+    paths:
+      - 'src/**'
+      - 'qa/**'
+      - 'qa-*.mjs'
+      - '.github/workflows/qa-source-tree-r3-traffic-audit.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  qa:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install
+        run: npm ci
+      - name: R3 traffic source-tree audit
+        run: node qa-source-tree-r3-traffic.mjs
+      - name: Runtime import/source-tree audit
+        run: node qa/DEV_INTEGRATION_AUDIT.mjs
+      - name: Sparse civil traffic
+        run: node qa-traffic-r1.mjs
+      - name: Civil traffic pool
+        run: node qa-traffic-pool-r1.mjs
+      - name: Civil traffic preload
+        run: node qa-traffic-preload-p1.mjs
+      - name: Shared multiplayer traffic
+        run: node qa-traffic-mp1.mjs
+      - name: Live shared multiplayer traffic
+        run: node qa-traffic-mp1-live.mjs
+      - name: C6.9 traffic-network diagnostics
+        run: node qa-diagnostics-c6-9.mjs
+      - name: C6.10 traffic-preload diagnostics
+        run: node qa-diagnostics-c6-10.mjs
+      - name: C6.12 traffic runtime diagnostics
+        run: node qa-diagnostics-c6-12.mjs
+      - name: Production build
+        run: npm run build
