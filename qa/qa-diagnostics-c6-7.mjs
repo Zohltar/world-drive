@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import {publishTransmissionNetworkGear,resetTransmissionNetworkGear} from '../src/transmission-network-state.js';
 
 const source=fs.readFileSync('src/multiplayer.js','utf8');
-if(!source.includes("import {ensureWorldDriveDiagnostics} from '../diagnostics.js';"))throw new Error('multiplayer does not import canonical diagnostics');
+if(!source.includes("import {ensureWorldDriveDiagnostics} from './diagnostics.js';"))throw new Error('multiplayer does not import canonical diagnostics');
 if(!source.includes('const multiplayerDiagnostics=ensureWorldDriveDiagnostics().multiplayer;'))throw new Error('multiplayer diagnostics category is not canonical');
 if(!source.includes('multiplayerDiagnostics.localGear=()=>({'))throw new Error('canonical local-gear callable missing');
 if(/globalThis\.__WORLD_DRIVE_MULTIPLAYER_LOCAL_GEAR__\s*=/.test(source))throw new Error('legacy local-gear writer remains');
