@@ -131,7 +131,7 @@ for(const name of [
   assert.match(owned,new RegExp(`export function ${name}\\b`),`${name} missing from momentum owner`);
 }
 assert.doesNotMatch(dynBase,/export function limitMomentumHeadingDelta\b/,'momentum limiter still owned by vehicle dynamics');
-assert.match(dynBase,/export \{limitMomentumHeadingDelta\} from '\.\/physics\/momentum-direction\.js';/,'vehicle dynamics compatibility export missing');
+assert.match(dynBase,/export \{limitMomentumHeadingDelta\} from '\.\/momentum-direction\.js';/,'vehicle dynamics compatibility export missing');
 assert.doesNotMatch(main,/\blimitMomentumHeadingDelta\b/,'main still injects momentum-direction physics authority');
 assert.match(base,/velocityHeading=advanceMomentumDirection\(\{/,'runtime does not delegate state evolution to momentum owner');
 
