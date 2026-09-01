@@ -35,32 +35,47 @@ A future session must never infer progress from task names alone. It must verify
 # 1. CURRENT CHECKPOINT
 
 **Plan phase:** R — Source tree organization  
-**Active item:** R2 — move multiplayer into `src/multiplayer/`  
-**State:** **READ-ONLY AUDIT NEXT — no runtime file moved yet**  
-**Current validated dev baseline before this documentation update:** `9a26072353a41991dd636e8a6610f23b4ff5a1ff`  
+**Active item:** R2 — multiplayer folder migration  
+**State:** **AUTOMATION DONE — HUMAN VALIDATION REQUIRED BEFORE R3**  
+**Integrated dev commit:** `1eef3825e8ea56b28ac49e8e17e828fbbf1c042d`  
 **Stable fallback:** `main` @ `111df5d84bf7fd700590abbd9c129b303ac92fad`  
-**Last green full integration:** Dev Integration run `33444437121` on `9a26072353a41991dd636e8a6610f23b4ff5a1ff` — PASS  
-**Human validation:** post-C6 gameplay validation PASS; no human validation required for R1 because it changed QA/audit code only.
+**Last green full integration:** Dev Integration run `33455822616` on `1eef3825e8ea56b28ac49e8e17e828fbbf1c042d` — **PASS**, including the permanent R2 boundary gate, full stress, 288 driving cases, physics/grip R2–R20, terrain, traffic, forest/frame pacing, M4.14/M4.15 GPU, live route smoke, production build and code split.  
+**Human validation:** **PENDING by explicit user request. Do not start R3 until the user reports the smoke test result.**
 
-**R1 result:**
-- 116 source code files under `src/`;
-- 116/116 runtime-reachable from `src/main.js`;
-- 106 JS files directly in `src/` root;
-- 10 nested code files;
-- 0 browser-graph orphans;
-- 0 unresolved reachable relative imports;
-- 0 unclassified root JS files after corrected ownership classification;
-- dynamic imports and exact `src/...` path contracts are now inventoried permanently by `qa/DEV_INTEGRATION_AUDIT.mjs`.
+**R2 result:**
+- public compatibility/lazy facades intentionally remain at root:
+  - `src/multiplayer.js`
+  - `src/multiplayer-visuals.js`
+- seven internal implementation modules moved under `src/multiplayer/`:
+  - `multiplayer-client-m3.js`
+  - `multiplayer-visuals-m3.js`
+  - `multiplayer-visuals-v18.js`
+  - `multiplayer-fallback-visual.js`
+  - `multiplayer-support-math.js`
+  - `multiplayer-vehicle-adapter.js`
+  - `multiplayer-vehicle-registry.js`
+- lazy `import()` boundaries remain lazy and production code splitting is preserved;
+- legacy `m3`/`v18` filenames were deliberately retained for Phase O rather than mixed into the path move;
+- QA/CI exact-path contracts were retargeted instead of restoring obsolete root locations;
+- `qa-source-tree-r2-multiplayer.mjs` is now a permanent Dev Integration boundary gate;
+- post-R2 import audit reports all 116 source-code files runtime reachable, zero browser-graph orphans and zero unresolved reachable relative imports.
 
-**Next action:** create a narrow R2 audit branch from current `dev`. Map every importer, dynamic import, QA source-path assertion and workflow trigger involving the multiplayer family. Freeze the lazy/code-split contract. Only after that audit is green may a **path-only** candidate move the multiplayer family into `src/multiplayer/`.
+**R2 automated evidence:**
+- read-only audit branch: `audit/source-tree-r2-multiplayer`;
+- audit run `33444942008` — PASS;
+- candidate branch: `cleanup/source-tree-r2-multiplayer`;
+- focused exact-head candidate run `33455749888` — PASS;
+- integrated to `dev` by fast-forward at `1eef3825e8ea56b28ac49e8e17e828fbbf1c042d`;
+- final Dev Integration run `33455822616` — PASS.
 
-**Do not do during R2:**
-- do not rename `m3`/`v18` historical layers;
+**Next action:** **HUMAN SMOKE TEST ONLY.** Launch the current `dev`, verify normal startup/gameplay and, if practical, a host/join multiplayer session with one remote authored vehicle. Confirm no obvious import/load regression, remote presentation still behaves normally, vehicle switching/local driving is normal, and FPS/stutter feel unchanged. If the human smoke passes, record PASS here and begin R3 with a new read-only traffic path audit. If it fails, stop Phase R and isolate the observed regression before any R3 work.
+
+**Do not do before the human R2 result:**
+- do not start R3 traffic migration;
+- do not rename `m3`/`v18` historical multiplayer layers;
 - do not flatten multiplayer implementation layers;
-- do not change packet/state transforms;
-- do not change smoothing/support math;
-- do not change GLB/presentation behavior;
-- do not change traffic authority behavior.
+- do not tune multiplayer, physics, traffic or visuals;
+- do not mix C-M1 dependency remediation or C-M2 Actions maintenance into this checkpoint.
 
 ---
 
@@ -140,9 +155,8 @@ src/
     civil-traffic*.js
 
   multiplayer/
-    multiplayer.js
+    # public root facades may remain at src/ while they are useful compatibility/lazy boundaries
     multiplayer-client-m3.js
-    multiplayer-visuals.js
     multiplayer-visuals-m3.js
     multiplayer-visuals-v18.js
     multiplayer-fallback-visual.js
@@ -218,8 +232,6 @@ Audit history:
 Measured baseline:
 - 116 source code files;
 - 116 runtime reachable;
-- 106 root JS files;
-- 10 nested code files;
 - zero browser-graph orphans;
 - zero unresolved reachable relative imports;
 - zero unclassified root JS files.
@@ -229,49 +241,37 @@ Human validation: **not required**.
 
 ## R2 — Multiplayer folder migration [P1]
 
-Status: **AUDIT NEXT**
+Status: **AUTOMATION DONE — HUMAN VALIDATION PENDING**
 
-Candidate family:
-- `multiplayer.js`
-- `multiplayer-client-m3.js`
-- `multiplayer-visuals.js`
-- `multiplayer-visuals-m3.js`
-- `multiplayer-visuals-v18.js`
-- `multiplayer-fallback-visual.js`
-- `multiplayer-support-math.js`
-- `multiplayer-vehicle-adapter.js`
-- `multiplayer-vehicle-registry.js`
+Final architecture:
+- retain public root facades `src/multiplayer.js` and `src/multiplayer-visuals.js` so `main.js` and compatibility consumers keep stable entry points;
+- move the seven internal implementation modules into `src/multiplayer/`;
+- preserve all historical filenames for later Phase O responsibility renames.
 
-Known path-sensitive contract:
-- `multiplayer-visuals.js` lazily executes `import('./multiplayer-visuals-m3.js')`; moving files must preserve lazy loading and production code splitting.
+Path-sensitive contracts preserved:
+- `src/multiplayer-visuals.js` still lazy-loads the maintained visual implementation, now at `./multiplayer/multiplayer-visuals-m3.js`;
+- `src/multiplayer.js` still lazy-loads the maintained client, now at `./multiplayer/multiplayer-client-m3.js`;
+- production build still produces lazy multiplayer chunks;
+- civil-traffic/network boundaries still consume the stable public facade.
 
-Required R2 audit before source move:
-- exact inbound/outbound production imports;
-- all dynamic imports;
-- all QA files that import/open/regex exact multiplayer paths;
-- all path-scoped workflow triggers;
-- any civil-traffic/multiplayer cross-boundary imports;
-- Electron/build references if any;
-- current production code-split expectations.
-
-Candidate rule: **path-only move**. Keep current filenames during R2.
-
-Required validation:
-- multiplayer support math/registry;
-- exact gear/M3 protocol;
-- shared/live traffic;
-- vehicle adapter;
-- M4.14 authored reverse WebGL;
-- M4.15 network-to-WebGL reverse;
-- C6 multiplayer diagnostics;
-- production build + code split;
-- full Dev Integration.
-
-Human validation: quick multiplayer/session smoke recommended if available; not mandatory for a strictly path-only move if all network/WebGL/code-split integration is green.
+Automation completion record:
+- Item: R2 multiplayer folder migration;
+- Date: 2026-08-31;
+- Audit branch/run: `audit/source-tree-r2-multiplayer`, run `33444942008` PASS;
+- Candidate branch/run: `cleanup/source-tree-r2-multiplayer`, run `33455749888` PASS;
+- Integrated dev commit: `1eef3825e8ea56b28ac49e8e17e828fbbf1c042d`;
+- Final Dev Integration run: `33455822616` PASS;
+- Files moved: seven multiplayer implementation modules;
+- Files intentionally retained at root: the two public lazy facades;
+- Behavior changed: **no**;
+- Material discoveries: 20 QA/CI path-contract files were inventoried during the audit; relevant multiplayer contracts were retargeted. Existing C-M1 dependency and C-M2 Actions-runtime debt remain separate;
+- Human validation: **required by user checkpoint — pending**;
+- Result: automated R2 complete; R3 blocked on human smoke;
+- Next item/action: human R2 smoke, then R3 read-only audit if PASS.
 
 ## R3 — Civil traffic folder migration [P1]
 
-Status: PENDING R2
+Status: **BLOCKED UNTIL R2 HUMAN PASS**
 
 Move the full `civil-traffic*` family into `src/traffic/` while preserving:
 - R7 local engine;
@@ -398,8 +398,8 @@ Never hide feature work inside R/O maintenance.
 | Change type | Minimum automated validation | Human validation |
 |---|---|---|
 | docs/audit only | relevant audit + build when applicable | no |
-| path-only multiplayer | multiplayer + M4.14/M4.15 + code split + Dev Integration | quick smoke recommended |
-| path-only traffic | traffic + shared/live MP + Dev Integration | optional |
+| path-only multiplayer | multiplayer + M4.14/M4.15 + code split + Dev Integration | quick smoke checkpoint |
+| path-only traffic | traffic + shared/live MP + Dev Integration | optional, but use periodic human checkpoint by user request |
 | path-only vehicle | presentation/lights/truck/MP adapter + Dev Integration | quick spot-check |
 | physics/runtime | dedicated R-tests + 288 matrix + stress + Dev Integration | required if behavior changes |
 | road/forest | subsystem + frame pacing + Dev Integration | required if visible/perf behavior changes |
@@ -451,6 +451,6 @@ For an interrupted item, CURRENT CHECKPOINT must additionally contain:
 
 Current sequence:
 
-**R1 DONE → R2 multiplayer → R3 traffic → R4 vehicles → R5 physics/runtime → R6 world road/scenery/forest/water → R7 app/UI/services → R8 terrain/imagery/streaming → R9 root gate → Phase O historical naming → corrections/features as prioritized.**
+**R1 DONE → R2 AUTOMATION DONE / HUMAN PASS PENDING → R3 traffic → R4 vehicles → R5 physics/runtime → R6 world road/scenery/forest/water → R7 app/UI/services → R8 terrain/imagery/streaming → R9 root gate → Phase O historical naming → corrections/features as prioritized.**
 
 Maintenance items C-M1/C-M2 are tracked separately and may be prioritized when appropriate, but must not contaminate structural commits.
