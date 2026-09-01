@@ -24,7 +24,7 @@ jobs:
       - name: Install
         run: npm ci
       - name: C5.5 stable settings identity and persistence QA
-        run: node qa-main-c5-settings.mjs
+        run: node qa/qa-main-c5-settings.mjs
       - name: V21.25 UI init-order QA
         run: node qa/V21_25_UI_INIT_ORDER_QA.mjs
       - name: V21.25 UI refactor QA
