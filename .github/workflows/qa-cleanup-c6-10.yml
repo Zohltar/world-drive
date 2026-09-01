@@ -11,8 +11,8 @@ on:
       - 'src/traffic/civil-traffic-local.js'
       - 'src/traffic/civil-traffic.js'
       - 'src/diagnostics.js'
-      - 'qa-diagnostics-c6-*.mjs'
-      - 'qa-traffic-*.mjs'
+      - 'qa/qa-diagnostics-c6-*.mjs'
+      - 'qa/qa-traffic-*.mjs'
       - '.github/workflows/qa-cleanup-c6-10.yml'
   workflow_dispatch:
 
@@ -32,23 +32,23 @@ jobs:
       - run: npm ci
       - name: C6.1-C6.10 diagnostics QA
         run: |
-          node qa-diagnostics-c6-1.mjs
-          node qa-diagnostics-c6-2.mjs
-          node qa-diagnostics-c6-3.mjs
-          node qa-diagnostics-c6-4.mjs
-          node qa-diagnostics-c6-5.mjs
-          node qa-diagnostics-c6-6.mjs
-          node qa-diagnostics-c6-7.mjs
-          node qa-diagnostics-c6-8.mjs
-          node qa-diagnostics-c6-9.mjs
-          node qa-diagnostics-c6-10.mjs
+          node qa/qa-diagnostics-c6-1.mjs
+          node qa/qa-diagnostics-c6-2.mjs
+          node qa/qa-diagnostics-c6-3.mjs
+          node qa/qa-diagnostics-c6-4.mjs
+          node qa/qa-diagnostics-c6-5.mjs
+          node qa/qa-diagnostics-c6-6.mjs
+          node qa/qa-diagnostics-c6-7.mjs
+          node qa/qa-diagnostics-c6-8.mjs
+          node qa/qa-diagnostics-c6-9.mjs
+          node qa/qa-diagnostics-c6-10.mjs
       - name: Traffic local, pool, preload and multiplayer regressions
         run: |
-          node qa-traffic-r1.mjs
-          node qa-traffic-pool-r1.mjs
-          node qa-traffic-preload-p1.mjs
-          node qa-traffic-mp1.mjs
-          node qa-traffic-mp1-live.mjs
+          node qa/qa-traffic-r1.mjs
+          node qa/qa-traffic-pool-r1.mjs
+          node qa/qa-traffic-preload-p1.mjs
+          node qa/qa-traffic-mp1.mjs
+          node qa/qa-traffic-mp1-live.mjs
       - name: Driving dynamics simulation matrix
         run: node qa/DEV_DRIVING_SIM_QA.mjs
       - name: Full V21.31 regression stress
