@@ -32,6 +32,10 @@ for(const marker of [
 ])assert.ok(source.includes(marker),`canonical road owner missing: ${marker}`);
 
 const offenders=[];
+const intentionalHistoricalChecks=new Set([
+  'qa/qa-road-geometry-c3.mjs',
+  'qa/qa-source-tree-r6-road-geometry.mjs'
+]);
 for(const root of ['src','qa','.github']){
   if(!exists(root))continue;
   const walk=dir=>{
@@ -40,7 +44,7 @@ for(const root of ['src','qa','.github']){
       if(entry.isDirectory()){walk(full);continue;}
       if(!/\.(?:js|mjs|cjs|yml|yaml)$/.test(entry.name))continue;
       const rel=full.replaceAll('\\','/');
-      if(rel==='qa/qa-road-geometry-c3.mjs')continue;
+      if(intentionalHistoricalChecks.has(rel))continue;
       if(read(full).includes('road-geometry-base.js'))offenders.push(rel);
     }
   };
