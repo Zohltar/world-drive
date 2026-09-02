@@ -13,6 +13,7 @@ on:
       - 'src/cache.js'
       - 'vite.config.js'
       - 'qa/qa-water-hydro-runtime.mjs'
+      - 'qa/qa-overpass-resilience-r1.mjs'
       - '.github/workflows/qa-water-hydro-runtime.yml'
   workflow_dispatch:
 
@@ -33,6 +34,8 @@ jobs:
           cache: npm
       - name: Install
         run: npm ci
+      - name: Overpass cross-service resilience
+        run: node qa/qa-overpass-resilience-r1.mjs
       - name: Hydro data/runtime contract
         run: node qa/qa-water-hydro-runtime.mjs
       - name: Browser-served root water modules
