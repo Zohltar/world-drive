@@ -17,28 +17,28 @@ assert.equal(exists('qa/V21_26_LOCAL_WORLD_REFACTOR_QA.mjs'),false,
 
 for(const file of [
   'src/main.js','src/local-world-builder.js','src/local-world-builder-p926.js',
-  'src/local-world-builder-p925.js','qa/V21_26_ENVIRONMENT_REFACTOR_QA.mjs'
+  'src/local-world/local-world-builder-p926.js','src/local-world-builder-p925.js',
+  'qa/V21_26_ENVIRONMENT_REFACTOR_QA.mjs'
 ])syntax(file);
 
 const main=read('src/main.js');
 const entry=read('src/local-world-builder.js');
-const p926=read('src/local-world-builder-p926.js');
+const p926Facade=read('src/local-world-builder-p926.js');
+const p926=read('src/local-world/local-world-builder-p926.js');
 const p925=read('src/local-world-builder-p925.js');
 const environmentQa=read('qa/V21_26_ENVIRONMENT_REFACTOR_QA.mjs');
 
-// The public entry is now composition/performance policy. Historical V21.26
-// orchestration lives below it and must not be forced back into this file.
 assert.match(main,/import \{ createLocalWorldBuilder \} from '\.\/local-world-builder\.js';/,
   'main must consume the canonical local-world entry');
 assert.match(main,/localWorldBuilder=createLocalWorldBuilder\(\{/,
   'main must initialize the canonical local-world builder');
 assert.match(entry,/from '\.\/local-world-builder-p926\.js'/,
-  'canonical entry must preserve the active P9.26 horizon layer');
-assert.match(p926,/from '\.\/local-world-builder-p925\.js'/,
-  'P9.26 layer must preserve the active P9.25 prepared-world owner');
+  'canonical entry must preserve the stable P9.26 root path');
+assert.match(p926Facade,/export\s*\{\s*createLocalWorldBuilder\s*\}\s*from\s*['"]\.\/local-world\/local-world-builder-p926\.js['"]/,
+  'root P9.26 compatibility facade changed');
+assert.match(p926,/from ['"]\.\.\/local-world-builder-p925\.js['"]/,
+  'nested P9.26 layer must preserve the root P9.25 prepared-world owner');
 
-// Useful V21.26 orchestration invariants are retained against their CURRENT
-// owner instead of requiring them to be textually present in the public entry.
 for(const marker of [
   'function roadBedOptionsForProfile',
   'terrainService.setRoadBed(terrainProfile,roadBedOptionsForProfile(profile))',
@@ -55,7 +55,6 @@ for(const marker of [
   'markStaticShadowsDirty();'
 ])assert.ok(p925.includes(marker),`current P9.25 orchestration invariant missing: ${marker}`);
 
-// Current ownership added after V21.26 must remain authoritative.
 for(const marker of [
   'P937_ROAD_PREP_GAP_MS=8',
   'prepareRoadStage',
@@ -80,7 +79,6 @@ for(const qa of [
 assert.doesNotMatch(environmentQa,/V21_26_LOCAL_WORLD_REFACTOR_QA/,
   'environment QA still chains the stale local-world meta-regression');
 
-// No active QA/workflow may resurrect the retired test by filename.
 const offenders=[];
 function walk(dir){
   for(const entryName of fs.readdirSync(path.join(root,dir),{withFileTypes:true})){
@@ -100,7 +98,7 @@ for(const dir of ['qa','.github'])if(exists(dir))walk(dir);
 assert.deepEqual(offenders,[],`retired local-world QA is still referenced: ${offenders.join(', ')}`);
 
 console.log('CLEANUP A8 CURRENT LOCAL-WORLD QA: PASS',{
-  ownership:['local-world-builder.js','local-world-builder-p926.js','local-world-builder-p925.js'],
+  ownership:['local-world-builder.js','local-world-builder-p926.js facade','local-world/local-world-builder-p926.js','local-world-builder-p925.js'],
   retainedOrchestration:['road-bed','road-meshes','hydro','scenery','furniture','signs','horizon','shadows'],
   currentPolicies:['P9.23 prepared terrain','P9.25 frame budget','P9.26 horizon','P9.37 road prebuild','P9.38 forest retention'],
   staleMetaQaRemoved:true
