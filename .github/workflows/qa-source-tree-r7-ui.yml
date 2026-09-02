@@ -1,0 +1,58 @@
+name: Source Tree R7 UI QA
+
+on:
+  push:
+    branches:
+      - candidate/r7-ui-r1
+      - dev
+    paths:
+      - 'src/heading-compass.js'
+      - 'src/instrument-cluster.js'
+      - 'src/minimap.js'
+      - 'src/route-planner-ui.js'
+      - 'src/startup-ui.js'
+      - 'src/v21-menu.js'
+      - 'src/ui/**'
+      - 'src/main.js'
+      - 'qa/qa-source-tree-r7-ui.mjs'
+      - 'qa/V21_25_UI_INIT_ORDER_QA.mjs'
+      - 'qa/qa-main-c5-settings.mjs'
+      - 'qa/qa-main-c5-loaded-settings.mjs'
+      - 'qa/qa-diagnostics-c6-1.mjs'
+      - '.github/workflows/qa-source-tree-r7-ui.yml'
+      - '.github/workflows/qa-dev-integration.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  qa:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install
+        run: npm ci
+      - name: R7 UI source-tree boundary
+        run: node qa/qa-source-tree-r7-ui.mjs
+      - name: UI initialization order regression
+        run: node qa/V21_25_UI_INIT_ORDER_QA.mjs
+      - name: Stable settings regression
+        run: node qa/qa-main-c5-settings.mjs
+      - name: Loaded settings regression
+        run: node qa/qa-main-c5-loaded-settings.mjs
+      - name: Startup diagnostics regression
+        run: node qa/qa-diagnostics-c6-1.mjs
+      - name: Runtime import and debt audit
+        run: node qa/DEV_INTEGRATION_AUDIT.mjs
+      - name: Production build
+        run: npm run build
+      - name: Production code split QA
+        run: node qa/BUILD_V21_31_CODE_SPLIT_QA.mjs
