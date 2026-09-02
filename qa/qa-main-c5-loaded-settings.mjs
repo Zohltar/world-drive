@@ -5,10 +5,12 @@ import {fileURLToPath,pathToFileURL} from 'node:url';
 
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
 const mainPath=path.join(root,'src','main.js');
-const modulePath=path.join(root,'src','loaded-settings-application.js');
+const facadePath=path.join(root,'src','loaded-settings-application.js');
+const modulePath=path.join(root,'src','app','loaded-settings-application.js');
 
-assert.equal(fs.existsSync(modulePath),true,'loaded-settings application module missing');
-const {createLoadedSettingsApplication}=await import(`${pathToFileURL(modulePath).href}?qa=${Date.now()}`);
+assert.equal(fs.existsSync(facadePath),true,'loaded-settings application facade missing');
+assert.equal(fs.existsSync(modulePath),true,'loaded-settings application implementation missing');
+const {createLoadedSettingsApplication}=await import(`${pathToFileURL(facadePath).href}?qa=${Date.now()}`);
 assert.equal(typeof createLoadedSettingsApplication,'function');
 
 async function runCase(settings,{imageryInitially=false,withUi=true}={}){
