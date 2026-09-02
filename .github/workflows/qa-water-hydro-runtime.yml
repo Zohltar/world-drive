@@ -1,0 +1,52 @@
+name: Water Hydro Runtime QA
+
+on:
+  push:
+    branches:
+      - dev
+    paths:
+      - 'src/water-data.js'
+      - 'src/water-renderer.js'
+      - 'src/water/**'
+      - 'src/main.js'
+      - 'src/overpass.js'
+      - 'src/cache.js'
+      - 'vite.config.js'
+      - 'qa/qa-water-hydro-runtime.mjs'
+      - '.github/workflows/qa-water-hydro-runtime.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  qa:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install
+        run: npm ci
+      - name: Hydro data/runtime contract
+        run: node qa/qa-water-hydro-runtime.mjs
+      - name: Browser-served root water modules
+        shell: bash
+        run: |
+          npx vite --host 127.0.0.1 --port 5189 --strictPort >/tmp/water-hydro-vite.log 2>&1 &
+          VITE_PID=$!
+          cleanup(){ kill "$VITE_PID" >/dev/null 2>&1 || true; cat /tmp/water-hydro-vite.log || true; }
+          trap cleanup EXIT
+          READY=0
+          for i in {1..80}; do
+            if curl -fsS http://127.0.0.1:5189/src/water-data.js >/tmp/water-data.js 2>/dev/null && curl -fsS http://127.0.0.1:5189/src/water-renderer.js >/tmp/water-renderer.js 2>/dev/null; then READY=1; break; fi
+            sleep 0.1
+          done
+          test "$READY" = "1"
+          grep -q 'createWaterDataService' /tmp/water-data.js
+          grep -q 'createWaterRenderer' /tmp/water-renderer.js
