@@ -1,0 +1,55 @@
+name: R6 Road Geometry Candidate QA
+
+on:
+  push:
+    branches:
+      - candidate/r6-road-geometry
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  qa:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: R6 road geometry source-tree boundary
+        run: node qa/qa-source-tree-r6-road-geometry.mjs
+      - name: Runtime import and debt audit
+        run: node qa/DEV_INTEGRATION_AUDIT.mjs
+      - name: C3 road geometry ownership
+        run: node qa/qa-road-geometry-c3.mjs
+      - name: Historical V21.25 road geometry QA
+        run: node qa/V21_25_ROAD_GEOMETRY_REFACTOR_QA.mjs
+      - name: Road geometry init order QA
+        run: node qa/V21_25_ROAD_GEOMETRY_INIT_ORDER_QA.mjs
+      - name: Active V21.31 road geometry regressions
+        run: |
+          node qa/V21_31_ROAD_SMOOTHING_QA.mjs
+          node qa/V21_31_SUPERELEVATION_QA.mjs
+          node qa/V21_31_SUPERELEVATION_ENVELOPE_QA.mjs
+          node qa/V21_31_LEGACY_TERRAIN_AUTHORITY_QA.mjs
+          node qa/qa-road-banking-r1.mjs
+      - name: Terrain and road imagery boundaries
+        run: |
+          node qa/qa-terrain-r1-legacy-ownership.mjs
+          node qa/qa-terrain-r2-road-imagery.mjs
+      - name: Full V21.31 regression stress
+        run: npm run qa:stress
+      - name: Driving dynamics simulation matrix
+        run: node qa/DEV_DRIVING_SIM_QA.mjs
+      - name: Crest and oblique landing regressions
+        run: |
+          node qa/V21_27_CREST_LAUNCH_QA.mjs
+          node qa/V21_27_OBLIQUE_LANDING_QA.mjs
+      - name: Production build
+        run: npm run build
+      - name: Production code split QA
+        run: node qa/BUILD_V21_31_CODE_SPLIT_QA.mjs
