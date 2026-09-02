@@ -8,13 +8,22 @@ const here=path.dirname(fileURLToPath(import.meta.url));
 const root=path.resolve(here,'..');
 const src=path.join(root,'src');
 const mainPath=path.join(src,'main.js');
-const minimapPath=path.join(src,'minimap.js');
+const minimapFacadePath=path.join(src,'minimap.js');
+const minimapPath=path.join(src,'ui','minimap.js');
 
 assert.equal(fs.existsSync(mainPath),true,'src/main.js missing');
-assert.equal(fs.existsSync(minimapPath),true,'src/minimap.js missing — run tools/refactor-main-minimap-v21-25.mjs first');
+assert.equal(fs.existsSync(minimapFacadePath),true,'src/minimap.js facade missing');
+assert.equal(fs.existsSync(minimapPath),true,'src/ui/minimap.js implementation missing');
 
 const main=fs.readFileSync(mainPath,'utf8');
+const minimapFacade=fs.readFileSync(minimapFacadePath,'utf8');
 const minimap=fs.readFileSync(minimapPath,'utf8');
+
+assert.match(
+  minimapFacade,
+  /export \* from ['"]\.\/ui\/minimap\.js['"];/,
+  'src/minimap.js must remain the stable R7 facade for src/ui/minimap.js'
+);
 
 for(const pattern of [
   /transient sign readout on minimap/,
@@ -63,13 +72,13 @@ for(const pattern of [
   /resetSignReadout,/,
   /return Object\.freeze\s*\(\{/
 ]){
-  assert.match(minimap,pattern,`minimap.js missing expected behavior: ${pattern}`);
+  assert.match(minimap,pattern,`src/ui/minimap.js missing expected behavior: ${pattern}`);
 }
 
 const syncCalls=(minimap.match(/syncMinimapState\(\);/g)||[]).length;
 assert.equal(syncCalls,3,'minimap runtime state should sync in updatePassedSignReadout, prepMap and drawMap');
 
-for(const filePath of [mainPath,minimapPath]){
+for(const filePath of [mainPath,minimapFacadePath,minimapPath]){
   const syntax=spawnSync(process.execPath,['--check',filePath],{
     cwd:root,
     encoding:'utf8'
@@ -77,8 +86,10 @@ for(const filePath of [mainPath,minimapPath]){
   assert.equal(syntax.status,0,syntax.stderr||syntax.stdout||`${path.basename(filePath)} syntax check failed`);
 }
 
-const imported=await import(`${pathToFileURL(minimapPath).href}?qa=${Date.now()}`);
-assert.equal(typeof imported.createMinimapSystem,'function','createMinimapSystem export missing');
+const facadeImport=await import(`${pathToFileURL(minimapFacadePath).href}?qa=${Date.now()}`);
+const imported=await import(`${pathToFileURL(minimapPath).href}?qa=${Date.now()+1}`);
+assert.equal(typeof facadeImport.createMinimapSystem,'function','root minimap facade lost createMinimapSystem export');
+assert.equal(typeof imported.createMinimapSystem,'function','createMinimapSystem implementation export missing');
 
 console.log('V21.25 MINIMAP REFACTOR QA: PASS');
-console.log(`main.js: ${main.split(/\r?\n/).length} lines; minimap.js: ${minimap.split(/\r?\n/).length} lines`);
+console.log(`main.js: ${main.split(/\r?\n/).length} lines; minimap implementation: ${minimap.split(/\r?\n/).length} lines; root facade retained`);
