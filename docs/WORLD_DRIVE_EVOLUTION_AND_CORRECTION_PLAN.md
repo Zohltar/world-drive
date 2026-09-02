@@ -29,13 +29,13 @@ At the start of every World Drive coding/architecture/QA conversation:
 # 1. CURRENT CHECKPOINT
 
 **Plan phase:** correction/data-source reliability, temporarily ahead of normal R7 structural work  
-**Active item:** **Geofabrik offline OSM prototype — real Quebec dataset generation**  
-**State:** **PROTOTYPE INTEGRATED + AUTOMATION PASS — REAL DATASET NEXT**  
-**Current validated dev HEAD before this documentation commit:** `5152633e6c13e208df3d780441c4493b1aa8838d`  
+**Active item:** **Geofabrik offline OSM — Quebec hydro storage/runtime format evaluation**  
+**State:** **REAL QUEBEC BUILD + PROFILE COMPLETE; HYDRO GZIP V2 INTEGRATED; LOCAL COMPRESSION RUNNING**  
+**Current validated dev HEAD before this documentation commit:** `5ec95b9007508331a3cf0febecae52ce93b05c0c`  
 **Stable fallback:** `main` @ `111df5d84bf7fd700590abbd9c129b303ac92fad`  
-**Exact-head Dev Integration:** run `33631514949` — **PASS, 97/97**  
-**Geofabrik Offline OSM QA:** run `33631514954` — **PASS**  
-**Focused prototype candidate:** `candidate/geofabrik-pbf-r1`, run `33631388208` — **PASS**
+**Exact-head Dev Integration:** run `33640879323` — **PASS, 97/97**  
+**Latest focused Geofabrik hydro-gzip QA:** run `33640807592` — **PASS**  
+**Hydro-gzip candidate:** `candidate/geofabrik-hydro-gzip-r1` @ `5ec95b9007508331a3cf0febecae52ce93b05c0c` before fast-forward integration.
 
 ## Why this pivot happened
 
@@ -48,49 +48,49 @@ Issue #3 persisted after the R6.4 water source-tree rollback and after the Overp
 
 Conclusion: public Overpass is useful as a fallback, but it should **not remain the critical source for deterministic route-world loading**.
 
-The selected direction is now:
+Selected direction:
 
 ```text
 Geofabrik regional .osm.pbf
   -> offline filtering/preprocessing
-  -> compact World Drive fixed-size tiles
-  -> local/runtime tile loading
+  -> World Drive spatial tiles
+  -> layer-specific compact/compressed runtime tiles
+  -> local/runtime loading
   -> Overpass only as fallback / uncovered-region source
 ```
 
 Use **PBF rather than free shapefiles as the master source** because PBF preserves the native OSM tagging model needed by World Drive, including feature families that free shapefile catalogues may omit.
 
-## Integrated Geofabrik prototype
+---
 
-No production game runtime has been switched yet. The prototype is deliberately outside `src/` until a real Quebec dataset is built and measured.
+## 1.1 Integrated Geofabrik tooling
 
-Integrated files:
+No production game runtime has been switched yet. Tooling stays outside `src/` until the real-data format is accepted.
+
+Integrated tooling now includes:
 
 ```text
 tools/geofabrik/build-world-tiles.mjs
 tools/geofabrik/offline-tile-source.mjs
+tools/geofabrik/profile-world-tiles.mjs
+tools/geofabrik/pack-hydro-gzip-v2.mjs
 tools/geofabrik/world-drive-tags-filter.txt
 tools/geofabrik/download-quebec.ps1
 tools/geofabrik/README.md
 qa/qa-geofabrik-tiles-r1.mjs
+qa/qa-geofabrik-profile-r1.mjs
+qa/qa-geofabrik-hydro-gzip-r1.mjs
 .github/workflows/qa-geofabrik-pbf-r1.yml
 ```
 
-`package.json` adds:
-
-```text
-npm run qa:geofabrik
-npm run geofabrik:tiles
-```
-
-Generated/source data are ignored by Git:
+Generated/source data remain intentionally ignored by Git:
 
 ```text
 world-data/
 public/world-data/
 ```
 
-### Pipeline v1
+### Pipeline v1 — proven with the real Quebec PBF
 
 ```text
 Geofabrik .osm.pbf
@@ -102,7 +102,7 @@ Geofabrik .osm.pbf
 
 Default tile size: **16 km**.
 
-Output:
+v1 output:
 
 ```text
 manifest.json
@@ -111,7 +111,7 @@ oversize.jsonl              # only when needed
 tiles/<x>/<y>.jsonl
 ```
 
-Compact tile record:
+Compact v1 record:
 
 ```json
 {
@@ -123,7 +123,7 @@ Compact tile record:
 }
 ```
 
-Supported v1 feature categories:
+Supported categories:
 
 - water;
 - waterway;
@@ -135,82 +135,228 @@ Supported v1 feature categories:
 - guard rail / barrier;
 - traffic sign.
 
-Geometry remains WGS84 lon/lat. EPSG:3857 is used only to assign stable fixed-size tile indices.
+Geometry remains WGS84 lon/lat. EPSG:3857 is used only for fixed-size tile indexing.
 
-A feature spanning more than the configurable tile cap (default **256**) is written to `oversize.jsonl` instead of being duplicated pathologically.
+---
 
-### Prototype QA already proven
+## 1.2 Real Quebec build — COMPLETE
 
-Synthetic end-to-end QA builds tiles from GeoJSONSeq and verifies:
-
-- water polygon;
-- river;
-- bridge;
-- building;
-- forest/landuse;
-- power line;
-- dam;
-- guard rail;
-- traffic sign;
-- irrelevant-feature exclusion;
-- compact tag whitelist;
-- matching builder/reader tile math;
-- multi-tile dedupe;
-- local tile cache reuse;
-- normal production build/code split unaffected.
-
-Observed focused QA output:
-
-```text
-Geofabrik tile pipeline QA PASS {"tileCount":6,"tileRecords":19,"loadedRecords":9}
-```
-
-## Exact next action — generate the real Quebec dataset locally
-
-Do **not** wire hydro/scenery to offline tiles yet.
-
-On the local World Drive checkout after pulling current `dev`:
-
-1. Verify `osmium-tool` is installed and callable:
-
-```powershell
-osmium --version
-```
-
-2. Download and MD5-verify the current Quebec Geofabrik PBF:
-
-```powershell
-powershell -ExecutionPolicy Bypass -File tools/geofabrik/download-quebec.ps1
-```
-
-Default source location:
+Local source:
 
 ```text
 world-data/source/quebec-latest.osm.pbf
 ```
 
-3. Build World Drive tiles:
+Download/verification completed successfully on 2026-09-02:
+
+```text
+MD5: 87b761c42ff06eec0156e26b25e9673b
+osmium-tool: 1.19.1
+libosmium: 2.23.1
+```
+
+Real Quebec v1 manifest:
+
+```text
+inputFeatures:    12,313,002
+emittedFeatures:   7,636,522
+oversizeFeatures:         20
+tileRecords:       7,939,240
+tileCount:            18,940
+tileSizeMeters:        16,000
+```
+
+Category counts:
+
+```text
+water:      3,016,491
+waterway:   2,178,612
+bridge:        24,490
+dam:            4,108
+building:   1,529,708
+landuse:      397,367
+power:        484,241
+barrier:          623
+sign:             906
+```
+
+Spatial conclusion:
+
+- only **20 oversize features** across the entire Quebec extract;
+- **18,940 cells** is a reasonable regional partition;
+- **16 km tile size is retained for now**;
+- no evidence yet that spatial cell size is the primary problem.
+
+---
+
+## 1.3 Real Quebec storage profile — COMPLETE
+
+The uncompressed mixed v1 dataset is **too large to become the runtime/package format**:
+
+```text
+raw size:          12.70 GB
+raw records:       7,939,240
+parse errors:      0
+```
+
+### Hydro group
+
+Definition:
+
+```text
+water + waterway + bridge + dam
+```
+
+Measured:
+
+```text
+size:                    10.15 GB
+share of raw:            79.96%
+records:                 5,477,000
+tiles with hydro:        18,428
+average hydro/tile:      577.6 KB uncompressed
+largest hydro tile:      6.7 MB uncompressed
+largest tile coordinate: x=-504, y=459
+```
+
+### Scenery group
+
+Definition:
+
+```text
+building + landuse + power + barrier
+```
+
+Measured:
+
+```text
+size:                      2.54 GB
+share of raw:              20.03%
+records:                   2,461,353
+tiles with scenery:        7,231
+average scenery/tile:      368.8 KB uncompressed
+largest scenery tile:      36.1 MB uncompressed
+largest tile coordinate:   x=-513, y=356
+```
+
+### Signs
+
+```text
+size:                    128.1 KB
+records:                 906
+tiles with signs:        137
+average signed tile:     957.7 B
+largest signed tile:     11.5 KB
+```
+
+### Interpretation
+
+**Do not wire mixed v1 JSONL tiles directly into the game.**
+
+The profile shows:
+
+1. **16 km spatial partitioning is acceptable** — normal per-tile payloads are moderate;
+2. **plain GeoJSON/JSONL provincial storage is the main problem** — geometry text dominates total size;
+3. **layers must be physically separated** so hydro does not load buildings/scenery and vice versa;
+4. urban scenery has outlier cells up to 36.1 MB, making mixed-layer runtime fetches particularly undesirable;
+5. signs are tiny and should remain a separate lightweight layer later.
+
+---
+
+## 1.4 Hydro gzip v2 — INTEGRATED, LOCAL REAL-DATA TEST RUNNING
+
+A non-runtime packer is integrated:
+
+```text
+tools/geofabrik/pack-hydro-gzip-v2.mjs
+qa/qa-geofabrik-hydro-gzip-r1.mjs
+```
+
+It reads the already-generated Quebec v1 cells and emits **hydro-only per-cell gzip payloads**:
+
+```text
+public/world-data/osm-v2/quebec/hydro/
+  manifest.json
+  tiles-index.jsonl
+  tiles/<x>/<y>.jsonl.gz
+```
+
+Included categories only:
+
+```text
+water
+waterway
+bridge
+dam
+```
+
+It does **not**:
+
+- touch `src/water-data.js`;
+- touch `src/water-renderer.js`;
+- change water/bridge geometry semantics;
+- change the 16 km cell grid;
+- reprocess the 1+ GB PBF;
+- migrate scenery/signs;
+- change gameplay/runtime behavior.
+
+Focused QA run `33640807592` is PASS and verifies:
+
+- hydro-only filtering;
+- building exclusion;
+- gzip encode/decode;
+- per-cell file generation;
+- spatial duplication semantics across cell boundaries;
+- unique hydro feature preservation;
+- runtime import audit/build/code split remain green.
+
+The local real-Quebec pack command currently being run by the user is:
 
 ```powershell
-node tools/geofabrik/build-world-tiles.mjs `
-  --pbf world-data/source/quebec-latest.osm.pbf `
-  --region quebec `
-  --out public/world-data/osm/quebec `
+node tools/geofabrik/pack-hydro-gzip-v2.mjs `
+  --in public/world-data/osm/quebec `
+  --out public/world-data/osm-v2/quebec/hydro `
   --overwrite
 ```
 
-4. Capture the final printed `manifest` JSON and report at least:
+## Exact next action
 
-- `tileCount`;
-- `tileRecords`;
-- `emittedFeatures`;
-- `oversizeFeatures`;
-- `categoryCounts`;
-- generated directory size on disk.
+**Wait for the user's final JSON from the real Quebec hydro gzip pack. Do not begin runtime wiring before reviewing it.**
 
-5. Only after real Quebec counts/sizes are reviewed, create a new candidate to wire **hydro first** to local tiles with Overpass fallback. Do not migrate scenery and signs in the same first runtime lot.
+Capture at minimum:
 
-If `osmium --version` is not available, install/configure `osmium-tool` locally first. WSL is acceptable; if using WSL, run the preprocessing against the mounted repo from WSL.
+```text
+compressedSize / compressedBytes
+uncompressedSize / uncompressedBytes
+reductionPercent
+tileCount
+averageTileCompressedSize
+maxTileCompressedSize
+```
+
+Decision gate after that result:
+
+### If gzip reduction is strong and per-tile compressed sizes are comfortable
+
+Proceed to a new **hydro-only runtime candidate**:
+
+```text
+compressed local hydro tile
+  -> offline hydro reader
+  -> existing water-data ingest semantics
+  -> existing water renderer / bridge orchestration unchanged
+  -> Overpass fallback only when local region/tile unavailable
+```
+
+Required human smoke first on the known Manic route that reproduced issue #3.
+
+### If gzip remains too large / inefficient
+
+Do **not** sacrifice hydro precision immediately. Evaluate a more compact vector transport/package such as MVT/PMTiles or another indexed binary representation before runtime integration.
+
+### Important
+
+Do not migrate scenery, signs, terrain or R7 structure in the same first runtime candidate.
 
 ---
 
@@ -233,7 +379,7 @@ Evidence on `37258cad5acfde1fd58207cae77169726db29c84`:
 - Water Hydro Runtime `33629706510` — PASS;
 - Dev Integration `33629706535` — PASS 97/97.
 
-**Issue #3 remains OPEN.** The correction reduced cross-service poisoning but did not make public Overpass reliable enough to be World Drive's deterministic primary world-data source. Close only after the offline source path is proven in runtime.
+**Issue #3 remains OPEN.** The correction reduced cross-service poisoning but public Overpass is still not reliable enough to remain World Drive's deterministic primary world-data source. Close only after the offline hydro source is proven in runtime/human smoke.
 
 ---
 
@@ -297,13 +443,15 @@ qa/qa-water-hydro-runtime.mjs
 8. **Never touch `main` without explicit user approval.**
 9. Keep generated Geofabrik source/tiles out of Git until packaging/distribution strategy is explicitly decided.
 10. Migrate data consumers incrementally: hydro first; scenery/signs later.
+11. Do not treat a green tool/format QA as permission to change production runtime without its own candidate and human smoke.
 
 Do not mix into current work:
 - physics/handling tuning;
 - terrain/road/forest visual tuning;
 - dependency/security fixes;
 - GitHub Actions runtime upgrades;
-- historical production-name cleanup.
+- historical production-name cleanup;
+- scenery/sign migration while hydro source is still being proven.
 
 ---
 
@@ -325,7 +473,8 @@ Preserve:
 - bridge-over-water orchestration;
 - authored forest/water style sharing;
 - current Overpass fallback until offline parity is proven;
-- OSM attribution / ODbL obligations for generated local data.
+- OSM attribution / ODbL obligations for generated local data;
+- full source geometry during current gzip evaluation unless a later explicit simplification experiment is separately approved/certified.
 
 ## Terrain / streaming / performance
 Preserve cache reuse/preload, imagery/procedural transitions, near/medium/far continuity, photo ON/OFF quality, forest frame pacing and low-hitch long-route behavior.
@@ -345,8 +494,8 @@ Preserve cache reuse/preload, imagery/procedural transitions, near/medium/far co
 - **R6.2 road geometry/bridges:** DONE automation + human PASS.
 - **R6.3 scenery/forest:** CLOSED; scenery moved, forest KEEP ROOT.
 - **R6.4 water:** failed structural move, rolled back, KEEP ROOT.
-- **OSM data-source reliability prototype:** **ACTIVE — real Quebec Geofabrik build next.**
-- **R7 app/input/ui/routing/services:** PAUSED until offline OSM path is proven far enough to resolve issue #3; then read-only audit first.
+- **OSM data-source reliability:** **ACTIVE — Quebec hydro gzip v2 real-data evaluation in progress.**
+- **R7 app/input/ui/routing/services:** PAUSED until offline OSM hydro path is proven far enough to resolve issue #3; then read-only audit first.
 - **R8 terrain/imagery/local-world/streaming:** LAST / performance-sensitive; revisit issue #2 here.
 - **R9 permanent root-cleanliness gate:** after migrations stabilize.
 
@@ -383,7 +532,9 @@ Node action-runtime deprecation / forced Node 24 warnings remain separate from t
 | Driving physics | `npm run qa:stress` + driving matrix + grip gates |
 | Water/hydrography | `qa/qa-water-hydro-runtime.mjs` + human hydro/bridge smoke |
 | Overpass fallback | `qa/qa-overpass-resilience-r1.mjs` + `WorldDriveOverpass()` when needed |
-| Geofabrik preprocessing | `qa/qa-geofabrik-tiles-r1.mjs` + `Geofabrik Offline OSM QA` |
+| Geofabrik preprocessing | `qa/qa-geofabrik-tiles-r1.mjs` + Geofabrik Offline OSM QA |
+| Geofabrik profiling | `qa/qa-geofabrik-profile-r1.mjs` + real regional profile |
+| Hydro gzip format | `qa/qa-geofabrik-hydro-gzip-r1.mjs` + real Quebec compression measurements |
 | First offline runtime integration | hydro-only candidate + Overpass fallback + same known Manic route human smoke |
 | Build | `npm run build` |
 | Code splitting | `qa/BUILD_V21_31_CODE_SPLIT_QA.mjs` |
