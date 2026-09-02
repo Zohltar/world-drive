@@ -1,0 +1,61 @@
+name: R6 Water Rollback QA
+
+on:
+  push:
+    branches:
+      - candidate/r6-water-rollback
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  qa:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install
+        run: npm ci
+      - name: Hydro runtime regression
+        run: node qa/qa-water-r6-rollback.mjs
+      - name: Runtime import and debt audit
+        run: node qa/DEV_INTEGRATION_AUDIT.mjs
+      - name: Root water implementation syntax
+        run: |
+          node --check src/water-data.js
+          node --check src/water-renderer.js
+      - name: Browser-served root water modules
+        shell: bash
+        run: |
+          npx vite --host 127.0.0.1 --port 5189 --strictPort >/tmp/r6-water-rollback-vite.log 2>&1 &
+          VITE_PID=$!
+          cleanup(){ kill "$VITE_PID" >/dev/null 2>&1 || true; cat /tmp/r6-water-rollback-vite.log || true; }
+          trap cleanup EXIT
+          READY=0
+          for i in {1..80}; do
+            if curl -fsS http://127.0.0.1:5189/src/water-data.js >/tmp/water-data.js 2>/dev/null && curl -fsS http://127.0.0.1:5189/src/water-renderer.js >/tmp/water-renderer.js 2>/dev/null; then READY=1; break; fi
+            sleep 0.1
+          done
+          test "$READY" = "1"
+          grep -q 'createWaterDataService' /tmp/water-data.js
+          grep -q 'createWaterRenderer' /tmp/water-renderer.js
+      - name: Scenery/forest boundaries
+        run: |
+          node qa/qa-source-tree-r6-scenery-renderer.mjs
+          node qa/qa-forest-p933-startup-gate.mjs
+          node qa/qa-p937-combined-frame-pacing.mjs
+      - name: Full V21.31 regression stress
+        run: npm run qa:stress
+      - name: Live route preset smoke
+        run: node qa/STRESS_ROUTE_PRESETS_LIVE.mjs
+      - name: Production build
+        run: npm run build
+      - name: Production code split QA
+        run: node qa/BUILD_V21_31_CODE_SPLIT_QA.mjs
