@@ -43,7 +43,7 @@ for(const row of rows)(byName[row.name]??=[]).push({kind:row.kind,file:row.file,
 const expected=new Map([
   ['__WORLD_DRIVE_P923_LOCAL_WORLD__',[
     'direct-write:src/local-world-builder-p925.js',
-    'direct-write:src/local-world-builder-p926.js',
+    'direct-write:src/local-world/local-world-builder-p926.js',
     'direct-write:src/local-world-builder.js'
   ]],
   ['__WORLD_DRIVE_P928_RECORD_HITCH__',['diagnostic-alias:src/forest-chunk-streamer.js']],
