@@ -73,9 +73,9 @@ const expected=new Map([
     'direct-write:src/terrain-p926.js',
     'direct-write:src/terrain.js'
   ]],
-  ['worldDriveBuild',['direct-write:src/version.js']],
+  ['worldDriveBuild',['direct-write:src/app/version.js']],
   ['WorldDriveFramePacing',['diagnostic-alias:src/main.js']],
-  ['WorldDriveOverpass',['diagnostic-alias:src/overpass.js']],
+  ['WorldDriveOverpass',['diagnostic-alias:src/services/overpass.js']],
   ['WorldDrivePhysicsShadow',['diagnostic-alias:src/main.js']],
   ['WorldDriveTraffic',[
     'direct-write:src/traffic/civil-traffic-local.js',
