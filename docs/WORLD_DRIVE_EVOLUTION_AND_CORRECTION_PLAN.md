@@ -28,185 +28,216 @@ At the start of every World Drive coding/architecture/QA conversation:
 
 # 1. CURRENT CHECKPOINT
 
-**Plan phase:** **R8 terrain/imagery/local-world/streaming — READ-ONLY AUDIT FIRST**  
-**Just closed:** **R7 app/input/UI/routing/services**  
-**State:** **R7 DONE — focused automation PASS + human Electron PASS**  
-**Pre-R7-final integration `dev` HEAD:** `75569b2422756fc819aa4fe4ef162a46cafcf8df` — `QA: add R7 UI to Dev Integration`  
-**Pre-R7-final Dev Integration:** run `33675929426` — **PASS** on `75569b2422756fc819aa4fe4ef162a46cafcf8df`  
-**Final R7 app/services candidate before this documentation commit:** `candidate/r7-app-services-r1` @ `90fa1ab1eafbaae32c4299c8250b8e3db3adfd49`  
-**Latest focused R7 app/services QA:** run `33676904559` — **PASS** on `90fa1ab1eafbaae32c4299c8250b8e3db3adfd49`  
-**Human checkpoint:** Electron smoke covering settings persistence, Manic local hydro, Yungas network/fallback path, cache/relaunch — **PASS**  
+**Plan phase:** **R8 terrain / imagery / local-world / streaming**  
+**State:** **R8.0 AUDIT + QA BASELINE DONE — no production runtime change**  
+**R8.0 integration head before this documentation commit:** `22d28ac1762d774253027185d02252ee9d6874ec` — `QA: make R8 streaming baseline permanent`  
+**Focused R8 baseline:** run `33680675720` — **PASS** on `22d28ac1762d774253027185d02252ee9d6874ec`  
+**Dev Integration:** run `33680675787` — **PASS 100/100** on `22d28ac1762d774253027185d02252ee9d6874ec`  
 **Stable fallback:** `main` @ `111df5d84bf7fd700590abbd9c129b303ac92fad`  
 **Main rule:** `main` remains untouched without explicit user approval.
 
-## Exact next action
+R8.0 established permanent current streaming coverage:
 
-Begin **R8 with a read-only audit only** after exact-head `dev` certification of this R7 checkpoint.
+```text
+qa/qa-r8-current-ownership.mjs
+qa/qa-r8-streaming-baseline.mjs
+.github/workflows/qa-r8-baseline.yml
+```
 
-Audit terrain / imagery / local-world / streaming ownership and runtime flow before changing production behavior. The first R8 pass must identify:
+`qa/DEV_INTEGRATION_AUDIT.mjs` now permanently executes the isolated R8 streaming baseline before the historical source-tree audit. The R8 runner executes **14/14** current contracts covering P9.17 through P9.27, including route-cache reset and both P9.23 prepared-refresh/scheduler gates. Terrain R1/R2 and P9.37–P9.42 remain separate permanent Dev Integration steps.
 
-- current owners, facades and nested boundaries;
-- world-build and refresh orchestration;
-- terrain near/medium/far responsibilities;
-- imagery/procedural transition ownership;
-- preload/cache/reuse behavior;
-- frame-pacing / hitch attribution hooks;
-- QA/workflow/path contracts;
-- whether deferred issue #2 is reproducible and where its ownership belongs;
-- smallest safe first R8 candidate, if any.
+## Exact next action — R8.1 issue #2 diagnostics only
 
-Do **not** tune terrain visuals, road visuals, forest visuals, physics or performance during the initial audit. Do not combine R8 with dependency/security work, Actions runtime upgrades, historical naming cleanup, scenery/sign offline migration or regional-data packaging.
+Do **not** reorganize terrain/imagery/streaming production files yet.
+
+Open a small candidate whose only runtime-visible intent is to improve diagnostics for deferred issue #2 (`Intermittent delayed terrain adjustment after route startup`). The candidate should expose enough timing/state to distinguish:
+
+1. initial forced/synchronous local-world boot commit;
+2. a later prepared P9.23/P9.27 refresh;
+3. DEM/hydro dirty-triggered refresh after boot;
+4. imagery geometry invalidation / sequential chunk resampling after a terrain commit;
+5. browser/render long-frame activity unrelated to a world rebuild.
+
+Preferred additive telemetry in existing diagnostics:
+
+- imagery geometry invalidation generation/count;
+- pending/resampled chunk count;
+- invalidation start/end timestamps or durations;
+- last invalidation reason when the caller can supply it safely;
+- active/pending geometry refresh state;
+- enough boot/commit correlation to compare with `localWorldPhases`, `visualJobs`, P9.27 and P9.39.
+
+Requirements:
+
+- **diagnostic-only**: no terrain visual tuning, no imagery quality change, no scheduling/cooldown/budget change;
+- candidate first;
+- focused QA must prove telemetry is additive and existing contracts remain unchanged;
+- if issue #2 can be reproduced, human Manic-5 startup evidence decides ownership before any fix;
+- if it cannot be reproduced, do not invent a corrective change.
 
 ---
 
-# 2. R7 app/input/UI/routing/services — CLOSED
+# 2. R8.0 read-only audit — CLOSED
 
-R7 reorganized the remaining application-facing source-root ownership without changing intended runtime behavior.
+## 2.1 Current ownership map
 
-## 2.1 Input — DONE
+### `src/world-streaming.js`
+
+Owns **WHEN** visible world services refresh and route-ahead caches prefetch. Individual loaders/renderers continue to own **HOW** content loads or renders.
+
+Current visible refresh thresholds:
+
+```text
+elevation:     1400 m
+water:         2200 m
+scenery:       2600 m
+imagery:        700 m
+roadMetadata:   700 m
+signs:         2500 m
+```
+
+Directional prefetch defaults:
+
+```text
+step:  850 m
+near: 1800 m
+far:  3600 m
+```
+
+### `src/streaming-coordinator.js`
+
+Owns scheduler/arbitration, prepared refresh lifecycle, visual-job scheduling, imagery commit deferral, local-world phase timing and hitch attribution.
+
+Important invariant:
+
+```text
+periodic refresh -> prepared incremental path
+forced boot/route/reset -> proven synchronous P9.13 path
+```
+
+### Local-world builder chain
+
+```text
+src/local-world-builder.js
+  -> src/local-world-builder-p926.js
+    -> src/local-world-builder-p925.js
+```
+
+Responsibilities include incremental near-ground preparation, horizon preparation, atomic commits, road replay/prebuild, hydro/scenery rebuild orchestration, forest retention and deferred P9.27 road-transition work after prepared commits.
+
+### Terrain chain
+
+```text
+src/terrain.js                 P9.27 road↔terrain transition
+  -> src/terrain-p926.js       P9.26 distant/horizon LOD
+    -> src/terrain-p925.js     P9.25 near ground / road-bed base
+```
+
+Protected terrain behavior remains authoritative; R8 is not permission to retune it.
+
+### Imagery
+
+```text
+src/imagery.js
+  -> src/imagery-p913.js
+```
+
+Imagery remains separate georeferenced satellite geometry over the procedural/terrain underlay. It keeps its own chunk cache, queue, build lifecycle and geometry invalidation/resampling path.
+
+### Other owners
+
+- `src/elevation.js`: Terrarium DEM fetch/cache/interpolation + route-ahead elevation prefetch.
+- `src/world-scene.js`: static scene composition and group hierarchy; not mutable streaming policy.
+- `src/routing/route-lifecycle.js`: route startup sequencing and forced initial local-world commit.
+
+## 2.2 Issue #2 ownership finding
+
+Deferred issue #2 was previously suspected to involve the delayed P9.27 road-transition path. R8 audit shows that assumption is incomplete:
+
+- route startup calls the **forced synchronous** local-world commit;
+- P9.27 is the prepared-periodic transition path and therefore does **not directly own the first boot commit**;
+- P9.27 can still appear later if a post-boot DEM/hydro/world-dirty refresh occurs.
+
+A more directly compatible **hypothesis** is imagery geometry invalidation after the synchronous terrain commit:
+
+1. route startup can prepare/await satellite imagery;
+2. terrain/local-world then performs the forced boot commit;
+3. imagery geometry is invalidated to match the new terrain surface;
+4. existing satellite chunks are resampled sequentially after commit guards / idle turns;
+5. a large area could therefore appear temporarily unadjusted while road + forest are already visible.
+
+**This is a hypothesis, not a diagnosis.** No production fix is authorized until the symptom is reproduced and diagnostics correlate the visible correction with one of the runtime paths above.
+
+Useful existing evidence surface:
+
+```text
+WorldDriveFramePacing()
+  pendingWorld
+  localWorldPhases
+  p923.builder.p927RoadTransition
+  visualJobs
+  imagery queue/build/commit state
+  p939HitchAttribution
+  frame/browser long-frame snapshots
+```
+
+R8.1 should make imagery geometry invalidation equally observable.
+
+## 2.3 QA gap found and closed
+
+Before R8.0, current-valid P9.17–P9.27 streaming tests existed in the historical `Foret Streaming QA` workflow but were not executed by exact-head `dev` certification. `npm run qa:stress` did not cover them, and A8 only checked that current ownership/tests existed.
+
+R8.0 closed that gap without touching production source.
+
+Historical V21.21/V21.25 streaming tests remain historical and are **not** authoritative when they assert superseded sizes, thresholds or source locations. Never alter current runtime merely to satisfy a stale historical assertion.
+
+---
+
+# 3. R7 app/input/UI/routing/services — CLOSED
+
+R7 reorganized the remaining application-facing source-root ownership without changing intended runtime behavior. Human Electron validation passed.
 
 Permanent boundary QA:
 
 ```text
 qa/qa-source-tree-r7-input.mjs
-```
-
-Input ownership is certified and covered by Dev Integration.
-
-## 2.2 Routing — DONE
-
-Permanent boundary QA:
-
-```text
 qa/qa-source-tree-r7-routing.mjs
-```
-
-Routing ownership is certified and covered by Dev Integration.
-
-## 2.3 UI — DONE
-
-Permanent boundary QA:
-
-```text
 qa/qa-source-tree-r7-ui.mjs
-```
-
-UI ownership is certified and covered by Dev Integration. Human UI validation passed before integration.
-
-## 2.4 App + services — DONE
-
-Public root import paths were intentionally retained as compatibility facades while implementations moved beneath explicit ownership folders.
-
-Application implementations:
-
-```text
-src/app/application-settings.js
-src/app/loaded-settings-application.js
-src/app/diagnostics.js
-src/app/version.js
-```
-
-Service implementations:
-
-```text
-src/services/cache.js
-src/services/overpass.js
-src/services/desktop-overpass-transport.js
-```
-
-Stable root facades retained:
-
-```text
-src/application-settings.js
-src/loaded-settings-application.js
-src/diagnostics.js
-src/version.js
-src/cache.js
-src/overpass.js
-src/desktop-overpass-transport.js
-```
-
-Important invariants preserved:
-
-- settings object/root identity and nested control references;
-- 120 ms settings-save debounce;
-- loaded-settings application ordering and imagery/display behavior;
-- package-driven `V21.31 dev` branding;
-- stable `WorldDriveDiagnostics` identity and live compatibility aliases;
-- cache namespace/key/persistence semantics;
-- Overpass endpoint/failover/cooldown/request-pacing behavior;
-- desktop Overpass transport behavior;
-- existing root import contracts for runtime and historical QA.
-
-Permanent R7 app/services QA:
-
-```text
 qa/qa-source-tree-r7-app-services.mjs
-.github/workflows/qa-source-tree-r7-app-services.yml
 ```
 
-`qa/DEV_INTEGRATION_AUDIT.mjs` is now the aggregate entrypoint:
+Application implementations live under `src/app/`; service implementations live under `src/services/`; stable root compatibility facades remain intentionally available.
 
-```text
-R7 app/services boundary
-  -> historical DEV_INTEGRATION_AUDIT_BASE.mjs
-```
+Preserved invariants include settings identity/persistence, input behavior, routing lifecycle, UI behavior, package-derived branding, diagnostics identity, cache semantics, Overpass failover/pacing/cooldown and Electron desktop Overpass transport.
 
-This makes the new boundary permanent without removing the historical import/source-tree audit.
-
-Focused evidence:
-
-- run `33676904559` — **PASS** on `90fa1ab1eafbaae32c4299c8250b8e3db3adfd49`;
-- app/services boundary PASS;
-- stable settings PASS;
-- loaded settings PASS;
-- version/build branding PASS;
-- diagnostics root PASS;
-- runtime import/debt audit PASS;
-- production build PASS;
-- production code-split PASS;
-- human Electron smoke — **PASS**.
+R7 final human Electron smoke: **PASS**.
 
 ---
 
-# 3. OSM / Geofabrik reliability — CLOSED FOR QUEBEC HYDRO
+# 4. OSM / Geofabrik reliability — CLOSED FOR QUEBEC HYDRO
 
-GitHub issue #3 — `Overpass shared pipeline can make hydrography and scenery unavailable together` — **CLOSED / completed on 2026-09-02**.
-
-Public Overpass remains useful as fallback, but it is no longer the deterministic primary source for covered Quebec hydro tiles.
+GitHub issue #3 — `Overpass shared pipeline can make hydrography and scenery unavailable together` — **CLOSED / completed 2026-09-02**.
 
 Implemented direction:
 
 ```text
-Geofabrik regional .osm.pbf
-  -> offline filtering/preprocessing
-  -> World Drive 16 km spatial tiles
-  -> hydro-only gzip v2 runtime tiles
+Geofabrik Quebec .osm.pbf
+  -> offline preprocessing
+  -> 16 km World Drive spatial tiles
+  -> hydro-only gzip v2 tiles
   -> local-first hydro reader
-  -> existing water-data ingest semantics
-  -> existing water renderer / bridge orchestration unchanged
-  -> Overpass only as fallback where local coverage is unavailable
+  -> existing water ingest/render semantics
+  -> Overpass fallback outside covered local tiles
 ```
 
-Generated/source data remain intentionally ignored by Git:
+Generated/source data remain ignored by Git:
 
 ```text
 world-data/
 public/world-data/
 ```
 
-Packaging/distribution of the regional data itself is **not decided yet**. Do not commit or silently bundle the multi-gigabyte Quebec dataset until that strategy is explicitly approved.
-
-## 3.1 Real Quebec v1 build — COMPLETE
-
-Source:
-
-```text
-world-data/source/quebec-latest.osm.pbf
-MD5: 87b761c42ff06eec0156e26b25e9673b
-osmium-tool: 1.19.1
-libosmium: 2.23.1
-```
+Do not commit or silently bundle the Quebec dataset until packaging/distribution is explicitly decided.
 
 Final coastline-corrected v1:
 
@@ -217,107 +248,72 @@ oversizeFeatures:         20
 tileRecords:       7,966,008
 tileCount:            19,255
 tileSizeMeters:        16,000
+water:             3,040,174
+waterway:          2,178,612
+bridge:               24,490
+dam:                   4,108
 ```
 
-Category counts:
-
-```text
-water:      3,040,174
-waterway:   2,178,612
-bridge:        24,490
-dam:            4,108
-building:   1,529,708
-landuse:      397,367
-power:        484,241
-barrier:          623
-sign:             906
-```
-
-The coastline correction was narrowly scoped: non-water category counts stayed unchanged and `oversizeFeatures` remained 20.
-
-## 3.2 Hydro gzip v2 — ACCEPTED
-
-Final real-Quebec hydro gzip v2 after coastline parity:
+Accepted hydro gzip v2:
 
 ```text
 format:                    world-drive-osm-hydro-jsonl-gzip-v2
-source tile size:          16,000 m
 hydro tileCount:           18,757
 hydro records:             5,503,776
 parseErrors:               0
-uncompressedBytes:         10,951,155,349
 uncompressedSize:          10.20 GB
-compressedBytes:           3,139,223,695
-compressedSize:            2.92 GB
+compressedSize:             2.92 GB
 compressionRatio:          0.2867
 reductionPercent:          71.33%
 average compressed tile:   163.4 KB
-max compressed tile:       1.9 MB
-max uncompressed tile:     6.7 MB
-oversize hydro records:    6
+max compressed tile:         1.9 MB
+max uncompressed tile:       6.7 MB
+oversize hydro records:          6
 ```
 
-Decision: **gzip v2 passes the storage/runtime gate.** No MVT/PMTiles conversion or geometry simplification is justified at this stage.
+Decision: gzip v2 passes the storage/runtime gate. No geometry simplification or MVT/PMTiles conversion is justified now.
 
-Runtime rules:
-
-- local Quebec hydro is primary when the central 16 km tile exists;
-- neighboring tiles complete the normal 7 km hydro radius;
-- duplicate OSM records are deduplicated across cells;
-- oversize hydro records are supported;
-- LineString / MultiLineString / Polygon / MultiPolygon are adapted to existing ingest semantics;
-- water/bridge/coastline behavior is preserved;
-- static local hydro is not redundantly copied into IDB;
-- cache/Overpass remain fallback for uncovered regions/tiles;
-- corrupt expected local data fails visibly rather than being silently masked;
-- HUD/service diagnostics distinguish `Local`, `Cache` and `OSM` paths.
-
-Evidence:
-
-- focused Geofabrik runtime run `33646344696` — PASS;
-- known Manic human smoke — PASS;
-- post-integration Dev Integration run `33658760396` — PASS 97/97;
-- issue #3 — CLOSED.
+Known Manic local-hydro human smoke: **PASS**.
 
 ---
 
-# 4. Deferred issue #2 — terrain startup adjustment
+# 5. Deferred issue #2 — terrain startup adjustment
 
-One Manic-5 startup briefly showed a large near-terrain area dark/unadjusted while road + forest were visible. It converged and could not be reproduced after relaunch.
+Issue remains **OPEN / intermittent / not yet diagnosed**.
 
-Observed telemetry:
+Original observation on Manic-5:
 
+- large near-terrain area briefly dark/unadjusted;
+- road + forest already visible;
+- converged after several seconds;
 - ~143–144 FPS;
 - `pendingWorldRefresh:false`;
 - hitch count 5 → 9;
-- `maxFrameMs:194.4`.
+- `maxFrameMs:194.4`;
+- not reproducible after settled/relaunch tests.
 
-Revisit only in **R8 terrain/imagery/local-world/streaming**, with `WorldDriveFramePacing()` and current streaming diagnostics if reproducible. Do not assume a fix is needed unless the symptom can be reproduced.
+R8 audit now explicitly rejects assuming P9.27 owns the initial symptom. See R8.1 diagnostic plan above.
 
 ---
 
-# 5. CLOSED / CERTIFIED STRUCTURAL WORK
+# 6. CLOSED / CERTIFIED STRUCTURAL WORK
 
-- **R1 source-root audit:** DONE.
-- **R2 Multiplayer:** DONE automation + human PASS.
-- **R3 Civil traffic:** DONE automation + human PASS.
-- **R4 Vehicles/presentation/models/truck:** DONE automation + human PASS.
-- **R4.5 Audio:** DONE automation + human PASS.
-- **QA root-layout cleanup:** DONE automation + human PASS.
-- **R5a Core vehicle dynamics:** DONE; no physics tuning.
-- **R5b wheel-ground + transmission state:** DONE automation + human PASS; root facades retained.
-- **R5 closure:** KEEP ROOT `driving-runtime.js`, `driving-runtime-base.js` (defer O6), `transmission-controller.js`, `skidmarks.js`.
-- **R6.1 Road furniture/signs:** DONE automation + human PASS.
-- **R6.2 Road geometry + bridge interactions:** DONE automation + human PASS.
-- **R6.3a Scenery renderer:** DONE automation + accepted human PASS.
-- **R6.3b Forest runtime:** CLOSED — KEEP ROOT.
-- **R6.4 Water structural move:** FAILED human smoke, rolled back — KEEP ROOT.
-- **OSM hydro reliability / issue #3:** CLOSED — Quebec local-first gzip v2 runtime + human Manic PASS.
-- **R7 app/input/UI/routing/services:** DONE automation + human PASS.
+- R1 source-root audit: DONE.
+- R2 multiplayer: DONE automation + human PASS.
+- R3 civil traffic: DONE automation + human PASS.
+- R4 vehicles/presentation/models/truck: DONE automation + human PASS.
+- R4.5 audio: DONE automation + human PASS.
+- QA root-layout cleanup: DONE automation + human PASS.
+- R5 vehicle dynamics / wheel-ground / transmission: CLOSED; no physics tuning.
+- R6.1 road furniture/signs: DONE automation + human PASS.
+- R6.2 road geometry/bridges: DONE automation + human PASS.
+- R6.3 scenery/forest: CLOSED; scenery moved, forest KEEP ROOT.
+- R6.4 water structural move: FAILED human smoke, rolled back; water KEEP ROOT.
+- OSM Quebec hydro reliability / issue #3: CLOSED, local-first gzip v2 + human PASS.
+- R7 app/input/UI/routing/services: DONE automation + human PASS.
+- R8.0 audit + permanent QA baseline: DONE, no runtime change.
 
-## R6.4 water disposition
-
-Intentional production layout remains root-owned:
+Intentional root water layout:
 
 ```text
 src/water-data.js
@@ -326,11 +322,9 @@ src/water-renderer.js
 src/forest-water-assets.js
 ```
 
-Water remains **KEEP ROOT** for Phase R.
-
 ---
 
-# 6. Operating principles / prohibitions
+# 7. Operating principles / prohibitions
 
 1. **One intent per commit.**
 2. **Audit before editing.**
@@ -340,23 +334,23 @@ Water remains **KEEP ROOT** for Phase R.
 6. **Human FAIL overrides green automation.**
 7. **No silent debt discoveries.**
 8. **Never touch `main` without explicit user approval.**
-9. Keep generated Geofabrik source/tiles out of Git until packaging/distribution is explicitly decided.
-10. Migrate data consumers incrementally; do not opportunistically combine unrelated layers.
-11. A green tool/format QA does not authorize a production runtime change without its own candidate and human smoke.
+9. Keep generated Geofabrik source/tiles out of Git until packaging is explicitly decided.
+10. Migrate data consumers incrementally; do not combine unrelated layers.
+11. A green QA does not authorize a production runtime change without its own candidate and required human smoke.
 
-Do not mix into current R8 audit/work:
+Do not mix into R8:
 
 - physics/handling tuning;
-- road/forest visual tuning;
+- terrain/road/forest visual tuning unless a later explicitly approved R8 correction requires it;
 - dependency/security fixes;
 - GitHub Actions runtime upgrades;
 - historical production-name cleanup;
 - scenery/sign offline migration;
-- generated regional-data packaging decisions unless explicitly made active.
+- regional-data packaging decisions.
 
 ---
 
-# 7. Protected behavior contracts
+# 8. Protected behavior contracts
 
 ## Driving / physics
 
@@ -372,102 +366,84 @@ Preserve scenery visibility, P9/P933 composition, forest asset timing, startup c
 
 ## Water / hydrography / OSM
 
-Preserve:
-
-- water/bridge/coastline ingest semantics;
-- river/polygon/coastline rendering behavior;
-- bridge-over-water orchestration;
-- authored forest/water style sharing;
-- local-first Quebec hydro behavior for covered tiles;
-- cache/Overpass fallback for uncovered local regions/tiles;
-- visible failure for corrupt expected local hydro data;
-- OSM attribution / ODbL obligations;
-- full source geometry unless a later simplification experiment is explicitly approved/certified.
+Preserve water/bridge/coastline ingest semantics, river/polygon/coastline rendering, bridge-over-water orchestration, authored style sharing, local-first Quebec hydro, fallback outside covered tiles, visible corrupt-local failure and OSM attribution/ODbL obligations.
 
 ## App / input / UI / routing / services
 
+Preserve stable R7 public root paths, settings identity/persistence, input bindings, routing lifecycle/presets, startup/menu/HUD/minimap/compass behavior, branding, diagnostics aliases, cache semantics, Overpass fallback and Electron transport.
+
+## Terrain / imagery / streaming / performance
+
 Preserve:
 
-- stable public root import paths introduced/retained by R7;
-- settings identity and persistence semantics;
-- input behavior and bindings;
-- routing lifecycle and preset behavior;
-- UI startup/menu/HUD/minimap/compass behavior;
-- package-derived build branding;
-- canonical diagnostics root and compatibility aliases;
-- cache key/persistence behavior;
-- Overpass failover/pacing/cooldown/fallback behavior;
-- Electron desktop Overpass transport.
-
-## Terrain / streaming / performance
-
-Preserve cache reuse/preload, imagery/procedural transitions, near/medium/far continuity, photo ON/OFF quality, forest frame pacing and low-hitch long-route behavior.
+- forced synchronous boot/route/reset path until separately proven safe to change;
+- prepared incremental periodic refresh semantics;
+- near-ground, horizon and road-transition continuity;
+- terrain road-bed / visible-earthwork authority;
+- imagery as separate satellite geometry over the underlay;
+- road-aware imagery height alignment;
+- cache reuse and route-ahead prefetch;
+- photo ON/OFF quality;
+- forest retention/frame pacing;
+- low-hitch long-route behavior;
+- current P9.17–P9.27 and P9.37–P9.42 contracts.
 
 ---
 
-# 8. PHASE R roadmap
+# 9. PHASE R roadmap
 
-- **R1:** DONE.
-- **R2 multiplayer:** DONE automation + human PASS.
-- **R3 traffic:** DONE automation + human PASS.
-- **R4 vehicles/presentation/models/truck:** DONE automation + human PASS.
-- **R4.5 audio:** DONE automation + human PASS.
-- **QA root-layout:** DONE automation + human PASS.
-- **R5:** CLOSED.
-- **R6.1 road furniture/signs:** DONE automation + human PASS.
-- **R6.2 road geometry/bridges:** DONE automation + human PASS.
-- **R6.3 scenery/forest:** CLOSED; scenery moved, forest KEEP ROOT.
-- **R6.4 water:** structural move rolled back, KEEP ROOT; offline hydro reader retained at root water boundary.
-- **OSM data-source reliability:** DONE for Quebec hydro; issue #3 CLOSED.
-- **R7 app/input/UI/routing/services:** **DONE automation + human PASS.**
-- **R8 terrain/imagery/local-world/streaming:** **ACTIVE — READ-ONLY AUDIT FIRST; performance-sensitive; revisit issue #2 here.**
-- **R9 permanent root-cleanliness gate:** after R8 stabilizes.
-
----
-
-# 9. PHASE O — historical naming cleanup
-
-Only after relevant Phase R folders are stable:
-
-- O1 Multiplayer names;
-- O2 Road-furniture P930/P937;
-- O3 Vehicle-presentation version name;
-- O4 Scenery P9/P933;
-- O5 Audio base naming if useful;
-- O6 Driving runtime base/public architecture;
-- O7 Terrain/imagery/local-world/streaming names after R8.
+- R1: DONE.
+- R2 multiplayer: DONE.
+- R3 traffic: DONE.
+- R4 vehicles/presentation/models/truck: DONE.
+- R4.5 audio: DONE.
+- QA root-layout: DONE.
+- R5: CLOSED.
+- R6.1 road furniture/signs: DONE.
+- R6.2 road geometry/bridges: DONE.
+- R6.3 scenery/forest: CLOSED.
+- R6.4 water: KEEP ROOT after failed structural move.
+- OSM Quebec hydro reliability: DONE; issue #3 CLOSED.
+- R7 app/input/UI/routing/services: DONE.
+- **R8.0 terrain/imagery/local-world/streaming audit + baseline: DONE.**
+- **R8.1 issue #2 diagnostic attribution: NEXT.**
+- R8 structural moves/corrections: only after R8.1 evidence and separate candidate decisions.
+- R9 permanent root-cleanliness gate: after R8 stabilizes.
 
 ---
 
-# 10. Maintenance debt — keep separate
+# 10. PHASE O — historical naming cleanup
 
-## C-M1 — Dependency/security
-
-Latest R7 focused `npm ci` audit output on 2026-09-02 reported **27 vulnerabilities: 3 low, 1 moderate, 22 high, 1 critical**. Inspect the dependency tree separately; distinguish runtime from dev/build-only risk. **Never run `npm audit fix --force` as part of structural work.**
-
-## C-M2 — GitHub Actions runtime hygiene
-
-Node action-runtime deprecation / forced Node 24 warnings remain separate from Phase R work. Do not upgrade Actions opportunistically inside R8.
+Only after relevant Phase R folders are stable. Terrain/imagery/local-world/streaming historical P9 naming belongs to O7, **after R8**, not during issue #2 diagnosis.
 
 ---
 
-# 11. Validation matrix
+# 11. Maintenance debt — keep separate
+
+## C-M1 dependency/security
+
+Latest R7-era audit output reported 27 vulnerabilities: 3 low, 1 moderate, 22 high, 1 critical. Inspect separately; distinguish runtime from dev/build risk. **Never run `npm audit fix --force` as part of structural work.**
+
+## C-M2 GitHub Actions runtime hygiene
+
+Node action-runtime deprecation / forced Node 24 warnings remain separate from Phase R work. Do not upgrade Actions opportunistically in R8.
+
+---
+
+# 12. Validation matrix
 
 | Risk area | Required validation |
 |---|---|
 | Runtime graph / paths | `qa/DEV_INTEGRATION_AUDIT.mjs` + relevant boundary QA |
-| R7 input | `qa/qa-source-tree-r7-input.mjs` |
-| R7 routing | `qa/qa-source-tree-r7-routing.mjs` |
-| R7 UI | `qa/qa-source-tree-r7-ui.mjs` + human UI smoke |
-| R7 app/services | `qa/qa-source-tree-r7-app-services.mjs` + settings/version/diagnostics regressions + human Electron smoke |
+| R8 current ownership | `qa/qa-r8-current-ownership.mjs` |
+| R8 P9.17–P9.27 | `qa/qa-r8-streaming-baseline.mjs` + focused R8 workflow |
+| Terrain visual ownership | `qa/qa-terrain-r1-legacy-ownership.mjs` |
+| Terrain/road imagery alignment | `qa/qa-terrain-r2-road-imagery.mjs` |
+| Frame pacing / hitch attribution | P9.37–P9.42 permanent gates + `WorldDriveFramePacing()` |
+| R8.1 issue #2 | focused diagnostics QA + repeated human Manic-5 startup observation if reproducible |
 | Driving physics | `npm run qa:stress` + driving matrix + grip gates |
 | Water/hydrography | `qa/qa-water-hydro-runtime.mjs` + human hydro/bridge smoke |
-| Overpass fallback | `qa/qa-overpass-resilience-r1.mjs` + `WorldDriveOverpass()` when needed |
-| Geofabrik preprocessing | `qa/qa-geofabrik-tiles-r1.mjs` |
-| Hydro gzip format | `qa/qa-geofabrik-hydro-gzip-r1.mjs` + real Quebec measurements |
-| Offline hydro runtime | `qa/qa-geofabrik-hydro-runtime-r1.mjs` + known Manic human smoke |
-| C6 global diagnostics | `qa/qa-diagnostics-c6-final-inventory.mjs` |
-| R8 terrain/streaming | focused ownership QA + build + performance diagnostics + human visual/perf smoke before integration |
+| Offline Quebec hydro | `qa/qa-geofabrik-hydro-runtime-r1.mjs` + known Manic human smoke |
 | Build | `npm run build` |
 | Code splitting | `qa/BUILD_V21_31_CODE_SPLIT_QA.mjs` |
 | Final integration | Dev Integration on exact final `dev` HEAD |
@@ -476,7 +452,7 @@ Automation cannot replace human-visible validation.
 
 ---
 
-# 12. Main promotion rule
+# 13. Main promotion rule
 
 `main @ 111df5d84bf7fd700590abbd9c129b303ac92fad` remains the stable rollback/reference baseline.
 
