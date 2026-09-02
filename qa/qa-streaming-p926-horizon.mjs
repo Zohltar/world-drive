@@ -2,7 +2,8 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 
 const terrain=fs.readFileSync(new URL('../src/terrain-p926.js',import.meta.url),'utf8');
-const builder=fs.readFileSync(new URL('../src/local-world-builder-p926.js',import.meta.url),'utf8');
+const builderFacade=fs.readFileSync(new URL('../src/local-world-builder-p926.js',import.meta.url),'utf8');
+const builder=fs.readFileSync(new URL('../src/local-world/local-world-builder-p926.js',import.meta.url),'utf8');
 
 assert.match(terrain,/P926_HORIZON_BUDGET_MS=1\.15/,
   'P9.26 horizon slice budget must stay at 1.15 ms');
@@ -23,6 +24,8 @@ assert.match(terrain,/clearLiveHorizon\(\);\s*horizonGroup\.position\.set\(0,0,0
 assert.match(terrain,/p926Diagnostics/,
   'P9.26 horizon diagnostics missing');
 
+assert.match(builderFacade,/export\s*\{\s*createLocalWorldBuilder\s*\}\s*from\s*['"]\.\/local-world\/local-world-builder-p926\.js['"]/,
+  'P9.26 root builder facade changed');
 assert.match(builder,/captureHorizonOrigin/,
   'P9.26 builder must preserve the old horizon origin during world swap');
 assert.match(builder,/restoreHorizonOrigin/,
