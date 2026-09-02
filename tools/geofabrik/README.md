@@ -57,6 +57,23 @@ Default tile size is 16 km. Override with `--tile-km 8`, `--tile-km 24`, etc.
 
 The source PBF and generated runtime tiles are intentionally ignored by Git. They are local/generated data, not repository source.
 
+## Measure layer size before runtime integration
+
+The v1 prototype writes all selected OSM categories into shared tile files. Before wiring a runtime service to those files, profile the generated dataset by logical layer:
+
+```powershell
+node tools/geofabrik/profile-world-tiles.mjs `
+  --dir public/world-data/osm/quebec
+```
+
+The profiler streams the existing tile files without rebuilding the PBF. It reports progress and estimates the exact bytes that a future layer-sharded dataset would contain for:
+
+- `hydro`: `water`, `waterway`, `bridge`, `dam`;
+- `scenery`: `building`, `landuse`, `power`, `barrier`;
+- `signs`: `sign`.
+
+For each layer it reports total bytes, record count, tiles containing data, average non-empty tile size and the largest tile. Features belonging to more than one logical layer are counted in each applicable layer because separate runtime shards would duplicate that record.
+
 ## Output format v1
 
 ```text
