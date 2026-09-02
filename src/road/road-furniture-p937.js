@@ -1,5 +1,5 @@
 import {createRoadFurnitureSystem as createRoadFurnitureSystemP930} from './road-furniture-p930.js';
-import {ensureWorldDriveDiagnostics} from './diagnostics.js';
+import {ensureWorldDriveDiagnostics} from '../diagnostics.js';
 
 const MIN_IDLE_MS=5.5;
 const MAX_IDLE_DEFERRALS=10;

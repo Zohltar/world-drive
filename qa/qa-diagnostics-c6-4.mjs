@@ -13,13 +13,13 @@ const diagnosticsB=ensureWorldDriveDiagnostics();
 expect(diagnosticsB===diagnosticsA,'diagnostics root identity changed');
 expect(diagnosticsB.roadSigns===roadSignsA,'roadSigns category identity changed');
 
-const p930=read('src/road-furniture-p930.js');
-const p937=read('src/road-furniture-p937.js');
+const p930=read('src/road/road-furniture-p930.js');
+const p937=read('src/road/road-furniture-p937.js');
 const p937Qa=read('qa/qa-p937-combined-frame-pacing.mjs');
 
 expect(!p930.includes('__WORLD_DRIVE_P930_ROAD_SIGNS__'),'legacy P9.30 road-sign global remains');
 expect(!p937.includes('__WORLD_DRIVE_P937_ROAD_SIGNS__'),'legacy P9.37 road-sign global remains');
-expect(p937.includes("import {ensureWorldDriveDiagnostics} from './diagnostics.js';"),'P9.37 must import canonical diagnostics root');
+expect(p937.includes("import {ensureWorldDriveDiagnostics} from '../diagnostics.js';"),'P9.37 must import canonical diagnostics root');
 expect(p937.includes('const roadSignDiagnostics=ensureWorldDriveDiagnostics().roadSigns;'),'P9.37 must bind stable roadSigns category');
 expect(p937.includes('roadSignDiagnostics.snapshot=diagnostics;'),'P9.37 must publish the existing combined diagnostic function canonically');
 expect((p937.match(/roadSignDiagnostics\.snapshot=diagnostics;/g)||[]).length===1,'canonical road-sign snapshot must have one writer');
@@ -33,7 +33,7 @@ expect(p937.includes('pending:scheduled||baseDiag.pending===true'),'P9.37 pendin
 expect(!p937Qa.includes('__WORLD_DRIVE_P937_ROAD_SIGNS__'),'P9.37 QA still pins the legacy global');
 expect(p937Qa.includes('roadSignDiagnostics.snapshot=diagnostics'),'P9.37 QA must protect canonical road-sign diagnostics');
 
-for(const [file,source] of [['src/road-furniture-p930.js',p930],['src/road-furniture-p937.js',p937]]){
+for(const [file,source] of [['src/road/road-furniture-p930.js',p930],['src/road/road-furniture-p937.js',p937]]){
   expect(!source.includes('WorldDriveDiagnostics.roadSigns='),`${file} must not replace the stable roadSigns category`);
 }
 

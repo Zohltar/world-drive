@@ -6,8 +6,8 @@ import {fileURLToPath} from 'node:url';
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
 const localPath=path.join(root,'src','local-world-builder.js');
 const furnitureEntry=path.join(root,'src','road-furniture.js');
-const furnitureWrapper=path.join(root,'src','road-furniture-p937.js');
-const furnitureBase=path.join(root,'src','road-furniture-p930.js');
+const furnitureWrapper=path.join(root,'src','road','road-furniture-p937.js');
+const furnitureBase=path.join(root,'src','road','road-furniture-p930.js');
 
 function read(file){return fs.readFileSync(file,'utf8');}
 function expect(condition,message){if(!condition)throw new Error(message);}
@@ -33,7 +33,7 @@ for(const marker of [
 
 expect(local.includes('preparedObjects+=tasks.length'),'P9.37 must account for seven staged road objects');
 expect(local.includes('prepared.p937RoadStage=await prepareRoadStage(prepared)'),'P9.37 road preparation must complete before commit');
-expect(entry.includes("from './road-furniture-p937.js'"),'road-furniture entry must route through P9.37');
+expect(entry.includes("from './road/road-furniture-p937.js'"),'road-furniture entry must route through nested P9.37');
 expect(base.includes('P9.30 keeps sign appearance unchanged'),'P9.30 sign implementation must remain preserved');
 
 for(const marker of [

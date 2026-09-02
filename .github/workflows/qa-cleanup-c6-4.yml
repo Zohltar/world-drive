@@ -6,8 +6,9 @@ on:
       - dev
     paths:
       - 'src/diagnostics.js'
-      - 'src/road-furniture-p930.js'
-      - 'src/road-furniture-p937.js'
+      - 'src/road/road-furniture-p930.js'
+      - 'src/road/road-furniture-p937.js'
+      - 'src/road-furniture.js'
       - 'qa/qa-diagnostics-c6-1.mjs'
       - 'qa/qa-diagnostics-c6-2.mjs'
       - 'qa/qa-diagnostics-c6-3.mjs'
