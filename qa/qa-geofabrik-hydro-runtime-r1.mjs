@@ -6,7 +6,7 @@ import {
   compactHydroRecordToElements,
   createOfflineHydroSource,
   offlineHydroTileForLatLon
-} from '../src/offline-hydro-source.js';
+} from '../src/water-offline-hydro-source.js';
 import {createWaterDataService} from '../src/water-data.js';
 
 const LAT=45.5;
