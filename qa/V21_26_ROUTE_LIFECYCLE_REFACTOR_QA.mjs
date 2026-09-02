@@ -6,11 +6,14 @@ import { pathToFileURL, fileURLToPath } from 'node:url';
 
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
 const mainPath=path.join(root,'src','main.js');
-const modulePath=path.join(root,'src','route-lifecycle.js');
+const facadePath=path.join(root,'src','route-lifecycle.js');
+const modulePath=path.join(root,'src','routing','route-lifecycle.js');
 
-assert.ok(fs.existsSync(modulePath),'src/route-lifecycle.js missing — run tools/refactor-main-route-lifecycle-v21-26.mjs first');
+assert.ok(fs.existsSync(facadePath),'src/route-lifecycle.js public facade missing');
+assert.ok(fs.existsSync(modulePath),'src/routing/route-lifecycle.js implementation missing');
 
 const main=fs.readFileSync(mainPath,'utf8').replace(/\r\n/g,'\n');
+const facade=fs.readFileSync(facadePath,'utf8').replace(/\r\n/g,'\n');
 const lifecycle=fs.readFileSync(modulePath,'utf8').replace(/\r\n/g,'\n');
 
 function syntaxCheck(file){
@@ -18,9 +21,12 @@ function syntaxCheck(file){
   assert.equal(result.status,0,`${path.basename(file)} syntax failed:\n${result.stderr||result.stdout}`);
 }
 syntaxCheck(mainPath);
+syntaxCheck(facadePath);
 syntaxCheck(modulePath);
 
-assert.match(main,/import \{ createRouteLifecycle \} from '\.\/route-lifecycle\.js';/,'main.js missing route lifecycle import');
+assert.match(facade,/export \* from '\.\/routing\/route-lifecycle\.js';/,'route lifecycle root facade must target nested implementation');
+assert.match(main,/import \{ createRouteLifecycle \} from '\.\/route-lifecycle\.js';/,'main.js missing route lifecycle public-facade import');
+assert.doesNotMatch(main,/from '\.\/routing\/route-lifecycle\.js'/,'main.js must not bypass route lifecycle public facade');
 assert.match(main,/routeLifecycle=createRouteLifecycle\(\{/,'main.js missing route lifecycle initialization');
 assert.match(main,/const WorldDrive=routeLifecycle\.worldDrive;/,'main.js missing WorldDrive compatibility facade');
 assert.match(main,/function resetWorldCaches\(\)\{return routeLifecycle\.resetWorldCaches\(\);\}/,'main.js resetWorldCaches facade is not narrow');
@@ -32,18 +38,14 @@ for(const pattern of [
   /route\.push\(\{x:p\.x,z:p\.z,lat,lon,cum\}\);/
 ]){
   assert.doesNotMatch(main,pattern,`main.js still owns route lifecycle behavior: ${pattern}`);
-  assert.match(lifecycle,pattern,`route-lifecycle.js missing extracted route behavior: ${pattern}`);
+  assert.match(lifecycle,pattern,`nested route-lifecycle implementation missing extracted behavior: ${pattern}`);
 }
 
-// WorldDrive remains a compatibility facade in main, while lifecycle owns the
-// actual generation object under an internal lower-case name.
 assert.doesNotMatch(main,/const WorldDrive=\{/,'main.js still owns the WorldDrive generation object');
-assert.match(lifecycle,/const worldDrive=\{/,'route-lifecycle.js missing extracted WorldDrive generation object');
+assert.match(lifecycle,/const worldDrive=\{/,'route-lifecycle implementation missing extracted WorldDrive generation object');
 
-// The lifecycle now receives route preloading as an injected dependency.
-// Validate the extracted call rather than the old main.js object-qualified spelling.
 assert.doesNotMatch(main,/worldStreaming\.preloadRoute\(absX,absZ\);/,'main.js still owns direct route preload orchestration');
-assert.match(lifecycle,/preloadRoute\(position\.absX,position\.absZ\);/,'route-lifecycle.js missing injected route preload orchestration');
+assert.match(lifecycle,/preloadRoute\(position\.absX,position\.absZ\);/,'route-lifecycle implementation missing injected route preload orchestration');
 
 for(const pattern of [
   /export function createRouteLifecycle\s*\(\{/,
@@ -59,7 +61,7 @@ for(const pattern of [
   /loadRoadMetadataAround\(position\.absX,position\.absZ\)\.catch\(\(\)=>\{\}\);/,
   /loadGeographicSignsAround\(position\.absX,position\.absZ\)\.catch\(\(\)=>\{\}\);/
 ]){
-  assert.match(lifecycle,pattern,`route-lifecycle.js missing expected orchestration: ${pattern}`);
+  assert.match(lifecycle,pattern,`route-lifecycle implementation missing expected orchestration: ${pattern}`);
 }
 
 const lifecycleInit=main.indexOf('routeLifecycle=createRouteLifecycle({');
@@ -68,8 +70,8 @@ const plannerInit=main.indexOf('const routePlannerUi=createRoutePlannerUi({');
 assert.ok(lifecycleInit>=0&&drivingMarker>lifecycleInit,'route lifecycle must initialize before the driving declarations that follow its old block');
 assert.ok(plannerInit>lifecycleInit,'route lifecycle must initialize before route planner UI consumes createRequestedRoute');
 
-const { createRouteLifecycle }=await import(`${pathToFileURL(modulePath).href}?qa=${Date.now()}`);
-assert.equal(typeof createRouteLifecycle,'function','createRouteLifecycle export missing');
+const { createRouteLifecycle }=await import(`${pathToFileURL(facadePath).href}?qa=${Date.now()}`);
+assert.equal(typeof createRouteLifecycle,'function','createRouteLifecycle public export missing');
 
 const state={
   autopilot:true,
@@ -218,5 +220,5 @@ const regression=spawnSync(process.execPath,['qa/V21_26_TRANSMISSION_REFACTOR_QA
 assert.equal(regression.status,0,`prior V21.26 refactors regressed:\n${regression.stderr||regression.stdout}`);
 
 console.log('V21.26 ROUTE LIFECYCLE REFACTOR QA: PASS');
-console.log(`main.js: ${mainLines} lines; route-lifecycle.js: ${lifecycle.split('\n').length} lines`);
-console.log('route reset / generation / routing geometry / initial hydro-terrain-imagery preload orchestration verified');
+console.log(`main.js: ${mainLines} lines; route-lifecycle implementation: ${lifecycle.split('\n').length} lines`);
+console.log('root facade + route reset / generation / routing geometry / initial hydro-terrain-imagery preload orchestration verified');
