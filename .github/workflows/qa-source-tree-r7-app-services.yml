@@ -1,0 +1,41 @@
+name: Source Tree R7 App Services QA
+
+on:
+  push:
+    branches:
+      - candidate/r7-app-services-r1
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  qa:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install
+        run: npm ci
+      - name: R7 app/services source-tree boundary
+        run: node qa/qa-source-tree-r7-app-services.mjs
+      - name: Stable settings regression
+        run: node qa/qa-main-c5-settings.mjs
+      - name: Loaded settings regression
+        run: node qa/qa-main-c5-loaded-settings.mjs
+      - name: Version and build branding regression
+        run: node qa/qa-version-branding-a6.mjs
+      - name: Diagnostics root regression
+        run: node qa/qa-diagnostics-c6-1.mjs
+      - name: Runtime import and debt audit
+        run: node qa/DEV_INTEGRATION_AUDIT.mjs
+      - name: Production build
+        run: npm run build
+      - name: Production code split QA
+        run: node qa/BUILD_V21_31_CODE_SPLIT_QA.mjs
