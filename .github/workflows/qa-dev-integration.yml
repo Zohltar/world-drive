@@ -54,6 +54,8 @@ jobs:
         run: node qa/qa-source-tree-r6-scenery-renderer.mjs
       - name: Source tree R7 input boundary QA
         run: node qa/qa-source-tree-r7-input.mjs
+      - name: Source tree R7 routing boundary QA
+        run: node qa/qa-source-tree-r7-routing.mjs
       - name: Cleanup A6 version/build branding QA
         run: node qa/qa-version-branding-a6.mjs
       - name: Cleanup A7 repository hygiene QA
