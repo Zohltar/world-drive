@@ -42,6 +42,8 @@ jobs:
         run: node qa/qa-source-tree-audio.mjs
       - name: Source tree R5a vehicle dynamics boundary QA
         run: node qa/qa-source-tree-r5a-vehicle-dynamics.mjs
+      - name: Source tree R5b wheel ground support boundary QA
+        run: node qa/qa-source-tree-r5b-wheel-ground-support.mjs
       - name: Cleanup A6 version/build branding QA
         run: node qa/qa-version-branding-a6.mjs
       - name: Cleanup A7 repository hygiene QA
