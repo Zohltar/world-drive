@@ -5,10 +5,13 @@ import {pathToFileURL} from 'node:url';
 
 const exists=p=>fs.existsSync(p);
 const read=p=>fs.readFileSync(p,'utf8');
+const facadePath='src/road-geometry.js';
+const implementationPath='src/road/road-geometry.js';
 
 assert.equal(exists('src/road-geometry-base.js'),false,'historical road-geometry-base.js returned');
-assert.equal(exists('src/road-geometry.js'),true,'canonical road geometry module missing');
-const source=read('src/road-geometry.js');
+assert.equal(exists(facadePath),true,'canonical road geometry facade missing');
+assert.equal(exists(implementationPath),true,'canonical road geometry implementation missing');
+const source=read(implementationPath);
 assert.doesNotMatch(source,/from ['"]\.\/road-geometry-base\.js['"]/,'canonical road geometry still imports historical base');
 assert.match(source,/function createRoadGeometryCore\s*\(/,'private road geometry core missing');
 assert.match(source,/export function createRoadGeometrySystem\s*\(/,'public road geometry factory missing');
@@ -45,13 +48,14 @@ for(const root of ['src','qa','.github']){
 }
 assert.deepEqual(offenders,[],`historical road geometry filename still referenced: ${offenders.join(', ')}`);
 
-const road=await import(`${pathToFileURL(path.resolve('src/road-geometry.js')).href}?c3=${Date.now()}`);
+const road=await import(`${pathToFileURL(path.resolve(facadePath)).href}?c3=${Date.now()}`);
 for(const name of ['createRoadGeometrySystem','smoothRoadProfileV21_31','engineerRoadBankingV21_31','clampRoadBankV21_31']){
   assert.equal(typeof road[name],'function',`canonical export missing: ${name}`);
 }
 
 console.log('CLEANUP C3 ROAD GEOMETRY OWNERSHIP QA: PASS',{
-  singleModule:'src/road-geometry.js',
+  publicFacade:facadePath,
+  implementation:implementationPath,
   privateCore:'createRoadGeometryCore',
   publicFactory:'createRoadGeometrySystem',
   smoothingAndBankingPreserved:true
