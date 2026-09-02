@@ -3,7 +3,10 @@
 // parsing/deduplication, request cancellation and streaming state.
 // Three.js water rendering and bridge geometry orchestration remain in main.js.
 
+import {createOfflineHydroSource} from './offline-hydro-source.js';
+
 const HYDRO_TTL_MS=1000*60*60*24*30;
+const HYDRO_RADIUS_M=7000;
 
 export function createWaterDataService({
   statusEl,
@@ -11,7 +14,8 @@ export function createWaterDataService({
   cache,
   overpass,
   toLatLon,
-  toWorld
+  toWorld,
+  offline=typeof window!=='undefined'?createOfflineHydroSource():null
 }) {
   if(!cache)throw new Error('Water data requires cache');
   if(!overpass)throw new Error('Water data requires overpass client');
@@ -21,6 +25,9 @@ export function createWaterDataService({
   if(typeof toWorld!=='function'){
     throw new Error('Water data requires toWorld()');
   }
+  if(offline&&typeof offline.loadAround!=='function'){
+    throw new Error('Water data offline source requires loadAround()');
+  }
 
   const waterFeatures=[];
   const bridgeFeatures=[];
@@ -29,7 +36,8 @@ export function createWaterDataService({
   const state={
     loading:false,
     center:{x:Infinity,z:Infinity},
-    generation:0
+    generation:0,
+    source:'none'
   };
 
   const abortControllers=new Set();
@@ -197,12 +205,47 @@ export function createWaterDataService({
     return ok;
   }
 
+  function completeLoad({data,generation,absx,absz,source,cached=false}){
+    const added=ingest(data,generation);
+
+    state.center={
+      x:absx,
+      z:absz
+    };
+    state.source=source;
+
+    const waterCount=waterFeatures.length;
+    const coastCount=coastlineFeatures.length;
+    const label=source==='local'
+      ?'Local'
+      :cached
+        ?'Cache'
+        :'OSM';
+
+    setStatus(
+      `${label} · `+
+      `${waterCount} eau${waterCount!==1?'x':''}`+
+      `${coastCount?` · côte ${coastCount}`:''}`
+    );
+
+    return {
+      ok:true,
+      cached,
+      source,
+      ...added,
+      waterCount,
+      bridgeCount:bridgeFeatures.length,
+      coastlineCount:coastCount
+    };
+  }
+
   async function loadAround(absx,absz){
     if(state.loading){
       return {
         ok:false,
         busy:true,
-        cached:false
+        cached:false,
+        source:state.source
       };
     }
 
@@ -212,10 +255,30 @@ export function createWaterDataService({
     const ll=toLatLon(absx,absz);
 
     try{
+      if(offline){
+        setStatus('Hydro local…');
+        const local=await offline.loadAround(ll.lat,ll.lon,HYDRO_RADIUS_M);
+
+        if(generation!==state.generation){
+          return {ok:false,stale:true,cached:false,source:'local'};
+        }
+
+        if(local?.available){
+          return completeLoad({
+            data:local.data,
+            generation,
+            absx,
+            absz,
+            source:'local',
+            cached:false
+          });
+        }
+      }
+
       const cached=await readCache(ll.lat,ll.lon);
 
       if(generation!==state.generation){
-        return {ok:false,stale:true,cached:!!cached};
+        return {ok:false,stale:true,cached:!!cached,source:cached?'cache':'none'};
       }
 
       setStatus(
@@ -241,7 +304,7 @@ export function createWaterDataService({
       }
 
       if(generation!==state.generation){
-        return {ok:false,stale:true,cached:!!cached};
+        return {ok:false,stale:true,cached:!!cached,source:cached?'cache':'osm'};
       }
 
       if(data&&!cached){
@@ -249,46 +312,34 @@ export function createWaterDataService({
       }
 
       if(!data){
+        state.source='none';
         setStatus('Indisponible');
         return {
           ok:false,
-          cached:false
+          cached:false,
+          source:'none'
         };
       }
 
-      const added=ingest(data,generation);
-
-      state.center={
-        x:absx,
-        z:absz
-      };
-
-      const waterCount=waterFeatures.length;
-      const coastCount=coastlineFeatures.length;
-
-      setStatus(
-        `${cached?'Cache':'OSM'} · `+
-        `${waterCount} eau${waterCount!==1?'x':''}`+
-        `${coastCount?` · côte ${coastCount}`:''}`
-      );
-
-      return {
-        ok:true,
-        cached:!!cached,
-        ...added,
-        waterCount,
-        bridgeCount:bridgeFeatures.length,
-        coastlineCount:coastCount
-      };
+      return completeLoad({
+        data,
+        generation,
+        absx,
+        absz,
+        source:cached?'cache':'osm',
+        cached:!!cached
+      });
     }catch(error){
       if(generation===state.generation){
         console.warn('Hydro load failed',error);
+        state.source=offline?'local-error':'none';
         setStatus('Indisponible');
       }
 
       return {
         ok:false,
         cached:false,
+        source:state.source,
         error
       };
     }finally{
@@ -302,16 +353,40 @@ export function createWaterDataService({
     const generation=state.generation;
     const ll=toLatLon(x,z);
 
+    if(offline){
+      try{
+        const local=await offline.loadAround(ll.lat,ll.lon,HYDRO_RADIUS_M);
+        if(generation!==state.generation){
+          return {ok:false,stale:true,cached:false,source:'local'};
+        }
+        if(local?.available){
+          return {
+            ok:true,
+            cached:false,
+            source:'local'
+          };
+        }
+      }catch(error){
+        return {
+          ok:false,
+          cached:false,
+          source:'local',
+          error
+        };
+      }
+    }
+
     const cached=await readCache(ll.lat,ll.lon);
     if(cached){
       return {
         ok:true,
-        cached:true
+        cached:true,
+        source:'cache'
       };
     }
 
     if(generation!==state.generation){
-      return {ok:false,stale:true,cached:false};
+      return {ok:false,stale:true,cached:false,source:'none'};
     }
 
     const result=await overpass.fetchCached({
@@ -325,7 +400,8 @@ export function createWaterDataService({
 
     return {
       ok:!!result?.data,
-      cached:!!result?.cached
+      cached:!!result?.cached,
+      source:result?.cached?'cache':'osm'
     };
   }
 
@@ -349,8 +425,21 @@ export function createWaterDataService({
       x:Infinity,
       z:Infinity
     };
+    state.source='none';
 
     setStatus('Réinitialisé');
+  }
+
+  function diagnostics(){
+    return {
+      source:state.source,
+      loading:state.loading,
+      generation:state.generation,
+      center:{...state.center},
+      offline:offline&&typeof offline.diagnostics==='function'
+        ?offline.diagnostics()
+        :null
+    };
   }
 
   return {
@@ -363,6 +452,7 @@ export function createWaterDataService({
     prefetchAt,
     reset,
     updateCacheHUD,
+    diagnostics,
 
     get loading(){
       return state.loading;
@@ -374,6 +464,10 @@ export function createWaterDataService({
 
     get generation(){
       return state.generation;
+    },
+
+    get source(){
+      return state.source;
     }
   };
 }
