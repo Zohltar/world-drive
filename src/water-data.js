@@ -3,7 +3,7 @@
 // parsing/deduplication, request cancellation and streaming state.
 // Three.js water rendering and bridge geometry orchestration remain in main.js.
 
-import {createOfflineHydroSource} from './offline-hydro-source.js';
+import {createOfflineHydroSource} from './water-offline-hydro-source.js';
 
 const HYDRO_TTL_MS=1000*60*60*24*30;
 const HYDRO_RADIUS_M=7000;
@@ -253,6 +253,7 @@ export function createWaterDataService({
 
     const generation=state.generation;
     const ll=toLatLon(absx,absz);
+    let loadPhase=offline?'local':'fallback';
 
     try{
       if(offline){
@@ -273,6 +274,7 @@ export function createWaterDataService({
             cached:false
           });
         }
+        loadPhase='fallback';
       }
 
       const cached=await readCache(ll.lat,ll.lon);
@@ -332,7 +334,7 @@ export function createWaterDataService({
     }catch(error){
       if(generation===state.generation){
         console.warn('Hydro load failed',error);
-        state.source=offline?'local-error':'none';
+        state.source=loadPhase==='local'?'local-error':'none';
         setStatus('Indisponible');
       }
 
