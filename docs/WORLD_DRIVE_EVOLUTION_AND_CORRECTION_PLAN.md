@@ -29,13 +29,13 @@ At the start of every World Drive coding/architecture/QA conversation:
 # 1. CURRENT CHECKPOINT
 
 **Plan phase:** R — Source tree organization  
-**Active item:** **R5b — physics/runtime follow-up audit**  
-**State:** **READ-ONLY AUDIT NEXT — NO R5b RUNTIME MOVE STARTED**  
-**Current validated dev HEAD before this documentation commit:** `24ecfa99e69ae350d3978d23c554b01b04d89228`  
+**Active item:** **R5b — physics/runtime follow-up, wheel-ground sub-lot**  
+**State:** **INTEGRATED AUTOMATION PASS — HUMAN CHECKPOINT NEXT**  
+**Current validated dev HEAD before this documentation commit:** `6a7e5a4cc2474b96a943922b1adcea1d104f50a2`  
 **Stable fallback:** `main` @ `111df5d84bf7fd700590abbd9c129b303ac92fad`  
-**Latest exact-head full integration:** Dev Integration run `33562578540` on `24ecfa99e69ae350d3978d23c554b01b04d89228` — **PASS**  
-**Functional steps:** **92/92 green**  
-**Latest human validation:** **PASS** — user: “tout est beau, pass!” after the QA-root-layout integration.
+**Latest exact-head full integration:** Dev Integration run `33578884903` on `6a7e5a4cc2474b96a943922b1adcea1d104f50a2` — **PASS**  
+**Functional steps:** **93/93 green**  
+**Latest human validation:** prior checkpoint **PASS** — user: “tout est beau, pass!”; **R5b wheel-ground human smoke is now pending**.
 
 ## What is now closed
 
@@ -163,7 +163,7 @@ Permanent gate:
 Evidence:
 - path-only move commit: `3b0f878996996406ba754331743923a66b1cb6b1`;
 - final R5a housekeeping state before the next cleanup: `28e643ef3c4979390aa1d9caaa5101b0d1b497ad`;
-- current full Dev Integration `33562578540` re-certifies R5a together with the current tree.
+- current full Dev Integration `33578884903` re-certifies R5a together with the current tree.
 
 No physics equation/constant tuning was intentionally part of R5a.
 
@@ -190,11 +190,44 @@ Evidence:
 - exact-head Dev Integration run `33562578540` — PASS, **92/92 functional steps green**;
 - human smoke: **PASS — “tout est beau, pass!”**.
 
-## R5b — next read-only audit
+### R5b.1 — Wheel-ground support implementation move
 
-R5b must begin with an **exact-path/import/QA/CI inventory only**. No file move, equation edit, constant change or behavior tuning until the audit is green and the candidate boundary is frozen.
+**INTEGRATED — automation PASS; human smoke pending.**
 
-### Exact root candidate family to audit
+Completed structural block:
+
+```text
+src/wheel-ground-support.js
+  -> retained as a tiny public/root facade
+
+src/physics/wheel-ground-support.js
+  -> exact implementation moved under physics
+```
+
+Preserved contracts:
+- implementation blob is byte-identical to the former root implementation: `54e11aba7d2543981f7c0a9f517a293ac47c18ae`;
+- `src/main.js` remains unchanged and still imports the stable root facade;
+- R14 continues to exercise the public facade;
+- no wheel-support constant, equation, threshold or behavior was changed;
+- no transmission, braking, J-turn, drift, skidmark or vehicle tuning was mixed in.
+
+Permanent gate:
+- `qa/qa-source-tree-r5b-wheel-ground-support.mjs`;
+- wired into `.github/workflows/qa-dev-integration.yml`.
+
+Evidence:
+- candidate branch: `candidate/r5b-wheel-ground-support`;
+- focused candidate run `33578784621` on `1907d57e9ca47b0bd0b4c610410cf07801ac6a25` — PASS;
+- candidate covered source-tree boundary, runtime graph, R14, driving matrix, crest launch, oblique landing, full stress, build and code split;
+- temporary candidate workflow removed before integration;
+- final candidate/dev integration state: `6a7e5a4cc2474b96a943922b1adcea1d104f50a2`;
+- Dev Integration run `33578884903` — PASS, **93/93 functional steps green**.
+
+## R5b — audit findings and remaining follow-up
+
+The initial R5b read-only audit is complete. No remaining R5b move should be inferred from filename alone; each sub-lot must preserve the audited public/runtime boundaries.
+
+### Exact root family audited
 
 ```text
 src/driving-runtime.js
@@ -206,6 +239,14 @@ src/wheel-ground-support.js
 src/skidmarks.js
 ```
 
+Current disposition after audit:
+- `src/driving-runtime.js`: intentionally keep at root as the stable runtime facade for `main.js`;
+- `src/driving-runtime-base.js`: possible later internal sub-lot, but high physics/QA coupling — do not move casually;
+- `src/transmission-controller.js`: intentionally keep at root as the application/controller boundary;
+- `src/transmission-network-state.js` + `src/transmission-runtime-bridge.js`: plausible narrow internal transmission sub-lot, but must preserve multiplayer exact-gear semantics and C2 diagnostics contracts;
+- `src/wheel-ground-support.js`: root facade retained; implementation now under `src/physics/` by R5b.1;
+- `src/skidmarks.js`: keep at root during R5b because it deliberately spans contact data, authored visual alignment, audio cues and Three.js rendering.
+
 ### Already consolidated by R5a — dependency boundaries, not R5b relocation targets
 
 ```text
@@ -216,18 +257,17 @@ src/physics/vehicle-dynamics-traction-steering.js
 
 ### Existing nested physics modules — dependency boundaries
 
-At minimum audit interactions with:
+At minimum preserve interactions with:
 - `src/physics/airborne-dynamics.js`;
-- `src/physics/driveline-relative-dynamics.js`;
 - `src/physics/maneuver-state.js`;
 - `src/physics/momentum-direction.js`;
 - `src/physics/wheelspin-state.js`;
 - `src/physics/yaw-authority.js`;
 - steering/tire/surface/per-wheel/fixed-step modules already under `src/physics/`.
 
-### Audit-only companion modules
+### Audit-only companion names — repository reality
 
-Map ownership and imports before deciding whether they belong in a later sub-lot:
+The originally listed exact root paths below **do not exist on current `dev`** and must not be recreated merely to match an old plan assumption:
 
 ```text
 src/braking.js
@@ -236,12 +276,14 @@ src/wheel-friction.js
 src/truck-physics-adapter.js
 ```
 
-### Boundaries R5b must freeze
+Their relevant responsibilities are already distributed across current nested physics modules and `src/vehicles/truck/truck-trailer.js`. Treat those responsibilities as dependency boundaries, not missing-file tasks.
+
+### Boundaries R5b must continue to freeze
 
 - `src/main.js` imports and runtime startup order;
 - `src/multiplayer/` local-authority vs remote-visual behavior;
 - `src/vehicles/` presentation/model/controller boundaries;
-- truck/trailer + truck physics adapter boundaries;
+- truck/trailer boundaries;
 - transmission network-state and local gear semantics;
 - `Number(null)`/diagnostic ownership semantics already protected by C6 gates;
 - wheel-ground R14 terrain→road re-entry support;
@@ -253,7 +295,7 @@ src/truck-physics-adapter.js
 - crest launch and oblique landing;
 - every direct QA/CI path assumption;
 - build/code-split boundaries;
-- whether any public/root facade should intentionally remain at root.
+- intentional public/root facades.
 
 ### R5b prohibitions
 
@@ -269,7 +311,7 @@ Do **not** mix into R5b:
 
 ### Exact next action
 
-Create a narrow **read-only R5b audit branch** from the current `dev`, inventory the seven exact root candidates plus companion boundaries, map all production imports and QA/CI hard-coded paths, and run a focused audit. **Do not create a move candidate until the audit is green.**
+**Human checkpoint now.** Test current `dev` with emphasis on startup/route load, ordinary driving, a slow or diagonal shoulder/terrain→road re-entry, braking in a curve, and at least one crest/landing. If that smoke is **PASS**, record it and only then open the next narrow R5b transmission-state sub-lot audit/candidate for `transmission-network-state.js` + `transmission-runtime-bridge.js`, while keeping `transmission-controller.js` at root and preserving exact multiplayer gear semantics. Do not start that higher-risk sub-lot before this human checkpoint passes.
 
 ---
 
@@ -390,7 +432,7 @@ Public bootstrap/compatibility facades may intentionally remain at root when the
 - **R4.5 — audio:** DONE automation + human PASS.
 - **R5a — core vehicle dynamics into `src/physics/`:** DONE automation; current integrated dev human smoke PASS.
 - **QA root-layout cleanup:** DONE automation + human PASS.
-- **R5b — runtime/transmission/wheel support/skidmarks:** NEXT, read-only audit first.
+- **R5b — runtime/transmission/wheel support/skidmarks:** IN PROGRESS — audit complete; wheel-ground implementation integrated automation PASS; human checkpoint next.
 - **R6 — road/scenery/forest/water:** PENDING R5.
   - split into narrow sub-lots; preserve road-sign scheduling and forest frame pacing.
 - **R7 — app/input/ui/routing/services:** PENDING R6.
