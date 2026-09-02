@@ -11,7 +11,6 @@ on:
       - 'src/input/**'
       - 'qa/qa-source-tree-r7-input.mjs'
       - '.github/workflows/qa-source-tree-r7-input.yml'
-      - '.github/workflows/qa-dev-integration.yml'
   workflow_dispatch:
 
 permissions:
