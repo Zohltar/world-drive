@@ -5,7 +5,8 @@ on:
     branches:
       - dev
     paths:
-      - 'src/road-geometry*.js'
+      - 'src/road-geometry.js'
+      - 'src/road/road-geometry.js'
       - 'qa/qa-road-geometry-c3.mjs'
       - 'qa/V21_25_ROAD_GEOMETRY_REFACTOR_QA.mjs'
       - 'qa/V21_31_ROAD_SMOOTHING_QA.mjs'
