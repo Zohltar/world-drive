@@ -1,0 +1,72 @@
+name: R8 Local-World Structure QA
+
+on:
+  push:
+    branches:
+      - dev
+      - candidate/r8-local-world-structure-r1
+    paths:
+      - 'src/local-world-builder.js'
+      - 'src/local-world-builder-p926.js'
+      - 'src/local-world/local-world-builder-p926.js'
+      - 'src/local-world-builder-p925.js'
+      - 'qa/qa-source-tree-r8-local-world.mjs'
+      - 'qa/qa-local-world-current-a8.mjs'
+      - 'qa/qa-r8-current-ownership.mjs'
+      - 'qa/qa-streaming-p923-prepared-refresh.mjs'
+      - 'qa/qa-streaming-p923-scheduler.mjs'
+      - 'qa/qa-streaming-p924-frame-budget.mjs'
+      - 'qa/qa-streaming-p925-scenery-and-prep.mjs'
+      - 'qa/qa-streaming-p926-horizon.mjs'
+      - 'qa/qa-streaming-p927-road-transition.mjs'
+      - 'qa/qa-p937-combined-frame-pacing.mjs'
+      - 'qa/qa-p938-forest-retention.mjs'
+      - 'qa/qa-diagnostics-c6-final-inventory.mjs'
+      - 'qa/DEV_INTEGRATION_AUDIT.mjs'
+      - '.github/workflows/qa-source-tree-r8-local-world.yml'
+      - '.github/workflows/qa-cleanup-a8.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  qa:
+    runs-on: ubuntu-latest
+    timeout-minutes: 18
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: R8.4 local-world source-tree boundary
+        run: node qa/qa-source-tree-r8-local-world.mjs
+      - name: R8 current ownership baseline
+        run: node qa/qa-r8-current-ownership.mjs
+      - name: Current local-world ownership
+        run: node qa/qa-local-world-current-a8.mjs
+      - name: Prepared refresh
+        run: node qa/qa-streaming-p923-prepared-refresh.mjs
+      - name: Scheduler
+        run: node qa/qa-streaming-p923-scheduler.mjs
+      - name: Frame budget
+        run: node qa/qa-streaming-p924-frame-budget.mjs
+      - name: P9.25 scenery and prep
+        run: node qa/qa-streaming-p925-scenery-and-prep.mjs
+      - name: P9.26 horizon
+        run: node qa/qa-streaming-p926-horizon.mjs
+      - name: P9.27 road transition
+        run: node qa/qa-streaming-p927-road-transition.mjs
+      - name: Combined frame pacing
+        run: node qa/qa-p937-combined-frame-pacing.mjs
+      - name: Prepared forest retention
+        run: node qa/qa-p938-forest-retention.mjs
+      - name: C6 global boundary
+        run: node qa/qa-diagnostics-c6-final-inventory.mjs
+      - name: Runtime import and source-tree audit
+        run: node qa/DEV_INTEGRATION_AUDIT.mjs
+      - name: Production build
+        run: npm run build
+      - name: Production code split QA
+        run: node qa/BUILD_V21_31_CODE_SPLIT_QA.mjs
