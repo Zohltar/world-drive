@@ -6,9 +6,9 @@ import { pathToFileURL, fileURLToPath } from 'node:url';
 
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
 const mainPath=path.join(root,'src','main.js');
-const modulePath=path.join(root,'src','wheel-ground-support.js');
+const modulePath=path.join(root,'src','physics','wheel-ground-support.js');
 
-assert.ok(fs.existsSync(modulePath),'src/wheel-ground-support.js missing — run tools/refactor-main-wheel-ground-support-v21-26.mjs first');
+assert.ok(fs.existsSync(modulePath),'src/physics/wheel-ground-support.js missing');
 
 const main=fs.readFileSync(mainPath,'utf8').replace(/\r\n/g,'\n');
 const supportSource=fs.readFileSync(modulePath,'utf8').replace(/\r\n/g,'\n');
