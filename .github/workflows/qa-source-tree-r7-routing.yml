@@ -15,6 +15,7 @@ on:
       - 'src/routing/**'
       - 'qa/qa-source-tree-r7-routing.mjs'
       - 'qa/V21_26_ROUTE_LIFECYCLE_REFACTOR_QA.mjs'
+      - 'qa/V21_26_ROUTE_PLANNER_REFACTOR_QA.mjs'
       - '.github/workflows/qa-source-tree-r7-routing.yml'
       - '.github/workflows/qa-dev-integration.yml'
   workflow_dispatch:
