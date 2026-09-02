@@ -3,8 +3,9 @@ import path from 'node:path';
 import {spawnSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
 
-const root=path.dirname(fileURLToPath(import.meta.url));
-const wrapperPath=path.join(root,'src','scenery-renderer-p933.js');
+const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
+const wrapperPath=path.join(root,'src','scenery','scenery-renderer-p933.js');
+const basePath=path.join(root,'src','scenery','scenery-renderer-p9.js');
 const entryPath=path.join(root,'src','scenery-renderer.js');
 const startupPath=path.join(root,'src','startup-ui.js');
 const streamerPath=path.join(root,'src','forest-chunk-streamer.js');
@@ -17,10 +18,12 @@ function syntax(file){
   if(result.status!==0)throw new Error(`Syntax check failed for ${path.basename(file)}\n${result.stderr||result.stdout}`);
 }
 
-for(const file of [wrapperPath,entryPath,startupPath,streamerPath,implPath])syntax(file);
-const wrapper=read(wrapperPath),entry=read(entryPath),startup=read(startupPath),streamer=read(streamerPath),impl=read(implPath);
+for(const file of [wrapperPath,basePath,entryPath,startupPath,streamerPath,implPath])syntax(file);
+const wrapper=read(wrapperPath),base=read(basePath),entry=read(entryPath),startup=read(startupPath),streamer=read(streamerPath),impl=read(implPath);
 
-expect(entry.includes("from '../scenery-renderer-p933.js'"),'scenery entry must route through P9.33+ gate');
+expect(entry.includes("from './scenery/scenery-renderer-p933.js'"),'scenery entry must route through nested P9.33+ gate');
+expect(wrapper.includes("from './scenery-renderer-p9.js'"),'nested P9.33+ gate must compose nested P9 scenery renderer');
+expect(base.includes("from '../forest-chunk-streamer.js'"),'nested P9 scenery renderer must preserve the canonical root forest boundary');
 for(const marker of [
   'DEFAULT_INITIAL_CHUNKS=14',
   'DEFAULT_FRONT_CHUNKS=8',
@@ -60,6 +63,7 @@ expect(startup.indexOf('await waitForForest')<startup.indexOf('onStartVehicle(se
 expect(streamer.includes("legacyObserverMode:'p929-direct-last-slice'"),'P9.35 must retain P9.29 diagnostics compatibility');
 
 console.log('PASS P9.33/P9.34/P9.35 startup forest gate QA');
+console.log('  - scenery implementations are nested behind the stable root entry');
 console.log('  - startup route heading seeds ahead priority before movement');
 console.log('  - protected near ring now prefers route-forward chunks');
 console.log('  - startup requires 14 chunks, 8 forward, and a +2 forward lead');
