@@ -29,27 +29,43 @@ At the start of every World Drive coding/architecture/QA conversation:
 # 1. CURRENT CHECKPOINT
 
 **Plan phase:** R — Source tree organization  
-**Active item:** **R6.3a — scenery renderer implementation move**  
+**Active item:** **R6.4 — water implementation organization**  
 **State:** **INTEGRATED AUTOMATION PASS — HUMAN CHECKPOINT NEXT**  
-**Current validated runtime/CI dev HEAD before this documentation commit:** `98bf8ff386679e62e9c8702edf6b1954d751b47d`  
+**Current validated runtime/CI dev HEAD before this documentation commit:** `33b4973f7af9ed6d85a92c0cdc8343149ec18c70`  
 **Stable fallback:** `main` @ `111df5d84bf7fd700590abbd9c129b303ac92fad`  
-**Latest exact-head full integration before this documentation commit:** Dev Integration run `33590213452` on `98bf8ff386679e62e9c8702edf6b1954d751b47d` — **PASS**  
-**Functional steps:** **97/97 green**  
-**Latest human validation:** **R6.2 road geometry + bridge interactions PASS — user: “pass”. R6.3a scenery/forest smoke is pending.**
+**Latest exact-head full integration before this documentation commit:** Dev Integration run `33592452542` on `33b4973f7af9ed6d85a92c0cdc8343149ec18c70` — **PASS**  
+**Functional steps:** **98/98 green**  
+**Latest human validation:** **R6.3a scenery renderer accepted PASS.** User explicitly authorized continuation and asked that the intermittent terrain issue be logged for later rather than block the plan. **R6.4 water human smoke is pending.**
+
+## Accepted deferred observation — issue #2
+
+During the R6.3a smoke, one Manic-5 startup briefly showed a large near-terrain area dark/unadjusted while road + forest were already visible. The terrain converged on its own and the condition could not be reproduced after relaunch.
+
+Recorded telemetry while investigating:
+- ~143–144 FPS;
+- `pendingWorldRefresh:false`;
+- hitch count increased from 5 to 9;
+- `maxFrameMs:194.4`.
+
+GitHub issue: **#2 — `Intermittent delayed terrain adjustment after route startup`**.
+
+Current hypothesis only, not a confirmed cause: deferred P9.27 terrain↔road transition work (`road-transition` scheduling + sliced transition preparation). **Do not tune this during current structural R6/R7 work.** Reproduce later during **R8 terrain/imagery/local-world/streaming** or correction work with full `WorldDriveFramePacing()` nested diagnostics captured before/after convergence.
 
 ## Exact next action
 
-**Human checkpoint — R6.3a scenery renderer.** Test current `dev` with emphasis on:
+**Human checkpoint — R6.4 water.** Test current `dev` with emphasis on:
 
 - startup + route load;
-- ordinary scenery/buildings/infrastructure visibility;
-- forest appearing normally ahead during startup;
-- several kilometres of driving if practical;
-- floating-origin/recenter behavior if encountered;
+- visible rivers/lakes/reservoirs where the chosen route contains them;
+- coastline rendering if a coastal route is practical;
+- normal shoreline clipping / flat water surfaces;
+- no giant blue triangular facets or missing water strips;
+- bridge-over-water appearance if encountered;
+- scenery/forest still normal after the shared authored forest/water asset boundary is exercised;
 - route reset/reload or a second route if practical;
-- no abnormal forest gaps/pops, stuck preparation state, new hitch/stall or frame-pacing regression.
+- no new hitch/stall or frame-pacing regression.
 
-If the smoke is **PASS**, record it. **Only then** begin a fresh **read-only audit** of the root forest family as the next possible R6.3 sub-lot. Do not move forest files before that audit is independently green.
+If the smoke is **PASS**, record it and close R6. **Only then** begin R7 with a fresh read-only audit of app/input/ui/routing/services. Do not move R7 families before that audit.
 
 ---
 
@@ -250,42 +266,13 @@ Evidence:
 
 ---
 
-# 3. ACTIVE R6.3a — SCENERY RENDERER IMPLEMENTATION MOVE
+# 3. R6.3 / R6.4 — SCENERY, FOREST, WATER
 
-## Audit decision
+## R6.3a — Scenery renderer implementation move
 
-The read-only R6.3 audit separated scenery rendering from the higher-risk forest streaming family.
+**DONE — automation + accepted human PASS.**
 
-Safe sub-lot:
-
-```text
-src/scenery-renderer.js
-src/scenery-renderer-p9.js
-src/scenery-renderer-p933.js
-```
-
-Disposition:
-- `src/scenery-renderer.js` stays at root as the stable public entry used by `main.js`;
-- P9 and P933 implementation layers move under `src/scenery/`;
-- `src/scenery-data.js` remains root for this sub-lot;
-- the entire forest family remains root and is **not** part of R6.3a;
-- water, terrain, imagery and streaming remain separate later work.
-
-Forest root family explicitly frozen during R6.3a:
-
-```text
-src/forest-authored-lite.js
-src/forest-chunk-streamer-core.js
-src/forest-chunk-streamer.js
-src/forest-proxy-assets.js
-src/forest-streaming-policy.js
-src/forest-terrain-sampler.js
-src/forest-water-assets.js
-```
-
-Reason for separation: the forest wrapper/core own startup direction, chunk priority, frame budget, cache, queue maintenance, rolling prefetch, hitch attribution and retained-chunk lifecycle. That requires its own future audit and human performance checkpoint.
-
-## Integrated structural result
+Read-only audit separated scenery rendering from the higher-risk forest streaming family.
 
 ```text
 src/scenery-renderer.js
@@ -306,40 +293,83 @@ Preserved boundaries:
 - startup forest readiness remains 14 chunks / 8 forward / +2 forward lead;
 - no forest constants, scheduling, priority, prefetch, cache, visual density or frame-budget tuning was made.
 
-Permanent gate:
-- `qa/qa-source-tree-r6-scenery-renderer.mjs`;
-- wired into `.github/workflows/qa-dev-integration.yml`.
+Permanent gate: `qa/qa-source-tree-r6-scenery-renderer.mjs`.
 
-## QA modernization discovered during move
+Evidence:
+- structural move `c3b062de5219eef82104273f55dd69b80d4fa8d1`;
+- QA-only path retarget `6908f6af7ce756536852fd7553c0540570bffa39`;
+- focused candidate run `33590102641` — PASS;
+- integrated state `98bf8ff386679e62e9c8702edf6b1954d751b47d`;
+- Dev Integration `33590213452` — **97/97**;
+- documentation-head Dev Integration `33590338958` — **97/97**;
+- human disposition: continue; intermittent terrain observation logged as issue #2 and deferred.
 
-Historical source-inspection tests still referenced root P9/P933 implementation paths. They were retargeted only where needed:
+## R6.3b — Forest runtime family disposition
 
-- `qa/qa-forest-p933-startup-gate.mjs`;
-- `qa/qa-p938-forest-retention.mjs`;
-- `qa/qa-forest-route-cache-reset.mjs`;
-- `qa/qa-diagnostics-c6-1.mjs`;
-- `qa/qa-diagnostics-c6-final-inventory.mjs`;
-- C6.1 workflow path trigger.
+**CLOSED — KEEP ROOT / intentional boundary. No runtime move.**
 
-No runtime source was changed by those QA corrections.
+Audit branch: `audit/r6-forest` from `06e4fa09d2f908e879db7116dcdbaa75007b404c`.
 
-## Evidence
+Frozen root family:
 
-Candidate branch: `candidate/r6-scenery-renderer`.
+```text
+src/forest-authored-lite.js
+src/forest-chunk-streamer-core.js
+src/forest-chunk-streamer.js
+src/forest-proxy-assets.js
+src/forest-streaming-policy.js
+src/forest-terrain-sampler.js
+src/forest-water-assets.js
+```
 
-Key commits / states:
-- structural move: `c3b062de5219eef82104273f55dd69b80d4fa8d1`;
-- P9.33 path QA retarget: `30be18ffcbe02cae8b6201f9cc48f70f31f9cf3b`;
-- permanent source-tree gate: `b8866f19f3c8438e208f686377473d97b8a87fe8`;
-- first focused run `33589913096` passed scenery boundary, runtime graph, P9.33/P9.35 startup, P9.25, active forest, P9.29, P9.35, P9.36 and P9.37 before stopping on stale P9.38 root path only;
-- QA-only retarget commit: `6908f6af7ce756536852fd7553c0540570bffa39`;
-- focused candidate run `33590102641` — **PASS**, including startup/forest/frame-pacing gates, full V21.31 stress, driving matrix, production build and code split;
-- permanent Dev Integration gate commit: `9c3e01f8b669aba74bbdb48147b0f99b25b074dd`;
-- final candidate/integrated runtime state after temporary workflow removal: `98bf8ff386679e62e9c8702edf6b1954d751b47d`;
-- `dev` fast-forwarded without force from `8543340f6f52c7547d029c273695ac6db70c4e17` to `98bf8ff386679e62e9c8702edf6b1954d751b47d`;
-- exact-head Dev Integration `33590213452` — **PASS, 97/97 functional steps green**.
+Decision reasons:
+- streamer wrapper owns startup direction, diagnostics, hitch attribution and compatibility/runtime boundary behavior;
+- core owns chunk cache, active/prefetched chunks, queue/prioritization, rolling prefetch, build slicing and height refresh;
+- `forest-streaming-policy.js` owns behavior-sensitive density, distance, budget, cache and prefetch constants;
+- C4 and the dense P9.29/P9.35–P9.42 QA suite intentionally protect the current root contracts;
+- moving these files would create large path churn with no meaningful ownership gain;
+- `forest-water-assets.js` is shared by scenery **and** water, so it must not be pulled into either implementation folder during Phase R.
 
-No scenery/forest behavior defect was found. Candidate failures were stale source-inspection paths only.
+No forest behavior or path was changed by R6.3b.
+
+## R6.4 — Water implementation organization
+
+**INTEGRATED — automation PASS, human smoke pending.**
+
+```text
+src/water-data.js
+  -> stable root facade
+src/water-renderer.js
+  -> stable root facade
+
+src/water/water-data.js
+  -> data implementation
+src/water/water-renderer.js
+  -> rendering implementation
+
+src/forest-water-assets.js
+  -> intentionally remains root shared forest/water boundary
+```
+
+Preservation evidence:
+- `src/water/water-data.js` reuses the exact original implementation blob `72ee9cba5874b0ba954a7fdf0e136402618f4816`;
+- water renderer logic was preserved; only its relative shared-asset import changed from `./forest-water-assets.js` to `../forest-water-assets.js` after nesting;
+- `main.js` still imports only `./water-data.js` and `./water-renderer.js`;
+- no hydro query/cache/TTL change;
+- no shoreline, water-level, smoothing, radius, coastline width, material, geometry or bridge behavior tuning;
+- no forest/shared asset implementation move.
+
+Permanent gate: `qa/qa-source-tree-r6-water.mjs`, wired into Dev Integration.
+
+Evidence:
+- audit branch `audit/r6-water`;
+- candidate `candidate/r6-water`;
+- structural move `2b59e0affc4c69ae81ee358e6186189c52a7bc79`;
+- source-tree gate `c7a0deb6d6dfbdc9cff5f9a27394200c8d2f04da`;
+- focused candidate run `33592303130` — **PASS**, covering runtime graph, water boundary/syntax, scenery/forest shared boundaries, P9.25 streaming, combined frame pacing, full V21.31 stress, live route smoke, build and code split;
+- permanent Dev Integration gate commit `87708cc397d17b183b51a5c0645ba58fb0062f0b`;
+- final integrated runtime/CI state `33b4973f7af9ed6d85a92c0cdc8343149ec18c70`;
+- exact-head Dev Integration `33592452542` — **PASS, 98/98 functional steps green**.
 
 ---
 
@@ -412,6 +442,19 @@ Preserve:
 - frame budget and hitch attribution;
 - floating-origin/recenter behavior.
 
+## Water / hydrography
+
+Preserve:
+- hydro/coastline/bridge OSM query scope and 30-day hydro cache TTL;
+- water/bridge/coastline feature dedup + generation/reset semantics;
+- river ribbon flat-water behavior and shoreline binary search;
+- three-pass water profile smoothing;
+- water polygon/coastline geometry behavior;
+- authored forest/water style sharing;
+- road-over-water stencil/visual priority;
+- bridge-over-water orchestration;
+- shared root `forest-water-assets.js` boundary.
+
 ## Vehicles / visuals
 
 Preserve authored Countach, ID.4, WRX, Civic, Sonata, i3, F1 and truck/trailer behavior, including scale/orientation/wheels, lighting, authored multiplayer parity, truck camera/trailer articulation and stable route placement.
@@ -426,7 +469,7 @@ Preserve:
 - photo ON/OFF quality;
 - low-hitch long-route behavior.
 
-Performance-sensitive terrain/streaming work stays late in Phase R.
+Performance-sensitive terrain/streaming work stays late in Phase R. Issue #2 remains deferred here until reproducible with full diagnostics.
 
 ---
 
@@ -442,11 +485,11 @@ Performance-sensitive terrain/streaming work stays late in Phase R.
 - **R5b — runtime/transmission/wheel support/skidmarks:** **CLOSED**; wheel-ground + transmission-state moved behind root facades; remaining runtime boundaries intentionally retained/deferred.
 - **R6.1 — road furniture/signs:** DONE automation + human PASS.
 - **R6.2 — road geometry + bridge interactions:** DONE automation + human PASS.
-- **R6.3a — scenery renderer implementation layers:** **INTEGRATED automation PASS; human checkpoint next.**
-- **R6.3b — forest family organization:** BLOCKED on R6.3a human PASS; then read-only audit first. Do not infer that the forest family should move as one unit.
-- **R6.4 — water organization:** pending R6.3; audit first.
-- **R7 — app/input/ui/routing/services:** pending R6.
-- **R8 — terrain/imagery/local-world/streaming:** LAST / performance-sensitive; dedicated audit + mandatory long-route human validation.
+- **R6.3a — scenery renderer implementation layers:** DONE automation + accepted human PASS.
+- **R6.3b — forest runtime family:** **CLOSED — KEEP ROOT**, no move after read-only audit.
+- **R6.4 — water data/renderer implementations:** **INTEGRATED automation PASS; human checkpoint next.**
+- **R7 — app/input/ui/routing/services:** pending R6.4 human PASS; begin read-only audit only.
+- **R8 — terrain/imagery/local-world/streaming:** LAST / performance-sensitive; dedicated audit + mandatory long-route human validation. **Revisit issue #2 here.**
 - **R9 — permanent root-cleanliness gate:** after structural migrations stabilize.
 
 ---
@@ -485,6 +528,10 @@ Rules:
 
 Current Actions warn about Node 20 action-runtime deprecation/forced Node 24 for actions such as `actions/checkout@v4` and `actions/setup-node@v4`. Audit/update separately.
 
+## Deferred defect reference
+
+- **Issue #2 — intermittent delayed terrain adjustment after route startup.** Non-reproducible after convergence/relaunch during R6.3a. Preserve as deferred R8/correction evidence; do not tune blindly during structural work.
+
 ---
 
 # 9. Validation matrix
@@ -498,9 +545,10 @@ Current Actions warn about Node 20 action-runtime deprecation/forced Node 24 for
 | Road geometry | C3 + V21.25 road QA + V21.31 smoothing/banking/superelevation + terrain authority |
 | Road furniture/signs | R6 road-furniture boundary + P9.30/P9.37 + minimap/geographic-sign QA |
 | Scenery renderer | R6 scenery boundary + P9.25 + P9.33/P9.35 startup + P9.38 retention |
+| Forest / streaming | active forest + P9.29/P9.35–P9.42 + route-cache reset + road-sign runtime |
+| Water / hydrography | R6 water boundary + runtime graph + shared scenery/forest boundary + stress + live route smoke |
 | Traffic / MP traffic | traffic R1/pool/preload/MP/live gates |
 | Multiplayer authored visuals | registry/adapter + M4.14/M4.15 where relevant |
-| Forest / streaming | active forest + P9.29/P9.35–P9.42 + route-cache reset + road-sign runtime |
 | Build | `npm run build` |
 | Code splitting | `qa/BUILD_V21_31_CODE_SPLIT_QA.mjs` |
 | Final integration | `.github/workflows/qa-dev-integration.yml` on exact final `dev` HEAD |
@@ -519,6 +567,7 @@ Mandatory/high-value checkpoints include:
 - multiplayer boundary changes;
 - road/bridge visual/contact structural moves;
 - scenery/forest lifecycle structural moves;
+- water/hydrography rendering moves;
 - terrain/imagery/streaming changes;
 - before promotion to `main`.
 
