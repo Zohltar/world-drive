@@ -1,5 +1,5 @@
-import {loadForestWaterAssets,getForestWaterAssets} from './forest-water-assets.js';
-import {createForestChunkStreamer} from './forest-chunk-streamer.js';
+import {loadForestWaterAssets,getForestWaterAssets} from '../forest-water-assets.js';
+import {createForestChunkStreamer} from '../forest-chunk-streamer.js';
 
 export function createSceneryRenderer({
   THREE,statusEl,features,terrainDetailGroup,infrastructureGroup,buildingGroup,

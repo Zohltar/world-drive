@@ -1,6 +1,6 @@
 import {createSceneryRenderer as createSceneryRendererP9} from './scenery-renderer-p9.js';
-import {FOREST_STREAMING_POLICY as FOREST} from './forest-streaming-policy.js';
-import {ensureWorldDriveDiagnostics,installDiagnosticAlias} from './diagnostics.js';
+import {FOREST_STREAMING_POLICY as FOREST} from '../forest-streaming-policy.js';
+import {ensureWorldDriveDiagnostics,installDiagnosticAlias} from '../diagnostics.js';
 
 // Foret P9.35 — route-aware startup forest readiness gate.
 //
