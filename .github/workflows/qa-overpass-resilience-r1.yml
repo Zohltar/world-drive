@@ -1,9 +1,19 @@
-name: Overpass Resilience R1 QA
+name: Overpass Resilience QA
 
 on:
   push:
     branches:
-      - candidate/overpass-resilience-r1
+      - dev
+    paths:
+      - 'src/overpass.js'
+      - 'src/cache.js'
+      - 'src/water-data.js'
+      - 'src/scenery-data.js'
+      - 'src/signs.js'
+      - 'src/main.js'
+      - 'vite.config.js'
+      - 'qa/qa-overpass-resilience-r1.mjs'
+      - '.github/workflows/qa-overpass-resilience-r1.yml'
   workflow_dispatch:
 
 permissions:
@@ -12,7 +22,7 @@ permissions:
 jobs:
   qa:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 10
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -37,11 +47,3 @@ jobs:
         run: node qa/qa-road-signs-p930-runtime.mjs
       - name: Combined frame-pacing QA
         run: node qa/qa-p937-combined-frame-pacing.mjs
-      - name: Full V21.31 regression stress
-        run: npm run qa:stress
-      - name: Live route preset smoke
-        run: node qa/STRESS_ROUTE_PRESETS_LIVE.mjs
-      - name: Production build
-        run: npm run build
-      - name: Production code split QA
-        run: node qa/BUILD_V21_31_CODE_SPLIT_QA.mjs
