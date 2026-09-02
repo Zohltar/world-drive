@@ -131,6 +131,100 @@ export function createImageryService(options){
     sampleTerrainHeight:fastRenderedGroundHeight
   });
   const baseDiagnostics=service.diagnostics?.bind(service);
+  const baseInvalidateGeometry=service.invalidateGeometry?.bind(service);
+
+  // R8.1 diagnostics only: observe the already-existing P9.13 sequential
+  // satellite geometry resampling without changing its queue, commit guard,
+  // chunk order, quality, or timing policy. Geometry object identity is enough
+  // to tell when each visible mesh has been resampled.
+  const GEOMETRY_REFRESH_MONITOR_MS=120;
+  let geometryRefreshGeneration=0;
+  let geometryRefreshRuns=0;
+  let geometryRefreshActiveJobs=0;
+  let geometryRefreshTotalChunks=0;
+  let geometryRefreshCompletedChunks=0;
+  let geometryRefreshPendingChunks=0;
+  let geometryRefreshLastStartedAt=null;
+  let geometryRefreshLastCompletedAt=null;
+  let geometryRefreshLastDurationMs=0;
+  let geometryRefreshMaxDurationMs=0;
+  let geometryRefreshLastReason=null;
+
+  const roundMs=value=>Number.isFinite(value)?Number(value.toFixed(3)):null;
+
+  function visibleGeometrySnapshot(){
+    const group=service.group;
+    const children=Array.isArray(group?.children)?group.children:[];
+    return children
+      .filter(mesh=>mesh?.geometry)
+      .map(mesh=>({mesh,geometry:mesh.geometry}));
+  }
+
+  function geometryRefreshCompleted(snapshot){
+    let completed=0;
+    for(const item of snapshot){
+      if(item.mesh?.parent!==service.group||item.mesh?.geometry!==item.geometry)completed++;
+    }
+    return completed;
+  }
+
+  function finishGeometryRefresh(job,completed){
+    if(job.finished)return;
+    job.finished=true;
+    geometryRefreshActiveJobs=Math.max(0,geometryRefreshActiveJobs-1);
+    if(job.id!==geometryRefreshGeneration)return;
+    const endedAt=performance.now();
+    const duration=endedAt-job.startedAt;
+    geometryRefreshCompletedChunks=Math.min(job.total,Math.max(0,completed));
+    geometryRefreshPendingChunks=Math.max(0,job.total-geometryRefreshCompletedChunks);
+    geometryRefreshLastCompletedAt=endedAt;
+    geometryRefreshLastDurationMs=duration;
+    geometryRefreshMaxDurationMs=Math.max(geometryRefreshMaxDurationMs,duration);
+  }
+
+  function monitorGeometryRefresh(job){
+    const sample=()=>{
+      if(job.finished)return;
+      const completed=geometryRefreshCompleted(job.snapshot);
+      if(job.id===geometryRefreshGeneration){
+        geometryRefreshCompletedChunks=completed;
+        geometryRefreshPendingChunks=Math.max(0,job.total-completed);
+      }
+      if(completed>=job.total){
+        finishGeometryRefresh(job,completed);
+        return;
+      }
+      setTimeout(sample,GEOMETRY_REFRESH_MONITOR_MS);
+    };
+    sample();
+  }
+
+  service.invalidateGeometry=(reason='terrain-commit')=>{
+    const snapshot=visibleGeometrySnapshot();
+    const startedAt=performance.now();
+    const id=++geometryRefreshGeneration;
+    geometryRefreshRuns++;
+    geometryRefreshActiveJobs++;
+    geometryRefreshTotalChunks=snapshot.length;
+    geometryRefreshCompletedChunks=0;
+    geometryRefreshPendingChunks=snapshot.length;
+    geometryRefreshLastStartedAt=startedAt;
+    geometryRefreshLastCompletedAt=null;
+    geometryRefreshLastDurationMs=0;
+    geometryRefreshLastReason=String(reason||'terrain-commit');
+
+    baseInvalidateGeometry?.();
+
+    const job={
+      id,
+      snapshot,
+      total:snapshot.length,
+      startedAt,
+      finished:false
+    };
+    monitorGeometryRefresh(job);
+    return undefined;
+  };
 
   let prefetchBusy=false;
   let lastPrefetchAt=-Infinity;
@@ -203,7 +297,22 @@ export function createImageryService(options){
     p917PrefetchSkipped:prefetchSkipped,
     p917PrefetchCooldownMs:PREFETCH_COOLDOWN_MS,
     p918PrefetchTilesPerProbe:1,
-    p918PrefetchTilesRequested:prefetchTilesRequested
+    p918PrefetchTilesRequested:prefetchTilesRequested,
+    r8GeometryRefresh:{
+      generation:geometryRefreshGeneration,
+      runs:geometryRefreshRuns,
+      active:geometryRefreshActiveJobs>0,
+      activeJobs:geometryRefreshActiveJobs,
+      totalChunks:geometryRefreshTotalChunks,
+      completedChunks:geometryRefreshCompletedChunks,
+      pendingChunks:geometryRefreshPendingChunks,
+      lastStartedAt:roundMs(geometryRefreshLastStartedAt),
+      lastCompletedAt:roundMs(geometryRefreshLastCompletedAt),
+      lastDurationMs:roundMs(geometryRefreshLastDurationMs)??0,
+      maxDurationMs:roundMs(geometryRefreshMaxDurationMs)??0,
+      lastReason:geometryRefreshLastReason,
+      monitorIntervalMs:GEOMETRY_REFRESH_MONITOR_MS
+    }
   });
 
   return service;
