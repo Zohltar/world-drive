@@ -1,9 +1,15 @@
-name: Geofabrik PBF Prototype QA
+name: Geofabrik Offline OSM QA
 
 on:
   push:
     branches:
-      - candidate/geofabrik-pbf-r1
+      - dev
+    paths:
+      - 'tools/geofabrik/**'
+      - 'qa/qa-geofabrik-tiles-r1.mjs'
+      - 'package.json'
+      - '.gitignore'
+      - '.github/workflows/qa-geofabrik-pbf-r1.yml'
   workflow_dispatch:
 
 permissions:
