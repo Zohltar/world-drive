@@ -4,9 +4,11 @@ on:
   push:
     branches:
       - dev
+      - candidate/geofabrik-profile-r1
     paths:
       - 'tools/geofabrik/**'
       - 'qa/qa-geofabrik-tiles-r1.mjs'
+      - 'qa/qa-geofabrik-profile-r1.mjs'
       - 'package.json'
       - '.gitignore'
       - '.github/workflows/qa-geofabrik-pbf-r1.yml'
@@ -33,8 +35,12 @@ jobs:
         run: node --check tools/geofabrik/build-world-tiles.mjs
       - name: Offline reader syntax
         run: node --check tools/geofabrik/offline-tile-source.mjs
+      - name: Profiler syntax
+        run: node --check tools/geofabrik/profile-world-tiles.mjs
       - name: Geofabrik tile pipeline QA
         run: node qa/qa-geofabrik-tiles-r1.mjs
+      - name: Geofabrik layer profiler QA
+        run: node qa/qa-geofabrik-profile-r1.mjs
       - name: Runtime import and debt audit
         run: node qa/DEV_INTEGRATION_AUDIT.mjs
       - name: Production build
