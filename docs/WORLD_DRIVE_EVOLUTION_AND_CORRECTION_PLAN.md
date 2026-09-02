@@ -29,10 +29,12 @@ At the start of every World Drive coding/architecture/QA conversation:
 # 1. CURRENT CHECKPOINT
 
 **Plan phase:** **R8 terrain / imagery / local-world / streaming**  
-**State:** **R8.0 AUDIT + QA BASELINE DONE — no production runtime change**  
-**R8.0 integration head before this documentation commit:** `22d28ac1762d774253027185d02252ee9d6874ec` — `QA: make R8 streaming baseline permanent`  
-**Focused R8 baseline:** run `33680675720` — **PASS** on `22d28ac1762d774253027185d02252ee9d6874ec`  
-**Dev Integration:** run `33680675787` — **PASS 100/100** on `22d28ac1762d774253027185d02252ee9d6874ec`  
+**State:** **R8.1 ISSUE #2 DIAGNOSTICS DONE — human PASS; symptom not reproduced; issue remains OPEN / watch-only**  
+**R8.1 integration head before this documentation commit:** `5c34cc0d9ef92cd5d8562f38e247753b3644a71c` — `QA: make R8 issue 2 diagnostics permanent`  
+**Focused R8.1 diagnostics:** run `33682115849` — **PASS** on `5c34cc0d9ef92cd5d8562f38e247753b3644a71c`  
+**Focused R8 baseline:** run `33682115840` — **PASS** on `5c34cc0d9ef92cd5d8562f38e247753b3644a71c`  
+**Dev Integration:** run `33682115836` — **PASS 100/100** on `5c34cc0d9ef92cd5d8562f38e247753b3644a71c`  
+**Human checkpoint:** Manic-5 / normal driving — **PASS; visually looks good; original delayed-adjustment symptom did not reproduce**  
 **Stable fallback:** `main` @ `111df5d84bf7fd700590abbd9c129b303ac92fad`  
 **Main rule:** `main` remains untouched without explicit user approval.
 
@@ -44,36 +46,52 @@ qa/qa-r8-streaming-baseline.mjs
 .github/workflows/qa-r8-baseline.yml
 ```
 
-`qa/DEV_INTEGRATION_AUDIT.mjs` now permanently executes the isolated R8 streaming baseline before the historical source-tree audit. The R8 runner executes **14/14** current contracts covering P9.17 through P9.27, including route-cache reset and both P9.23 prepared-refresh/scheduler gates. Terrain R1/R2 and P9.37–P9.42 remain separate permanent Dev Integration steps.
+R8.1 added permanent issue #2 imagery geometry-refresh diagnostics:
 
-## Exact next action — R8.1 issue #2 diagnostics only
+```text
+qa/qa-r8-issue2-imagery-diagnostics.mjs
+.github/workflows/qa-r8-issue2-diagnostics.yml
+WorldDriveFramePacing().imagery.r8GeometryRefresh
+```
 
-Do **not** reorganize terrain/imagery/streaming production files yet.
+`qa/DEV_INTEGRATION_AUDIT.mjs` permanently executes both the isolated R8 streaming baseline and the R8.1 imagery-diagnostics contract before the historical source-tree audit. The R8 runner executes **14/14** current contracts covering P9.17 through P9.27, including route-cache reset and both P9.23 prepared-refresh/scheduler gates. Terrain R1/R2 and P9.37–P9.42 remain separate permanent Dev Integration steps.
 
-Open a small candidate whose only runtime-visible intent is to improve diagnostics for deferred issue #2 (`Intermittent delayed terrain adjustment after route startup`). The candidate should expose enough timing/state to distinguish:
+Human telemetry captured after the R8.1 PASS:
 
-1. initial forced/synchronous local-world boot commit;
-2. a later prepared P9.23/P9.27 refresh;
-3. DEM/hydro dirty-triggered refresh after boot;
-4. imagery geometry invalidation / sequential chunk resampling after a terrain commit;
-5. browser/render long-frame activity unrelated to a world rebuild.
+```text
+fps:                     ~143.88
+hitchCount:              15
+maxFrameMs:              215.3
+pendingWorldRefresh:     false
+pendingReasons:          []
+deferredImageryRefreshes: 0
+worldBuildCount:         5
+lastWorldBuildMs:        ~6.7 ms
+p923 preparedStarts:     2
+p923 preparedCommits:    2
+p923 preparedDiscards:   0
+imagery chunkCommits:    48
+imagery priorityOnly:    3
+imagery coverageMosaics: 4
+imagery queue:           0 at capture
+```
 
-Preferred additive telemetry in existing diagnostics:
+The copied human snapshot did **not** expand the nested `imagery.r8GeometryRefresh` object, so this run does not prove or disprove the imagery-resampling hypothesis. It does prove R8.1 introduced no visible regression.
 
-- imagery geometry invalidation generation/count;
-- pending/resampled chunk count;
-- invalidation start/end timestamps or durations;
-- last invalidation reason when the caller can supply it safely;
-- active/pending geometry refresh state;
-- enough boot/commit correlation to compare with `localWorldPhases`, `visualJobs`, P9.27 and P9.39.
+## Exact next action — R8.2 structural micro-audit first
 
-Requirements:
+Do **not** invent an issue #2 correction while the symptom is non-reproducible.
 
-- **diagnostic-only**: no terrain visual tuning, no imagery quality change, no scheduling/cooldown/budget change;
-- candidate first;
-- focused QA must prove telemetry is additive and existing contracts remain unchanged;
-- if issue #2 can be reproduced, human Manic-5 startup evidence decides ownership before any fix;
-- if it cannot be reproduced, do not invent a corrective change.
+Begin R8.2 with a **read-only micro-audit** of the smallest safe structural move inside terrain / imagery / local-world / streaming. Start with the low-fan-in imagery implementation chain and verify before editing:
+
+- who imports `src/imagery-p913.js` directly;
+- QA/workflow/path contracts that name it;
+- whether `src/imagery.js` should remain the stable root owner/facade because it now owns current fast-ground sampling, prefetch policy and R8.1 diagnostics;
+- whether moving only the historical P9.13 implementation under an explicit imagery folder is genuinely structural-only;
+- whether any browser/runtime/global contract depends on the existing path;
+- smallest candidate and required human visual/perf smoke.
+
+If imagery is not the safest first move, stop and document why before choosing another chain. Do not rename historical P9 files in R8; naming cleanup belongs to Phase O7.
 
 ---
 
@@ -168,7 +186,7 @@ A more directly compatible **hypothesis** is imagery geometry invalidation after
 
 **This is a hypothesis, not a diagnosis.** No production fix is authorized until the symptom is reproduced and diagnostics correlate the visible correction with one of the runtime paths above.
 
-Useful existing evidence surface:
+Useful evidence surface now includes:
 
 ```text
 WorldDriveFramePacing()
@@ -177,11 +195,10 @@ WorldDriveFramePacing()
   p923.builder.p927RoadTransition
   visualJobs
   imagery queue/build/commit state
+  imagery.r8GeometryRefresh
   p939HitchAttribution
   frame/browser long-frame snapshots
 ```
-
-R8.1 should make imagery geometry invalidation equally observable.
 
 ## 2.3 QA gap found and closed
 
@@ -190,6 +207,23 @@ Before R8.0, current-valid P9.17–P9.27 streaming tests existed in the historic
 R8.0 closed that gap without touching production source.
 
 Historical V21.21/V21.25 streaming tests remain historical and are **not** authoritative when they assert superseded sizes, thresholds or source locations. Never alter current runtime merely to satisfy a stale historical assertion.
+
+## 2.4 R8.1 issue #2 diagnostics — DONE
+
+R8.1 wrapped the existing imagery invalidation entrypoint with additive telemetry only. The actual P9.13 chunk geometry replacement/resampling engine was not retuned or rescheduled.
+
+Permanent telemetry reports geometry invalidation generation/count, pending/completed chunk counts, active state and timing under `WorldDriveFramePacing().imagery.r8GeometryRefresh`.
+
+Evidence:
+
+- candidate focused diagnostics run `33682029751` — PASS;
+- candidate R8 baseline run `33682029860` — PASS;
+- human Manic smoke — PASS, symptom not reproduced;
+- exact-head `dev` diagnostics run `33682115849` — PASS;
+- exact-head `dev` baseline run `33682115840` — PASS;
+- exact-head Dev Integration run `33682115836` — PASS 100/100.
+
+Disposition: issue #2 remains **OPEN / watch-only**. Do not change terrain/imagery timing based on a non-reproducible hypothesis.
 
 ---
 
@@ -279,7 +313,7 @@ Known Manic local-hydro human smoke: **PASS**.
 
 # 5. Deferred issue #2 — terrain startup adjustment
 
-Issue remains **OPEN / intermittent / not yet diagnosed**.
+Issue remains **OPEN / watch-only / not diagnosed**.
 
 Original observation on Manic-5:
 
@@ -292,7 +326,17 @@ Original observation on Manic-5:
 - `maxFrameMs:194.4`;
 - not reproducible after settled/relaunch tests.
 
-R8 audit now explicitly rejects assuming P9.27 owns the initial symptom. See R8.1 diagnostic plan above.
+R8.1 human validation again did **not** reproduce the symptom. The current instrumentation is retained so a future occurrence can be captured before convergence. Do not invent a corrective change while evidence is absent.
+
+If it occurs again, capture the expanded:
+
+```text
+WorldDriveFramePacing().imagery.r8GeometryRefresh
+WorldDriveFramePacing().localWorldPhases
+WorldDriveFramePacing().p923
+WorldDriveFramePacing().visualJobs
+WorldDriveFramePacing().p939HitchAttribution
+```
 
 ---
 
@@ -312,6 +356,7 @@ R8 audit now explicitly rejects assuming P9.27 owns the initial symptom. See R8.
 - OSM Quebec hydro reliability / issue #3: CLOSED, local-first gzip v2 + human PASS.
 - R7 app/input/UI/routing/services: DONE automation + human PASS.
 - R8.0 audit + permanent QA baseline: DONE, no runtime change.
+- R8.1 issue #2 diagnostics: DONE automation + human PASS; symptom not reproduced; issue stays open/watch-only.
 
 Intentional root water layout:
 
@@ -382,6 +427,7 @@ Preserve:
 - terrain road-bed / visible-earthwork authority;
 - imagery as separate satellite geometry over the underlay;
 - road-aware imagery height alignment;
+- R8.1 imagery geometry-refresh diagnostics as additive observability only;
 - cache reuse and route-ahead prefetch;
 - photo ON/OFF quality;
 - forest retention/frame pacing;
@@ -406,15 +452,16 @@ Preserve:
 - OSM Quebec hydro reliability: DONE; issue #3 CLOSED.
 - R7 app/input/UI/routing/services: DONE.
 - **R8.0 terrain/imagery/local-world/streaming audit + baseline: DONE.**
-- **R8.1 issue #2 diagnostic attribution: NEXT.**
-- R8 structural moves/corrections: only after R8.1 evidence and separate candidate decisions.
+- **R8.1 issue #2 diagnostic attribution: DONE automation + human PASS; issue watch-only.**
+- **R8.2 smallest structural move: NEXT — read-only micro-audit first, imagery chain first candidate to evaluate.**
+- R8 further structural moves/corrections: separate candidates only after evidence.
 - R9 permanent root-cleanliness gate: after R8 stabilizes.
 
 ---
 
 # 10. PHASE O — historical naming cleanup
 
-Only after relevant Phase R folders are stable. Terrain/imagery/local-world/streaming historical P9 naming belongs to O7, **after R8**, not during issue #2 diagnosis.
+Only after relevant Phase R folders are stable. Terrain/imagery/local-world/streaming historical P9 naming belongs to O7, **after R8**, not during current structural work.
 
 ---
 
@@ -440,7 +487,8 @@ Node action-runtime deprecation / forced Node 24 warnings remain separate from P
 | Terrain visual ownership | `qa/qa-terrain-r1-legacy-ownership.mjs` |
 | Terrain/road imagery alignment | `qa/qa-terrain-r2-road-imagery.mjs` |
 | Frame pacing / hitch attribution | P9.37–P9.42 permanent gates + `WorldDriveFramePacing()` |
-| R8.1 issue #2 | focused diagnostics QA + repeated human Manic-5 startup observation if reproducible |
+| R8.1 issue #2 | `qa/qa-r8-issue2-imagery-diagnostics.mjs` + human Manic startup observation; expanded telemetry only if symptom returns |
+| R8.2 structural move | focused path/ownership QA + R8 baseline + build + code split + human visual/perf smoke before integration |
 | Driving physics | `npm run qa:stress` + driving matrix + grip gates |
 | Water/hydrography | `qa/qa-water-hydro-runtime.mjs` + human hydro/bridge smoke |
 | Offline Quebec hydro | `qa/qa-geofabrik-hydro-runtime-r1.mjs` + known Manic human smoke |
