@@ -1,0 +1,42 @@
+name: R8 Issue 2 Diagnostics QA
+
+on:
+  push:
+    branches:
+      - dev
+      - candidate/r8-issue2-*
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  qa:
+    runs-on: ubuntu-latest
+    timeout-minutes: 18
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install
+        run: npm ci
+      - name: R8 issue 2 imagery diagnostics QA
+        run: node qa/qa-r8-issue2-imagery-diagnostics.mjs
+      - name: R8 current streaming baseline
+        run: node qa/qa-r8-streaming-baseline.mjs
+      - name: Terrain R1 visual ownership QA
+        run: node qa/qa-terrain-r1-legacy-ownership.mjs
+      - name: Terrain R2 road imagery alignment QA
+        run: node qa/qa-terrain-r2-road-imagery.mjs
+      - name: P9.39 hitch attribution QA
+        run: node qa/qa-p939-hitch-attribution.mjs
+      - name: Runtime import and source-tree audit
+        run: node qa/DEV_INTEGRATION_AUDIT.mjs
+      - name: Production build
+        run: npm run build
+      - name: Production code split QA
+        run: node qa/BUILD_V21_31_CODE_SPLIT_QA.mjs
