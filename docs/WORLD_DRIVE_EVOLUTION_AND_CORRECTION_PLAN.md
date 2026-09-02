@@ -29,13 +29,13 @@ At the start of every World Drive coding/architecture/QA conversation:
 # 1. CURRENT CHECKPOINT
 
 **Plan phase:** R — Source tree organization  
-**Active item:** **R5b — physics/runtime follow-up, wheel-ground sub-lot**  
+**Active item:** **R5b — transmission-state sub-lot**  
 **State:** **INTEGRATED AUTOMATION PASS — HUMAN CHECKPOINT NEXT**  
-**Current validated dev HEAD before this documentation commit:** `6a7e5a4cc2474b96a943922b1adcea1d104f50a2`  
+**Current validated dev HEAD before this documentation commit:** `30a67a295c19f8f02987390c23367290040c5260`  
 **Stable fallback:** `main` @ `111df5d84bf7fd700590abbd9c129b303ac92fad`  
-**Latest exact-head full integration:** Dev Integration run `33578884903` on `6a7e5a4cc2474b96a943922b1adcea1d104f50a2` — **PASS**  
-**Functional steps:** **93/93 green**  
-**Latest human validation:** prior checkpoint **PASS** — user: “tout est beau, pass!”; **R5b wheel-ground human smoke is now pending**.
+**Latest exact-head full integration before this documentation commit:** Dev Integration run `33581319020` on `30a67a295c19f8f02987390c23367290040c5260` — **PASS**  
+**Functional steps:** **94/94 green**  
+**Latest human validation:** **R5b.1 wheel-ground PASS** — user: “pass”. **R5b.2 transmission-state human smoke is now pending.**
 
 ## What is now closed
 
@@ -163,7 +163,7 @@ Permanent gate:
 Evidence:
 - path-only move commit: `3b0f878996996406ba754331743923a66b1cb6b1`;
 - final R5a housekeeping state before the next cleanup: `28e643ef3c4979390aa1d9caaa5101b0d1b497ad`;
-- current full Dev Integration `33578884903` re-certifies R5a together with the current tree.
+- current full Dev Integration `33581319020` re-certifies R5a together with the current tree.
 
 No physics equation/constant tuning was intentionally part of R5a.
 
@@ -192,7 +192,7 @@ Evidence:
 
 ### R5b.1 — Wheel-ground support implementation move
 
-**INTEGRATED — automation PASS; human smoke pending.**
+**DONE — automation + human PASS.**
 
 Completed structural block:
 
@@ -218,10 +218,59 @@ Permanent gate:
 Evidence:
 - candidate branch: `candidate/r5b-wheel-ground-support`;
 - focused candidate run `33578784621` on `1907d57e9ca47b0bd0b4c610410cf07801ac6a25` — PASS;
-- candidate covered source-tree boundary, runtime graph, R14, driving matrix, crest launch, oblique landing, full stress, build and code split;
-- temporary candidate workflow removed before integration;
-- final candidate/dev integration state: `6a7e5a4cc2474b96a943922b1adcea1d104f50a2`;
-- Dev Integration run `33578884903` — PASS, **93/93 functional steps green**.
+- final integrated runtime state: `6a7e5a4cc2474b96a943922b1adcea1d104f50a2`;
+- Dev Integration run `33578884903` — PASS, **93/93 functional steps green**;
+- documentation checkpoint `dev` @ `7d1c6235f5025f20c64caa9c4f5b7dddfa35560e`;
+- exact-head documentation Dev Integration `33579048645` — PASS, **93/93 functional steps green**;
+- human smoke: **PASS — user “pass”**.
+
+### R5b.2 — Transmission network/runtime state implementation move
+
+**INTEGRATED — automation PASS; human smoke pending.**
+
+Completed structural block:
+
+```text
+src/transmission-network-state.js
+  -> retained as a tiny public/root facade
+src/transmission-runtime-bridge.js
+  -> retained as a tiny public/root facade
+
+src/physics/transmission-network-state.js
+  -> exact implementation moved under physics
+src/physics/transmission-runtime-bridge.js
+  -> exact implementation moved under physics
+```
+
+Preserved contracts:
+- implementation blobs are byte-identical to their former root implementations:
+  - network state: `8df33294597d28930cbfd2ceebb5152ad6b39287`;
+  - runtime bridge: `81e146c3bd5dee6ae3250421e84b170aa5b8cdd0`;
+- `src/transmission-controller.js` remains at root and still imports the stable root facades;
+- `src/driving-runtime.js` remains at root and still imports the stable runtime-bridge facade;
+- `src/multiplayer.js` still reads exact gear through the stable root network-state facade;
+- `qa/qa-transmission-c2.mjs` continues to exercise the public root contract;
+- exact gear semantics remain `R=-1`, `N=0`, `D/forward=1..N`;
+- no shift timing, clutch behavior, selector semantics, transmission equation, brake behavior or multiplayer protocol semantics were changed.
+
+Permanent gate:
+- `qa/qa-source-tree-r5b-transmission-state.mjs`;
+- wired into `.github/workflows/qa-dev-integration.yml`.
+
+Candidate evidence:
+- candidate branch: `candidate/r5b-transmission-state`;
+- implementation move commit: `fe891d75ec873248d5924383d64e6b7531c2392c`;
+- first focused run `33580933698` exposed two stale QA source-inspection paths only; all transmission-specific and multiplayer exact-gear checks before stress were green;
+- no runtime behavior defect was found in that failed candidate run;
+- QA-only retarget commit: `4e98555125e9222a6bf159fe482eb83eb4eab215`;
+- successful focused candidate run `33581103633` on `4e98555125e9222a6bf159fe482eb83eb4eab215` — **PASS**;
+- successful candidate covered source-tree boundary, runtime graph, C2, transmission/autopilot, body-relative transmission, clutch bridge, DNR, direction, multiplayer local/wire diagnostics, M4 adapter/controller/reverse E2E/reverse burst, **44/44 stress**, **288-case driving matrix**, build and code split;
+- temporary candidate workflow removed before integration.
+
+Integrated evidence:
+- final integrated runtime `dev` state: `30a67a295c19f8f02987390c23367290040c5260`;
+- Dev Integration run `33581319020` — **PASS, 94/94 functional steps green**;
+- `main` remains untouched at `111df5d84bf7fd700590abbd9c129b303ac92fad`.
 
 ## R5b — audit findings and remaining follow-up
 
@@ -243,7 +292,8 @@ Current disposition after audit:
 - `src/driving-runtime.js`: intentionally keep at root as the stable runtime facade for `main.js`;
 - `src/driving-runtime-base.js`: possible later internal sub-lot, but high physics/QA coupling — do not move casually;
 - `src/transmission-controller.js`: intentionally keep at root as the application/controller boundary;
-- `src/transmission-network-state.js` + `src/transmission-runtime-bridge.js`: plausible narrow internal transmission sub-lot, but must preserve multiplayer exact-gear semantics and C2 diagnostics contracts;
+- `src/transmission-network-state.js`: root facade intentionally retained; implementation now under `src/physics/` by R5b.2;
+- `src/transmission-runtime-bridge.js`: root facade intentionally retained; implementation now under `src/physics/` by R5b.2;
 - `src/wheel-ground-support.js`: root facade retained; implementation now under `src/physics/` by R5b.1;
 - `src/skidmarks.js`: keep at root during R5b because it deliberately spans contact data, authored visual alignment, audio cues and Three.js rendering.
 
@@ -311,7 +361,16 @@ Do **not** mix into R5b:
 
 ### Exact next action
 
-**Human checkpoint now.** Test current `dev` with emphasis on startup/route load, ordinary driving, a slow or diagonal shoulder/terrain→road re-entry, braking in a curve, and at least one crest/landing. If that smoke is **PASS**, record it and only then open the next narrow R5b transmission-state sub-lot audit/candidate for `transmission-network-state.js` + `transmission-runtime-bridge.js`, while keeping `transmission-controller.js` at root and preserving exact multiplayer gear semantics. Do not start that higher-risk sub-lot before this human checkpoint passes.
+**Human checkpoint now — R5b.2 transmission-state.** Test current `dev` with emphasis on:
+- startup + route load;
+- selector sequence `D → N → R → N → D` where practical;
+- exact gear display/state, especially Neutral and Reverse;
+- ordinary forward/reverse throttle and braking;
+- clutch/manual shifting on a combustion vehicle where practical;
+- a quick multiplayer peer check if practical, especially reverse/gear state and reverse-light parity;
+- ordinary driving/braking sanity.
+
+If that smoke is **PASS**, record it. Only then begin a **read-only audit** of `src/driving-runtime-base.js` as the next possible R5b internal sub-lot. Do not move `driving-runtime-base.js` until that audit is independently green and its candidate boundary is frozen.
 
 ---
 
@@ -432,7 +491,7 @@ Public bootstrap/compatibility facades may intentionally remain at root when the
 - **R4.5 — audio:** DONE automation + human PASS.
 - **R5a — core vehicle dynamics into `src/physics/`:** DONE automation; current integrated dev human smoke PASS.
 - **QA root-layout cleanup:** DONE automation + human PASS.
-- **R5b — runtime/transmission/wheel support/skidmarks:** IN PROGRESS — audit complete; wheel-ground implementation integrated automation PASS; human checkpoint next.
+- **R5b — runtime/transmission/wheel support/skidmarks:** IN PROGRESS — audit complete; wheel-ground DONE automation + human PASS; transmission-state integrated automation PASS, human checkpoint next.
 - **R6 — road/scenery/forest/water:** PENDING R5.
   - split into narrow sub-lots; preserve road-sign scheduling and forest frame pacing.
 - **R7 — app/input/ui/routing/services:** PENDING R6.
