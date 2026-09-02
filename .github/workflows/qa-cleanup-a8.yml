@@ -7,6 +7,7 @@ on:
     paths:
       - 'src/local-world-builder.js'
       - 'src/local-world-builder-p926.js'
+      - 'src/local-world/local-world-builder-p926.js'
       - 'src/local-world-builder-p925.js'
       - 'qa/qa-local-world-current-a8.mjs'
       - 'qa/V21_26_ENVIRONMENT_REFACTOR_QA.mjs'
