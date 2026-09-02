@@ -8,13 +8,15 @@ const here=path.dirname(fileURLToPath(import.meta.url));
 const root=path.resolve(here,'..');
 const src=path.join(root,'src');
 const mainPath=path.join(src,'main.js');
-const modulePath=path.join(src,'road-geometry.js');
+const facadePath=path.join(src,'road-geometry.js');
+const modulePath=path.join(src,'road','road-geometry.js');
 const localWorldPath=path.join(src,'local-world-builder.js');
 const localWorldP925Path=path.join(src,'local-world-builder-p925.js');
 const routeLifecyclePath=path.join(src,'route-lifecycle.js');
 
 assert.equal(fs.existsSync(mainPath),true,'src/main.js missing');
-assert.equal(fs.existsSync(modulePath),true,'src/road-geometry.js missing — run tools/refactor-main-road-geometry-v21-25.mjs first');
+assert.equal(fs.existsSync(facadePath),true,'src/road-geometry.js public facade missing');
+assert.equal(fs.existsSync(modulePath),true,'src/road/road-geometry.js implementation missing');
 
 const main=fs.readFileSync(mainPath,'utf8');
 const road=fs.readFileSync(modulePath,'utf8');
@@ -114,10 +116,10 @@ for(const pattern of [
   /function setActiveRoadProfile\s*\(/,
   /profile:activeRoadProfile/
 ]){
-  assert.match(road,pattern,`road-geometry.js missing expected behavior: ${pattern}`);
+  assert.match(road,pattern,`road-geometry implementation missing expected behavior: ${pattern}`);
 }
 
-const syntaxFiles=[mainPath,modulePath];
+const syntaxFiles=[mainPath,facadePath,modulePath];
 if(localWorld)syntaxFiles.push(localWorldPath);
 if(routeLifecycle)syntaxFiles.push(routeLifecyclePath);
 for(const filePath of syntaxFiles){
@@ -125,9 +127,9 @@ for(const filePath of syntaxFiles){
   assert.equal(result.status,0,result.stderr||result.stdout||`${path.basename(filePath)} syntax check failed`);
 }
 
-// Lightweight behavioral test of the extracted profile/index ownership without
+// Lightweight behavioral test through the stable public facade without
 // needing WebGL or DOM. This protects the road-contact math used by wheel support.
-const imported=await import(`${pathToFileURL(modulePath).href}?qa=${Date.now()}`);
+const imported=await import(`${pathToFileURL(facadePath).href}?qa=${Date.now()}`);
 assert.equal(typeof imported.createRoadGeometrySystem,'function','createRoadGeometrySystem export missing');
 
 const roadSystem=imported.createRoadGeometrySystem({
@@ -179,5 +181,5 @@ const roadLines=road.split(/\r?\n/).length;
 assert.ok(mainLines<6100,`main.js is still unexpectedly large after road geometry extraction: ${mainLines} lines`);
 
 console.log('V21.25 ROAD GEOMETRY REFACTOR QA: PASS');
-console.log(`main.js: ${mainLines} lines; road-geometry.js: ${roadLines} lines`);
+console.log(`main.js: ${mainLines} lines; road implementation: ${roadLines} lines`);
 console.log(`road profile identity/index/interpolation/surface offset: verified${localWorld?' · local-world ownership accepted':''}${routeLifecycle?' · route-lifecycle reset ownership accepted':''}`);
