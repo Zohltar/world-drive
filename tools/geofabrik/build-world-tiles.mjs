@@ -67,6 +67,7 @@ export function classifyFeature(feature){
       tags.landuse==='basin'
     );
   if(waterArea)categories.push('water');
+  if(line&&tags.natural==='coastline')categories.push('water');
 
   if(
     line&&[
