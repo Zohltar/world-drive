@@ -8,7 +8,7 @@ const here=path.dirname(fileURLToPath(import.meta.url));
 const root=path.resolve(here,'..');
 const mainPath=path.join(root,'src','main.js');
 const minimapPath=path.join(root,'src','minimap.js');
-const roadFurniturePath=path.join(root,'src','road-furniture-p930.js');
+const roadFurniturePath=path.join(root,'src','road','road-furniture-p930.js');
 const routeLifecyclePath=path.join(root,'src','route-lifecycle.js');
 
 for(const filePath of [mainPath,minimapPath,roadFurniturePath,routeLifecyclePath]){
