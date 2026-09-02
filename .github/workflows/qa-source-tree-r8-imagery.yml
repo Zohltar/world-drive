@@ -1,0 +1,48 @@
+name: R8 Imagery Structure QA
+
+on:
+  push:
+    branches:
+      - dev
+      - candidate/r8-imagery-structure-r1
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  qa:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install
+        run: npm ci
+      - name: R8.2 imagery source-tree boundary
+        run: node qa/qa-source-tree-r8-imagery.mjs
+      - name: R8 current ownership baseline
+        run: node qa/qa-r8-current-ownership.mjs
+      - name: P9.13 transition contract
+        run: node qa/qa-streaming-p913-transitions.mjs
+      - name: Terrain R1 visual ownership
+        run: node qa/qa-terrain-r1-legacy-ownership.mjs
+      - name: Terrain R2 road imagery alignment
+        run: node qa/qa-terrain-r2-road-imagery.mjs
+      - name: R8 issue 2 imagery diagnostics
+        run: node qa/qa-r8-issue2-imagery-diagnostics.mjs
+      - name: C6 final global boundary
+        run: node qa/qa-diagnostics-c6-final-inventory.mjs
+      - name: R8 streaming baseline
+        run: node qa/qa-r8-streaming-baseline.mjs
+      - name: Runtime import and source-tree audit
+        run: node qa/DEV_INTEGRATION_AUDIT.mjs
+      - name: Production build
+        run: npm run build
+      - name: Production code split QA
+        run: node qa/BUILD_V21_31_CODE_SPLIT_QA.mjs
