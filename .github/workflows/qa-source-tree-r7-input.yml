@@ -1,0 +1,40 @@
+name: Source Tree R7 Input QA
+
+on:
+  push:
+    branches:
+      - dev
+      - candidate/r7-input-r1
+    paths:
+      - 'src/keyboard-controls.js'
+      - 'src/gamepad.js'
+      - 'src/input/**'
+      - 'qa/qa-source-tree-r7-input.mjs'
+      - '.github/workflows/qa-source-tree-r7-input.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  qa:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install
+        run: npm ci
+      - name: R7 input source-tree boundary
+        run: node qa/qa-source-tree-r7-input.mjs
+      - name: Runtime import and debt audit
+        run: node qa/DEV_INTEGRATION_AUDIT.mjs
+      - name: Production build
+        run: npm run build
+      - name: Production code split QA
+        run: node qa/BUILD_V21_31_CODE_SPLIT_QA.mjs
