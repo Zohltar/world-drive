@@ -1,0 +1,47 @@
+name: Overpass Resilience R1 QA
+
+on:
+  push:
+    branches:
+      - candidate/overpass-resilience-r1
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  qa:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install
+        run: npm ci
+      - name: Overpass client syntax
+        run: node --check src/overpass.js
+      - name: Overpass cross-service resilience
+        run: node qa/qa-overpass-resilience-r1.mjs
+      - name: Hydro runtime regression
+        run: node qa/qa-water-hydro-runtime.mjs
+      - name: Runtime import and debt audit
+        run: node qa/DEV_INTEGRATION_AUDIT.mjs
+      - name: Streaming scenery/preparation QA
+        run: node qa/qa-streaming-p925-scenery-and-prep.mjs
+      - name: Road-sign runtime QA
+        run: node qa/qa-road-signs-p930-runtime.mjs
+      - name: Combined frame-pacing QA
+        run: node qa/qa-p937-combined-frame-pacing.mjs
+      - name: Full V21.31 regression stress
+        run: npm run qa:stress
+      - name: Live route preset smoke
+        run: node qa/STRESS_ROUTE_PRESETS_LIVE.mjs
+      - name: Production build
+        run: npm run build
+      - name: Production code split QA
+        run: node qa/BUILD_V21_31_CODE_SPLIT_QA.mjs
