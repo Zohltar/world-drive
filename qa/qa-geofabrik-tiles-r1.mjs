@@ -11,7 +11,7 @@ import {
 import {
   createOfflineOsmTileSource,
   offlineTileForLatLon
-} from '../src/osm-offline-tile-source.js';
+} from '../tools/geofabrik/offline-tile-source.mjs';
 
 function feature(id,geometry,properties={}){
   return {type:'Feature',id,geometry,properties};
@@ -90,7 +90,7 @@ try{
 
   const center=tileForLonLat(-73.58,45.507,2000);
   const center2=offlineTileForLatLon(45.507,-73.58,2000);
-  assert.deepEqual(center2,center,'builder and runtime tile math must match');
+  assert.deepEqual(center2,center,'builder and reader tile math must match');
 
   const allRecords=[];
   async function walk(dir){
@@ -147,7 +147,7 @@ try{
   assert.equal(
     loaded.records.length,
     loadedIds.size,
-    'records duplicated across tiles must be deduplicated at runtime'
+    'records duplicated across tiles must be deduplicated by reader'
   );
 
   await source.loadAround(45.507,-73.58,3500);
