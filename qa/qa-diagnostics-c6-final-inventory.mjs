@@ -75,6 +75,7 @@ const expected=new Map([
   ]],
   ['worldDriveBuild',['direct-write:src/version.js']],
   ['WorldDriveFramePacing',['diagnostic-alias:src/main.js']],
+  ['WorldDriveOverpass',['diagnostic-alias:src/overpass.js']],
   ['WorldDrivePhysicsShadow',['diagnostic-alias:src/main.js']],
   ['WorldDriveTraffic',[
     'direct-write:src/traffic/civil-traffic-local.js',
