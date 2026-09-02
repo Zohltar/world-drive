@@ -7,7 +7,7 @@ on:
       - candidate/geofabrik-hydro-runtime-r1
     paths:
       - 'src/water-data.js'
-      - 'src/offline-hydro-source.js'
+      - 'src/water-offline-hydro-source.js'
       - 'tools/geofabrik/**'
       - 'qa/qa-geofabrik-tiles-r1.mjs'
       - 'qa/qa-geofabrik-hydro-gzip-r1.mjs'
