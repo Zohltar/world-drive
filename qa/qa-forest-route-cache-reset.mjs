@@ -88,7 +88,7 @@ assert.ok(
   'forest streamer cache must be purged before legacy forestGroup cleanup'
 );
 
-const scenerySource=fs.readFileSync('./src/scenery-renderer-p9.js','utf8');
+const scenerySource=fs.readFileSync('./src/scenery/scenery-renderer-p9.js','utf8');
 assert.match(scenerySource,/function clearForestCache\(\)/,'scenery renderer must expose a route-change forest purge');
 assert.match(scenerySource,/forestStreamer\.setAssets\(null\);[\s\S]*forestStreamer\.clearAll\(\);/,'route purge must suspend the streamer and clear its active/LRU state');
 assert.match(scenerySource,/forestAssetsActivated=false;/,'forest assets must be reactivated only after the new route rebuild');

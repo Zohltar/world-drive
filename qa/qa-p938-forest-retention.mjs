@@ -5,7 +5,7 @@ import {fileURLToPath} from 'node:url';
 
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
 const localPath=path.join(root,'src','local-world-builder.js');
-const sceneryPath=path.join(root,'src','scenery-renderer-p9.js');
+const sceneryPath=path.join(root,'src','scenery','scenery-renderer-p9.js');
 const forestPath=path.join(root,'src','forest-chunk-streamer-core.js');
 
 function read(file){return fs.readFileSync(file,'utf8');}

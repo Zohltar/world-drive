@@ -8,7 +8,7 @@ on:
       - 'src/diagnostics.js'
       - 'src/main.js'
       - 'src/forest-chunk-streamer.js'
-      - 'src/scenery-renderer-p933.js'
+      - 'src/scenery/scenery-renderer-p933.js'
       - 'src/startup-ui.js'
       - 'src/streaming-coordinator.js'
       - 'src/streaming-coordinator-p913.js'
