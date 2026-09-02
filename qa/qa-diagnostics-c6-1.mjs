@@ -32,7 +32,7 @@ assert.equal(alias.__worldDriveDiagnosticAlias,'__TEST_FOREST__','diagnostic ali
 const main=fs.readFileSync('src/main.js','utf8');
 const forest=fs.readFileSync('src/forest-chunk-streamer.js','utf8');
 const scenery=fs.readFileSync('src/scenery/scenery-renderer-p933.js','utf8');
-const startup=fs.readFileSync('src/startup-ui.js','utf8');
+const startup=fs.readFileSync('src/ui/startup-ui.js','utf8');
 const streaming=fs.readFileSync('src/streaming-coordinator.js','utf8');
 
 assert.match(main,/from ['"]\.\/diagnostics\.js['"]/,'main missing canonical diagnostics import');
