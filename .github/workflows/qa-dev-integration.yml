@@ -50,6 +50,8 @@ jobs:
         run: node qa/qa-source-tree-r6-road-furniture.mjs
       - name: Source tree R6 road geometry boundary QA
         run: node qa/qa-source-tree-r6-road-geometry.mjs
+      - name: Source tree R6 scenery renderer boundary QA
+        run: node qa/qa-source-tree-r6-scenery-renderer.mjs
       - name: Cleanup A6 version/build branding QA
         run: node qa/qa-version-branding-a6.mjs
       - name: Cleanup A7 repository hygiene QA
