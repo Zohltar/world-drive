@@ -5,7 +5,7 @@ Stable branch: `main`
 Stable fallback: `111df5d84bf7fd700590abbd9c129b303ac92fad` — `Release V21.31 post-C6 stable`  
 Status: **ACTIVE — canonical restart source of truth**
 
-This document supersedes archived cleanup/evolution plans for active work. Historical detail belongs under `docs/archive/`.
+This document is the active restart/checkpoint source for World Drive. Historical detail belongs under `docs/archive/`; GitHub state + this file win over chat memory when they disagree.
 
 ---
 
@@ -13,143 +13,106 @@ This document supersedes archived cleanup/evolution plans for active work. Histo
 
 At the start of every World Drive coding/architecture/QA conversation:
 
-1. Read this file from the **current `dev` branch**.
+1. Read this file from the current `dev` branch.
 2. Read live HEADs of `dev` and `main`.
 3. Read **CURRENT CHECKPOINT** below.
 4. Inspect the latest `Dev Integration QA` for the exact current `dev` HEAD.
 5. If a checkpoint names an audit/candidate branch, inspect that branch and its latest workflow.
 6. Resume the exact **Next action** unless the user changes priority.
-7. If chat memory disagrees with GitHub, **GitHub + this file win**.
-8. Never mark structural work DONE without commit/run evidence and required human validation.
-9. Work in small certified blocks and stop for periodic human checkpoints.
-10. Before ending meaningful work, update this checkpoint with branch/SHA, validation state, discoveries, prohibitions and exact next action.
+7. Never mark structural work DONE without commit/run evidence and required human validation.
+8. Work in small certified blocks: read-only audit → candidate → focused QA → permanent gate → exact-head Dev Integration → human checkpoint where required.
+9. Before ending meaningful work, update this file with SHA/run evidence, discoveries, prohibitions and exact next action.
+10. **Never move `main` without explicit user approval.**
 
 ---
 
 # 1. CURRENT CHECKPOINT
 
 **Plan phase:** R — Source tree organization  
-**Active item:** **R5b — transmission-state sub-lot**  
+**Active item:** **R6.2 — road geometry + bridge interactions**  
 **State:** **INTEGRATED AUTOMATION PASS — HUMAN CHECKPOINT NEXT**  
-**Current validated dev HEAD before this documentation commit:** `30a67a295c19f8f02987390c23367290040c5260`  
+**Current validated dev HEAD before this documentation commit:** `101bb197b4e4855466a651341fdb670fc3b17a60`  
 **Stable fallback:** `main` @ `111df5d84bf7fd700590abbd9c129b303ac92fad`  
-**Latest exact-head full integration before this documentation commit:** Dev Integration run `33581319020` on `30a67a295c19f8f02987390c23367290040c5260` — **PASS**  
-**Functional steps:** **94/94 green**  
-**Latest human validation:** **R5b.1 wheel-ground PASS** — user: “pass”. **R5b.2 transmission-state human smoke is now pending.**
+**Latest exact-head full integration before this documentation commit:** Dev Integration run `33588267313` on `101bb197b4e4855466a651341fdb670fc3b17a60` — **PASS**  
+**Functional steps:** **96/96 green**  
+**Latest human validation:** **R6.1 road-furniture PASS — user: “pass aucun probleme”. R6.2 road/bridge human smoke is pending.**
 
-## What is now closed
+## Exact next action
 
-### R2 — Multiplayer folder migration
+**Human checkpoint — R6.2 road geometry + bridge interactions.** Test current `dev` with emphasis on:
+
+- startup + route load;
+- ordinary road driving;
+- curves with banking/superelevation;
+- hills / vertical smoothing;
+- at least one **bridge approach → deck → exit**;
+- a route refresh or second route if practical;
+- watch for road/terrain mismatch, vertical snap, sudden banking jump, bridge-deck mismatch or new hitch/stutter.
+
+If the smoke is **PASS**, record it. **Only then** open R6.3 as a **read-only audit** of scenery/forest renderer boundaries. Do not move scenery/forest files before that audit is independently green.
+
+---
+
+# 2. CLOSED / CERTIFIED STRUCTURAL WORK
+
+## R2 — Multiplayer
 
 **DONE — automation + human PASS.**
 
-- Public root lazy facades intentionally retained:
-  - `src/multiplayer.js`
-  - `src/multiplayer-visuals.js`
-- Internal multiplayer implementation lives under `src/multiplayer/`.
+- Public root lazy facades retained: `src/multiplayer.js`, `src/multiplayer-visuals.js`.
+- Internal implementation lives under `src/multiplayer/`.
 - Permanent gate: `qa/qa-source-tree-r2-multiplayer.mjs`.
-- Evidence includes candidate run `33455749888`, Dev Integration `33455977023`, human smoke PASS.
+- Key evidence: candidate `33455749888`, Dev Integration `33455977023`, human PASS.
 
-### R3 — Civil traffic folder migration
+## R3 — Civil traffic
 
 **DONE — automation + human PASS.**
 
 Implementation lives under `src/traffic/`:
 
 ```text
-src/traffic/
-  civil-traffic.js
-  civil-traffic-local.js
-  civil-traffic-network-bridge.js
-  civil-traffic-pool.js
-  civil-traffic-preload.js
+civil-traffic.js
+civil-traffic-local.js
+civil-traffic-network-bridge.js
+civil-traffic-pool.js
+civil-traffic-preload.js
 ```
 
 Permanent gate: `qa/qa-source-tree-r3-traffic.mjs`.
 
-Evidence includes audit runs `33459624185`, `33459656074`, candidate runs `33460198735`, `33460300489`, Dev Integration `33460497791`, human traffic smoke PASS.
-
-### R4 — Vehicle/presentation/model folder migration
+## R4 — Vehicles / presentation / models / truck
 
 **DONE — automation + human PASS.**
 
-Seventeen implementation files now live under responsibility folders:
+Implementation is organized under `src/vehicles/`, including `models/` and `truck/`. Authored registry paths, lazy GLB loading, `import.meta.url` assets, model scale/orientation/wheels/lights, multiplayer presentation, truck/trailer behavior and placement contracts were preserved.
 
-```text
-src/vehicles/
-  vehicle-system.js
-  vehicle-visuals.js
-  vehicle-presentation.js
-  vehicle-presentation-v21.29.js
-  vehicle-authored-registry.js
-  vehicle-render-contract.js
-  vehicle-glb-entries.js
-  deferred-glb-system.js
-  vehicle-placement-controller.js
-  models/
-    civic-glb.js
-    countach-glb.js
-    f1-glb.js
-    i3-glb.js
-    id4-glb.js
-    sonata-glb.js
-    wrx-glb.js
-  truck/
-    truck-trailer.js
-```
+Key evidence: candidate `33464463621`, integrated state `b718675b8d88a810c168216bf57be97546e35719`, Dev Integration `33465049654`, human PASS.
 
-Preserved contracts:
-- authored registry `modulePath` + dynamic-import pairs;
-- lazy GLB loading and production code splitting;
-- `import.meta.url` asset resolution;
-- multiplayer adapter/registry/render-contract boundaries;
-- model scale/orientation/wheels and lighting/material/controller behavior;
-- truck/trailer behavior;
-- placement stable-start logic;
-- suspension, anti-roll, airborne and landing presentation behavior.
-
-Historical QA assumptions were modernized only where architecture had already evolved; no intentional physics/lighting/model tuning was mixed into the move.
-
-Key evidence:
-- focused candidate run `33464463621` — PASS;
-- integrated vehicle-state `dev` @ `b718675b8d88a810c168216bf57be97546e35719`;
-- Dev Integration `33465049654` — PASS;
-- human vehicle smoke — PASS.
-
-### R4.5 — Audio folder migration
+## R4.5 — Audio
 
 **DONE — automation + human PASS.**
-
-Exact content-preserving moves:
 
 ```text
 src/audio.js      -> src/audio/audio.js
 src/audio-base.js -> src/audio/audio-base.js
 ```
 
-Preserved contracts:
-- `main.js` remains the public production importer;
-- sibling relationship between both audio modules;
-- no new dynamic imports;
-- application-relative MP3 URLs remain `./assets/audio/...`;
-- tire-squeal/brake-squeal curves and linkage unchanged.
+Exact-content moves; application-relative audio URLs and tire/brake audio behavior preserved. Permanent gate: `qa/qa-source-tree-audio.mjs`.
 
-Permanent gate: `qa/qa-source-tree-audio.mjs`.
+## QA root-layout cleanup
 
-Evidence:
-- audit `33465393725` — PASS;
-- successful atomic migration `33465478566`;
-- focused candidate `33465652119` — PASS;
-- integrated `dev` @ `340b1212bf5eb53b44cedd34df37fa22f0f84824`;
-- Dev Integration `33465706009` — PASS;
-- exact documentation-head integration `33465873634` — PASS;
-- human smoke — PASS.
+**DONE — automation + human PASS.**
 
-### R5a — Core vehicle-dynamics move
+- canonical QA location is `qa/`;
+- legacy root `qa-*.mjs` clutter removed;
+- path/context assumptions modernized without runtime changes;
+- permanent gate: `qa/QA_ROOT_LAYOUT_QA.mjs`;
+- exact-head Dev Integration `33562578540` — **92/92**;
+- human PASS: “tout est beau, pass!”.
 
-**DONE — automation. Current integrated dev also passed the latest human smoke.**
+## R5a — Core vehicle dynamics
 
-Moved into `src/physics/`:
+**DONE — automation + human PASS through the integrated runtime checkpoint.**
 
 ```text
 src/physics/vehicle-dynamics.js
@@ -157,167 +120,80 @@ src/physics/vehicle-dynamics-core.js
 src/physics/vehicle-dynamics-traction-steering.js
 ```
 
-Permanent gate:
-- `qa/qa-source-tree-r5a-vehicle-dynamics.mjs`
+Permanent gate: `qa/qa-source-tree-r5a-vehicle-dynamics.mjs`.
 
-Evidence:
-- path-only move commit: `3b0f878996996406ba754331743923a66b1cb6b1`;
-- final R5a housekeeping state before the next cleanup: `28e643ef3c4979390aa1d9caaa5101b0d1b497ad`;
-- current full Dev Integration `33581319020` re-certifies R5a together with the current tree.
+No physics equation/constant tuning was part of the move.
 
-No physics equation/constant tuning was intentionally part of R5a.
-
-### QA root-layout cleanup
+## R5b.1 — Wheel-ground support
 
 **DONE — automation + human PASS.**
-
-Purpose: remove legacy root-level `qa-*.mjs` clutter and make `qa/` the canonical QA location.
-
-Completed work:
-- legacy root QA modules moved into `qa/`;
-- workflow/docs path contracts retargeted;
-- moved QA files had their filesystem-root assumptions corrected where required;
-- forest/streaming QA path-context false failures corrected without changing runtime behavior;
-- temporary diagnostic/candidate workflows removed before integration;
-- permanent boundary added: `qa/QA_ROOT_LAYOUT_QA.mjs`;
-- `.github/workflows/qa-dev-integration.yml` permanently calls canonical `qa/...` paths;
-- **no `src/` runtime file changed in this cleanup**.
-
-Evidence:
-- final candidate certification included layout/source graph, ownership/diagnostics, driving/traffic, forest/streaming, `qa:stress`, 288-case driving matrix, build and code-split — PASS;
-- candidate cleanup HEAD before integration: `24ecfa99e69ae350d3978d23c554b01b04d89228`;
-- `dev` fast-forwarded cleanly from `28e643ef3c4979390aa1d9caaa5101b0d1b497ad` to `24ecfa99e69ae350d3978d23c554b01b04d89228`, no force/divergence;
-- exact-head Dev Integration run `33562578540` — PASS, **92/92 functional steps green**;
-- human smoke: **PASS — “tout est beau, pass!”**.
-
-### R5b.1 — Wheel-ground support implementation move
-
-**DONE — automation + human PASS.**
-
-Completed structural block:
 
 ```text
 src/wheel-ground-support.js
-  -> retained as a tiny public/root facade
-
+  -> stable root facade
 src/physics/wheel-ground-support.js
-  -> exact implementation moved under physics
+  -> implementation
 ```
 
-Preserved contracts:
-- implementation blob is byte-identical to the former root implementation: `54e11aba7d2543981f7c0a9f517a293ac47c18ae`;
-- `src/main.js` remains unchanged and still imports the stable root facade;
-- R14 continues to exercise the public facade;
-- no wheel-support constant, equation, threshold or behavior was changed;
-- no transmission, braking, J-turn, drift, skidmark or vehicle tuning was mixed in.
+Implementation blob remained byte-identical: `54e11aba7d2543981f7c0a9f517a293ac47c18ae`.
 
-Permanent gate:
-- `qa/qa-source-tree-r5b-wheel-ground-support.mjs`;
-- wired into `.github/workflows/qa-dev-integration.yml`.
+Permanent gate: `qa/qa-source-tree-r5b-wheel-ground-support.mjs`.
 
-Evidence:
-- candidate branch: `candidate/r5b-wheel-ground-support`;
-- focused candidate run `33578784621` on `1907d57e9ca47b0bd0b4c610410cf07801ac6a25` — PASS;
-- final integrated runtime state: `6a7e5a4cc2474b96a943922b1adcea1d104f50a2`;
-- Dev Integration run `33578884903` — PASS, **93/93 functional steps green**;
-- documentation checkpoint `dev` @ `7d1c6235f5025f20c64caa9c4f5b7dddfa35560e`;
-- exact-head documentation Dev Integration `33579048645` — PASS, **93/93 functional steps green**;
-- human smoke: **PASS — user “pass”**.
+Evidence: candidate run `33578784621`; Dev Integration `33578884903`; documentation-head integration `33579048645`; human PASS “pass”.
 
-### R5b.2 — Transmission network/runtime state implementation move
+## R5b.2 — Transmission network/runtime state
 
-**INTEGRATED — automation PASS; human smoke pending.**
-
-Completed structural block:
+**DONE — automation + human PASS.**
 
 ```text
 src/transmission-network-state.js
-  -> retained as a tiny public/root facade
 src/transmission-runtime-bridge.js
-  -> retained as a tiny public/root facade
+  -> stable root facades
 
 src/physics/transmission-network-state.js
-  -> exact implementation moved under physics
 src/physics/transmission-runtime-bridge.js
-  -> exact implementation moved under physics
+  -> implementations
 ```
 
-Preserved contracts:
-- implementation blobs are byte-identical to their former root implementations:
-  - network state: `8df33294597d28930cbfd2ceebb5152ad6b39287`;
-  - runtime bridge: `81e146c3bd5dee6ae3250421e84b170aa5b8cdd0`;
-- `src/transmission-controller.js` remains at root and still imports the stable root facades;
-- `src/driving-runtime.js` remains at root and still imports the stable runtime-bridge facade;
-- `src/multiplayer.js` still reads exact gear through the stable root network-state facade;
-- `qa/qa-transmission-c2.mjs` continues to exercise the public root contract;
-- exact gear semantics remain `R=-1`, `N=0`, `D/forward=1..N`;
-- no shift timing, clutch behavior, selector semantics, transmission equation, brake behavior or multiplayer protocol semantics were changed.
+Implementation blobs remained byte-identical:
+- network state: `8df33294597d28930cbfd2ceebb5152ad6b39287`;
+- runtime bridge: `81e146c3bd5dee6ae3250421e84b170aa5b8cdd0`.
 
-Permanent gate:
-- `qa/qa-source-tree-r5b-transmission-state.mjs`;
-- wired into `.github/workflows/qa-dev-integration.yml`.
+Frozen semantics:
+- `R=-1`, `N=0`, forward `1..N`;
+- controller/clutch/selector timing unchanged;
+- multiplayer exact-gear publication/readback unchanged.
 
-Candidate evidence:
-- candidate branch: `candidate/r5b-transmission-state`;
-- implementation move commit: `fe891d75ec873248d5924383d64e6b7531c2392c`;
-- first focused run `33580933698` exposed two stale QA source-inspection paths only; all transmission-specific and multiplayer exact-gear checks before stress were green;
-- no runtime behavior defect was found in that failed candidate run;
-- QA-only retarget commit: `4e98555125e9222a6bf159fe482eb83eb4eab215`;
-- successful focused candidate run `33581103633` on `4e98555125e9222a6bf159fe482eb83eb4eab215` — **PASS**;
-- successful candidate covered source-tree boundary, runtime graph, C2, transmission/autopilot, body-relative transmission, clutch bridge, DNR, direction, multiplayer local/wire diagnostics, M4 adapter/controller/reverse E2E/reverse burst, **44/44 stress**, **288-case driving matrix**, build and code split;
-- temporary candidate workflow removed before integration.
+Permanent gate: `qa/qa-source-tree-r5b-transmission-state.mjs`.
 
-Integrated evidence:
-- final integrated runtime `dev` state: `30a67a295c19f8f02987390c23367290040c5260`;
-- Dev Integration run `33581319020` — **PASS, 94/94 functional steps green**;
-- `main` remains untouched at `111df5d84bf7fd700590abbd9c129b303ac92fad`.
+Evidence:
+- candidate `candidate/r5b-transmission-state`;
+- move `fe891d75ec873248d5924383d64e6b7531c2392c`;
+- focused PASS `33581103633` after QA-only path correction;
+- integrated runtime `30a67a295c19f8f02987390c23367290040c5260`;
+- Dev Integration `33581319020` — **94/94**;
+- human PASS recorded.
 
-## R5b — audit findings and remaining follow-up
+## R5 closure — driving runtime disposition
 
-The initial R5b read-only audit is complete. No remaining R5b move should be inferred from filename alone; each sub-lot must preserve the audited public/runtime boundaries.
+**R5 CLOSED.**
 
-### Exact root family audited
+Read-only audit of the remaining root runtime family concluded:
 
-```text
-src/driving-runtime.js
-src/driving-runtime-base.js
-src/transmission-controller.js
-src/transmission-network-state.js
-src/transmission-runtime-bridge.js
-src/wheel-ground-support.js
-src/skidmarks.js
-```
+- `src/driving-runtime.js` — **KEEP ROOT**, public/runtime orchestration facade;
+- `src/driving-runtime-base.js` — **KEEP ROOT / DEFER TO O6**;
+- `src/transmission-controller.js` — **KEEP ROOT**, application/controller boundary;
+- `src/skidmarks.js` — **KEEP ROOT**, intentional contact/visual/audio/Three.js hybrid;
+- transmission-state and wheel-support root facades retained intentionally as above.
 
-Current disposition after audit:
-- `src/driving-runtime.js`: intentionally keep at root as the stable runtime facade for `main.js`;
-- `src/driving-runtime-base.js`: possible later internal sub-lot, but high physics/QA coupling — do not move casually;
-- `src/transmission-controller.js`: intentionally keep at root as the application/controller boundary;
-- `src/transmission-network-state.js`: root facade intentionally retained; implementation now under `src/physics/` by R5b.2;
-- `src/transmission-runtime-bridge.js`: root facade intentionally retained; implementation now under `src/physics/` by R5b.2;
-- `src/wheel-ground-support.js`: root facade retained; implementation now under `src/physics/` by R5b.1;
-- `src/skidmarks.js`: keep at root during R5b because it deliberately spans contact data, authored visual alignment, audio cues and Three.js rendering.
+Why `driving-runtime-base.js` was not moved in R5:
+- mixed physics + runtime orchestration responsibility;
+- many direct helper imports from grip/truck/physics QA;
+- source-inspection ownership gates depend on it;
+- R17 CI contains explicit source greps against its root path;
+- the roadmap already reserves this boundary/naming clarification for **O6**.
 
-### Already consolidated by R5a — dependency boundaries, not R5b relocation targets
-
-```text
-src/physics/vehicle-dynamics.js
-src/physics/vehicle-dynamics-core.js
-src/physics/vehicle-dynamics-traction-steering.js
-```
-
-### Existing nested physics modules — dependency boundaries
-
-At minimum preserve interactions with:
-- `src/physics/airborne-dynamics.js`;
-- `src/physics/maneuver-state.js`;
-- `src/physics/momentum-direction.js`;
-- `src/physics/wheelspin-state.js`;
-- `src/physics/yaw-authority.js`;
-- steering/tire/surface/per-wheel/fixed-step modules already under `src/physics/`.
-
-### Audit-only companion names — repository reality
-
-The originally listed exact root paths below **do not exist on current `dev`** and must not be recreated merely to match an old plan assumption:
+The following old companion names do **not** exist and must not be recreated merely to satisfy historical assumptions:
 
 ```text
 src/braking.js
@@ -326,66 +202,117 @@ src/wheel-friction.js
 src/truck-physics-adapter.js
 ```
 
-Their relevant responsibilities are already distributed across current nested physics modules and `src/vehicles/truck/truck-trailer.js`. Treat those responsibilities as dependency boundaries, not missing-file tasks.
+## R6.1 — Road furniture / signs
 
-### Boundaries R5b must continue to freeze
+**DONE — automation + human PASS.**
 
-- `src/main.js` imports and runtime startup order;
-- `src/multiplayer/` local-authority vs remote-visual behavior;
-- `src/vehicles/` presentation/model/controller boundaries;
-- truck/trailer boundaries;
-- transmission network-state and local gear semantics;
-- `Number(null)`/diagnostic ownership semantics already protected by C6 gates;
-- wheel-ground R14 terrain→road re-entry support;
-- skidmark/contact alignment;
-- braking/ABS/handbrake/J-turn behavior;
-- FWD power-understeer counter-yaw;
-- EV handbrake/J-turn momentum and rotation;
-- F1 front-slip/steering behavior;
-- crest launch and oblique landing;
-- every direct QA/CI path assumption;
-- build/code-split boundaries;
-- intentional public/root facades.
+```text
+src/road-furniture.js
+  -> stable public root facade
+src/road/road-furniture-p930.js
+src/road/road-furniture-p937.js
+  -> implementation layers
+```
 
-### R5b prohibitions
+Preserved:
+- P9.30 implementation byte-identical, blob `5bd3a7e86abf551a78b314ee56eaa8bde0fc25ff`;
+- P9.37 only required its relative diagnostics import to follow the move;
+- sign appearance, sign-face caching, incremental build, idle scheduling/coalescing and minimap readout unchanged;
+- `signs.js` and `bridges.js` were deliberately not mixed into this sub-lot.
 
-Do **not** mix into R5b:
-- tire/friction/load-transfer/yaw/steering/brake tuning;
-- transmission shift/clutch/gear semantic changes;
-- handbrake/J-turn/drift behavior changes;
-- wheel support/re-entry tuning;
-- skidmark visual tuning;
-- historical-name cleanup;
-- dependency/security fixes;
-- GitHub Actions runtime maintenance.
+Permanent gate: `qa/qa-source-tree-r6-road-furniture.mjs`.
 
-### Exact next action
-
-**Human checkpoint now — R5b.2 transmission-state.** Test current `dev` with emphasis on:
-- startup + route load;
-- selector sequence `D → N → R → N → D` where practical;
-- exact gear display/state, especially Neutral and Reverse;
-- ordinary forward/reverse throttle and braking;
-- clutch/manual shifting on a combustion vehicle where practical;
-- a quick multiplayer peer check if practical, especially reverse/gear state and reverse-light parity;
-- ordinary driving/braking sanity.
-
-If that smoke is **PASS**, record it. Only then begin a **read-only audit** of `src/driving-runtime-base.js` as the next possible R5b internal sub-lot. Do not move `driving-runtime-base.js` until that audit is independently green and its candidate boundary is frozen.
+Evidence:
+- candidate `candidate/r6-road-furniture`;
+- focused candidate run `33583213310` on `fe9ac1af391657018d241bb216a29cc7d146af98` — PASS;
+- integrated `dev` @ `411d881f66aa5af00e6eb5e6db443312c6f0061b`;
+- exact-head Dev Integration `33583321914` — **95/95**;
+- human PASS: **“pass aucun probleme”**.
 
 ---
 
-# 2. Stable baseline / release rule
+# 3. ACTIVE R6.2 — ROAD GEOMETRY + BRIDGE INTERACTIONS
 
-`main` is rollback/reference. New work happens on `dev` or narrow `audit/...` / `cleanup/...` branches.
+## Audit decision
 
-Never advance `main` unless:
-- actual integrated `dev` HEAD is green;
-- required human gameplay validation is complete;
-- the user explicitly approves promotion.
+Audit branch: `audit/r6-road-geometry` from `411d881f66aa5af00e6eb5e6db443312c6f0061b`.
+
+Findings:
+- production fan-in for `road-geometry.js` is effectively the `main.js` composition boundary;
+- behavioral QA already consumes the public root module;
+- source-inspection QA can safely inspect the nested implementation;
+- `src/bridges.js` is a clean injected boundary and should **remain at root** during R6.2;
+- bridge manager initialization remains before road-geometry composition;
+- road geometry still receives `bridgeHeightAtCum` + `bridgeManager` through dependency injection.
+
+## Integrated structural result
+
+```text
+src/road-geometry.js
+  -> one-line stable public facade
+src/road/road-geometry.js
+  -> exact former implementation
+src/bridges.js
+  -> intentionally remains root
+```
+
+Root facade:
+
+```js
+export * from './road/road-geometry.js';
+```
+
+The nested implementation uses the exact original implementation blob:
+`5c4f928cead5423e6591766c81528f5eaa7055a2`.
+
+Therefore **no road geometry formula, constant or behavior was rewritten by the move**.
+
+Frozen bridge interactions include:
+- bridge deck height override through `bridgeHeightAtCum(raw[i].cum)`;
+- bridge approach preservation through `bridgeManager.isNearApproach(raw[i].cum,18)`;
+- startup/composition order in `main.js`;
+- bridge manager stable root boundary.
+
+No intentional changes were made to:
+- road width/profile/contact math;
+- smoothing;
+- grades;
+- banking/superelevation;
+- terrain authority;
+- snapping/step limits;
+- bridge deck/approach behavior;
+- driving physics.
+
+## QA / evidence
+
+Candidate branch: `candidate/r6-road-geometry`.
+
+Key commits:
+- path-only implementation move: `b91ae4be248a027460798e2622846987fbadaaab`;
+- QA/path retargets only after move;
+- QA false-positive correction: `c62b7053d0ff1392143b55645b25a939ef054ae8`;
+- permanent Dev Integration gate: `23ac61939a1eaed99a5e08e34ed73a7d806ea78a`;
+- final candidate / integrated state after temporary workflow removal: `101bb197b4e4855466a651341fdb670fc3b17a60`.
+
+Permanent gate:
+- `qa/qa-source-tree-r6-road-geometry.mjs`;
+- wired into `.github/workflows/qa-dev-integration.yml`.
+
+Candidate evidence:
+- first run `33588019072` failed only because C3 detected the new gate's intentional literal check for absent `road-geometry-base.js`; runtime graph and R6 boundary were already green;
+- no runtime/road behavior defect was found;
+- QA-only correction followed;
+- focused candidate run `33588152294` — **PASS**, covering R6 boundary, runtime graph, C3, historical V21.25 road geometry/init order, V21.31 smoothing/banking/superelevation, terrain/imagery boundaries, full stress, driving matrix, crest/landing, build and code split.
+
+Integrated evidence:
+- `dev` fast-forwarded without force from `411d881f66aa5af00e6eb5e6db443312c6f0061b` to `101bb197b4e4855466a651341fdb670fc3b17a60`;
+- exact-head Dev Integration run `33588267313` — **PASS, 96/96 functional steps green**;
+- C3 dedicated workflow `33588267337` — PASS;
+- `main` remains untouched at `111df5d84bf7fd700590abbd9c129b303ac92fad`.
 
 ---
 
-# 3. Operating principles
+# 4. Operating principles / prohibitions
 
 1. **One intent per commit.** Path move, QA modernization, behavior fix and docs stay separate.
 2. **Phase R must not tune behavior.** Preserve physics, visuals, terrain, imagery, frame pacing, traffic and multiplayer semantics.
@@ -398,48 +325,57 @@ Never advance `main` unless:
 9. **No silent debt discoveries.** Record material debt before moving on.
 10. **No mixed maintenance.** Dependency/toolchain work remains separate from structural source-tree work.
 
+Do **not** mix into structural Phase R:
+- physics/handling tuning;
+- road/terrain/visual tuning;
+- transmission/clutch/brake semantic changes;
+- historical production-name cleanup;
+- dependency/security fixes;
+- GitHub Actions runtime upgrades.
+
 ---
 
-# 4. Protected behavior contracts
-
-Structural cleanup must preserve the following unless the user explicitly opens behavior work.
+# 5. Protected behavior contracts
 
 ## Driving / physics
 
-- per-wheel tire force and countersteer coupling;
+Preserve:
+- per-wheel tire force / countersteer coupling;
 - ABS and locked-tire force direction;
-- service braking, reverse and J-turn behavior;
-- grade gravity and load transfer;
-- trajectory stability/snapback protection;
-- tire peak/drift behavior;
-- progressive high-speed steering;
+- service braking, reverse, handbrake and J-turn behavior;
+- grade gravity / load transfer;
+- high-speed trajectory stability;
 - terrain→road support re-entry;
 - skidmark/contact alignment;
 - FWD power-understeer counter-yaw;
-- EV momentum/handbrake/J-turn behavior;
-- rear locked-tire lateral force;
+- EV momentum/J-turn behavior;
 - F1 front-slip/yaw/steering authority;
-- crest launch and oblique landing stability.
+- crest launch and oblique landing.
+
+## Road / bridges
+
+Preserve:
+- robust extreme road mesh;
+- road profile identity and interpolation;
+- road-contact surface math;
+- V21.31 smoothing;
+- banking/superelevation limits;
+- terrain authority;
+- bridge deck height interpolation;
+- bridge approach smoothing;
+- route reset / active profile ownership.
 
 ## Vehicles / visuals
 
-Protect authored Countach, ID.4, WRX, Civic, Sonata, i3, F1 and truck/trailer behavior, including:
-- scale/orientation/wheels;
-- brake/reverse/night/indicator lights;
-- authored multiplayer controller parity;
-- model/material bindings;
-- truck camera and trailer articulation;
-- stable route placement/reset.
+Preserve authored Countach, ID.4, WRX, Civic, Sonata, i3, F1 and truck/trailer behavior, including scale/orientation/wheels, lighting, authored multiplayer parity, truck camera/trailer articulation and stable route placement.
 
 ## Terrain / streaming / performance
 
-Protect:
-- robust extreme road mesh;
-- mountain crests and road banking limits;
+Preserve:
 - imagery/procedural transitions;
-- cache reuse and preload behavior;
+- cache reuse/preload;
 - forest frame pacing and queue maintenance;
-- near/medium/far terrain continuity;
+- near/medium/far continuity;
 - photo ON/OFF quality;
 - low-hitch long-route behavior.
 
@@ -447,58 +383,22 @@ Performance-sensitive terrain/streaming work stays late in Phase R.
 
 ---
 
-# 5. Target source-tree direction
-
-```text
-src/
-  main.js
-  app/
-  input/
-  ui/
-  routing/
-  services/
-  audio/
-  traffic/
-  multiplayer/
-  vehicles/
-    models/
-    truck/
-  physics/
-  world/
-    road/
-    terrain/
-    imagery/
-    scenery/
-    forest/
-    water/
-    streaming/
-  styles/
-```
-
-Public bootstrap/compatibility facades may intentionally remain at root when they provide a useful stable boundary. A later root-cleanliness gate will enforce the final allowlist.
-
----
-
 # 6. PHASE R — Source tree organization roadmap
 
 - **R1 — runtime path/import/QA inventory:** DONE.
-  - permanent `qa/DEV_INTEGRATION_AUDIT.mjs`;
-  - baseline 116/116 runtime reachable, zero unresolved/orphans;
-  - key run `33444437121` PASS.
 - **R2 — multiplayer:** DONE automation + human PASS.
 - **R3 — traffic:** DONE automation + human PASS.
 - **R4 — vehicles/presentation/models/truck:** DONE automation + human PASS.
 - **R4.5 — audio:** DONE automation + human PASS.
-- **R5a — core vehicle dynamics into `src/physics/`:** DONE automation; current integrated dev human smoke PASS.
+- **R5a — core vehicle dynamics:** DONE.
 - **QA root-layout cleanup:** DONE automation + human PASS.
-- **R5b — runtime/transmission/wheel support/skidmarks:** IN PROGRESS — audit complete; wheel-ground DONE automation + human PASS; transmission-state integrated automation PASS, human checkpoint next.
-- **R6 — road/scenery/forest/water:** PENDING R5.
-  - split into narrow sub-lots; preserve road-sign scheduling and forest frame pacing.
-- **R7 — app/input/ui/routing/services:** PENDING R6.
-  - preserve CSS paths, settings identity/persistence, startup order and controls.
-- **R8 — terrain/imagery/local-world/streaming:** LAST / performance-sensitive.
-  - dedicated audit;
-  - mandatory long-route human validation with imagery ON/OFF, cache reuse, repeated refreshes and FPS/hitch observation.
+- **R5b — runtime/transmission/wheel support/skidmarks:** **CLOSED**; wheel-ground + transmission-state moved behind root facades; remaining root runtime boundaries intentionally retained/deferred.
+- **R6.1 — road furniture/signs implementation layers:** DONE automation + human PASS.
+- **R6.2 — road geometry + bridge interactions:** **INTEGRATED automation PASS; human checkpoint next.**
+- **R6.3 — scenery/forest renderer organization:** PENDING R6.2 human PASS; begin with read-only audit only.
+- **R6.4 — water organization:** pending R6.3, audit first.
+- **R7 — app/input/ui/routing/services:** pending R6.
+- **R8 — terrain/imagery/local-world/streaming:** LAST / performance-sensitive; dedicated audit + mandatory long-route human validation.
 - **R9 — permanent root-cleanliness gate:** after structural migrations stabilize.
 
 ---
@@ -507,11 +407,11 @@ Public bootstrap/compatibility facades may intentionally remain at root when the
 
 Only after relevant Phase R folders are stable.
 
-- **O1 Multiplayer:** replace historical `m3`/`v18` production names with responsibility names.
-- **O2 Road furniture:** replace `p930`/`p937` historical names while preserving construction/scheduling layers.
+- **O1 Multiplayer:** replace historical `m3`/`v18` production names.
+- **O2 Road furniture:** replace `p930`/`p937` names while preserving construction/scheduling layers.
 - **O3 Vehicle presentation:** replace `vehicle-presentation-v21.29.js` only after presentation ownership is stable.
 - **O4 Scenery renderer:** replace `p9`/`p933` names without disturbing startup/forest behavior.
-- **O5 Audio:** reconsider `audio-base.js` naming only if ownership audit proves useful.
+- **O5 Audio:** reconsider `audio-base.js` only if ownership audit proves useful.
 - **O6 Driving runtime:** clarify `driving-runtime-base.js` vs public runtime after R5.
 - **O7 Terrain/imagery/local-world/streaming:** only after R8 + performance validation.
 
@@ -541,19 +441,16 @@ Current Actions warn about Node 20 action-runtime deprecation/forced Node 24 for
 
 # 9. Validation matrix
 
-For structural work, use the smallest focused gate that proves the candidate plus the permanent full gate on final `dev`.
-
 | Risk area | Required validation |
 |---|---|
 | Runtime graph / paths | `qa/DEV_INTEGRATION_AUDIT.mjs` + relevant source-tree boundary |
 | QA layout | `qa/QA_ROOT_LAYOUT_QA.mjs` |
 | Driving physics | `npm run qa:stress` + `qa/DEV_DRIVING_SIM_QA.mjs` + relevant grip gates |
-| Braking / J-turn / handbrake | R8/R9/R17–R20 grip gates |
-| High-speed / FWD / F1 | R11–R13, R16, R21–R23 gates |
-| Wheel support / airborne | R14 + crest-launch + oblique-landing gates |
-| Traffic / MP traffic | R1/pool/preload/MP1/live traffic gates |
+| Wheel support / airborne | R14 + crest-launch + oblique-landing |
+| Road geometry | C3 + V21.25 road QA + V21.31 smoothing/banking/superelevation + terrain authority |
+| Road furniture/signs | R6 road-furniture boundary + P9.30/P9.37 + minimap/geographic-sign QA |
+| Traffic / MP traffic | traffic R1/pool/preload/MP/live gates |
 | Multiplayer authored visuals | registry/adapter + M4.14/M4.15 where relevant |
-| Vehicle lighting/models | Sonata/WRX and authored vehicle model/lighting gates where relevant |
 | Forest / streaming | active forest + P9.29/P9.35–P9.42 + road-sign runtime |
 | Build | `npm run build` |
 | Code splitting | `qa/BUILD_V21_31_CODE_SPLIT_QA.mjs` |
@@ -567,26 +464,15 @@ A green candidate is not enough. The **actual final `dev` HEAD** must pass Dev I
 
 Automation cannot replace user-visible validation.
 
-Use human checks periodically rather than after every trivial commit. Mandatory/high-value checkpoints include:
-- after visible vehicle/model/presentation moves;
-- after meaningful physics/runtime structural clusters;
-- after multiplayer boundary changes;
-- after terrain/imagery/streaming changes;
+Mandatory/high-value checkpoints include:
+- visible vehicle/model/presentation moves;
+- meaningful physics/runtime structural clusters;
+- multiplayer boundary changes;
+- road/bridge visual/contact structural moves;
+- terrain/imagery/streaming changes;
 - before promotion to `main`.
 
-Typical driving smoke:
-- startup + route load;
-- several vehicles;
-- braking in a curve;
-- high-speed steering;
-- handbrake/J-turn if relevant;
-- crest launch/landing if relevant;
-- route reset/placement;
-- quick night/reverse/brake light check when vehicle paths changed;
-- multiplayer visual check when MP paths changed;
-- FPS/hitch observation for performance-sensitive work.
-
-Do not start the next high-risk structural phase until the planned human checkpoint passes.
+Do not start the next high-risk structural sub-phase until the planned human checkpoint passes.
 
 ---
 
