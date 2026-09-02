@@ -19,7 +19,9 @@ for(const file of [
   'src/multiplayer/multiplayer-client-m3.js',
   'src/transmission-controller.js',
   'src/transmission-network-state.js',
-  'src/transmission-runtime-bridge.js'
+  'src/transmission-runtime-bridge.js',
+  'src/physics/transmission-network-state.js',
+  'src/physics/transmission-runtime-bridge.js'
 ])execFileSync(process.execPath,['--check',file],{stdio:'pipe'});
 
 const browser=fs.readFileSync('server/multiplayer-server.mjs','utf8');
@@ -27,7 +29,7 @@ const electron=fs.readFileSync('electron/multiplayer-runtime.cjs','utf8');
 const entry=fs.readFileSync('src/multiplayer.js','utf8');
 const client=fs.readFileSync('src/multiplayer/multiplayer-client-m3.js','utf8');
 const transmission=fs.readFileSync('src/transmission-controller.js','utf8');
-const bridge=fs.readFileSync('src/transmission-runtime-bridge.js','utf8');
+const bridge=fs.readFileSync('src/physics/transmission-runtime-bridge.js','utf8');
 
 const commonRelayMarkers=[
   'velocityHeading:finite(message.velocityHeading,message.heading)',
