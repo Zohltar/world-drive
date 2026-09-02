@@ -18,7 +18,7 @@ const required=[
   'terrain-p926.js',
   'terrain-p925.js',
   'imagery.js',
-  'imagery-p913.js',
+  'imagery/imagery-p913.js',
   'elevation.js',
   'world-scene.js',
   'routing/route-lifecycle.js'
@@ -37,7 +37,7 @@ const terrain=read('terrain.js');
 const terrainP926=read('terrain-p926.js');
 const terrainP925=read('terrain-p925.js');
 const imagery=read('imagery.js');
-const imageryP913=read('imagery-p913.js');
+const imageryP913=read('imagery/imagery-p913.js');
 const elevation=read('elevation.js');
 const worldScene=read('world-scene.js');
 const routeLifecycle=read('routing/route-lifecycle.js');
@@ -89,6 +89,6 @@ console.log('R8 CURRENT OWNERSHIP BASELINE: PASS',{
   scheduler:'streaming-coordinator -> P9.13 sync base',
   localWorld:'local-world-builder -> P9.26 -> P9.25',
   terrain:'terrain P9.27 -> P9.26 -> P9.25',
-  imagery:'imagery -> P9.13 satellite chunks',
+  imagery:'imagery -> imagery/P9.13 satellite chunks',
   startup:'forced synchronous local-world commit'
 });

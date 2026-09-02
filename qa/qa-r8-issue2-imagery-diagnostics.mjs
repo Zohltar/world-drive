@@ -6,7 +6,7 @@ import {createImageryService} from '../src/imagery.js';
 
 const root=fileURLToPath(new URL('../',import.meta.url));
 const wrapperSource=fs.readFileSync(path.join(root,'src','imagery.js'),'utf8');
-const baseSource=fs.readFileSync(path.join(root,'src','imagery-p913.js'),'utf8');
+const baseSource=fs.readFileSync(path.join(root,'src','imagery','imagery-p913.js'),'utf8');
 
 // Diagnostic-only contract: the proven P9.13 resampling path still owns actual
 // geometry replacement and keeps the same commit-window / sequential cadence.
@@ -102,6 +102,6 @@ service.destroy();
 
 console.log('R8 ISSUE #2 IMAGERY DIAGNOSTICS: PASS',{
   telemetry:'additive',
-  productionResamplingOwner:'imagery-p913.js',
+  productionResamplingOwner:'imagery/imagery-p913.js',
   visiblePath:'WorldDriveFramePacing().imagery.r8GeometryRefresh'
 });

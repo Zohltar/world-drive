@@ -62,7 +62,7 @@ const expected=new Map([
   ['requestAnimationFrame',['direct-write:src/frame-runtime-profiler.js']],
   ['requestIdleCallback',[
     'direct-write:src/forest-chunk-streamer-core.js',
-    'direct-write:src/imagery-p913.js',
+    'direct-write:src/imagery/imagery-p913.js',
     'direct-write:src/road/road-furniture-p930.js',
     'direct-write:src/road/road-furniture-p937.js',
     'direct-write:src/streaming-coordinator-p913.js'

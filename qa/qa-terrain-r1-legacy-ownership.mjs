@@ -3,7 +3,7 @@ import fs from 'node:fs';
 
 const terrain=fs.readFileSync(new URL('../src/terrain.js',import.meta.url),'utf8').replace(/\r\n/g,'\n');
 const base=fs.readFileSync(new URL('../src/terrain-p925.js',import.meta.url),'utf8').replace(/\r\n/g,'\n');
-const imagery=fs.readFileSync(new URL('../src/imagery-p913.js',import.meta.url),'utf8').replace(/\r\n/g,'\n');
+const imagery=fs.readFileSync(new URL('../src/imagery/imagery-p913.js',import.meta.url),'utf8').replace(/\r\n/g,'\n');
 
 // Modern imagery ownership: satellite is its own geometry, never a monolithic ground map.
 assert.match(imagery,/chunkGroup\.name='satellite-terrain-chunks'/,'satellite chunk geometry ownership missing');

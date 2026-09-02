@@ -3,7 +3,7 @@
 // cheaper: background probes fetch only the centre slippy tile instead of a 3x3
 // block. Visible satellite chunks still compose their full 3x3 imagery, so this
 // changes loading pressure only, not rendered image quality.
-import {createImageryService as createImageryServiceP913} from './imagery-p913.js';
+import {createImageryService as createImageryServiceP913} from './imagery/imagery-p913.js';
 
 export function createImageryService(options){
   const originalTerrainSample=options?.sampleTerrainHeight;
