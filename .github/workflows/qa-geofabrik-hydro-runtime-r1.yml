@@ -1,0 +1,49 @@
+name: Geofabrik Hydro Runtime R1
+
+on:
+  push:
+    branches:
+      - dev
+      - candidate/geofabrik-hydro-runtime-r1
+    paths:
+      - 'src/water-data.js'
+      - 'src/offline-hydro-source.js'
+      - 'tools/geofabrik/**'
+      - 'qa/qa-geofabrik-tiles-r1.mjs'
+      - 'qa/qa-geofabrik-hydro-gzip-r1.mjs'
+      - 'qa/qa-geofabrik-hydro-runtime-r1.mjs'
+      - 'qa/qa-water-hydro-runtime.mjs'
+      - '.github/workflows/qa-geofabrik-hydro-runtime-r1.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  qa:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install
+        run: npm ci
+      - name: Runtime import and debt audit
+        run: node qa/DEV_INTEGRATION_AUDIT.mjs
+      - name: Geofabrik tile pipeline
+        run: node qa/qa-geofabrik-tiles-r1.mjs
+      - name: Geofabrik hydro gzip pack
+        run: node qa/qa-geofabrik-hydro-gzip-r1.mjs
+      - name: Geofabrik local hydro runtime
+        run: node qa/qa-geofabrik-hydro-runtime-r1.mjs
+      - name: Existing water hydro contract
+        run: node qa/qa-water-hydro-runtime.mjs
+      - name: Production build
+        run: npm run build
+      - name: Production code split QA
+        run: node qa/BUILD_V21_31_CODE_SPLIT_QA.mjs
