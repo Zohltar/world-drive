@@ -3,7 +3,7 @@ import fs from 'node:fs';
 
 const pkg=JSON.parse(fs.readFileSync('package.json','utf8'));
 const lock=JSON.parse(fs.readFileSync('package-lock.json','utf8'));
-const versionSource=fs.readFileSync('src/version.js','utf8');
+const versionSource=fs.readFileSync('src/app/version.js','utf8');
 const electronSource=fs.readFileSync('electron/main.cjs','utf8');
 const indexSource=fs.readFileSync('index.html','utf8');
 
@@ -21,7 +21,7 @@ assert.equal(branding.WORLD_DRIVE_VERSION,expectedDisplay,'web display version d
 assert.equal(branding.WORLD_DRIVE_CHANNEL,pkg.worldDriveChannel,'web channel diverged from package.json');
 assert.equal(branding.WORLD_DRIVE_VERSION_LABEL,expectedLabel,'web version label diverged');
 assert.equal(branding.WORLD_DRIVE_TITLE,expectedTitle,'web title diverged');
-assert.ok(versionSource.includes("from '../package.json' with {type:'json'}"),'web branding must import authoritative package metadata');
+assert.ok(versionSource.includes("from '../../package.json' with {type:'json'}"),'web branding must import authoritative package metadata from nested app ownership');
 assert.ok(!/WORLD_DRIVE_VERSION\s*=\s*['"]\d/.test(versionSource),'web version must not return to a hard-coded numeric constant');
 assert.ok(!/WORLD_DRIVE_CHANNEL\s*=\s*['"](?:dev|stable)/.test(versionSource),'web channel must not return to a hard-coded constant');
 assert.ok(!versionSource.includes('MutationObserver'),'legacy DOM-wide branding observer must remain removed');
