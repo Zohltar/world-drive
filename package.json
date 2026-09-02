@@ -13,6 +13,8 @@
     "build": "vite build",
     "preview": "vite preview",
     "qa:stress": "node qa/STRESS_V21_31_RUNNER.mjs",
+    "qa:geofabrik": "node qa/qa-geofabrik-tiles-r1.mjs",
+    "geofabrik:tiles": "node tools/geofabrik/build-world-tiles.mjs",
     "desktop": "npm run build && electron .",
     "package": "npm run build && electron-forge package",
     "make": "npm run build && electron-forge make"

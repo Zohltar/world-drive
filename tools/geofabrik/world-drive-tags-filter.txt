@@ -1,0 +1,14 @@
+# World Drive OSM feature filter for Geofabrik PBF preprocessing.
+# Keep only feature families that World Drive can render/use locally.
+
+nwr/natural=water,wood,scrub,bare_rock,scree,cliff
+nwr/water
+nwr/waterway=river,stream,canal,ditch,drain,dam,riverbank
+nwr/landuse=reservoir,basin,forest,meadow,grass,orchard,vineyard
+nwr/building
+nwr/bridge
+nwr/man_made=bridge,dam
+nwr/power=line,minor_line,tower,pole
+nwr/barrier=guard_rail
+nwr/traffic_sign
+nwr/highway=traffic_sign

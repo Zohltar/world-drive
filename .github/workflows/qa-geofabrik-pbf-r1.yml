@@ -1,0 +1,37 @@
+name: Geofabrik PBF Prototype QA
+
+on:
+  push:
+    branches:
+      - candidate/geofabrik-pbf-r1
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  qa:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install
+        run: npm ci
+      - name: Builder syntax
+        run: node --check tools/geofabrik/build-world-tiles.mjs
+      - name: Offline source syntax
+        run: node --check src/osm-offline-tile-source.js
+      - name: Geofabrik tile pipeline QA
+        run: node qa/qa-geofabrik-tiles-r1.mjs
+      - name: Runtime import and debt audit
+        run: node qa/DEV_INTEGRATION_AUDIT.mjs
+      - name: Production build
+        run: npm run build
+      - name: Production code split QA
+        run: node qa/BUILD_V21_31_CODE_SPLIT_QA.mjs
