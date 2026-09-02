@@ -1,3 +1,5 @@
+import {ensureWorldDriveDiagnostics,installDiagnosticAlias} from './diagnostics.js';
+
 // World Drive - Overpass client
 // Owns Overpass endpoints, network retries, cache-first reads and in-flight deduplication.
 // OSM interpretation/rendering remains in main.js.
@@ -9,7 +11,9 @@ export function createOverpassClient({
     'https://overpass-api.de/api/interpreter',
     'https://overpass.kumi.systems/api/interpreter',
     'https://overpass.nchc.org.tw/api/interpreter'
-  ]
+  ],
+  minRequestGapMs=900,
+  maxConcurrentRequests=2
 }={}) {
   if(!cache)throw new Error('Overpass client requires a cache');
   if(typeof keyFor!=='function'){
@@ -19,10 +23,25 @@ export function createOverpassClient({
   const pending=cache.pending || new Map();
   const endpointCooldownUntil=new Map();
   const endpointFailures=new Map();
-  const MIN_REQUEST_GAP_MS=900;
-  let globalCooldownUntil=0;
-  let networkTail=Promise.resolve();
+  const endpointSoftFailures=new Map();
+  const endpointSuccesses=new Map();
+  const endpointLastIssue=new Map();
+  const endpointLastLogAt=new Map();
+
+  const requestGapMs=Math.max(0,Number(minRequestGapMs)||0);
+  const laneCount=Math.max(
+    1,
+    Math.min(4,Math.floor(Number(maxConcurrentRequests)||1))
+  );
+  const networkTails=Array.from({length:laneCount},()=>Promise.resolve());
+  const laneLabels=Array(laneCount).fill(null);
+
+  let nextLane=0;
+  let endpointCursor=0;
+  let paceTail=Promise.resolve();
   let lastNetworkRequestAt=0;
+  let queuedLogicalRequests=0;
+  let activeLogicalRequests=0;
   let lastAllMirrorsLogAt=0;
 
   function nowMs(){return Date.now();}
@@ -32,39 +51,124 @@ export function createOverpassClient({
     return (endpointCooldownUntil.get(endpoint)||0)<=nowMs();
   }
 
-  function markEndpointSuccess(endpoint){
-    endpointFailures.delete(endpoint);
-    endpointCooldownUntil.delete(endpoint);
-    globalCooldownUntil=0;
+  function endpointName(endpoint){
+    try{return new URL(endpoint).hostname;}catch{return String(endpoint);}
   }
 
-  function markEndpointFailure(endpoint){
+  function markEndpointSuccess(endpoint){
+    endpointFailures.delete(endpoint);
+    endpointSoftFailures.delete(endpoint);
+    endpointCooldownUntil.delete(endpoint);
+    endpointLastIssue.delete(endpoint);
+    endpointSuccesses.set(
+      endpoint,
+      (endpointSuccesses.get(endpoint)||0)+1
+    );
+  }
+
+  function markEndpointFailure(endpoint,{cooldownMs=null}={}){
     const failures=(endpointFailures.get(endpoint)||0)+1;
     endpointFailures.set(endpoint,failures);
 
-    const cooldownMs=Math.min(
+    const computedCooldown=Math.min(
       120000,
       15000*Math.pow(2,Math.min(3,failures-1))
     );
-    endpointCooldownUntil.set(endpoint,nowMs()+cooldownMs);
+    endpointCooldownUntil.set(
+      endpoint,
+      nowMs()+Math.max(0,cooldownMs??computedCooldown)
+    );
   }
 
-  function allEndpointsCoolingDown(){
-    return endpoints.every(endpoint=>!endpointAvailable(endpoint));
+  function markEndpointSoftFailure(endpoint){
+    endpointSoftFailures.set(
+      endpoint,
+      (endpointSoftFailures.get(endpoint)||0)+1
+    );
   }
 
   function noteAllMirrorsUnavailable(){
     const now=nowMs();
     if(now-lastAllMirrorsLogAt<30000)return;
     lastAllMirrorsLogAt=now;
-    console.info('OSM Overpass temporarily unavailable; cached data and driving continue');
+    console.info(
+      'OSM Overpass hard-failure cooldown active; cached data and driving continue'
+    );
   }
 
-  async function paceNextRequest(){
-    const elapsed=nowMs()-lastNetworkRequestAt;
-    const waitMs=Math.max(0,MIN_REQUEST_GAP_MS-elapsed);
-    if(waitMs>0)await delay(waitMs);
-    lastNetworkRequestAt=nowMs();
+  function noteEndpointIssue(endpoint,issue){
+    const now=nowMs();
+    endpointLastIssue.set(endpoint,{
+      kind:issue.kind,
+      status:issue.status||0,
+      at:now
+    });
+
+    const last=endpointLastLogAt.get(endpoint)||0;
+    if(now-last<12000)return;
+    endpointLastLogAt.set(endpoint,now);
+    console.info(
+      'OSM Overpass mirror issue',
+      endpointName(endpoint),
+      issue.kind,
+      issue.status||''
+    );
+  }
+
+  function classifyFailure(error){
+    const status=Number(error?.status)||0;
+
+    // An AbortError is normally the caller's per-query timeout or deliberate
+    // cancellation. A heavy hydro query timing out does not prove that the
+    // endpoint is unusable for a lighter scenery/sign/metadata query.
+    if(error?.name==='AbortError'||status===408||status===504){
+      return {kind:'query-timeout',status,hard:false};
+    }
+
+    if(status===429){
+      return {kind:'rate-limit',status,hard:true,cooldownMs:30000};
+    }
+
+    if(status>=500&&status<=503){
+      return {kind:'server-unavailable',status,hard:true};
+    }
+
+    // 4xx responses other than rate limiting are usually query-specific. Do
+    // not poison unrelated world services because one query was rejected.
+    if(status>=400&&status<500){
+      return {kind:'query-rejected',status,hard:false};
+    }
+
+    // Browser/network failures with no HTTP status are endpoint-health signals.
+    if(error instanceof TypeError||error?.softProxyFailure){
+      return {kind:'network',status,hard:true};
+    }
+
+    return {kind:'response-error',status,hard:true};
+  }
+
+  function orderedAvailableEndpoints(){
+    const count=endpoints.length;
+    if(!count)return [];
+
+    const ordered=[];
+    for(let i=0;i<count;i++){
+      const endpoint=endpoints[(endpointCursor+i)%count];
+      if(endpointAvailable(endpoint))ordered.push(endpoint);
+    }
+    endpointCursor=(endpointCursor+1)%count;
+    return ordered;
+  }
+
+  function paceNextRequest(){
+    const task=paceTail.then(async()=>{
+      const elapsed=nowMs()-lastNetworkRequestAt;
+      const waitMs=Math.max(0,requestGapMs-elapsed);
+      if(waitMs>0)await delay(waitMs);
+      lastNetworkRequestAt=nowMs();
+    });
+    paceTail=task.catch(()=>null);
+    return task;
   }
 
   function transportUrl(endpoint){
@@ -93,9 +197,8 @@ export function createOverpassClient({
     onControllerStart,
     onControllerEnd
   }){
-    // Be deliberately polite to public Overpass infrastructure. This applies to
-    // normal requests and mirror failover alike, so a failing mirror cannot make
-    // World Drive immediately hammer the next one in the same burst.
+    // Keep public traffic polite even though two logical world-service requests
+    // may now overlap. Their outbound starts are still globally spaced.
     await paceNextRequest();
 
     const controller=new AbortController();
@@ -115,7 +218,9 @@ export function createOverpassClient({
       });
 
       if(!response.ok){
-        throw new Error('HTTP '+response.status);
+        const error=new Error('HTTP '+response.status);
+        error.status=response.status;
+        throw error;
       }
 
       const data=await response.json();
@@ -139,28 +244,21 @@ export function createOverpassClient({
     }
   }
 
-  async function fetchRawSerial({
+  async function fetchRawLane({
     query,
     timeoutMs,
     shouldContinue,
     onControllerStart,
     onControllerEnd
   }){
-    // Re-check health only when this queued request actually gets its turn.
-    // A request ahead of it may just have discovered that a mirror is down.
-    if(globalCooldownUntil>nowMs())return null;
-
-    const available=endpoints.filter(endpointAvailable);
+    const available=orderedAvailableEndpoints();
     if(!available.length){
-      globalCooldownUntil=Math.max(globalCooldownUntil,nowMs()+15000);
       noteAllMirrorsUnavailable();
       return null;
     }
 
-    let attempted=0;
     for(const endpoint of available){
       if(!shouldContinue())return null;
-      attempted++;
 
       try{
         const data=await requestEndpoint({
@@ -177,20 +275,27 @@ export function createOverpassClient({
           return data;
         }
       }catch(error){
-        const expectedAbort=error?.name==='AbortError';
-        if(shouldContinue())markEndpointFailure(endpoint);
+        if(!shouldContinue())return null;
 
-        // Soft proxy failures are expected service-health events, not game
-        // errors. Do not dump one stack trace per hydro/scenery/sign request.
-        if(shouldContinue()&&!expectedAbort&&!error?.softProxyFailure){
+        const issue=classifyFailure(error);
+        noteEndpointIssue(endpoint,issue);
+
+        if(issue.hard){
+          markEndpointFailure(endpoint,{cooldownMs:issue.cooldownMs});
+        }else{
+          markEndpointSoftFailure(endpoint);
+        }
+
+        // Hard network failures remain warnings; expected query timeouts and
+        // proxy health events stay compact to avoid DevTools spam.
+        if(
+          issue.hard&&
+          !error?.softProxyFailure&&
+          error?.name!=='AbortError'
+        ){
           console.warn('Overpass request failed',endpoint,error);
         }
       }
-    }
-
-    if(attempted>0&&allEndpointsCoolingDown()){
-      globalCooldownUntil=nowMs()+30000;
-      noteAllMirrorsUnavailable();
     }
 
     return null;
@@ -199,36 +304,37 @@ export function createOverpassClient({
   function fetchRaw({
     query,
     timeoutMs=7500,
-    label='OSM', // retained for API compatibility / diagnostics callers
+    label='OSM',
     shouldContinue=()=>true,
     onControllerStart=null,
     onControllerEnd=null
   }){
     if(!query)return Promise.reject(new Error('Overpass query is required'));
-    void label;
 
-    // Public Overpass instances dislike bursts. Hydro, road metadata, scenery
-    // and signs therefore share one network lane, and each outbound request is
-    // spaced by MIN_REQUEST_GAP_MS. Cache hits never enter this queue, and the
-    // driving/rendering loop never waits on it.
-    const run=networkTail.then(
-      ()=>fetchRawSerial({
-        query,
-        timeoutMs,
-        shouldContinue,
-        onControllerStart,
-        onControllerEnd
-      }),
-      ()=>fetchRawSerial({
-        query,
-        timeoutMs,
-        shouldContinue,
-        onControllerStart,
-        onControllerEnd
-      })
-    );
+    const lane=nextLane;
+    nextLane=(nextLane+1)%laneCount;
+    queuedLogicalRequests++;
 
-    networkTail=run.catch(()=>null);
+    const execute=async()=>{
+      queuedLogicalRequests=Math.max(0,queuedLogicalRequests-1);
+      activeLogicalRequests++;
+      laneLabels[lane]=label;
+      try{
+        return await fetchRawLane({
+          query,
+          timeoutMs,
+          shouldContinue,
+          onControllerStart,
+          onControllerEnd
+        });
+      }finally{
+        activeLogicalRequests=Math.max(0,activeLogicalRequests-1);
+        laneLabels[lane]=null;
+      }
+    };
+
+    const run=networkTails[lane].then(execute,execute);
+    networkTails[lane]=run.catch(()=>null);
     return run;
   }
 
@@ -297,9 +403,42 @@ export function createOverpassClient({
     return pending.size;
   }
 
+  function diagnostics(){
+    const now=nowMs();
+    return {
+      pendingCacheRequests:pending.size,
+      queuedLogicalRequests,
+      activeLogicalRequests,
+      activeLabels:laneLabels.filter(Boolean),
+      maxConcurrentRequests:laneCount,
+      minRequestGapMs:requestGapMs,
+      endpoints:endpoints.map(endpoint=>({
+        endpoint,
+        host:endpointName(endpoint),
+        available:endpointAvailable(endpoint),
+        cooldownMs:Math.max(0,(endpointCooldownUntil.get(endpoint)||0)-now),
+        consecutiveHardFailures:endpointFailures.get(endpoint)||0,
+        softFailures:endpointSoftFailures.get(endpoint)||0,
+        successes:endpointSuccesses.get(endpoint)||0,
+        lastIssue:endpointLastIssue.get(endpoint)||null
+      }))
+    };
+  }
+
+  if(typeof window!=='undefined'){
+    const root=ensureWorldDriveDiagnostics(window);
+    root.streaming.overpass=diagnostics;
+    installDiagnosticAlias(
+      'WorldDriveOverpass',
+      ()=>root.streaming.overpass,
+      window
+    );
+  }
+
   return {
     fetchRaw,
     fetchCached,
-    pendingCount
+    pendingCount,
+    diagnostics
   };
 }
