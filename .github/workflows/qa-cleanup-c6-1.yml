@@ -12,6 +12,7 @@ on:
       - 'src/startup-ui.js'
       - 'src/streaming-coordinator.js'
       - 'src/streaming-coordinator-p913.js'
+      - 'src/streaming/streaming-coordinator-p913.js'
       - 'src/frame-runtime-profiler.js'
       - 'qa/qa-diagnostics-c6-1.mjs'
       - 'qa/qa-forest-c4.mjs'

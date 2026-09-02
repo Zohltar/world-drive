@@ -2,7 +2,7 @@ import fs from 'node:fs';
 
 const read=path=>fs.readFileSync(new URL('../'+path,import.meta.url),'utf8');
 const main=read('src/main.js');
-const streaming=read('src/streaming-coordinator-p913.js');
+const streaming=read('src/streaming/streaming-coordinator-p913.js');
 const worldScene=read('src/world-scene.js');
 const worldMaterials=read('src/world-materials.js');
 const terrain=read('src/terrain.js');
@@ -42,7 +42,7 @@ has(distantTerrain,"mesh.name='distant-terrain-seamless-square-lod'",'current di
 has(terrain,'function shiftRoadBedOrigin(shiftX,shiftZ)','terrain road-bed soft-origin support missing');
 
 console.log('PASS V21.22.3 hitch-free policy — modern ownership');
-console.log('  - streaming thresholds protected in streaming-coordinator-p913');
+console.log('  - streaming thresholds protected in streaming/streaming-coordinator-p913');
 console.log('  - eager DEM rebuild regressions remain forbidden');
 console.log('  - C6.1 canonical frame diagnostics + compatibility alias protected');
 console.log('  - accepted terrain/material visual scope protected at current owners');

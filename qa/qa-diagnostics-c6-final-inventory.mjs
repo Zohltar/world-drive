@@ -65,7 +65,7 @@ const expected=new Map([
     'direct-write:src/imagery/imagery-p913.js',
     'direct-write:src/road/road-furniture-p930.js',
     'direct-write:src/road/road-furniture-p937.js',
-    'direct-write:src/streaming-coordinator-p913.js'
+    'direct-write:src/streaming/streaming-coordinator-p913.js'
   ]],
   ['setTimeout',[
     'direct-write:src/local-world-builder-p925.js',
@@ -101,7 +101,6 @@ for(const [name,signatures] of expected){
     `C6 ownership changed for ${name}: ${JSON.stringify(byName[name]||[])}`);
 }
 
-// Explicit semantic categories for the retained direct writes.
 const runtimeContracts=new Set(['__WORLD_DRIVE_P923_LOCAL_WORLD__']);
 const buildMetadata=new Set(['worldDriveBuild']);
 const compatibilityBootstrap=new Set(['WorldDriveTraffic','WorldDriveTrafficPool']);

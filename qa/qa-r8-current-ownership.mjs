@@ -11,6 +11,7 @@ const required=[
   'world-streaming.js',
   'streaming-coordinator.js',
   'streaming-coordinator-p913.js',
+  'streaming/streaming-coordinator-p913.js',
   'local-world-builder.js',
   'local-world-builder-p926.js',
   'local-world-builder-p925.js',
@@ -29,7 +30,8 @@ for(const name of required){
 
 const worldStreaming=read('world-streaming.js');
 const coordinator=read('streaming-coordinator.js');
-const coordinatorP913=read('streaming-coordinator-p913.js');
+const coordinatorFacade=read('streaming-coordinator-p913.js');
+const coordinatorP913=read('streaming/streaming-coordinator-p913.js');
 const builder=read('local-world-builder.js');
 const builderP926=read('local-world-builder-p926.js');
 const builderP925=read('local-world-builder-p925.js');
@@ -47,10 +49,14 @@ assert.match(worldStreaming,/unified world streaming policy/);
 assert.match(worldStreaming,/Owns WHEN visible services refresh and WHEN route-ahead caches prefetch/);
 assert.match(worldStreaming,/export function createWorldStreaming\s*\(/);
 
-// R8 scheduler boundary: periodic prepared refreshes wrap the proven synchronous P9.13 base.
+// R8 scheduler boundary: current root owner wraps a stable root P9.13 facade,
+// while the historical implementation itself lives under src/streaming/.
 assert.match(coordinator,/createStreamingCoordinator as createStreamingCoordinatorP913/);
+assert.match(coordinator,/from ['"]\.\/streaming-coordinator-p913\.js['"]/);
+assert.doesNotMatch(coordinator,/\.\/streaming\/streaming-coordinator-p913\.js/);
 assert.match(coordinator,/Periodic refreshes use the incremental local-world builder/);
 assert.match(coordinator,/forced boot\/route\/reset refreshes keep the proven P9\.13 synchronous path/);
+assert.match(coordinatorFacade,/export\s*\{\s*createStreamingCoordinator\s*\}\s*from\s*['"]\.\/streaming\/streaming-coordinator-p913\.js['"]/);
 assert.match(coordinatorP913,/export function createStreamingCoordinator\s*\(/);
 
 // Local-world preparation is a deliberate layered chain: P9.37/38 -> P9.26 -> P9.25.
@@ -81,12 +87,9 @@ assert.match(worldScene,/export function createWorldScene\s*\(/);
 // This matters for issue #2: P9.27 is not assumed to own the initial boot commit.
 assert.match(routeLifecycle,/commitLocalWorldRefresh\(\)/);
 
-// Historical V21.21/V21.25 streaming scripts are intentionally not authoritative here.
-// R8 baseline coverage is supplied by current P9.17-P9.27 tests in its focused workflow.
-
 console.log('R8 CURRENT OWNERSHIP BASELINE: PASS',{
   policy:'world-streaming',
-  scheduler:'streaming-coordinator -> P9.13 sync base',
+  scheduler:'streaming-coordinator -> root facade -> streaming/P9.13 sync base',
   localWorld:'local-world-builder -> P9.26 -> P9.25',
   terrain:'terrain P9.27 -> P9.26 -> P9.25',
   imagery:'imagery -> imagery/P9.13 satellite chunks',

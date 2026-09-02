@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import {createStreamingCoordinator} from '../src/streaming-coordinator.js';
 
 const imagerySource=fs.readFileSync(new URL('../src/imagery/imagery-p913.js',import.meta.url),'utf8');
-const coordinatorSource=fs.readFileSync(new URL('../src/streaming-coordinator-p913.js',import.meta.url),'utf8');
+const coordinatorSource=fs.readFileSync(new URL('../src/streaming/streaming-coordinator-p913.js',import.meta.url),'utf8');
 
 assert.ok(/texture\.generateMipmaps\s*=\s*false/.test(imagerySource),
   'streamed satellite chunks must not generate mipmaps during road transitions');
