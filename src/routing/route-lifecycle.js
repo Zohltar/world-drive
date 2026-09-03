@@ -203,6 +203,8 @@ export function createRouteLifecycle({
       return false;
     }
 
+    const routeChangeNeedsForestReady=!!getState().gameStarted;
+
     if(getState().autopilot){
       setAutopilot(false,'Pilote auto désactivé');
     }
@@ -224,7 +226,7 @@ export function createRouteLifecycle({
     resetWorldCaches();
     resetRunChallenge();
 
-    if(getState().gameStarted){
+    if(routeChangeNeedsForestReady){
       loading.classList.remove('hidden');
     }else{
       loading.classList.add('hidden');
@@ -331,6 +333,18 @@ export function createRouteLifecycle({
         .catch(()=>onSceneryUnavailable());
       loadRoadMetadataAround(position.absX,position.absZ).catch(()=>{});
       loadGeographicSignsAround(position.absX,position.absZ).catch(()=>{});
+
+      // Initial app startup already waits on P9.35 from the vehicle chooser.
+      // In-game route changes historically exposed terrain immediately and let
+      // the forest fill in afterward. Reuse the same proven readiness gate here
+      // without changing forest density, budgets or P9.35 thresholds.
+      if(
+        routeChangeNeedsForestReady&&
+        typeof sceneryRenderer.whenInitialForestReady==='function'
+      ){
+        loadingText.textContent='Préparation de la forêt devant…';
+        await sceneryRenderer.whenInitialForestReady().catch(()=>false);
+      }
 
       completed=true;
       loading.classList.add('hidden');
