@@ -9,4 +9,5 @@ await import('./qa-r8-streaming-baseline.mjs');
 await import('./qa-r8-issue2-imagery-diagnostics.mjs');
 await import('./qa-route-start-final-placement-r8.mjs');
 await import('./qa-r8-forest-route-readiness.mjs');
+await import('./qa-r9-root-cleanliness.mjs');
 await import('./DEV_INTEGRATION_AUDIT_BASE.mjs');
