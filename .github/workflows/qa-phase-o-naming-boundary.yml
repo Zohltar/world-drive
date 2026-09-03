@@ -1,0 +1,48 @@
+name: Phase O Historical Naming Boundary QA
+
+on:
+  push:
+    branches:
+      - dev
+      - candidate/phase-o-naming-boundary-r1
+    paths:
+      - 'src/**'
+      - 'qa/qa-phase-o-naming-boundary.mjs'
+      - 'qa/qa-diagnostics-c6-final-inventory.mjs'
+      - 'qa/qa-r8-current-ownership.mjs'
+      - 'qa/qa-r9-root-cleanliness.mjs'
+      - 'qa/DEV_INTEGRATION_AUDIT.mjs'
+      - '.github/workflows/qa-phase-o-naming-boundary.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  qa:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install
+        run: npm ci
+      - name: Phase O historical naming boundary
+        run: node qa/qa-phase-o-naming-boundary.mjs
+      - name: C6 global compatibility boundary
+        run: node qa/qa-diagnostics-c6-final-inventory.mjs
+      - name: R9 root cleanliness preservation
+        run: node qa/qa-r9-root-cleanliness.mjs
+      - name: R8 ownership preservation
+        run: node qa/qa-r8-current-ownership.mjs
+      - name: Runtime import and source-tree audit
+        run: node qa/DEV_INTEGRATION_AUDIT.mjs
+      - name: Production build
+        run: npm run build
+      - name: Production code split QA
+        run: node qa/BUILD_V21_31_CODE_SPLIT_QA.mjs
