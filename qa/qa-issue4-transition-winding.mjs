@@ -1,39 +1,41 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 
-const source=fs.readFileSync(new URL('../src/terrain.js',import.meta.url),'utf8');
+const incremental=fs.readFileSync(new URL('../src/terrain.js',import.meta.url),'utf8');
+const sync=fs.readFileSync(new URL('../src/terrain-p925.js',import.meta.url),'utf8');
 const facade=fs.readFileSync(new URL('../src/terrain-p926.js',import.meta.url),'utf8');
 
-assert.match(source,/const sides=\[-1,1\]\.map\(side=>\(\{/,
+assert.match(incremental,/const sides=\[-1,1\]\.map\(side=>\(\{/,
   'P9.27 transition must retain its two symmetric side ribbons');
-assert.match(source,/const pushUpwardTriangle=\(i0,i1,i2\)=>\{[\s\S]*?if\(data\.side<0\)data\.indices\.push\(i0,i1,i2\);[\s\S]*?else data\.indices\.push\(i0,i2,i1\);[\s\S]*?\};/,
+assert.match(incremental,/const pushUpwardTriangle=\(i0,i1,i2\)=>\{[\s\S]*?if\(data\.side<0\)data\.indices\.push\(i0,i1,i2\);[\s\S]*?else data\.indices\.push\(i0,i2,i1\);[\s\S]*?\};/,
   'P9.27 must reverse winding only for the mirrored transition side');
-assert.match(source,/if\(data\._triangleClear\(a,c,b\)\)pushUpwardTriangle\(a,c,b\);/,
+assert.match(incremental,/if\(data\._triangleClear\(a,c,b\)\)pushUpwardTriangle\(a,c,b\);/,
   'first P9.27 transition triangle must preserve the existing clearance decision');
-assert.match(source,/if\(data\._triangleClear\(b,c,d\)\)pushUpwardTriangle\(b,c,d\);/,
+assert.match(incremental,/if\(data\._triangleClear\(b,c,d\)\)pushUpwardTriangle\(b,c,d\);/,
   'second P9.27 transition triangle must preserve the existing clearance decision');
-assert.match(source,/data\.normals\[j\]=nx;data\.normals\[j\+1\]=ny;data\.normals\[j\+2\]=nz;/,
-  'natural DEM normals must remain unchanged');
-assert.match(source,/material\.side=THREE\.DoubleSide/,
-  'material sidedness must remain unchanged for this focused correction');
+assert.match(incremental,/data\.normals\[j\]=nx;data\.normals\[j\+1\]=ny;data\.normals\[j\+2\]=nz;/,
+  'P9.27 natural DEM normals must remain unchanged');
+assert.match(incremental,/material\.side=THREE\.DoubleSide/,
+  'P9.27 material sidedness must remain unchanged');
 
-assert.match(facade,/function normalizeUpwardTransitionWinding\(geometry\)/,
-  'sync P9.25 output must have a narrow winding normalizer');
-assert.match(facade,/if\(winding>=0\)return false;/,
-  'sync normalizer must leave already-upward triangles untouched');
-assert.match(facade,/indices\[i\+1\]=indices\[i\+2\];[\s\S]*indices\[i\+2\]=tmp;/,
-  'sync normalizer must reverse only triangle index order');
-assert.match(facade,/child\?\.name==='road-terrain-transition'[\s\S]*!child\?\.userData\?\.p927External[\s\S]*!child\?\.userData\?\.p927Hold/,
-  'sync normalizer must exclude P9.27 external/held transitions');
-assert.match(facade,/const result=originalSetRoadBed\.apply\(base,args\);[\s\S]*normalizeSyncRoadTransition\(options\.ground\);[\s\S]*return result;/,
-  'sync correction must run only after the existing P9.25 setRoadBed result');
+assert.match(sync,/function buildSide\(side\)/,
+  'P9.25 sync transition must retain its side-aware ribbon builder');
+assert.match(sync,/const pushUpwardTriangle=\(i0,i1,i2\)=>\{[\s\S]*?if\(side<0\)indices\.push\(i0,i1,i2\);[\s\S]*?else indices\.push\(i0,i2,i1\);[\s\S]*?\};/,
+  'P9.25 must reverse winding only for the mirrored transition side');
+assert.match(sync,/if\(triangleClear\(a,c,b\)\)pushUpwardTriangle\(a,c,b\);/,
+  'first P9.25 transition triangle must preserve the existing clearance decision');
+assert.match(sync,/if\(triangleClear\(b,c,d\)\)pushUpwardTriangle\(b,c,d\);/,
+  'second P9.25 transition triangle must preserve the existing clearance decision');
+assert.match(sync,/geometry\.computeVertexNormals\(\);[\s\S]*applyRoadBedTerrainColors\(geometry\);/,
+  'P9.25 must preserve existing normal/color ownership');
+assert.match(sync,/material\.side=THREE\.DoubleSide/,
+  'P9.25 material sidedness must remain unchanged');
 
-if(/material\s*=|\.material\.|setAttribute\(|setXYZ\(|position\.set\(/.test(facade)){
-  throw new Error('FAIL: sync winding correction must not change material, colors, normals or positions');
-}
+assert.match(facade,/export\s*\{\s*createTerrainService\s*\}\s*from\s*['"]\.\/terrain\/terrain-p926\.js['"]/,
+  'R8 terrain facade must remain a pure compatibility export');
 
-// Minimal geometry proof: the two mirrored ribbons need opposite index ordering
-// to produce the same upward-facing Y winding.
+// Minimal geometry proof: mirrored ribbons need opposite index ordering to
+// produce the same upward-facing Y winding.
 const yCross=(a,b,c)=>{
   const abx=b[0]-a[0],abz=b[2]-a[2];
   const acx=c[0]-a[0],acz=c[2]-a[2];
@@ -51,6 +53,7 @@ console.log({
   clearanceChanged:false,
   materialChanged:false,
   normalsChanged:false,
+  facadeChanged:false,
   syncP925WindingCorrected:true,
   incrementalP927WindingCorrected:true
 });
