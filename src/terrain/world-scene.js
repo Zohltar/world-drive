@@ -1,5 +1,3 @@
-import {ensureWorldDriveDiagnostics} from '../diagnostics.js';
-
 // Canonical World Drive static world-scene composition.
 // Owns Three group/ground construction and static matrix/origin helpers only;
 // mutable world offset, streaming policy and terrain rebuild policy remain outside.
@@ -97,9 +95,9 @@ export function createWorldScene({THREE,scene}){
   }
 
   // Issue #4 temporary diagnostic: isolate which already-existing scene layer
-  // owns the fixed Photo-OFF dark geometry. No layer is changed until a caller
-  // explicitly invokes set(). This lives under the existing diagnostics root so
-  // the permanent C6 global boundary remains unchanged.
+  // owns the fixed Photo-OFF dark geometry. No visibility changes occur until a
+  // caller explicitly invokes set(). Keep this owner dependency-free: publication
+  // waits briefly for the canonical diagnostics root that main/runtime initializes.
   const layerRoots={
     ground,
     terrainDetail:terrainDetailGroup,
@@ -145,8 +143,17 @@ export function createWorldScene({THREE,scene}){
       return issue4Layers.list();
     }
   };
-  const diagnostics=ensureWorldDriveDiagnostics();
-  diagnostics.presentation.issue4Layers=issue4Layers;
+  let publishAttempts=0;
+  const publishIssue4Layers=()=>{
+    const diagnostics=globalThis.WorldDriveDiagnostics;
+    if(diagnostics?.presentation){
+      diagnostics.presentation.issue4Layers=issue4Layers;
+      return true;
+    }
+    if(++publishAttempts<40)globalThis.setTimeout?.(publishIssue4Layers,25);
+    return false;
+  };
+  publishIssue4Layers();
 
   return {
     world,
