@@ -713,8 +713,12 @@ export function createTerrainService({
             pointClear(i0,i1)&&pointClear(i1,i2)&&pointClear(i2,i0)&&
             pointClear(i0,i1,i2);
 
-          if(triangleClear(a,c,b))indices.push(a,c,b);
-          if(triangleClear(b,c,d))indices.push(b,c,d);
+          const pushUpwardTriangle=(i0,i1,i2)=>{
+            if(side<0)indices.push(i0,i1,i2);
+            else indices.push(i0,i2,i1);
+          };
+          if(triangleClear(a,c,b))pushUpwardTriangle(a,c,b);
+          if(triangleClear(b,c,d))pushUpwardTriangle(b,c,d);
         }
       }
 
