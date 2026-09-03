@@ -28,8 +28,13 @@ for(const pattern of [
 assert.doesNotMatch(source,/setIndex\s*\(/,'probe must not alter transition geometry');
 assert.doesNotMatch(source,/terrainCutHalfWidth\s*=/,'probe must not tune terrain geometry');
 assert.doesNotMatch(source,/blendWidth\s*=/,'probe must not tune terrain geometry');
-assert.doesNotMatch(source,/MeshStandardMaterial\s*\(\{[\s\S]*transitionBasicTint/,
-  'probe transition must not use a lit material');
+
+const helperStart=source.indexOf('const createTransitionBasicMaterial=source=>');
+const helperEnd=source.indexOf('const normalizeTransitionBasicMaterial=group=>');
+assert.ok(helperStart>=0&&helperEnd>helperStart,'transition material helper boundaries missing');
+const helper=source.slice(helperStart,helperEnd);
+assert.match(helper,/new THREE\.MeshBasicMaterial\(/,'transition helper must use MeshBasicMaterial');
+assert.doesNotMatch(helper,/MeshStandardMaterial/,'transition helper must not use a lit material');
 
 console.log('Issue 4 transition basic-material QA: PASS',{
   transitionNamesCovered:2,
