@@ -4,15 +4,19 @@ const P937_ROAD_PREP_GAP_MS=8;
 const P938_PRESERVE_FOREST_DURING_PREPARED_COMMIT=true;
 
 export function createLocalWorldBuilder(options={}){
+  const THREE=options.THREE;
   const terrainService=options.terrainService;
   const scheduleVisualJob=options.scheduleVisualJob;
   const getWorldOffset=options.getWorldOffset;
   const originalClearGroup=options.clearGroup;
   const originalFreezeStaticMatrices=options.freezeStaticMatrices;
   const forestGroup=options.forestGroup;
+  const ground=options.ground;
   let incrementalInstall=false;
   let preserveForestDuringPreparedCommit=false;
   let roadReplay=null;
+  let issue4AppearanceRuns=0;
+  let issue4AppearanceMeshes=0;
 
   const roadPerf={
     preparations:0,
@@ -48,6 +52,55 @@ export function createLocalWorldBuilder(options={}){
       for(const object of list||[])if(object)disposePreparedObject(object);
       if(list)list.length=0;
     }
+  }
+
+  function createBakedTransitionMaterial(source){
+    if(!THREE?.MeshBasicMaterial)return source;
+    const material=new THREE.MeshBasicMaterial({
+      color:0xffffff,
+      vertexColors:true,
+      side:source?.side??THREE.DoubleSide,
+      fog:source?.fog!==false,
+      transparent:false,
+      depthWrite:source?.depthWrite!==false,
+      polygonOffset:source?.polygonOffset===true,
+      polygonOffsetFactor:Number(source?.polygonOffsetFactor)||0,
+      polygonOffsetUnits:Number(source?.polygonOffsetUnits)||0
+    });
+    for(const key of [
+      'stencilWrite','stencilRef','stencilFunc','stencilFail','stencilZFail','stencilZPass',
+      'stencilFuncMask','stencilWriteMask'
+    ]){
+      if(source&&key in source)material[key]=source[key];
+    }
+    return material;
+  }
+
+  function stabilizeRoadTerrainTransitions(){
+    const parent=ground?.parent;
+    if(!parent?.children||!THREE?.MeshBasicMaterial)return 0;
+    let changed=0;
+    for(const group of parent.children){
+      if(![
+        'road-terrain-transition',
+        'road-terrain-transition-p927-hold'
+      ].includes(group?.name))continue;
+      group.traverse?.(child=>{
+        if(!child?.isMesh||!child.geometry?.getAttribute?.('color'))return;
+        if(child.userData?.issue4BakedTransitionMaterial)return;
+        const old=child.material;
+        if(Array.isArray(old)||!old)return;
+        child.material=createBakedTransitionMaterial(old);
+        child.receiveShadow=false;
+        child.castShadow=false;
+        child.userData={...(child.userData||{}),issue4BakedTransitionMaterial:true};
+        old.dispose?.();
+        changed++;
+      });
+    }
+    issue4AppearanceRuns++;
+    issue4AppearanceMeshes+=changed;
+    return changed;
   }
 
   function clearGroupForBuilder(group,...args){
@@ -102,10 +155,14 @@ export function createLocalWorldBuilder(options={}){
   const terrainProxy=terrainService?Object.create(terrainService):terrainService;
   if(terrainProxy){
     terrainProxy.setRoadBed=(...args)=>{
+      let result;
       if(incrementalInstall&&typeof terrainService?.setRoadBedStateOnly==='function'){
-        return terrainService.setRoadBedStateOnly(...args);
+        result=terrainService.setRoadBedStateOnly(...args);
+      }else{
+        result=terrainService?.setRoadBed?.(...args);
+        stabilizeRoadTerrainTransitions();
       }
-      return terrainService?.setRoadBed?.(...args);
+      return result;
     };
   }
 
@@ -167,7 +224,9 @@ export function createLocalWorldBuilder(options={}){
 
   function rebuild(...args){
     terrainService?.cancelRoadTransitionPreparation?.();
-    return base.rebuild?.(...args);
+    const result=base.rebuild?.(...args);
+    stabilizeRoadTerrainTransitions();
+    return result;
   }
 
   async function prepareIncremental(...args){
@@ -210,11 +269,16 @@ export function createLocalWorldBuilder(options={}){
       // clearGroup(forestGroup) here removes redundant synchronous traversal,
       // geometry disposal and subsequent recreation from the atomic swap.
       const result=base.commitPrepared?.(prepared);
+      stabilizeRoadTerrainTransitions();
       if(result&&typeof terrainService?.rebuildRoadTransitionIncremental==='function'){
         terrainService.cancelRoadTransitionPreparation?.();
         scheduleVisualJob?.(
           'road-transition',
-          ()=>terrainService.rebuildRoadTransitionIncremental(),
+          async()=>{
+            const transitionResult=await terrainService.rebuildRoadTransitionIncremental();
+            stabilizeRoadTerrainTransitions();
+            return transitionResult;
+          },
           360
         );
       }
@@ -262,6 +326,12 @@ export function createLocalWorldBuilder(options={}){
         lastPreservedChildren:forestRetentionPerf.lastPreservedChildren,
         maxPreservedChildren:forestRetentionPerf.maxPreservedChildren,
         freezeSkips:forestRetentionPerf.freezeSkips
+      },
+      issue4TransitionAppearance:{
+        enabled:true,
+        material:'MeshBasicMaterial',
+        runs:issue4AppearanceRuns,
+        meshes:issue4AppearanceMeshes
       }
     };
   }
