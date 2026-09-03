@@ -91,7 +91,7 @@ export function createWorldScene({THREE,scene}){
   // but remove the baked vertex-colour contribution that can reveal the helper
   // ribbon as a near-black road-shaped corridor in Photo OFF. Standard lighting
   // stays enabled so the terrain relief remains readable.
-  const transitionTerrainTint=new THREE.Color(0x6f8150);
+  const transitionTerrainTint=0x6f8150;
   const normalizeTransitionMaterial=group=>{
     if(![
       'road-terrain-transition',
@@ -104,7 +104,8 @@ export function createWorldScene({THREE,scene}){
       for(const material of materials){
         if(!material)continue;
         material.vertexColors=false;
-        material.color?.copy?.(transitionTerrainTint);
+        if(typeof material.color?.setHex==='function')material.color.setHex(transitionTerrainTint);
+        else material.color=transitionTerrainTint;
         material.map=null;
         material.alphaMap=null;
         material.alphaTest=0;
