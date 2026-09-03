@@ -2,6 +2,7 @@ await import('./qa-source-tree-r7-app-services.mjs');
 await import('./qa-source-tree-r8-imagery.mjs');
 await import('./qa-source-tree-r8-streaming.mjs');
 await import('./qa-source-tree-r8-local-world.mjs');
+await import('./qa-source-tree-r8-terrain.mjs');
 await import('./qa-r8-streaming-baseline.mjs');
 await import('./qa-r8-issue2-imagery-diagnostics.mjs');
 await import('./DEV_INTEGRATION_AUDIT_BASE.mjs');
