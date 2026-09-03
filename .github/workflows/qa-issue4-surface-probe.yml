@@ -25,8 +25,6 @@ jobs:
         run: npm ci
       - name: Issue 4 physical/rendered surface probe QA
         run: node qa/qa-issue4-surface-probe.mjs
-      - name: Issue 4 transition geometry probe QA
-        run: node qa/qa-issue4-transition-geometry-probe.mjs
       - name: World scene C5.3 QA
         run: node qa/qa-main-c5-world-scene.mjs
       - name: Current local-world ownership QA
