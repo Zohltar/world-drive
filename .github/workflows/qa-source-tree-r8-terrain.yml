@@ -1,0 +1,63 @@
+name: R8 Terrain Structure QA
+
+on:
+  push:
+    branches:
+      - dev
+      - candidate/r8-terrain-structure-r1
+    paths:
+      - 'src/terrain.js'
+      - 'src/terrain-p926.js'
+      - 'src/terrain/terrain-p926.js'
+      - 'src/terrain/terrain-p925.js'
+      - 'src/terrain-p925.js'
+      - 'qa/qa-source-tree-r8-terrain.mjs'
+      - 'qa/qa-r8-current-ownership.mjs'
+      - 'qa/qa-streaming-p926-horizon.mjs'
+      - 'qa/V21_22_3_HITCH_FREE_QA.mjs'
+      - 'qa/qa-terrain-r1-legacy-ownership.mjs'
+      - 'qa/qa-terrain-r2-road-imagery.mjs'
+      - 'qa/qa-streaming-p927-road-transition.mjs'
+      - 'qa/qa-p939-hitch-attribution.mjs'
+      - 'qa/qa-diagnostics-c6-final-inventory.mjs'
+      - 'qa/DEV_INTEGRATION_AUDIT.mjs'
+      - '.github/workflows/qa-source-tree-r8-terrain.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  qa:
+    runs-on: ubuntu-latest
+    timeout-minutes: 18
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: R8.5 terrain source-tree boundary
+        run: node qa/qa-source-tree-r8-terrain.mjs
+      - name: R8 current ownership baseline
+        run: node qa/qa-r8-current-ownership.mjs
+      - name: P9.26 horizon
+        run: node qa/qa-streaming-p926-horizon.mjs
+      - name: V21.22.3 hitch-free terrain policy
+        run: node qa/V21_22_3_HITCH_FREE_QA.mjs
+      - name: Terrain R1 visual ownership
+        run: node qa/qa-terrain-r1-legacy-ownership.mjs
+      - name: Terrain R2 road imagery alignment
+        run: node qa/qa-terrain-r2-road-imagery.mjs
+      - name: P9.27 road transition
+        run: node qa/qa-streaming-p927-road-transition.mjs
+      - name: P9.39 hitch attribution
+        run: node qa/qa-p939-hitch-attribution.mjs
+      - name: C6 global boundary
+        run: node qa/qa-diagnostics-c6-final-inventory.mjs
+      - name: Runtime import and source-tree audit
+        run: node qa/DEV_INTEGRATION_AUDIT.mjs
+      - name: Production build
+        run: npm run build
+      - name: Production code split QA
+        run: node qa/BUILD_V21_31_CODE_SPLIT_QA.mjs
