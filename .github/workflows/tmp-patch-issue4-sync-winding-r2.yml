@@ -1,0 +1,43 @@
+name: Temporary Issue 4 Sync Winding Patch
+
+on:
+  push:
+    branches:
+      - candidate/issue4-transition-winding-r2
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.event.head_commit.message == 'Chore: apply sync winding patch'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Patch P9.25 sync transition winding
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('src/terrain-p925.js')
+          source = path.read_text()
+          old = """          if(triangleClear(a,c,b))indices.push(a,c,b);
+          if(triangleClear(b,c,d))indices.push(b,c,d);"""
+          new = """          const pushUpwardTriangle=(i0,i1,i2)=>{
+            if(side<0)indices.push(i0,i1,i2);
+            else indices.push(i0,i2,i1);
+          };
+          if(triangleClear(a,c,b))pushUpwardTriangle(a,c,b);
+          if(triangleClear(b,c,d))pushUpwardTriangle(b,c,d);"""
+          if source.count(old) != 1:
+              raise SystemExit(f'expected exactly one sync transition index block, found {source.count(old)}')
+          path.write_text(source.replace(old, new))
+          PY
+          git diff --check
+      - name: Commit focused patch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/terrain-p925.js
+          git commit -m "Fix Photo OFF sync transition winding"
+          git push origin HEAD:candidate/issue4-transition-winding-r2
