@@ -28,7 +28,10 @@ jobs:
       - name: Wheel ground re-entry R14 QA
         run: node qa/qa-wheel-ground-reentry-r14.mjs
       - name: V21.26 wheel ground support refactor QA
-        run: node qa/V21_26_WHEEL_GROUND_SUPPORT_REFACTOR_QA.mjs
+        run: |
+          ln -s qa/qa-wheel-ground-reentry-r14.mjs qa-wheel-ground-reentry-r14.mjs
+          node qa/V21_26_WHEEL_GROUND_SUPPORT_REFACTOR_QA.mjs
+          rm qa-wheel-ground-reentry-r14.mjs
       - name: R5b wheel ground support source-tree QA
         run: node qa/qa-source-tree-r5b-wheel-ground-support.mjs
       - name: V21.27 physics foundation QA
