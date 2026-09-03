@@ -1,4 +1,4 @@
-name: Issue 4 Transition Hidden QA
+name: Issue 4 Transition Retired QA
 
 on:
   push:
@@ -23,8 +23,8 @@ jobs:
           cache: npm
       - name: Install
         run: npm ci
-      - name: Issue 4 transition hidden QA
-        run: node qa/qa-issue4-transition-hidden.mjs
+      - name: Issue 4 transition retired QA
+        run: node qa/qa-issue4-transition-retired.mjs
       - name: C5 world scene QA
         run: node qa/qa-main-c5-world-scene.mjs
       - name: R8 world scene source-tree QA
