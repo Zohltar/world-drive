@@ -27,64 +27,47 @@ At the start of every World Drive coding/architecture/QA conversation:
 # 1. CURRENT CHECKPOINT
 
 **Plan phase:** **R8 terrain / imagery / local-world / streaming**  
-**State:** **R8.3 STREAMING STRUCTURAL MOVE DONE — automation + human PASS**  
-**Integration HEAD before this docs commit:** `c333eb4734189b72e21ec9beb5aa948da92d0c39` — `QA: certify R8 nested streaming boundary`  
-**R8 Streaming Structure:** run `33685930859` — **PASS** on exact `dev` HEAD  
-**R8 Terrain Streaming Baseline:** run `33685930757` — **PASS**  
-**C6 Final Global Boundary:** run `33685930755` — **PASS**  
-**Dev Integration:** run `33685930860` — **PASS 100/100** on exact `dev` HEAD  
-**Human checkpoint:** long-route / multi-refresh streaming — **PASS**  
+**State:** **R8.4 LOCAL-WORLD P9.26 STRUCTURAL MOVE DONE — automation + human PASS**  
+**Integration HEAD before this docs commit:** `ad27524f43ad3f429a1ee203e188b693f830e417` — `QA: trigger A8 on nested local-world owner`  
+**R8 Local-World Structure:** run `33699918227` — **PASS** on exact `dev` HEAD  
+**R8 Terrain Streaming Baseline:** run `33699918234` — **PASS**  
+**C6 Final Global Boundary:** run `33699918271` — **PASS**  
+**Cleanup A8 Current Local-World:** run `33699918513` — **PASS**  
+**Dev Integration:** run `33699918207` — **PASS 100/100** on exact `dev` HEAD  
+**Human checkpoint:** route start + multiple refreshes + horizon continuity — **PASS**  
 **Stable `main`:** `111df5d84bf7fd700590abbd9c129b303ac92fad` — unchanged.
 
-R8.3 layout:
+R8.4 layout:
 
 ```text
-src/streaming-coordinator.js                  # current scheduler owner
-src/streaming-coordinator-p913.js             # stable root compatibility facade
-src/streaming/streaming-coordinator-p913.js   # historical P9.13 implementation, moved byte-for-byte
+src/local-world-builder.js                         # current public/composition owner
+src/local-world-builder-p926.js                    # stable root compatibility facade
+src/local-world/local-world-builder-p926.js        # P9.26 horizon wrapper implementation
+src/local-world-builder-p925.js                    # KEEP ROOT: sensitive preparation/commit owner
 ```
 
-No scheduling threshold, cooldown, frame budget, refresh policy or implementation logic changed in R8.3.
+The P9.26 implementation moved without horizon-policy changes. Its only mechanical import adjustment preserves the existing P9.25 root owner. P9.25 remains intentionally at root because it owns sensitive incremental near-ground preparation, road-bed state installation, frame-spaced slices and prepared commits.
 
-Human telemetry after the R8.3 PASS:
+A power outage occurred before the human R8.4 smoke. The subsequent Vite listener failure and unusually slow first startup happened while the local checkout was still on the previous certified `dev`, not on the R8.4 candidate. After reboot and switching to the exact candidate HEAD, the R8.4 smoke passed. Treat that local incident as **non-causal to R8.4**.
+
+## Exact next action — R8.5 terrain micro-audit
+
+Continue **read-only first**. Audit the terrain chain:
 
 ```text
-fps:                       ~141.51
-hitchCount:                6
-maxFrameMs:                ~201.4 ms
-pendingWorldRefresh:       false
-pendingReasons:            []
-suspendedFrames:           0
-deferredImageryRefreshes:  0
-imagery chunkCommits:      78
-imagery queued:            0
-worldBuildCount:           7
-lastWorldBuildMs:          ~103.8 ms
-maxWorldBuildMs:           ~202.1 ms
-p923 preparedStarts:       1
-p923 preparedCommits:      1
-p923 preparedDiscards:     0
+src/terrain.js
+  -> src/terrain-p926.js
+    -> src/terrain-p925.js
 ```
 
-The ~202 ms max world-build value is retained as observation only. The user observed no hitch/regression requiring a correction, so do not invent performance tuning from this number alone.
+Audit direction:
 
-## Exact next action — R8.4 local-world builder micro-audit
-
-Continue **read-only first**. The local-world chain is more performance/visual sensitive than R8.2/R8.3:
-
-```text
-src/local-world-builder.js
-  -> src/local-world-builder-p926.js
-    -> src/local-world-builder-p925.js
-```
-
-Current audit direction:
-
-- `local-world-builder-p925.js` owns the sensitive incremental near-ground preparation, road-bed state installation, frame-spaced slices and prepared commits. **Do not move/tune it casually.**
-- Evaluate moving **only `local-world-builder-p926.js`** under an explicit `src/local-world/` folder behind a stable root facade.
-- Before editing, enumerate every direct path contract for P9.26, especially horizon QA, R8 ownership, C6 global `__WORLD_DRIVE_P923_LOCAL_WORLD__` inventory and workflow triggers.
-- If the P9.26-only move is not demonstrably structural-only, KEEP ROOT and document why.
-- Any accepted builder move requires focused QA + full R8 baseline + build/code split + a human route-start / multiple-refresh / horizon-continuity smoke.
+- `terrain.js` owns current P9.27 road-transition behavior and remains the public/current owner.
+- `terrain-p925.js` owns sensitive near-ground / road-bed behavior. **Do not move or tune it casually.**
+- Evaluate whether **only `terrain-p926.js`** can move under an explicit `src/terrain/` folder behind a stable root facade, analogous to accepted R8.4.
+- Before editing, enumerate all direct path contracts: P9.26 horizon QA, Terrain R1/R2, R8 ownership, C6 global `setTimeout` inventory, issue #2 diagnostics and workflow triggers.
+- If the P9.26-only terrain move is not demonstrably structural-only, KEEP ROOT and document why.
+- Prefer bundling only closely related safe structural work before the next human checkpoint; do not make the user re-test every microscopic move.
 
 ---
 
@@ -97,8 +80,8 @@ Current ownership model:
 - `src/world-streaming.js`: decides **WHEN** visible services refresh and route-ahead caches prefetch.
 - `src/streaming-coordinator.js`: scheduler/arbitration, prepared refresh lifecycle, visual jobs, imagery commit deferral, local-world timing and hitch attribution.
 - forced boot/route/reset keeps the proven synchronous path; periodic refreshes use prepared incremental work.
-- local-world chain: `local-world-builder.js -> p926 -> p925`.
-- terrain chain: `terrain.js -> terrain-p926.js -> terrain-p925.js`.
+- local-world chain: current root owner -> P9.26 facade/nested wrapper -> P9.25 root sensitive base.
+- terrain chain: `terrain.js -> terrain-p926.js -> terrain-p925.js` pending R8.5 audit.
 - imagery: root `imagery.js` current owner with historical P9.13 implementation nested under `src/imagery/`.
 - elevation, world scene and route lifecycle remain separate owners.
 
@@ -143,7 +126,42 @@ The P9.13 implementation moved byte-for-byte. Candidate automation passed. Human
 
 ## R8.3 — streaming structural move — DONE
 
-Historical P9.13 scheduler implementation is nested under `src/streaming/`; stable root facade retained. Human long-route/multi-refresh PASS and exact-head automation green.
+```text
+src/streaming-coordinator.js                  # current scheduler owner
+src/streaming-coordinator-p913.js             # stable root compatibility facade
+src/streaming/streaming-coordinator-p913.js   # historical P9.13 implementation
+```
+
+No scheduler thresholds/cooldowns/frame budgets changed. Human long-route/multi-refresh PASS.
+
+Human telemetry retained as observation only:
+
+```text
+fps:                       ~141.51
+hitchCount:                6
+maxFrameMs:                ~201.4 ms
+pendingWorldRefresh:       false
+suspendedFrames:           0
+worldBuildCount:           7
+lastWorldBuildMs:          ~103.8 ms
+maxWorldBuildMs:           ~202.1 ms
+p923 preparedStarts:       1
+p923 preparedCommits:      1
+p923 preparedDiscards:     0
+```
+
+Do not invent performance tuning from the max-build value alone; the human test observed no regression.
+
+## R8.4 — local-world P9.26 structural move — DONE
+
+```text
+src/local-world-builder.js
+src/local-world-builder-p926.js                 # stable facade
+src/local-world/local-world-builder-p926.js     # nested P9.26 implementation
+src/local-world-builder-p925.js                 # KEEP ROOT
+```
+
+Focused QA, full R8 baseline, A8, C6 and Dev Integration passed on exact `dev` HEAD. Human route-start / multiple-refresh / horizon-continuity smoke passed.
 
 ---
 
@@ -180,6 +198,7 @@ Treat issue #4 in a dedicated later R8 correction candidate. Preserve Photo ON w
 - R8.1 diagnostics: DONE + human PASS.
 - R8.2 imagery structure: DONE + A/B human validation.
 - R8.3 streaming structure: DONE automation + human PASS.
+- R8.4 local-world P9.26 structure: DONE automation + human PASS.
 
 Intentional root water layout remains:
 
@@ -217,7 +236,8 @@ Generated/source Geofabrik data remain out of Git until packaging is explicitly 
 - R8.1 issue #2 observability: DONE; watch-only.
 - R8.2 imagery structure: DONE.
 - R8.3 streaming structure: DONE.
-- **R8.4 local-world builder: ACTIVE — read-only P9.26-only audit first.**
+- R8.4 local-world P9.26 structure: DONE.
+- **R8.5 terrain: ACTIVE — read-only P9.26-only audit first.**
 - Further R8 structural moves/corrections: separate candidates only after evidence.
 - R9 permanent root-cleanliness gate: after R8 stabilizes.
 - Phase O historical naming cleanup: only after Phase R folders stabilize.
@@ -231,6 +251,7 @@ Generated/source Geofabrik data remain out of Git until packaging is explicitly 
 | Runtime graph / paths | `qa/DEV_INTEGRATION_AUDIT.mjs` + relevant boundary QA |
 | R8 ownership | `qa/qa-r8-current-ownership.mjs` |
 | R8 streaming P9.17–P9.27 | `qa/qa-r8-streaming-baseline.mjs` |
+| Local-world structure | `qa/qa-source-tree-r8-local-world.mjs` |
 | Terrain/imagery | Terrain R1 + Terrain R2 + human visual smoke |
 | Frame pacing | P9.37–P9.42 + `WorldDriveFramePacing()` |
 | Imagery structure | `qa/qa-source-tree-r8-imagery.mjs` |
