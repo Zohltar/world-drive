@@ -317,7 +317,12 @@ export function createRouteLifecycle({
 
       if(initialElevationReady||hasPendingWorld()){
         cancelVisualJob('world-rebuild');
-        commitLocalWorldRefresh();
+        if(commitLocalWorldRefresh()){
+          // Initial placement may have sampled the fallback/pre-DEM road.
+          // Re-sample the same stored cumulative road point against the final
+          // committed terrain without forcing a second world rebuild.
+          placeAt(0,{finalizeOnly:true});
+        }
       }
 
       prefetchRouteAhead();
