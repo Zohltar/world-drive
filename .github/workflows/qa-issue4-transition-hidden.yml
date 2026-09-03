@@ -1,0 +1,39 @@
+name: Issue 4 Transition Hidden QA
+
+on:
+  push:
+    branches:
+      - candidate/issue4-transition-hidden-r1
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  qa:
+    runs-on: ubuntu-latest
+    timeout-minutes: 18
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install
+        run: npm ci
+      - name: Issue 4 transition hidden QA
+        run: node qa/qa-issue4-transition-hidden.mjs
+      - name: C5 world scene QA
+        run: node qa/qa-main-c5-world-scene.mjs
+      - name: R8 world scene source-tree QA
+        run: node qa/qa-source-tree-r8-world-scene.mjs
+      - name: R8 streaming baseline aggregate
+        run: node qa/qa-r8-streaming-baseline.mjs
+      - name: Runtime import and source-tree audit
+        run: node qa/DEV_INTEGRATION_AUDIT.mjs
+      - name: Production build
+        run: npm run build
+      - name: Production code split QA
+        run: node qa/BUILD_V21_31_CODE_SPLIT_QA.mjs
