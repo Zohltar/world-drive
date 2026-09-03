@@ -322,8 +322,12 @@ export function createTerrainService(options={}){
       );
       const expected=Math.max(10,centerStep*3,(lateralMagnitudes[col+1]-lateralMagnitudes[col])*3);if(maxEdge>expected)return;
       if(!data._triangleClear)data._triangleClear=clearFunctions(data);
-      if(data._triangleClear(a,c,b))data.indices.push(a,c,b);
-      if(data._triangleClear(b,c,d))data.indices.push(b,c,d);
+      const pushUpwardTriangle=(i0,i1,i2)=>{
+        if(data.side<0)data.indices.push(i0,i1,i2);
+        else data.indices.push(i0,i2,i1);
+      };
+      if(data._triangleClear(a,c,b))pushUpwardTriangle(a,c,b);
+      if(data._triangleClear(b,c,d))pushUpwardTriangle(b,c,d);
     },'indexCpuMs');
 
     const groundPosition=ground.geometry?.getAttribute?.('position')?.array;
