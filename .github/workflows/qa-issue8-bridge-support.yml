@@ -1,0 +1,48 @@
+name: Issue 8 Bridge Support QA
+
+on:
+  push:
+    branches:
+      - candidate/issue8-bridge-support-r1
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  qa:
+    runs-on: ubuntu-latest
+    timeout-minutes: 18
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install
+        run: npm ci
+      - name: Issue 8 elevated bridge support QA
+        run: node qa/qa-issue8-bridge-support.mjs
+      - name: Wheel ground re-entry R14 QA
+        run: node qa/qa-wheel-ground-reentry-r14.mjs
+      - name: V21.26 wheel ground support refactor QA
+        run: |
+          ln -s qa/qa-wheel-ground-reentry-r14.mjs qa-wheel-ground-reentry-r14.mjs
+          node qa/V21_26_WHEEL_GROUND_SUPPORT_REFACTOR_QA.mjs
+          rm qa-wheel-ground-reentry-r14.mjs
+      - name: R5b wheel ground support source-tree QA
+        run: node qa/qa-source-tree-r5b-wheel-ground-support.mjs
+      - name: Driving dynamics simulation matrix
+        run: node qa/DEV_DRIVING_SIM_QA.mjs
+      - name: V21.27 physics foundation QA
+        run: node qa/V21_27_PHYSICS_FOUNDATION_QA.mjs
+      - name: R8 streaming baseline aggregate
+        run: node qa/qa-r8-streaming-baseline.mjs
+      - name: Runtime import and source-tree audit
+        run: node qa/DEV_INTEGRATION_AUDIT.mjs
+      - name: Production build
+        run: npm run build
+      - name: Production code split QA
+        run: node qa/BUILD_V21_31_CODE_SPLIT_QA.mjs
