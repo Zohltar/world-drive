@@ -1,0 +1,107 @@
+name: Temporary Issue 4 Surface Probe R5 Patch
+
+on:
+  push:
+    branches:
+      - candidate/issue4-surface-probe-r5
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: "${{ github.event.head_commit.message == 'Chore: seed issue 4 surface probe r5' }}"
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Patch read-only issue 4 surface diagnostics
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path=Path('src/main.js')
+          source=path.read_text()
+          anchor='// V21.27.2 diagnostics only. Safe to inspect from DevTools; values do not\n'
+          if source.count(anchor)!=1:
+              raise SystemExit(f'expected one diagnostics anchor, found {source.count(anchor)}')
+          insert=r'''// Issue #4 read-only surface probe. Compare the authoritative physics height
+// against the analytic rendered terrain, actual rasterized ground/transition
+// meshes and the wheel-support resolver at the exact same world X/Z.
+const issue4SurfaceRaycaster=new THREE.Raycaster();
+const issue4SurfaceRayOrigin=new THREE.Vector3();
+const issue4SurfaceRayDirection=new THREE.Vector3(0,-1,0);
+const issue4Round=value=>Number.isFinite(value)?Number(value.toFixed(3)):null;
+function issue4RaycastHeight(objects,renderX,renderZ){
+  scene.updateMatrixWorld?.(true);
+  issue4SurfaceRayOrigin.set(renderX,5000,renderZ);
+  issue4SurfaceRaycaster.set(issue4SurfaceRayOrigin,issue4SurfaceRayDirection);
+  issue4SurfaceRaycaster.near=0;
+  issue4SurfaceRaycaster.far=10000;
+  const hits=issue4SurfaceRaycaster.intersectObjects((objects||[]).filter(Boolean),true);
+  const hit=hits.find(entry=>entry?.object?.visible!==false);
+  if(!hit)return null;
+  return {
+    y:issue4Round(hit.point?.y),
+    distance:issue4Round(hit.distance),
+    object:hit.object?.name||null,
+    parent:hit.object?.parent?.name||null
+  };
+}
+worldDriveDiagnostics.presentation.issue4Surface=(x=absX,z=absZ)=>{
+  const worldX=Number.isFinite(Number(x))?Number(x):absX;
+  const worldZ=Number.isFinite(Number(z))?Number(z):absZ;
+  const renderX=worldX-worldOffset.x;
+  const renderZ=worldZ-worldOffset.z;
+  const transitionRoots=scene.children.filter(child=>
+    child?.name==='road-terrain-transition'||
+    child?.name==='road-terrain-transition-p927-hold'
+  );
+  const physicalY=terrainAbs(worldX,worldZ);
+  const renderY=terrainService.renderHeightAt?.(worldX,worldZ);
+  const roadVisualY=terrainService.roadVisualHeightAt?.(worldX,worldZ);
+  const wheelSupportY=groundHeightForWheel(worldX,worldZ,false);
+  const wheelSupportFastY=groundHeightForWheel(worldX,worldZ,true);
+  const road=roadSurfaceAt(worldX,worldZ);
+  const groundHit=issue4RaycastHeight([ground],renderX,renderZ);
+  const transitionHit=issue4RaycastHeight(transitionRoots,renderX,renderZ);
+  const nearest=nearestRoute(worldX,worldZ);
+  return {
+    world:{x:issue4Round(worldX),z:issue4Round(worldZ)},
+    render:{x:issue4Round(renderX),z:issue4Round(renderZ)},
+    car:{
+      worldX:issue4Round(absX),
+      worldZ:issue4Round(absZ),
+      renderX:issue4Round(car.position?.x),
+      renderY:issue4Round(car.position?.y),
+      renderZ:issue4Round(car.position?.z)
+    },
+    routeDistance:issue4Round(nearest?.d),
+    roadSurfaceY:issue4Round(road?.y),
+    physicalHeightAt:issue4Round(physicalY),
+    analyticRenderHeightAt:issue4Round(renderY),
+    roadVisualHeightAt:issue4Round(roadVisualY),
+    wheelSupportY:issue4Round(wheelSupportY),
+    wheelSupportFastY:issue4Round(wheelSupportFastY),
+    rasterGround:groundHit,
+    rasterTransition:transitionHit,
+    deltas:{
+      analyticMinusPhysical:issue4Round((Number(renderY)||0)-(Number(physicalY)||0)),
+      groundRasterMinusPhysical:issue4Round((Number(groundHit?.y)||0)-(Number(physicalY)||0)),
+      transitionRasterMinusPhysical:transitionHit?issue4Round((Number(transitionHit.y)||0)-(Number(physicalY)||0)):null,
+      transitionRasterMinusWheel:transitionHit?issue4Round((Number(transitionHit.y)||0)-(Number(wheelSupportY)||0)):null
+    }
+  };
+};
+
+'''
+          path.write_text(source.replace(anchor,insert+anchor))
+          PY
+          git diff --check
+      - name: Commit focused diagnostic
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/main.js
+          git commit -m "Diagnostics: compare issue 4 physical and rendered surfaces"
+          git push origin HEAD:candidate/issue4-surface-probe-r5
