@@ -1,0 +1,45 @@
+name: R9 Root Cleanliness QA
+
+on:
+  push:
+    branches:
+      - dev
+      - candidate/r9-root-cleanliness-r1
+    paths:
+      - 'src/*'
+      - 'qa/qa-r9-root-cleanliness.mjs'
+      - 'qa/QA_ROOT_LAYOUT_QA.mjs'
+      - 'qa/qa-r8-current-ownership.mjs'
+      - 'qa/DEV_INTEGRATION_AUDIT.mjs'
+      - '.github/workflows/qa-r9-root-cleanliness.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  qa:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install
+        run: npm ci
+      - name: R9 direct src root cleanliness policy
+        run: node qa/qa-r9-root-cleanliness.mjs
+      - name: Existing project-root QA layout boundary
+        run: node qa/QA_ROOT_LAYOUT_QA.mjs
+      - name: R8 ownership preservation
+        run: node qa/qa-r8-current-ownership.mjs
+      - name: Runtime import and source-tree audit
+        run: node qa/DEV_INTEGRATION_AUDIT.mjs
+      - name: Production build
+        run: npm run build
+      - name: Production code split QA
+        run: node qa/BUILD_V21_31_CODE_SPLIT_QA.mjs
