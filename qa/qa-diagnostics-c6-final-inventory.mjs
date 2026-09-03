@@ -70,7 +70,7 @@ const expected=new Map([
   ['setTimeout',[
     'direct-write:src/local-world-builder-p925.js',
     'direct-write:src/local-world-builder.js',
-    'direct-write:src/terrain-p926.js',
+    'direct-write:src/terrain/terrain-p926.js',
     'direct-write:src/terrain.js'
   ]],
   ['worldDriveBuild',['direct-write:src/app/version.js']],
