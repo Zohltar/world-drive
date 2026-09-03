@@ -31,7 +31,6 @@ assert.doesNotMatch(source,/setIndex\s*\(/,'candidate must not alter transition 
 assert.doesNotMatch(source,/terrainCutHalfWidth\s*=/,'candidate must not tune terrain geometry');
 assert.doesNotMatch(source,/blendWidth\s*=/,'candidate must not tune terrain geometry');
 
-const check=process.spawnargs;
 console.log('Issue 4 transition material QA: PASS');
 console.log({
   transitionNamesCovered:2,
