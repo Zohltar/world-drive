@@ -55,7 +55,8 @@ const HISTORICAL_GLOBALS=Object.freeze([
   '__WORLD_DRIVE_P935_FOREST_STATUS__',
   '__WORLD_DRIVE_P936_FOREST__',
   '__WORLD_DRIVE_P940_FOREST__',
-  '__WORLD_DRIVE_P941_FOREST__'
+  '__WORLD_DRIVE_P941_FOREST__',
+  '__WORLD_DRIVE_P941_FRAME_RUNTIME_STATE__'
 ]);
 
 function walk(dir,out=[]){
@@ -96,7 +97,7 @@ const actualHistoricalGlobals=[...new Set(
 assert.deepEqual(
   actualHistoricalGlobals,
   [...HISTORICAL_GLOBALS].sort(),
-  'Phase O historical compatibility/diagnostic global boundary changed. Additions require explicit compatibility review.'
+  'Phase O historical compatibility/diagnostic/runtime-state global boundary changed. Additions require explicit compatibility review.'
 );
 
 // These are not migration targets: their current QAs explicitly rely on the
