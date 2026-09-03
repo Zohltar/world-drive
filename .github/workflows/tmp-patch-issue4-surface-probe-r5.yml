@@ -20,81 +20,13 @@ jobs:
         run: |
           python - <<'PY'
           from pathlib import Path
+          import base64
           path=Path('src/main.js')
           source=path.read_text()
           anchor='// V21.27.2 diagnostics only. Safe to inspect from DevTools; values do not\n'
           if source.count(anchor)!=1:
               raise SystemExit(f'expected one diagnostics anchor, found {source.count(anchor)}')
-          insert=r'''// Issue #4 read-only surface probe. Compare the authoritative physics height
-// against the analytic rendered terrain, actual rasterized ground/transition
-// meshes and the wheel-support resolver at the exact same world X/Z.
-const issue4SurfaceRaycaster=new THREE.Raycaster();
-const issue4SurfaceRayOrigin=new THREE.Vector3();
-const issue4SurfaceRayDirection=new THREE.Vector3(0,-1,0);
-const issue4Round=value=>Number.isFinite(value)?Number(value.toFixed(3)):null;
-function issue4RaycastHeight(objects,renderX,renderZ){
-  scene.updateMatrixWorld?.(true);
-  issue4SurfaceRayOrigin.set(renderX,5000,renderZ);
-  issue4SurfaceRaycaster.set(issue4SurfaceRayOrigin,issue4SurfaceRayDirection);
-  issue4SurfaceRaycaster.near=0;
-  issue4SurfaceRaycaster.far=10000;
-  const hits=issue4SurfaceRaycaster.intersectObjects((objects||[]).filter(Boolean),true);
-  const hit=hits.find(entry=>entry?.object?.visible!==false);
-  if(!hit)return null;
-  return {
-    y:issue4Round(hit.point?.y),
-    distance:issue4Round(hit.distance),
-    object:hit.object?.name||null,
-    parent:hit.object?.parent?.name||null
-  };
-}
-worldDriveDiagnostics.presentation.issue4Surface=(x=absX,z=absZ)=>{
-  const worldX=Number.isFinite(Number(x))?Number(x):absX;
-  const worldZ=Number.isFinite(Number(z))?Number(z):absZ;
-  const renderX=worldX-worldOffset.x;
-  const renderZ=worldZ-worldOffset.z;
-  const transitionRoots=scene.children.filter(child=>
-    child?.name==='road-terrain-transition'||
-    child?.name==='road-terrain-transition-p927-hold'
-  );
-  const physicalY=terrainAbs(worldX,worldZ);
-  const renderY=terrainService.renderHeightAt?.(worldX,worldZ);
-  const roadVisualY=terrainService.roadVisualHeightAt?.(worldX,worldZ);
-  const wheelSupportY=groundHeightForWheel(worldX,worldZ,false);
-  const wheelSupportFastY=groundHeightForWheel(worldX,worldZ,true);
-  const road=roadSurfaceAt(worldX,worldZ);
-  const groundHit=issue4RaycastHeight([ground],renderX,renderZ);
-  const transitionHit=issue4RaycastHeight(transitionRoots,renderX,renderZ);
-  const nearest=nearestRoute(worldX,worldZ);
-  return {
-    world:{x:issue4Round(worldX),z:issue4Round(worldZ)},
-    render:{x:issue4Round(renderX),z:issue4Round(renderZ)},
-    car:{
-      worldX:issue4Round(absX),
-      worldZ:issue4Round(absZ),
-      renderX:issue4Round(car.position?.x),
-      renderY:issue4Round(car.position?.y),
-      renderZ:issue4Round(car.position?.z)
-    },
-    routeDistance:issue4Round(nearest?.d),
-    roadSurfaceY:issue4Round(road?.y),
-    physicalHeightAt:issue4Round(physicalY),
-    analyticRenderHeightAt:issue4Round(renderY),
-    roadVisualHeightAt:issue4Round(roadVisualY),
-    wheelSupportY:issue4Round(wheelSupportY),
-    wheelSupportFastY:issue4Round(wheelSupportFastY),
-    rasterGround:groundHit,
-    rasterTransition:transitionHit,
-    deltas:{
-      analyticMinusPhysical:issue4Round((Number(renderY)||0)-(Number(physicalY)||0)),
-      groundRasterMinusPhysical:issue4Round((Number(groundHit?.y)||0)-(Number(physicalY)||0)),
-      transitionRasterMinusPhysical:transitionHit?issue4Round((Number(transitionHit.y)||0)-(Number(physicalY)||0)):null,
-      transitionRasterMinusWheel:transitionHit?issue4Round((Number(transitionHit.y)||0)-(Number(wheelSupportY)||0)):null
-    }
-  };
-};
-
-'''
+          insert=base64.b64decode('Ly8gSXNzdWUgIzQgcmVhZC1vbmx5IHN1cmZhY2UgcHJvYmUuIENvbXBhcmUgdGhlIGF1dGhvcml0YXRpdmUgcGh5c2ljcyBoZWlnaHQKLy8gYWdhaW5zdCB0aGUgYW5hbHl0aWMgcmVuZGVyZWQgdGVycmFpbiwgYWN0dWFsIHJhc3Rlcml6ZWQgZ3JvdW5kL3RyYW5zaXRpb24KLy8gbWVzaGVzIGFuZCB0aGUgd2hlZWwtc3VwcG9ydCByZXNvbHZlciBhdCB0aGUgZXhhY3Qgc2FtZSB3b3JsZCBYL1ouCmNvbnN0IGlzc3VlNFN1cmZhY2VSYXljYXN0ZXI9bmV3IFRIUkVFLlJheWNhc3RlcigpOwpjb25zdCBpc3N1ZTRTdXJmYWNlUmF5T3JpZ2luPW5ldyBUSFJFRS5WZWN0b3IzKCk7CmNvbnN0IGlzc3VlNFN1cmZhY2VSYXlEaXJlY3Rpb249bmV3IFRIUkVFLlZlY3RvcjMoMCwtMSwwKTsKY29uc3QgaXNzdWU0Um91bmQ9dmFsdWU9Pk51bWJlci5pc0Zpbml0ZSh2YWx1ZSk/TnVtYmVyKHZhbHVlLnRvRml4ZWQoMykpOm51bGw7CmZ1bmN0aW9uIGlzc3VlNFJheWNhc3RIZWlnaHQob2JqZWN0cyxyZW5kZXJYLHJlbmRlclopewogIHNjZW5lLnVwZGF0ZU1hdHJpeFdvcmxkPy4odHJ1ZSk7CiAgaXNzdWU0U3VyZmFjZVJheU9yaWdpbi5zZXQocmVuZGVyWCw1MDAwLHJlbmRlclopOwogIGlzc3VlNFN1cmZhY2VSYXljYXN0ZXIuc2V0KGlzc3VlNFN1cmZhY2VSYXlPcmlnaW4saXNzdWU0U3VyZmFjZVJheURpcmVjdGlvbik7CiAgaXNzdWU0U3VyZmFjZVJheWNhc3Rlci5uZWFyPTA7CiAgaXNzdWU0U3VyZmFjZVJheWNhc3Rlci5mYXI9MTAwMDA7CiAgY29uc3QgaGl0cz1pc3N1ZTRTdXJmYWNlUmF5Y2FzdGVyLmludGVyc2VjdE9iamVjdHMoKG9iamVjdHN8fFtdKS5maWx0ZXIoQm9vbGVhbiksdHJ1ZSk7CiAgY29uc3QgaGl0PWhpdHMuZmluZChlbnRyeT0+ZW50cnk/Lm9iamVjdD8udmlzaWJsZSE9PWZhbHNlKTsKICBpZighaGl0KXJldHVybiBudWxsOwogIHJldHVybiB7CiAgICB5Omlzc3VlNFJvdW5kKGhpdC5wb2ludD8ueSksCiAgICBkaXN0YW5jZTppc3N1ZTRSb3VuZChoaXQuZGlzdGFuY2UpLAogICAgb2JqZWN0OmhpdC5vYmplY3Q/Lm5hbWV8fG51bGwsCiAgICBwYXJlbnQ6aGl0Lm9iamVjdD8ucGFyZW50Py5uYW1lfHxudWxsCiAgfTsKfQp3b3JsZERyaXZlRGlhZ25vc3RpY3MucHJlc2VudGF0aW9uLmlzc3VlNFN1cmZhY2U9KHg9YWJzWCx6PWFic1opPT57CiAgY29uc3Qgd29ybGRYPU51bWJlci5pc0Zpbml0ZShOdW1iZXIoeCkpP051bWJlcih4KTphYnNYOwogIGNvbnN0IHdvcmxkWj1OdW1iZXIuaXNGaW5pdGUoTnVtYmVyKHopKT9OdW1iZXIoeik6YWJzWjsKICBjb25zdCByZW5kZXJYPXdvcmxkWC13b3JsZE9mZnNldC54OwogIGNvbnN0IHJlbmRlclo9d29ybGRaLXdvcmxkT2Zmc2V0Lno7CiAgY29uc3QgdHJhbnNpdGlvblJvb3RzPXNjZW5lLmNoaWxkcmVuLmZpbHRlcihjaGlsZD0+CiAgICBjaGlsZD8ubmFtZT09PSdyb2FkLXRlcnJhaW4tdHJhbnNpdGlvbid8fAogICAgY2hpbGQ/Lm5hbWU9PT0ncm9hZC10ZXJyYWluLXRyYW5zaXRpb24tcDkyNy1ob2xkJwogICk7CiAgY29uc3QgcGh5c2ljYWxZPXRlcnJhaW5BYnMod29ybGRYLHdvcmxkWik7CiAgY29uc3QgcmVuZGVyWT10ZXJyYWluU2VydmljZS5yZW5kZXJIZWlnaHRBdD8uKHdvcmxkWCx3b3JsZFopOwogIGNvbnN0IHJvYWRWaXN1YWxZPXRlcnJhaW5TZXJ2aWNlLnJvYWRWaXN1YWxIZWlnaHRBdD8uKHdvcmxkWCx3b3JsZFopOwogIGNvbnN0IHdoZWVsU3VwcG9ydFk9Z3JvdW5kSGVpZ2h0Rm9yV2hlZWwod29ybGRYLHdvcmxkWixmYWxzZSk7CiAgY29uc3Qgd2hlZWxTdXBwb3J0RmFzdFk9Z3JvdW5kSGVpZ2h0Rm9yV2hlZWwod29ybGRYLHdvcmxkWix0cnVlKTsKICBjb25zdCByb2FkPXJvYWRTdXJmYWNlQXQod29ybGRYLHdvcmxkWik7CiAgY29uc3QgZ3JvdW5kSGl0PWlzc3VlNFJheWNhc3RIZWlnaHQoW2dyb3VuZF0scmVuZGVyWCxyZW5kZXJaKTsKICBjb25zdCB0cmFuc2l0aW9uSGl0PWlzc3VlNFJheWNhc3RIZWlnaHQodHJhbnNpdGlvblJvb3RzLHJlbmRlclgscmVuZGVyWik7CiAgY29uc3QgbmVhcmVzdD1uZWFyZXN0Um91dGUod29ybGRYLHdvcmxkWik7CiAgcmV0dXJuIHsKICAgIHdvcmxkOnt4Omlzc3VlNFJvdW5kKHdvcmxkWCksejppc3N1ZTRSb3VuZCh3b3JsZFopfSwKICAgIHJlbmRlcjp7eDppc3N1ZTRSb3VuZChyZW5kZXJYKSwgemk6aXNzdWU0Um91bmQocmVuZGVyWil9LAogICAgY2FyOnsKICAgICAgd29ybGRYOmlzc3VlNFJvdW5kKGFic1gpLAogICAgICB3b3JsZFo6aXNzdWU0Um91bmQoYWJzWiksCiAgICAgIHJlbmRlclg6aXNzdWU0Um91bmQoY2FyLnBvc2l0aW9uPy54KSwKICAgICAgcmVuZGVyWTppc3N1ZTRSb3VuZChjYXIucG9zaXRpb24/LnkpLAogICAgICByZW5kZXJaOmlzc3VlNFJvdW5kKGNhci5wb3NpdGlvbj8ueikKICAgIH0sCiAgICByb3V0ZURpc3RhbmNlOmlzc3VlNFJvdW5kKG5lYXJlc3Q/LmQpLAogICAgcm9hZFN1cmZhY2VZOmlzc3VlNFJvdW5kKHJvYWQ/LnkpLAogICAgcGh5c2ljYWxIZWlnaHRBdDppc3N1ZTRSb3VuZChwaHlzaWNhbFkpLAogICAgYW5hbHl0aWNSZW5kZXJIZWlnaHRBdDppc3N1ZTRSb3VuZChyZW5kZXJZKSwKICAgIHJvYWRWaXN1YWxIZWlnaHRBdDppc3N1ZTRSb3VuZChyb2FkVmlzdWFsWSksCiAgICB3aGVlbFN1cHBvcnRZOmlzc3VlNFJvdW5kKHdoZWVsU3VwcG9ydFkpLAogICAgd2hlZWxTdXBwb3J0RmFzdFk6aXNzdWU0Um91bmQod2hlZWxTdXBwb3J0RmFzdFkpLAogICAgcmFzdGVyR3JvdW5kOmdyb3VuZEhpdCwKICAgIHJhc3RlclRyYW5zaXRpb246dHJhbnNpdGlvbkhpdCwKICAgIGRlbHRhczp7CiAgICAgIGFuYWx5dGljTWludXNQaHlzaWNhbDppc3N1ZTRSb3VuZCgoTnVtYmVyKHJlbmRlclkpfHwwKS0oTnVtYmVyKHBoeXNpY2FsWSl8fDApKSwKICAgICAgZ3JvdW5kUmFzdGVyTWludXNQaHlzaWNhbDppc3N1ZTRSb3VuZCgoTnVtYmVyKGdyb3VuZEhpdD8ueSl8fDApLShOdW1iZXIocGh5c2ljYWxZKXx8MCkpLAogICAgICB0cmFuc2l0aW9uUmFzdGVyTWludXNQaHlzaWNhbDp0cmFuc2l0aW9uSGl0P2lzc3VlNFJvdW5kKChOdW1iZXIodHJhbnNpdGlvbkhpdC55KXx8MCktKE51bWJlcihwaHlzaWNhbFkpfHwwKSk6bnVsbCwKICAgICAgdHJhbnNpdGlvblJhc3Rlck1pbnVzV2hlZWw6dHJhbnNpdGlvbkhpdD9pc3N1ZTRSb3VuZCgoTnVtYmVyKHRyYW5zaXRpb25IaXQueSl8fDApLShOdW1iZXIod2hlZWxTdXBwb3J0WSl8fDApKTpudWxsCiAgICB9CiAgfTsKfTsKCg==').decode()
           path.write_text(source.replace(anchor,insert+anchor))
           PY
           git diff --check
@@ -105,5 +37,3 @@ worldDriveDiagnostics.presentation.issue4Surface=(x=absX,z=absZ)=>{
           git add src/main.js
           git commit -m "Diagnostics: compare issue 4 physical and rendered surfaces"
           git push origin HEAD:candidate/issue4-surface-probe-r5
-
-# trigger retry
