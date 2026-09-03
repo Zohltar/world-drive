@@ -19,6 +19,8 @@ export function createVehiclePlacementController({
   MINIMAP_INTERVAL,
   GRIP_SOLVER_INTERVAL,
 }){
+  let lastPlacementCum=null;
+
   function physicsWheelCount(){
     return Math.max(
       4,
@@ -132,24 +134,32 @@ export function createVehiclePlacementController({
     }
   }
 
-  function placeAt(frac){
+  function placeAt(frac,options={}){
+    const finalizeOnly=options?.finalizeOnly===true;
     const requestedFrac=Math.max(0,Math.min(1,Number(frac)||0));
     const p=routePointAt(requestedFrac);
     if(!p||!finite(p.x)||!finite(p.z)||!finite(p.angle)){
       throw new Error('Route placement returned non-finite coordinates');
     }
 
-    state.absX=Number(p.x);
-    state.absZ=Number(p.z);
-    state.heading=Number(p.angle);
+    if(!finalizeOnly){
+      state.absX=Number(p.x);
+      state.absZ=Number(p.z);
+      state.heading=Number(p.angle);
 
-    // Preserve historical ordering: recenter/profile refresh occurs from the
-    // route-point placement before the cumulative road-profile correction.
-    resetVehicleDynamics({resetGripSolver:false});
+      // Preserve historical ordering: recenter/profile refresh occurs from the
+      // route-point placement before the cumulative road-profile correction.
+      resetVehicleDynamics({resetGripSolver:false});
+    }
 
-    const targetCum=requestedFrac<=1e-6
-      ?stableDepartureCum()
-      :p.cum;
+    const hasStoredPlacement=lastPlacementCum!==null&&finite(lastPlacementCum);
+    const targetCum=finalizeOnly&&hasStoredPlacement
+      ?Number(lastPlacementCum)
+      :requestedFrac<=1e-6
+        ?stableDepartureCum()
+        :p.cum;
+
+    if(!finalizeOnly)lastPlacementCum=targetCum;
 
     // On stacked mountain roads, horizontal X/Z can overlap multiple branches.
     // roadProfileFrameAtCum() exposes the interpolated centreline as px/pz.
@@ -183,7 +193,7 @@ export function createVehiclePlacementController({
     );
 
     resetTrailerPose();
-    drawMap(targetCum);
+    if(!finalizeOnly)drawMap(targetCum);
   }
 
   function resetToRoad(){
