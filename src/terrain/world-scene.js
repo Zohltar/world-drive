@@ -87,6 +87,44 @@ export function createWorldScene({THREE,scene}){
   ground.renderOrder=-5;
   scene.add(ground);
 
+  // Issue #4 candidate: keep transition geometry/normals/depth/stencil/shadows,
+  // but remove the baked vertex-colour contribution that can reveal the helper
+  // ribbon as a near-black road-shaped corridor in Photo OFF. Standard lighting
+  // stays enabled so the terrain relief remains readable.
+  const transitionTerrainTint=new THREE.Color(0x6f8150);
+  const normalizeTransitionMaterial=group=>{
+    if(![
+      'road-terrain-transition',
+      'road-terrain-transition-p927-hold'
+    ].includes(group?.name))return group;
+
+    group.traverse?.(child=>{
+      if(!child?.isMesh||child.userData?.issue4NeutralTransitionMaterial)return;
+      const materials=Array.isArray(child.material)?child.material:[child.material];
+      for(const material of materials){
+        if(!material)continue;
+        material.vertexColors=false;
+        material.color?.copy?.(transitionTerrainTint);
+        material.map=null;
+        material.alphaMap=null;
+        material.alphaTest=0;
+        material.transparent=false;
+        material.needsUpdate=true;
+      }
+      child.userData={
+        ...(child.userData||{}),
+        issue4NeutralTransitionMaterial:true
+      };
+    });
+    return group;
+  };
+
+  const originalSceneAdd=scene.add;
+  scene.add=function(...objects){
+    for(const object of objects)normalizeTransitionMaterial(object);
+    return originalSceneAdd.apply(this,objects);
+  };
+
   function resetStreamedWorldOrigins(){
     for(const group of streamedWorldGroups)resetStaticGroupOrigin(group);
     ground?.position?.set?.(0,0,0);
