@@ -10,7 +10,6 @@ permissions:
 
 jobs:
   patch:
-    if: "${{ github.event.head_commit.message == 'Chore: seed issue 4 surface detail probe' }}"
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -18,6 +17,10 @@ jobs:
       - name: Add read-only transition hit detail probe
         shell: bash
         run: |
+          if [ "${{ github.event.head_commit.message }}" != "Chore: activate issue 4 surface detail probe" ]; then
+            echo "Not the seed commit; nothing to patch."
+            exit 0
+          fi
           python - <<'PY'
           from pathlib import Path
           path=Path('src/main.js')
@@ -88,7 +91,12 @@ worldDriveDiagnostics.presentation.issue4SurfaceDetail=(x=absX,z=absZ)=>{
           PY
           git diff --check
       - name: Commit focused diagnostic
+        shell: bash
         run: |
+          if [ "${{ github.event.head_commit.message }}" != "Chore: activate issue 4 surface detail probe" ]; then
+            echo "Not the seed commit; no commit required."
+            exit 0
+          fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add src/main.js
