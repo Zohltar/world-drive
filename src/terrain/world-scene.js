@@ -134,6 +134,59 @@ export function createWorldScene({THREE,scene}){
       material:mesh.material?.type??null
     };
   });
+  const roundMetric=value=>Number.isFinite(value)?Number(value.toFixed(3)):null;
+  const transitionGeometryState=()=>transitionMeshes().map((mesh,index)=>{
+    const position=mesh.geometry?.getAttribute?.('position');
+    const indexAttr=mesh.geometry?.index;
+    if(!position)return {index,vertices:null,triangles:null};
+    let minY=Infinity,maxY=-Infinity;
+    for(let i=0;i<position.count;i++){
+      const y=position.getY(i);
+      if(y<minY)minY=y;
+      if(y>maxY)maxY=y;
+    }
+    let edges=0,steepEdges=0,maxHorizontalRun=0,maxVerticalDelta=0,maxSlope=0,max3dEdge=0;
+    const visitEdge=(a,b)=>{
+      if(a<0||b<0||a>=position.count||b>=position.count)return;
+      const dx=position.getX(b)-position.getX(a);
+      const dy=position.getY(b)-position.getY(a);
+      const dz=position.getZ(b)-position.getZ(a);
+      const run=Math.hypot(dx,dz);
+      const vertical=Math.abs(dy);
+      const slope=vertical/Math.max(.001,run);
+      const edge3d=Math.hypot(run,vertical);
+      edges++;
+      maxHorizontalRun=Math.max(maxHorizontalRun,run);
+      maxVerticalDelta=Math.max(maxVerticalDelta,vertical);
+      maxSlope=Math.max(maxSlope,slope);
+      max3dEdge=Math.max(max3dEdge,edge3d);
+      if(vertical>8&&slope>2)steepEdges++;
+    };
+    const visitTriangle=(a,b,c)=>{
+      visitEdge(a,b);
+      visitEdge(b,c);
+      visitEdge(c,a);
+    };
+    if(indexAttr?.count){
+      for(let i=0;i+2<indexAttr.count;i+=3)visitTriangle(indexAttr.getX(i),indexAttr.getX(i+1),indexAttr.getX(i+2));
+    }else{
+      for(let i=0;i+2<position.count;i+=3)visitTriangle(i,i+1,i+2);
+    }
+    return {
+      index,
+      vertices:position.count,
+      triangles:indexAttr?.count?indexAttr.count/3:Math.floor(position.count/3),
+      minY:roundMetric(minY),
+      maxY:roundMetric(maxY),
+      yRange:roundMetric(maxY-minY),
+      edges,
+      steepEdges,
+      maxHorizontalRun:roundMetric(maxHorizontalRun),
+      maxVerticalDelta:roundMetric(maxVerticalDelta),
+      maxSlope:roundMetric(maxSlope),
+      max3dEdge:roundMetric(max3dEdge)
+    };
+  });
   const transitionShadowState=()=>{
     const meshes=transitionMeshes();
     return {
@@ -168,6 +221,7 @@ export function createWorldScene({THREE,scene}){
       return {name:String(name),visible:!!visible,objects:objects.length,state:issue4Layers.list()[String(name)]??null};
     },
     transitionMeshes:()=>transitionMeshState(),
+    transitionGeometry:()=>transitionGeometryState(),
     transitionMesh:(index,visible=true)=>{
       const meshes=transitionMeshes();
       const i=Number(index);
