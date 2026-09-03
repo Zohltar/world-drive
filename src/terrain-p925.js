@@ -933,7 +933,7 @@ export function createTerrainService({
       }
 
       let shade=.72+directional*.46-slope*.10;
-      shade=Math.max(.34,Math.min(1.36,shade));
+      shade=Math.max(.56,Math.min(1.36,shade));
 
       // V21.22.5: no cartographic contour bands in the visible terrain
       // underlay. Missing satellite chunks must look like natural shaded DEM,
