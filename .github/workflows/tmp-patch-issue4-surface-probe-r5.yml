@@ -105,3 +105,5 @@ worldDriveDiagnostics.presentation.issue4Surface=(x=absX,z=absZ)=>{
           git add src/main.js
           git commit -m "Diagnostics: compare issue 4 physical and rendered surfaces"
           git push origin HEAD:candidate/issue4-surface-probe-r5
+
+# trigger retry
