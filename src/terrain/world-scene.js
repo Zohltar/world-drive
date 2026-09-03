@@ -87,6 +87,36 @@ export function createWorldScene({THREE,scene}){
   ground.renderOrder=-5;
   scene.add(ground);
 
+  // Issue #4 candidate: the road-terrain transition already has distinct
+  // geometry and render order. Do not additionally bias its depth values away
+  // from the camera: on long shallow overlaps that bias can make the helper
+  // ribbon win/lose depth in large triangle-shaped patches in Photo OFF.
+  // Preserve geometry, vertex colours, lighting, shadows, stencil, depth test
+  // and depth writes; remove polygon offset only.
+  const normalizeTransitionDepth=group=>{
+    if(![
+      'road-terrain-transition',
+      'road-terrain-transition-p927-hold'
+    ].includes(group?.name))return group;
+
+    group.traverse?.(child=>{
+      if(!child?.isMesh)return;
+      const materials=Array.isArray(child.material)?child.material:[child.material];
+      for(const material of materials){
+        if(!material)continue;
+        material.polygonOffset=false;
+        material.needsUpdate=true;
+      }
+    });
+    return group;
+  };
+
+  const originalSceneAdd=scene.add;
+  scene.add=function(...objects){
+    for(const object of objects)normalizeTransitionDepth(object);
+    return originalSceneAdd.apply(this,objects);
+  };
+
   function resetStreamedWorldOrigins(){
     for(const group of streamedWorldGroups)resetStaticGroupOrigin(group);
     ground?.position?.set?.(0,0,0);
