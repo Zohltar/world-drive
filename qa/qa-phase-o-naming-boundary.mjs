@@ -71,6 +71,7 @@ const rel=file=>path.relative(ROOT,file).replaceAll('\\','/');
 const historicalFilePattern=/(?:^|[-_.])p\d+(?:\.\d+)?(?:[-_.]|$)|(?:^|[-_.])v\d+(?:\.\d+)*(?:[-_.]|$)|(?:^|[-_.])m\d+(?:[-_.]|$)/i;
 const actualHistoricalPaths=walk(SRC)
   .map(rel)
+  .filter(file=>/\.(?:js|mjs|cjs|css)$/i.test(file))
   .filter(file=>historicalFilePattern.test(path.posix.basename(file)))
   .sort();
 const classified=Object.values(NAMING_POLICY).flat();
