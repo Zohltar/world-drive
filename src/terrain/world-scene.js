@@ -87,6 +87,78 @@ export function createWorldScene({THREE,scene}){
   ground.renderOrder=-5;
   scene.add(ground);
 
+  // Issue #4 diagnostic candidate: preserve transition geometry and all depth /
+  // stencil ordering, but remove every lighting, normal, texture and vertex-colour
+  // contribution. If a black corridor survives this material, the cause is below
+  // the material/shading layer and the next audit can focus on raster geometry.
+  const transitionBasicTint=0x6f8150;
+  const createTransitionBasicMaterial=source=>{
+    const material=new THREE.MeshBasicMaterial({
+      color:transitionBasicTint,
+      vertexColors:false,
+      side:source?.side??THREE.DoubleSide,
+      fog:source?.fog!==false,
+      transparent:false,
+      opacity:1,
+      depthTest:source?.depthTest!==false,
+      depthWrite:source?.depthWrite!==false,
+      polygonOffset:source?.polygonOffset===true,
+      polygonOffsetFactor:Number(source?.polygonOffsetFactor)||0,
+      polygonOffsetUnits:Number(source?.polygonOffsetUnits)||0
+    });
+
+    for(const key of [
+      'depthFunc',
+      'depthTest',
+      'depthWrite',
+      'colorWrite',
+      'polygonOffset',
+      'polygonOffsetFactor',
+      'polygonOffsetUnits',
+      'stencilWrite',
+      'stencilWriteMask',
+      'stencilFunc',
+      'stencilRef',
+      'stencilFuncMask',
+      'stencilFail',
+      'stencilZFail',
+      'stencilZPass'
+    ]){
+      if(source&&key in source)material[key]=source[key];
+    }
+
+    return material;
+  };
+
+  const normalizeTransitionBasicMaterial=group=>{
+    if(![
+      'road-terrain-transition',
+      'road-terrain-transition-p927-hold'
+    ].includes(group?.name))return group;
+
+    group.traverse?.(child=>{
+      if(!child?.isMesh||child.userData?.issue4BasicTransitionMaterial)return;
+      const oldMaterials=Array.isArray(child.material)?child.material:[child.material];
+      const nextMaterials=oldMaterials.map(source=>createTransitionBasicMaterial(source));
+      child.material=Array.isArray(child.material)?nextMaterials:nextMaterials[0];
+      for(const source of oldMaterials)source?.dispose?.();
+      child.receiveShadow=false;
+      child.castShadow=false;
+      child.userData={
+        ...(child.userData||{}),
+        issue4BasicTransitionMaterial:true
+      };
+    });
+
+    return group;
+  };
+
+  const originalSceneAdd=scene.add;
+  scene.add=function(...objects){
+    for(const object of objects)normalizeTransitionBasicMaterial(object);
+    return originalSceneAdd.apply(this,objects);
+  };
+
   function resetStreamedWorldOrigins(){
     for(const group of streamedWorldGroups)resetStaticGroupOrigin(group);
     ground?.position?.set?.(0,0,0);
