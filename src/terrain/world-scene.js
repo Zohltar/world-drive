@@ -87,76 +87,24 @@ export function createWorldScene({THREE,scene}){
   ground.renderOrder=-5;
   scene.add(ground);
 
-  // Issue #4 diagnostic candidate: preserve the exact basic-material probe state
-  // but hide the whole transition group so the user can compare the underlying
-  // procedural terrain directly against the visible green ribbon candidate.
-  const transitionBasicTint=0x6f8150;
-  const createTransitionBasicMaterial=source=>{
-    const material=new THREE.MeshBasicMaterial({
-      color:transitionBasicTint,
-      vertexColors:false,
-      side:source?.side??THREE.DoubleSide,
-      fog:source?.fog!==false,
-      transparent:false,
-      opacity:1,
-      depthTest:source?.depthTest!==false,
-      depthWrite:source?.depthWrite!==false,
-      polygonOffset:source?.polygonOffset===true,
-      polygonOffsetFactor:Number(source?.polygonOffsetFactor)||0,
-      polygonOffsetUnits:Number(source?.polygonOffsetUnits)||0
-    });
-
-    for(const key of [
-      'depthFunc',
-      'depthTest',
-      'depthWrite',
-      'colorWrite',
-      'polygonOffset',
-      'polygonOffsetFactor',
-      'polygonOffsetUnits',
-      'stencilWrite',
-      'stencilWriteMask',
-      'stencilFunc',
-      'stencilRef',
-      'stencilFuncMask',
-      'stencilFail',
-      'stencilZFail',
-      'stencilZPass'
-    ]){
-      if(source&&key in source)material[key]=source[key];
-    }
-
-    return material;
-  };
-
-  const normalizeTransitionBasicMaterial=group=>{
+  // Issue #4: the road-terrain transition helper is no longer presented.
+  // Human A/B on Manic-5 and Yungas showed the refined main ground is cleaner
+  // in Photo OFF and Photo ON without this legacy visual ribbon. Keep the helper
+  // generation contract intact for now, but retire only its presentation so no
+  // road/terrain geometry, physics, material or depth policy is altered here.
+  const retireRoadTerrainTransition=group=>{
     if(![
       'road-terrain-transition',
       'road-terrain-transition-p927-hold'
     ].includes(group?.name))return group;
 
     group.visible=false;
-
-    group.traverse?.(child=>{
-      if(!child?.isMesh||child.userData?.issue4BasicTransitionMaterial)return;
-      const oldMaterials=Array.isArray(child.material)?child.material:[child.material];
-      const nextMaterials=oldMaterials.map(source=>createTransitionBasicMaterial(source));
-      child.material=Array.isArray(child.material)?nextMaterials:nextMaterials[0];
-      for(const source of oldMaterials)source?.dispose?.();
-      child.receiveShadow=false;
-      child.castShadow=false;
-      child.userData={
-        ...(child.userData||{}),
-        issue4BasicTransitionMaterial:true
-      };
-    });
-
     return group;
   };
 
   const originalSceneAdd=scene.add;
   scene.add=function(...objects){
-    for(const object of objects)normalizeTransitionBasicMaterial(object);
+    for(const object of objects)retireRoadTerrainTransition(object);
     return originalSceneAdd.apply(this,objects);
   };
 
