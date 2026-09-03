@@ -122,6 +122,18 @@ export function createWorldScene({THREE,scene}){
   const layerObjects=name=>layerRoots[name]?[layerRoots[name]]:dynamicMatches(name);
   const transitionMeshes=()=>dynamicMatches('transition').flatMap(object=>[...(object.children||[])].filter(child=>child?.isMesh));
   const transitionMaterials=()=>transitionMeshes().flatMap(mesh=>Array.isArray(mesh.material)?mesh.material:[mesh.material]).filter(Boolean);
+  const transitionMeshState=()=>transitionMeshes().map((mesh,index)=>{
+    const position=mesh.geometry?.getAttribute?.('position');
+    const indexAttr=mesh.geometry?.index;
+    return {
+      index,
+      visible:mesh.visible!==false,
+      vertices:position?.count??null,
+      triangles:indexAttr?.count?indexAttr.count/3:null,
+      renderOrder:mesh.renderOrder,
+      material:mesh.material?.type??null
+    };
+  });
   const transitionShadowState=()=>{
     const meshes=transitionMeshes();
     return {
@@ -155,6 +167,14 @@ export function createWorldScene({THREE,scene}){
       for(const object of objects)object.visible=!!visible;
       return {name:String(name),visible:!!visible,objects:objects.length,state:issue4Layers.list()[String(name)]??null};
     },
+    transitionMeshes:()=>transitionMeshState(),
+    transitionMesh:(index,visible=true)=>{
+      const meshes=transitionMeshes();
+      const i=Number(index);
+      if(!Number.isInteger(i)||i<0||i>=meshes.length)return {index:i,found:false,meshes:transitionMeshState()};
+      meshes[i].visible=!!visible;
+      return {index:i,found:true,visible:!!visible,meshes:transitionMeshState()};
+    },
     transitionShadow:(receive=true)=>{
       for(const mesh of transitionMeshes())mesh.receiveShadow=!!receive;
       return transitionShadowState();
@@ -169,7 +189,10 @@ export function createWorldScene({THREE,scene}){
     restore:()=>{
       for(const name of Object.keys(layerRoots))for(const object of layerObjects(name))object.visible=true;
       for(const name of ['transition','satellite'])for(const object of layerObjects(name))object.visible=true;
-      for(const mesh of transitionMeshes())mesh.receiveShadow=true;
+      for(const mesh of transitionMeshes()){
+        mesh.visible=true;
+        mesh.receiveShadow=true;
+      }
       for(const material of transitionMaterials()){
         material.stencilWrite=true;
         material.needsUpdate=true;
