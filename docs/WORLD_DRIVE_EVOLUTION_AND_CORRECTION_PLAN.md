@@ -27,13 +27,13 @@ At the start of every World Drive coding/architecture/QA conversation:
 
 # 1. CURRENT CHECKPOINT
 
-**Plan phase:** **post-architecture correction backlog — issue #8 bridge/off-road wheel support**  
-**State:** **R1–R9 + Phase O DONE/CERTIFIED; R8 architecture FROZEN; issue #4 CLOSED / HUMAN PASS; issue #8 is next concrete defect**  
-**Issue #4 runtime integration HEAD before this docs checkpoint:** `4d85c7078442cf7c308d53b2f1d2dd2f9bb63f15` — `QA: run issue 4 retired transition candidate`  
-**Issue #4 focused candidate QA:** run `33807775191` — **PASS**  
-**Issue #4 exact-head Dev Integration:** run `33807859257` — **PASS 100/100 functional steps** on `4d85c7078442cf7c308d53b2f1d2dd2f9bb63f15`  
-**Issue #4 triggered workflow set:** **11/11 completed successfully** on the integrated runtime HEAD  
-**Issue #4 human checkpoint:** **PASS** — hidden transition presentation is better in all tested cases, including Manic-5 Photo OFF/ON and steep/tight-road comparisons.  
+**Plan phase:** **post-architecture correction backlog clear — issue #2 watch-only**  
+**State:** **R1–R9 + Phase O DONE/CERTIFIED; R8 architecture FROZEN; issues #4 and #8 CLOSED / HUMAN PASS; no active reproducible correction target**  
+**Issue #8 integrated runtime/QA HEAD before this docs checkpoint:** `22c3f66a3756f5bec2ecec747f2cf953e59ec75d` — `QA: keep issue 8 historical shim out of root layout scan`  
+**Issue #8 focused candidate QA:** run `33812652501` — **PASS**  
+**Issue #8 exact-head Dev Integration:** run `33813055208` — **PASS 100/100 functional steps** on `22c3f66a3756f5bec2ecec747f2cf953e59ec75d`  
+**Issue #8 human checkpoint:** **PASS** — bridge deck support, beside/below-bridge terrain support, ordinary road exit/re-entry and requested non-bridge behavior accepted.  
+**Issue #2:** **OPEN / watch-only / not reproduced**; permanent diagnostics remain available if the symptom returns.  
 **Stable `main`:** `111df5d84bf7fd700590abbd9c129b303ac92fad` — unchanged.
 
 ## Issue #4 final decision — retire legacy transition presentation
@@ -65,11 +65,11 @@ qa/qa-issue4-transition-retired.mjs
 
 Issue #4 is **CLOSED / corrected / HUMAN PASS**.
 
-## Exact next action — issue #8 elevated road/bridge wheel-support bleed
+## Issue #8 final decision — reject detached elevated road support off the road core
 
-Issue #8 is a **separate physical defect** discovered while diagnosing issue #4. Near/under an elevated bridge, wheel support can follow the elevated road plane even when the vehicle is on natural terrain beside or below it.
+Issue #8 was a separate physical defect discovered while diagnosing issue #4. Near/under an elevated bridge, wheel support could follow the elevated road plane even when the vehicle was on natural terrain beside or below it.
 
-Measured bad point:
+Measured bad point before correction:
 
 - route distance `5.762 m`;
 - road surface `2.889 m`;
@@ -77,23 +77,33 @@ Measured bad point:
 - rendered ground `-1.640 m`;
 - wheel support `2.786 m`.
 
-Healthy nearby point:
+Final correction in `src/physics/wheel-ground-support.js`:
 
-- route distance `8.041 m`;
-- physical DEM `1.892 m`;
-- rendered ground `2.037 m`;
-- wheel support `1.962 m`.
+- preserve authoritative road support inside the solid road core;
+- outside that core, if the road support plane is more than `2.4 m` above natural terrain, use terrain support instead of blending toward the detached road plane;
+- preserve existing modest embankment/cut blending and R14 road-edge/re-entry continuity;
+- no handling, suspension, road geometry or terrain geometry retune.
+
+Permanent focused coverage:
+
+```text
+qa/qa-issue8-bridge-support.mjs
+.github/workflows/qa-issue8-bridge-support.yml
+```
+
+Issue #8 is **CLOSED / corrected / HUMAN PASS**.
+
+## Exact next action — no speculative correction; hold issue #2 watch-only
+
+There is currently no other open reproducible defect in the tracked correction backlog. Issue #2 remains open only because its delayed terrain-adjustment symptom has not reproduced since permanent diagnostics were added.
 
 Proceed conservatively:
 
-1. Re-read issue #8 and preserve the measured surface-probe evidence.
-2. Audit `wheel-ground-support` road/terrain blending and identify the exact ownership of elevated-road rejection.
-3. Preserve support **on the bridge itself** and normal smooth road-edge/re-entry behavior.
-4. Do not retune handling, suspension, road geometry or terrain geometry.
-5. Treat prior `candidate/issue4-bridge-support-r1` as exploratory only; it is **not certified for integration**.
-6. If the existing guard is structurally sound, create a clean issue-#8 candidate from current `dev` with focused permanent QA.
-7. Human validation must cover: driving on bridge, directly below/beside bridge, ordinary road exit/re-entry, and at least one non-bridge route.
-8. Integrate only after focused QA + exact-head Dev Integration + human PASS.
+1. Do **not** invent or tune a correction for issue #2 while it remains non-reproducible.
+2. If issue #2 reappears, capture the expanded `WorldDriveFramePacing().imagery.r8GeometryRefresh` together with `localWorldPhases`, `p923`, `visualJobs` and `p939HitchAttribution` before the condition converges.
+3. Otherwise keep `dev` as the certified working branch and await the user's next feature/correction priority.
+4. `main` remains untouched until the user gives explicit promotion approval.
+5. Any new runtime/visual/physics work starts with a read-only causal audit and a dedicated candidate when risk warrants it.
 
 ---
 
@@ -215,7 +225,7 @@ Existing historical `P9`, `V21` and `Mx` lineage remains accepted; new milestone
 
 ## Issue #8 — elevated road/bridge wheel-support bleed
 
-**OPEN / ACTIVE NEXT.** Measured physical mismatch between natural terrain and wheel support beside/below elevated road geometry. Dedicated physics-support correction only; do not mix with visual issue #4.
+**CLOSED / corrected / HUMAN PASS.** Detached elevated road support is rejected outside the solid road core when it is clearly above natural terrain; bridge-deck and normal road-edge support behavior remain preserved.
 
 ---
 
@@ -223,7 +233,7 @@ Existing historical `P9`, `V21` and `Mx` lineage remains accepted; new milestone
 
 Preserve accepted physics except for narrowly proven issue-specific corrections, road/bridge geometry, terrain authority, forest/scenery behavior, hydro semantics, settings/routing/UI contracts, local-first Quebec hydro, cache behavior, Photo ON quality, streaming frame pacing and compatibility diagnostic aliases.
 
-Do not mix into issue #8 work:
+Until a new concrete work item is chosen, do not introduce:
 
 - broad handling/suspension tuning;
 - road geometry or terrain-shape tuning;
@@ -250,8 +260,9 @@ Generated/source Geofabrik data remain out of Git until packaging is explicitly 
 - R9 permanent root-cleanliness: DONE / CERTIFIED.
 - Phase O historical naming boundary: DONE / CERTIFIED; KEEP existing lineage.
 - Issue #4 Photo OFF procedural-terrain correction: DONE / CLOSED / HUMAN PASS.
-- **Issue #8 bridge/off-road wheel support: ACTIVE — causal audit / clean candidate next.**
-- Issue #2: watch-only unless reproduced.
+- Issue #8 bridge/off-road wheel support: DONE / CLOSED / HUMAN PASS.
+- Issue #2: OPEN / watch-only unless reproduced.
+- **Active correction backlog: clear; await a concrete new priority or issue #2 reproduction.**
 - `main` promotion: only after explicit user approval.
 
 ---
@@ -267,7 +278,7 @@ Generated/source Geofabrik data remain out of Git until packaging is explicitly 
 | R8 streaming | `qa/qa-r8-streaming-baseline.mjs` |
 | Terrain structure | R8 terrain source-tree + Terrain R1/R2 |
 | Issue #4 retired transition | `qa/qa-issue4-transition-retired.mjs` + Photo ON/OFF human A/B |
-| Issue #8 wheel support | focused issue-#8 QA + R5b/R14 + bridge/off-road human smoke |
+| Issue #8 wheel support | `qa/qa-issue8-bridge-support.mjs` + R5b/R14 + bridge/off-road human smoke |
 | Elevation owner | `qa/qa-streaming-p919-elevation.mjs` |
 | Route-start placement | `qa/qa-route-start-final-placement-r8.mjs` |
 | Forest readiness | `qa/qa-r8-forest-route-readiness.mjs` + P9.35/P9.36/P9.38 |
