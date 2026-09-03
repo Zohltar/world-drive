@@ -1,10 +1,16 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 
-const terrain=fs.readFileSync(new URL('../src/terrain-p926.js',import.meta.url),'utf8');
+const terrainFacade=fs.readFileSync(new URL('../src/terrain-p926.js',import.meta.url),'utf8');
+const terrain=fs.readFileSync(new URL('../src/terrain/terrain-p926.js',import.meta.url),'utf8');
+const terrainP925Bridge=fs.readFileSync(new URL('../src/terrain/terrain-p925.js',import.meta.url),'utf8');
 const builderFacade=fs.readFileSync(new URL('../src/local-world-builder-p926.js',import.meta.url),'utf8');
 const builder=fs.readFileSync(new URL('../src/local-world/local-world-builder-p926.js',import.meta.url),'utf8');
 
+assert.match(terrainFacade,/export\s*\{\s*createTerrainService\s*\}\s*from\s*['"]\.\/terrain\/terrain-p926\.js['"]/,
+  'P9.26 root terrain facade changed');
+assert.match(terrainP925Bridge,/export\s*\{\s*createTerrainService\s*\}\s*from\s*['"]\.\.\/terrain-p925\.js['"]/,
+  'P9.26 nested terrain bridge must preserve the root P9.25 owner');
 assert.match(terrain,/P926_HORIZON_BUDGET_MS=1\.15/,
   'P9.26 horizon slice budget must stay at 1.15 ms');
 assert.match(terrain,/P926_HORIZON_GAP_MS=8/,
