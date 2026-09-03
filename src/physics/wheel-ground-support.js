@@ -13,6 +13,12 @@ export function createWheelGroundSupport({
     5.4,
     Math.max(3.75,supportOuterHalfWidth-2.8)
   );
+  // Issue #8: a bridge/viaduct can be several metres above the DEM. Outside the
+  // solid road core, blending that detached road plane toward terrain creates
+  // an invisible support ramp beside and underneath the bridge. Keep ordinary
+  // embankment/cut blending intact, but reject clearly detached elevated road
+  // support once a wheel has left the solid road core.
+  const detachedElevatedRoadGap=2.4;
   let inferredRoadSurfaceOffset=.10;
 
   const fastWheelRoadSupport={
@@ -46,6 +52,7 @@ export function createWheelGroundSupport({
     const d=Math.abs(Number(lateral)||0);
     if(d<=supportCoreHalfWidth)return roadY;
     if(d>=supportOuterHalfWidth)return terrainY;
+    if(roadY-terrainY>detachedElevatedRoadGap)return terrainY;
     const t=smoothstep01(
       (d-supportCoreHalfWidth)/
       Math.max(.001,supportOuterHalfWidth-supportCoreHalfWidth)
