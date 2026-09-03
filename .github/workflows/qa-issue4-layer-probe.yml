@@ -24,7 +24,7 @@ jobs:
       - name: Install
         run: npm ci
       - name: World scene C5.3 QA
-        run: node qa/qa-world-scene-c53.mjs
+        run: node qa/qa-main-c5-world-scene.mjs
       - name: R8 world-scene source-tree QA
         run: node qa/qa-source-tree-r8-world-scene.mjs
       - name: C6 global boundary QA
