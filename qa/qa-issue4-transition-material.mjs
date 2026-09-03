@@ -10,9 +10,10 @@ const source=fs.readFileSync(worldScenePath,'utf8').replace(/\r\n/g,'\n');
 for(const pattern of [
   /'road-terrain-transition'/,
   /'road-terrain-transition-p927-hold'/,
-  /const transitionTerrainTint=new THREE\.Color\(0x6f8150\);/,
+  /const transitionTerrainTint=0x6f8150;/,
   /material\.vertexColors=false;/,
-  /material\.color\?\.copy\?\.\(transitionTerrainTint\);/,
+  /material\.color\?\.setHex/,
+  /material\.color=transitionTerrainTint;/,
   /material\.map=null;/,
   /material\.alphaMap=null;/,
   /material\.alphaTest=0;/,
