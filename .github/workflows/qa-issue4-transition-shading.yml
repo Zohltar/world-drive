@@ -25,10 +25,18 @@ jobs:
         run: npm ci
       - name: Issue 4 transition shading QA
         run: node qa/qa-issue4-transition-shading.mjs
+      - name: Current local-world ownership QA
+        run: node qa/qa-local-world-current-a8.mjs
+      - name: P9.23 prepared refresh QA
+        run: node qa/qa-streaming-p923-prepared-refresh.mjs
+      - name: P9.25 scenery and prep QA
+        run: node qa/qa-streaming-p925-scenery-and-prep.mjs
       - name: P9.27 road transition QA
         run: node qa/qa-streaming-p927-road-transition.mjs
-      - name: Local-world current QA
-        run: node qa/qa-local-world-current.mjs
+      - name: P9.37 combined frame-pacing QA
+        run: node qa/qa-p937-combined-frame-pacing.mjs
+      - name: P9.38 forest retention QA
+        run: node qa/qa-p938-forest-retention.mjs
       - name: R8 streaming baseline aggregate
         run: node qa/qa-r8-streaming-baseline.mjs
       - name: Runtime import and source-tree audit
