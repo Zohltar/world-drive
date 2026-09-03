@@ -11,4 +11,5 @@ await import('./qa-route-start-final-placement-r8.mjs');
 await import('./qa-r8-forest-route-readiness.mjs');
 await import('./qa-r9-root-cleanliness.mjs');
 await import('./qa-phase-o-naming-boundary.mjs');
+await import('./qa-issue4-road-volume-shadow.mjs');
 await import('./DEV_INTEGRATION_AUDIT_BASE.mjs');
