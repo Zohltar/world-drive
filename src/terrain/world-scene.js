@@ -137,6 +137,7 @@ export function createWorldScene({THREE,scene}){
   const roundMetric=value=>Number.isFinite(value)?Number(value.toFixed(3)):null;
   const transitionGeometryState=()=>transitionMeshes().map((mesh,index)=>{
     const position=mesh.geometry?.getAttribute?.('position');
+    const normal=mesh.geometry?.getAttribute?.('normal');
     const indexAttr=mesh.geometry?.index;
     if(!position)return {index,vertices:null,triangles:null};
     let minY=Infinity,maxY=-Infinity;
@@ -145,7 +146,18 @@ export function createWorldScene({THREE,scene}){
       if(y<minY)minY=y;
       if(y>maxY)maxY=y;
     }
+    let minNormalY=Infinity,maxNormalY=-Infinity,positiveVertexNormals=0,negativeVertexNormals=0;
+    if(normal){
+      for(let i=0;i<normal.count;i++){
+        const ny=normal.getY(i);
+        minNormalY=Math.min(minNormalY,ny);
+        maxNormalY=Math.max(maxNormalY,ny);
+        if(ny>1e-4)positiveVertexNormals++;
+        else if(ny<-1e-4)negativeVertexNormals++;
+      }
+    }
     let edges=0,steepEdges=0,maxHorizontalRun=0,maxVerticalDelta=0,maxSlope=0,max3dEdge=0;
+    let positiveWindingY=0,negativeWindingY=0,flatWindingY=0;
     const visitEdge=(a,b)=>{
       if(a<0||b<0||a>=position.count||b>=position.count)return;
       const dx=position.getX(b)-position.getX(a);
@@ -166,6 +178,13 @@ export function createWorldScene({THREE,scene}){
       visitEdge(a,b);
       visitEdge(b,c);
       visitEdge(c,a);
+      const ax=position.getX(a),az=position.getZ(a);
+      const bx=position.getX(b),bz=position.getZ(b);
+      const cx=position.getX(c),cz=position.getZ(c);
+      const windingY=(bz-az)*(cx-ax)-(bx-ax)*(cz-az);
+      if(windingY>1e-6)positiveWindingY++;
+      else if(windingY<-1e-6)negativeWindingY++;
+      else flatWindingY++;
     };
     if(indexAttr?.count){
       for(let i=0;i+2<indexAttr.count;i+=3)visitTriangle(indexAttr.getX(i),indexAttr.getX(i+1),indexAttr.getX(i+2));
@@ -184,7 +203,14 @@ export function createWorldScene({THREE,scene}){
       maxHorizontalRun:roundMetric(maxHorizontalRun),
       maxVerticalDelta:roundMetric(maxVerticalDelta),
       maxSlope:roundMetric(maxSlope),
-      max3dEdge:roundMetric(max3dEdge)
+      max3dEdge:roundMetric(max3dEdge),
+      positiveWindingY,
+      negativeWindingY,
+      flatWindingY,
+      minNormalY:roundMetric(minNormalY),
+      maxNormalY:roundMetric(maxNormalY),
+      positiveVertexNormals,
+      negativeVertexNormals
     };
   });
   const transitionShadowState=()=>{
