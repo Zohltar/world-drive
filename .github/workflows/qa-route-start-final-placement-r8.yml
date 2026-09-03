@@ -1,0 +1,51 @@
+name: R8 Post-Structure Spawn QA
+
+on:
+  push:
+    branches:
+      - dev
+      - candidate/r8-post-structure-spawn-r1
+    paths:
+      - 'src/vehicles/vehicle-placement-controller.js'
+      - 'src/routing/route-lifecycle.js'
+      - 'qa/qa-route-start-final-placement-r8.mjs'
+      - 'qa/V21_31_ROUTE_PLACEMENT_FINITE_QA.mjs'
+      - 'qa/DEV_INTEGRATION_AUDIT.mjs'
+      - '.github/workflows/qa-route-start-final-placement-r8.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  qa:
+    runs-on: ubuntu-latest
+    timeout-minutes: 18
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Post-DEM route start placement
+        run: node qa/qa-route-start-final-placement-r8.mjs
+      - name: Existing finite route placement contract
+        run: node qa/V21_31_ROUTE_PLACEMENT_FINITE_QA.mjs
+      - name: Route lifecycle boundary
+        run: node qa/V21_26_ROUTE_LIFECYCLE_REFACTOR_QA.mjs
+      - name: R7 routing source-tree boundary
+        run: node qa/qa-source-tree-r7-routing.mjs
+      - name: R8 current ownership baseline
+        run: node qa/qa-r8-current-ownership.mjs
+      - name: P9.19 elevation hot-path contract
+        run: node qa/qa-streaming-p919-elevation.mjs
+      - name: Current local-world ownership
+        run: node qa/qa-local-world-current-a8.mjs
+      - name: R8 terrain and streaming baseline
+        run: node qa/qa-r8-streaming-baseline.mjs
+      - name: Runtime import and source-tree audit
+        run: node qa/DEV_INTEGRATION_AUDIT.mjs
+      - name: Production build
+        run: npm run build
+      - name: Production code split QA
+        run: node qa/BUILD_V21_31_CODE_SPLIT_QA.mjs
