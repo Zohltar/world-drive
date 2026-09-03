@@ -1,0 +1,50 @@
+name: Issue 4 Photo OFF Terrain QA
+
+on:
+  push:
+    branches:
+      - dev
+      - candidate/issue4-*
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  qa:
+    runs-on: ubuntu-latest
+    timeout-minutes: 18
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install
+        run: npm ci
+      - name: Issue 4 Photo OFF terrain QA
+        run: node qa/qa-issue4-photo-off-terrain.mjs
+      - name: Terrain R1 visual ownership QA
+        run: node qa/qa-terrain-r1-legacy-ownership.mjs
+      - name: Terrain R2 road imagery alignment QA
+        run: node qa/qa-terrain-r2-road-imagery.mjs
+      - name: P9.23 prepared refresh QA
+        run: node qa/qa-streaming-p923-prepared-refresh.mjs
+      - name: P9.25 scenery and prep QA
+        run: node qa/qa-streaming-p925-scenery-and-prep.mjs
+      - name: P9.26 horizon QA
+        run: node qa/qa-streaming-p926-horizon.mjs
+      - name: P9.27 road transition QA
+        run: node qa/qa-streaming-p927-road-transition.mjs
+      - name: R8 terrain source-tree QA
+        run: node qa/qa-source-tree-r8-terrain.mjs
+      - name: R8 current ownership QA
+        run: node qa/qa-r8-current-ownership.mjs
+      - name: Runtime import and source-tree audit
+        run: node qa/DEV_INTEGRATION_AUDIT.mjs
+      - name: Production build
+        run: npm run build
+      - name: Production code split QA
+        run: node qa/BUILD_V21_31_CODE_SPLIT_QA.mjs
