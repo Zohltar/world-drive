@@ -7,6 +7,7 @@ on:
     paths:
       - 'src/main.js'
       - 'src/world-materials.js'
+      - 'src/terrain/world-materials.js'
       - 'qa/qa-main-c5-materials.mjs'
       - '.github/workflows/qa-cleanup-c5-materials.yml'
   workflow_dispatch:

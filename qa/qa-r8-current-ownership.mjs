@@ -26,6 +26,8 @@ const required=[
   'elevation.js',
   'world-scene.js',
   'terrain/world-scene.js',
+  'world-materials.js',
+  'terrain/world-materials.js',
   'routing/route-lifecycle.js'
 ];
 for(const name of required){
@@ -50,6 +52,8 @@ const imageryP913=read('imagery/imagery-p913.js');
 const elevation=read('elevation.js');
 const worldSceneFacade=read('world-scene.js');
 const worldScene=read('terrain/world-scene.js');
+const worldMaterialsFacade=read('world-materials.js');
+const worldMaterials=read('terrain/world-materials.js');
 const routeLifecycle=read('routing/route-lifecycle.js');
 
 assert.match(worldStreaming,/unified world streaming policy/);
@@ -94,11 +98,22 @@ assert.match(imagery,/export function createImageryService\s*\(/);
 assert.match(imageryP913,/satellite-terrain-chunks/);
 assert.match(imageryP913,/function invalidateGeometry\s*\(/);
 
+// Elevation remains intentionally root-owned for R8.7 because it combines
+// DEM network/image loading, cache state and the hot world-space sampler.
 assert.match(elevation,/export function createElevationService\s*\(/);
+assert.match(elevation,/fastElevationAtWorld/);
+
 assert.match(worldSceneFacade,/from ['"]\.\/terrain\/world-scene\.js['"]/);
 assert.match(worldScene,/export function createWorldScene\s*\(/);
 assert.match(worldScene,/export const NEAR_TERRAIN_SIZE=5600/);
 assert.match(worldScene,/export const NEAR_TERRAIN_SEGMENTS=448/);
+
+assert.match(worldMaterialsFacade,/from ['"]\.\/terrain\/world-materials\.js['"]/);
+assert.match(worldMaterialsFacade,/createWorldMaterials/);
+assert.match(worldMaterials,/export function createWorldMaterials\s*\(/);
+assert.match(worldMaterials,/function makeRoadSurfaceTextures\s*\(/);
+assert.match(worldMaterials,/function makeWaterTexture\s*\(/);
+
 assert.match(routeLifecycle,/commitLocalWorldRefresh\(\)/);
 
 console.log('R8 CURRENT OWNERSHIP BASELINE: PASS',{
@@ -107,6 +122,8 @@ console.log('R8 CURRENT OWNERSHIP BASELINE: PASS',{
   localWorld:'local-world-builder -> root P9.26 facade -> local-world/P9.26 -> root P9.25',
   terrain:'terrain P9.27 -> root P9.26 facade -> terrain/P9.26 -> thin terrain/P9.25 bridge -> root P9.25',
   worldScene:'root facade -> terrain/world-scene implementation',
+  worldMaterials:'root facade -> terrain/world-materials implementation',
+  elevation:'KEEP ROOT for R8.7',
   imagery:'imagery -> imagery/P9.13 satellite chunks',
   startup:'forced synchronous local-world commit'
 });
