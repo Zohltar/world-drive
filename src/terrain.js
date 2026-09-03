@@ -3,10 +3,16 @@ import {createTerrainService as createTerrainServiceP926} from './terrain-p926.j
 const P927_TRANSITION_BUDGET_MS=1.15;
 const P927_TRANSITION_GAP_MS=8;
 const P927_CELL_SIZE=48;
+const PHOTO_OFF_NORMAL_EPS=7;
 
 function nowMs(){return globalThis.performance?.now?.()??Date.now();}
 function clamp01(v){return Math.max(0,Math.min(1,v));}
 function lerp(a,b,t){return a+(b-a)*t;}
+function terrainHillshade(nx,ny,nz){
+  const directional=nx*-.58+ny*.64+nz*-.50;
+  const slope=clamp01(1-Math.abs(ny));
+  return Math.max(.34,Math.min(1.36,.72+directional*.46-slope*.10));
+}
 function scheduleTransitionSlice(callback){
   if(typeof globalThis.setTimeout==='function')globalThis.setTimeout(callback,P927_TRANSITION_GAP_MS);
   else callback();
@@ -94,6 +100,8 @@ export function createTerrainService(options={}){
   let transitionPromise=null;
   let externalTransition=null;
   let heldTransition=null;
+  let photoOffAppearanceRuns=0;
+  let photoOffAppearanceAdjustedVertices=0;
   const perf={
     stateOnlyInstalls:0,
     transitionPreparations:0,
@@ -113,6 +121,47 @@ export function createTerrainService(options={}){
       surfaceOffset:Number.isFinite(value.surfaceOffset)?value.surfaceOffset:.20,
       startPad:value.startPad&&typeof value.startPad==='object'?{...value.startPad}:null
     };
+  }
+
+  function normalizeRoadCutGroundAppearance(){
+    const geometry=ground?.geometry;
+    const position=geometry?.getAttribute?.('position');
+    const normal=geometry?.getAttribute?.('normal');
+    const color=geometry?.getAttribute?.('color');
+    if(!position?.array||!normal?.array||!color?.array||typeof base.roadVisualHeightAt!=='function')return 0;
+
+    const offset=originalGetWorldOffset?.()||{x:0,z:0};
+    const p=position.array,n=normal.array,c=color.array;
+    let adjusted=0;
+    for(let i=0,j=0;i<position.count;i++,j+=3){
+      const wx=(offset.x||0)+p[j],wz=(offset.z||0)+p[j+2];
+      const visibleRoadHeight=base.roadVisualHeightAt(wx,wz);
+      if(!Number.isFinite(visibleRoadHeight))continue;
+
+      const oldNx=n[j],oldNy=n[j+1],oldNz=n[j+2];
+      const oldShade=terrainHillshade(oldNx,oldNy,oldNz);
+      const eps=PHOTO_OFF_NORMAL_EPS;
+      const hL=base.heightAt(wx-eps,wz)-.15;
+      const hR=base.heightAt(wx+eps,wz)-.15;
+      const hD=base.heightAt(wx,wz-eps)-.15;
+      const hU=base.heightAt(wx,wz+eps)-.15;
+      const gx=(hR-hL)/(2*eps),gz=(hU-hD)/(2*eps);
+      let nx=-gx,ny=1,nz=-gz;
+      const inv=1/(Math.hypot(nx,ny,nz)||1);
+      nx*=inv;ny*=inv;nz*=inv;
+      const naturalShade=terrainHillshade(nx,ny,nz);
+      const shadeRatio=naturalShade/Math.max(.34,oldShade);
+
+      c[j]=clamp01(c[j]*shadeRatio);
+      c[j+1]=clamp01(c[j+1]*shadeRatio);
+      c[j+2]=clamp01(c[j+2]*shadeRatio);
+      n[j]=nx;n[j+1]=ny;n[j+2]=nz;
+      adjusted++;
+    }
+    if(adjusted){normal.needsUpdate=true;color.needsUpdate=true;}
+    photoOffAppearanceRuns++;
+    photoOffAppearanceAdjustedVertices=adjusted;
+    return adjusted;
   }
 
   function transitionParent(){return ground.parent||null;}
@@ -174,7 +223,15 @@ export function createTerrainService(options={}){
     transitionProfile=Array.isArray(profile)?profile.slice():[];
     transitionOptions=normalizeOptions(value);
     forcedOffset=null;
-    return base.setRoadBed(transitionProfile,transitionOptions);
+    const result=base.setRoadBed(transitionProfile,transitionOptions);
+    normalizeRoadCutGroundAppearance();
+    return result;
+  }
+
+  function rebuildGround(){
+    const result=base.rebuildGround?.();
+    normalizeRoadCutGroundAppearance();
+    return result;
   }
 
   function buildRoadIndex(profile,opts){
@@ -416,9 +473,9 @@ export function createTerrainService(options={}){
     cancelRoadTransitionPreparation();clearExternalTransitions();transitionProfile=[];return base.clearRoadBed?.();
   }
   function p927Diagnostics(){
-    return {enabled:true,pending:!!transitionPromise,stateOnlyInstalls:perf.stateOnlyInstalls,transitionPreparations:perf.transitionPreparations,transitionCommits:perf.transitionCommits,transitionDiscards:perf.transitionDiscards,maxStateOnlyMs:Number(perf.maxStateOnlyMs.toFixed(3)),maxSliceMs:Number(perf.maxSliceMs.toFixed(3)),maxCommitMs:Number(perf.maxCommitMs.toFixed(3)),p927SliceBudgetMs:P927_TRANSITION_BUDGET_MS,p927SliceGapMs:P927_TRANSITION_GAP_MS,last:perf.last};
+    return {enabled:true,pending:!!transitionPromise,stateOnlyInstalls:perf.stateOnlyInstalls,transitionPreparations:perf.transitionPreparations,transitionCommits:perf.transitionCommits,transitionDiscards:perf.transitionDiscards,maxStateOnlyMs:Number(perf.maxStateOnlyMs.toFixed(3)),maxSliceMs:Number(perf.maxSliceMs.toFixed(3)),maxCommitMs:Number(perf.maxCommitMs.toFixed(3)),p927SliceBudgetMs:P927_TRANSITION_BUDGET_MS,p927SliceGapMs:P927_TRANSITION_GAP_MS,photoOffAppearanceRuns,photoOffAppearanceAdjustedVertices,last:perf.last};
   }
   function diagnostics(){return {...(base.diagnostics?.()||{}),p927:p927Diagnostics()};}
 
-  return {...base,setRoadBed,setRoadBedStateOnly,prepareRoadTransitionIncremental,commitPreparedRoadTransition,rebuildRoadTransitionIncremental,cancelRoadTransitionPreparation,shiftRoadBedOrigin,resetRoadBedOrigin,clearRoadBed,p927Diagnostics,diagnostics};
+  return {...base,rebuildGround,setRoadBed,setRoadBedStateOnly,prepareRoadTransitionIncremental,commitPreparedRoadTransition,rebuildRoadTransitionIncremental,cancelRoadTransitionPreparation,shiftRoadBedOrigin,resetRoadBedOrigin,clearRoadBed,p927Diagnostics,diagnostics};
 }
