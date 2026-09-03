@@ -351,7 +351,10 @@ export function createTerrainService(options={}){
         data.normals[j]=nx;data.normals[j+1]=ny;data.normals[j+2]=nz;
         const directional=nx*lightX+ny*lightY+nz*lightZ,slope=clamp01(1-Math.abs(ny)),altitude=clamp01((y-rangeMin)/span);
         let r,g,b;if(altitude<.58){const t=altitude/.58;r=lerp(low[0],mid[0],t);g=lerp(low[1],mid[1],t);b=lerp(low[2],mid[2],t);}else{const t=(altitude-.58)/.42;r=lerp(mid[0],high[0],t);g=lerp(mid[1],high[1],t);b=lerp(mid[2],high[2],t);}
-        const shade=Math.max(.34,Math.min(1.36,.72+directional*.46-slope*.10));data.colors[j]=Math.min(1,r*shade);data.colors[j+1]=Math.min(1,g*shade);data.colors[j+2]=Math.min(1,b*shade);
+        // Issue #4 candidate: keep DEM directional relief, but prevent the
+        // baked transition colour from collapsing into near-black before the
+        // normal scene lighting is applied on top of it.
+        const shade=Math.max(.56,Math.min(1.36,.72+directional*.46-slope*.10));data.colors[j]=Math.min(1,r*shade);data.colors[j+1]=Math.min(1,g*shade);data.colors[j+2]=Math.min(1,b*shade);
       },'colorCpuMs');
     };
 
