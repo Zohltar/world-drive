@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   patch:
-    if: github.event.head_commit.message == 'Chore: seed transition shading r2 patch'
+    if: "${{ github.event.head_commit.message == 'Chore: retry transition shading r2 patch' }}"
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
