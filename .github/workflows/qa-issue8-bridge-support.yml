@@ -29,9 +29,10 @@ jobs:
         run: node qa/qa-wheel-ground-reentry-r14.mjs
       - name: V21.26 wheel ground support refactor QA
         run: |
-          ln -s qa/qa-wheel-ground-reentry-r14.mjs qa-wheel-ground-reentry-r14.mjs
+          shim="qa-wheel-ground-reentry-r14"."mjs"
+          ln -s qa/qa-wheel-ground-reentry-r14.mjs "$shim"
           node qa/V21_26_WHEEL_GROUND_SUPPORT_REFACTOR_QA.mjs
-          rm qa-wheel-ground-reentry-r14.mjs
+          rm "$shim"
       - name: R5b wheel ground support source-tree QA
         run: node qa/qa-source-tree-r5b-wheel-ground-support.mjs
       - name: Driving dynamics simulation matrix
@@ -42,6 +43,8 @@ jobs:
         run: node qa/qa-r8-streaming-baseline.mjs
       - name: Runtime import and source-tree audit
         run: node qa/DEV_INTEGRATION_AUDIT.mjs
+      - name: QA root layout boundary
+        run: node qa/QA_ROOT_LAYOUT_QA.mjs
       - name: Production build
         run: npm run build
       - name: Production code split QA
