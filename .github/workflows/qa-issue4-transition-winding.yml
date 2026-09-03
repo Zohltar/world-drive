@@ -3,7 +3,7 @@ name: Issue 4 Transition Winding QA
 on:
   push:
     branches:
-      - candidate/issue4-transition-winding-r1
+      - candidate/issue4-transition-winding-r2
   workflow_dispatch:
 
 permissions:
@@ -27,8 +27,12 @@ jobs:
         run: node qa/qa-issue4-transition-winding.mjs
       - name: P9.27 road transition QA
         run: node qa/qa-streaming-p927-road-transition.mjs
-      - name: Local-world current QA
+      - name: Current local-world ownership QA
         run: node qa/qa-local-world-current-a8.mjs
+      - name: P9.23 prepared refresh QA
+        run: node qa/qa-streaming-p923-prepared-refresh.mjs
+      - name: P9.25 scenery and prep QA
+        run: node qa/qa-streaming-p925-scenery-and-prep.mjs
       - name: R8 streaming baseline aggregate
         run: node qa/qa-r8-streaming-baseline.mjs
       - name: Runtime import and source-tree audit
