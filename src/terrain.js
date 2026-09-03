@@ -3,6 +3,7 @@ import {createTerrainService as createTerrainServiceP926} from './terrain-p926.j
 const P927_TRANSITION_BUDGET_MS=1.15;
 const P927_TRANSITION_GAP_MS=8;
 const P927_CELL_SIZE=48;
+const ISSUE4_NATURAL_COPY_EPSILON_M=.03;
 
 function nowMs(){return globalThis.performance?.now?.()??Date.now();}
 function clamp01(v){return Math.max(0,Math.min(1,v));}
@@ -10,6 +11,56 @@ function lerp(a,b,t){return a+(b-a)*t;}
 function scheduleTransitionSlice(callback){
   if(typeof globalThis.setTimeout==='function')globalThis.setTimeout(callback,P927_TRANSITION_GAP_MS);
   else callback();
+}
+
+export function filterNaturalCopyTransitionTriangles(group,{
+  heightAt,
+  offset={x:0,z:0},
+  epsilon=ISSUE4_NATURAL_COPY_EPSILON_M
+}={}){
+  const stats={meshes:0,trianglesBefore:0,trianglesAfter:0,trianglesRemoved:0};
+  if(group?.name!=='road-terrain-transition'||typeof heightAt!=='function')return stats;
+  const ox=Number(offset?.x)||0,oz=Number(offset?.z)||0;
+  const threshold=Math.max(0,Number(epsilon)||0);
+  group.traverse?.(child=>{
+    if(!child?.isMesh)return;
+    const geometry=child.geometry;
+    const positions=geometry?.getAttribute?.('position');
+    const index=geometry?.getIndex?.()||geometry?.index;
+    const source=index?.array;
+    if(!positions||!source?.length||typeof geometry?.setIndex!=='function')return;
+    stats.meshes++;
+    const before=Math.floor(source.length/3);
+    stats.trianglesBefore+=before;
+    const changed=new Uint8Array(positions.count||0);
+    const changesTerrain=i=>{
+      const cached=changed[i];
+      if(cached)return cached===2;
+      const wx=positions.getX(i)+ox,wz=positions.getZ(i)+oz;
+      const natural=heightAt(wx,wz),rendered=positions.getY(i);
+      const active=Number.isFinite(natural)&&Number.isFinite(rendered)&&natural-rendered>threshold;
+      changed[i]=active?2:1;
+      return active;
+    };
+    const kept=[];
+    for(let i=0;i+2<source.length;i+=3){
+      const a=source[i],b=source[i+1],c=source[i+2];
+      // Keep every triangle that contributes to an actual terrain cut. A
+      // triangle whose three vertices merely reproduce untouched DEM is only
+      // a duplicate presentation skin and is the Photo OFF ghost corridor.
+      if(changesTerrain(a)||changesTerrain(b)||changesTerrain(c))kept.push(a,b,c);
+    }
+    const after=Math.floor(kept.length/3);
+    stats.trianglesAfter+=after;
+    stats.trianglesRemoved+=before-after;
+    if(kept.length!==source.length){
+      geometry.setIndex(kept);
+      if(geometry.index)geometry.index.needsUpdate=true;
+      child.userData={...(child.userData||{}),issue4NaturalCopyFiltered:true};
+    }
+  });
+  group.userData={...(group.userData||{}),issue4NaturalCopyFilter:{...stats,epsilon:threshold}};
+  return stats;
 }
 
 function disposeObject(object){
@@ -174,7 +225,15 @@ export function createTerrainService(options={}){
     transitionProfile=Array.isArray(profile)?profile.slice():[];
     transitionOptions=normalizeOptions(value);
     forcedOffset=null;
-    return base.setRoadBed(transitionProfile,transitionOptions);
+    const result=base.setRoadBed(transitionProfile,transitionOptions);
+    const syncTransition=findBaseTransition();
+    if(syncTransition){
+      filterNaturalCopyTransitionTriangles(syncTransition,{
+        heightAt:base.heightAt,
+        offset:originalGetWorldOffset()||{x:0,z:0}
+      });
+    }
+    return result;
   }
 
   function buildRoadIndex(profile,opts){
@@ -375,7 +434,8 @@ export function createTerrainService(options={}){
         const material=ground.material.clone();material.map=null;material.alphaMap=null;material.alphaTest=0;material.transparent=false;material.side=THREE.DoubleSide;material.polygonOffset=true;material.polygonOffsetFactor=1;material.polygonOffsetUnits=1;
         const mesh=new THREE.Mesh(geometry,material);mesh.receiveShadow=true;mesh.castShadow=false;mesh.renderOrder=-1;group.add(mesh);
       }
-      const meta={serial,preparedOffset:{...offset},profilePoints:profile.length,usablePoints:usable.length,vertices:sideVertexCount*2,triangles,prepareWallMs:nowMs()-wallStarted,prepareCpuMs:stats.vertexCpuMs+stats.indexCpuMs+stats.normalCpuMs+stats.colorCpuMs,slices:stats.slices,maxSliceMs:stats.maxSliceMs,p927SliceBudgetMs:P927_TRANSITION_BUDGET_MS,p927SliceGapMs:P927_TRANSITION_GAP_MS};
+      const naturalCopyFilter=filterNaturalCopyTransitionTriangles(group,{heightAt:base.heightAt,offset});
+      const meta={serial,preparedOffset:{...offset},profilePoints:profile.length,usablePoints:usable.length,vertices:sideVertexCount*2,triangles:naturalCopyFilter.trianglesAfter,trianglesBeforeNaturalCopyFilter:triangles,naturalCopyTrianglesRemoved:naturalCopyFilter.trianglesRemoved,prepareWallMs:nowMs()-wallStarted,prepareCpuMs:stats.vertexCpuMs+stats.indexCpuMs+stats.normalCpuMs+stats.colorCpuMs,slices:stats.slices,maxSliceMs:stats.maxSliceMs,p927SliceBudgetMs:P927_TRANSITION_BUDGET_MS,p927SliceGapMs:P927_TRANSITION_GAP_MS};
       perf.last=meta;
       return {serial,offset,group,meta};
     })();
