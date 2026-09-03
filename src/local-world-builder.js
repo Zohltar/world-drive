@@ -21,6 +21,7 @@ export function createLocalWorldBuilder(options={}){
     replayCommits:0,
     replayObjects:0,
     fallbackBuilds:0,
+    shadowSuppressions:0,
     maxSliceMs:0,
     lastPrepareWallMs:0,
     maxPrepareWallMs:0
@@ -83,15 +84,28 @@ export function createLocalWorldBuilder(options={}){
     return originalFreezeStaticMatrices?.(root,...args);
   }
 
+  function suppressRoadVolumeShadows(object){
+    let changed=0;
+    object?.traverse?.(child=>{
+      if(child?.isMesh&&child.castShadow){
+        child.castShadow=false;
+        changed++;
+      }
+    });
+    roadPerf.shadowSuppressions+=changed;
+    return object;
+  }
+
   function takePrepared(kind,fallback,args){
     const list=roadReplay?.[kind];
     if(list?.length){
       const object=list.shift();
       roadPerf.replayObjects++;
-      return object;
+      return kind==='volume'?suppressRoadVolumeShadows(object):object;
     }
     roadPerf.fallbackBuilds++;
-    return fallback?.(...args);
+    const object=fallback?.(...args);
+    return kind==='volume'?suppressRoadVolumeShadows(object):object;
   }
 
   const originalRoadVolume=options.buildRoadVolume;
@@ -251,6 +265,7 @@ export function createLocalWorldBuilder(options={}){
         replayCommits:roadPerf.replayCommits,
         replayObjects:roadPerf.replayObjects,
         fallbackBuilds:roadPerf.fallbackBuilds,
+        shadowSuppressions:roadPerf.shadowSuppressions,
         maxSliceMs:Number(roadPerf.maxSliceMs.toFixed(3)),
         lastPrepareWallMs:Number(roadPerf.lastPrepareWallMs.toFixed(3)),
         maxPrepareWallMs:Number(roadPerf.maxPrepareWallMs.toFixed(3)),
