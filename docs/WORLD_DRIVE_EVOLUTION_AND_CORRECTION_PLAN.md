@@ -27,47 +27,59 @@ At the start of every World Drive coding/architecture/QA conversation:
 # 1. CURRENT CHECKPOINT
 
 **Plan phase:** **R8 terrain / imagery / local-world / streaming**  
-**State:** **R8.4 LOCAL-WORLD P9.26 STRUCTURAL MOVE DONE — automation + human PASS**  
-**Integration HEAD before this docs commit:** `ad27524f43ad3f429a1ee203e188b693f830e417` — `QA: trigger A8 on nested local-world owner`  
-**R8 Local-World Structure:** run `33699918227` — **PASS** on exact `dev` HEAD  
-**R8 Terrain Streaming Baseline:** run `33699918234` — **PASS**  
-**C6 Final Global Boundary:** run `33699918271` — **PASS**  
-**Cleanup A8 Current Local-World:** run `33699918513` — **PASS**  
-**Dev Integration:** run `33699918207` — **PASS 100/100** on exact `dev` HEAD  
-**Human checkpoint:** route start + multiple refreshes + horizon continuity — **PASS**  
+**State:** **R8.5 TERRAIN P9.26 STRUCTURAL MOVE DONE — automation + human PASS; forest delay deferred as issue #5**  
+**Integration HEAD before this docs commit:** `60bddd5255bc374a53b705531007e6532dd79529` — `QA: add R8 terrain focused gate`  
+**R8 Terrain Structure:** run `33702782047` — **PASS** on exact `dev` HEAD  
+**R8 Terrain Streaming Baseline:** run `33702781938` — **PASS**  
+**C6 Final Global Boundary:** run `33702781983` — **PASS**  
+**R8 Issue #2 Diagnostics:** run `33702781942` — **PASS**  
+**Dev Integration:** run `33702781926` — **PASS 100/100** on exact `dev` HEAD  
+**Triggered workflow set:** **17/17 completed successfully** on exact runtime HEAD  
+**Human checkpoint:** terrain/horizon, road-adjacent relief, refresh transitions and route change — **PASS**. Forest appeared noticeably later; recorded as non-blocking issue #5 for end-of-R8 investigation.  
 **Stable `main`:** `111df5d84bf7fd700590abbd9c129b303ac92fad` — unchanged.
 
-R8.4 layout:
+R8.5 layout:
 
 ```text
-src/local-world-builder.js                         # current public/composition owner
-src/local-world-builder-p926.js                    # stable root compatibility facade
-src/local-world/local-world-builder-p926.js        # P9.26 horizon wrapper implementation
-src/local-world-builder-p925.js                    # KEEP ROOT: sensitive preparation/commit owner
+src/terrain-p925.js          # KEEP ROOT: sensitive P9.25 near-ground / road-bed owner
+src/terrain-p926.js          # stable root compatibility facade
+src/terrain/terrain-p925.js  # tiny bridge back to the protected root P9.25 owner
+src/terrain/terrain-p926.js  # byte-identical prior P9.26 implementation
+src/terrain.js               # current P9.27 owner retained at root
 ```
 
-The P9.26 implementation moved without horizon-policy changes. Its only mechanical import adjustment preserves the existing P9.25 root owner. P9.25 remains intentionally at root because it owns sensitive incremental near-ground preparation, road-bed state installation, frame-spaced slices and prepared commits.
+The P9.26 implementation was moved **byte-for-byte**. A two-line nested P9.25 bridge lets the moved P9.26 file retain its original import text while the real P9.25 implementation remains at root. No horizon budget, timer cadence, terrain visual policy, road transition policy, physics, forest policy or streaming threshold was tuned.
 
-A power outage occurred before the human R8.4 smoke. The subsequent Vite listener failure and unusually slow first startup happened while the local checkout was still on the previous certified `dev`, not on the R8.4 candidate. After reboot and switching to the exact candidate HEAD, the R8.4 smoke passed. Treat that local incident as **non-causal to R8.4**.
+Candidate certification before integration:
 
-## Exact next action — R8.5 terrain micro-audit
+- `candidate/r8-terrain-structure-r1` final HEAD `60bddd5255bc374a53b705531007e6532dd79529`;
+- focused R8 Terrain Structure run `33700698266` — **PASS**;
+- R8 Terrain Streaming Baseline run `33700698271` — **PASS**;
+- human smoke — **PASS except deferred forest appearance timing observation**.
 
-Continue **read-only first**. Audit the terrain chain:
+Issue #5 — `R8: forest appears noticeably later after terrain structure move` — is deliberately **OPEN / deferred / non-blocking** by human direction. Do not tune forest as part of structural R8 work. Diagnose it after remaining R8 structural work stabilizes, comparing startup/front-load timing against the pre-R8.5 baseline first.
+
+## Exact next action — R8.6 remaining terrain/world ownership audit
+
+Continue **read-only first**. Inventory the remaining R8 terrain/world owners and their path/runtime contracts, especially:
 
 ```text
+src/elevation.js
+src/world-scene.js
+src/world-materials.js
+src/terrain-p925.js
 src/terrain.js
-  -> src/terrain-p926.js
-    -> src/terrain-p925.js
 ```
 
 Audit direction:
 
-- `terrain.js` owns current P9.27 road-transition behavior and remains the public/current owner.
-- `terrain-p925.js` owns sensitive near-ground / road-bed behavior. **Do not move or tune it casually.**
-- Evaluate whether **only `terrain-p926.js`** can move under an explicit `src/terrain/` folder behind a stable root facade, analogous to accepted R8.4.
-- Before editing, enumerate all direct path contracts: P9.26 horizon QA, Terrain R1/R2, R8 ownership, C6 global `setTimeout` inventory, issue #2 diagnostics and workflow triggers.
-- If the P9.26-only terrain move is not demonstrably structural-only, KEEP ROOT and document why.
-- Prefer bundling only closely related safe structural work before the next human checkpoint; do not make the user re-test every microscopic move.
+- `src/terrain-p925.js` remains **KEEP ROOT / protected** during the first R8.6 pass. It is large and owns sensitive near-ground preparation, road-bed state, geometry reuse and prepared commits.
+- `src/terrain.js` remains the current P9.27 owner; do not move/tune it casually.
+- Determine whether a smaller low-fan-in owner such as `elevation.js`, `world-scene.js` or `world-materials.js` has a demonstrably structural-only folder move available.
+- Enumerate all QA/workflow/tool/import path contracts before editing. KEEP ROOT is a valid audit result.
+- Do not combine a structural move with issue #4 or issue #5 corrections.
+- Keep issue #5 forest delayed appearance deferred until the end of R8 structural work.
+- Prefer one conservative candidate with focused permanent QA; require human smoke only if the selected move can affect visible/runtime/performance behavior.
 
 ---
 
@@ -81,7 +93,7 @@ Current ownership model:
 - `src/streaming-coordinator.js`: scheduler/arbitration, prepared refresh lifecycle, visual jobs, imagery commit deferral, local-world timing and hitch attribution.
 - forced boot/route/reset keeps the proven synchronous path; periodic refreshes use prepared incremental work.
 - local-world chain: current root owner -> P9.26 facade/nested wrapper -> P9.25 root sensitive base.
-- terrain chain: `terrain.js -> terrain-p926.js -> terrain-p925.js` pending R8.5 audit.
+- terrain chain: `terrain.js -> root P9.26 facade -> terrain/P9.26 -> terrain/P9.25 bridge -> root P9.25`.
 - imagery: root `imagery.js` current owner with historical P9.13 implementation nested under `src/imagery/`.
 - elevation, world scene and route lifecycle remain separate owners.
 
@@ -163,6 +175,27 @@ src/local-world-builder-p925.js                 # KEEP ROOT
 
 Focused QA, full R8 baseline, A8, C6 and Dev Integration passed on exact `dev` HEAD. Human route-start / multiple-refresh / horizon-continuity smoke passed.
 
+## R8.5 — terrain P9.26 structural move — DONE
+
+```text
+src/terrain-p925.js
+src/terrain-p926.js
+src/terrain/terrain-p925.js
+src/terrain/terrain-p926.js
+src/terrain.js
+```
+
+`src/terrain/terrain-p926.js` is the byte-identical prior P9.26 implementation. The stable root `src/terrain-p926.js` remains the compatibility/public path. The nested P9.25 bridge points back to the unchanged sensitive root P9.25 implementation. Current P9.27 stays at root.
+
+Permanent focused coverage:
+
+```text
+qa/qa-source-tree-r8-terrain.mjs
+.github/workflows/qa-source-tree-r8-terrain.yml
+```
+
+`qa/DEV_INTEGRATION_AUDIT.mjs` now includes the R8 terrain source-tree boundary. Focused candidate, full R8 baseline, exact-head Dev Integration, C6 and issue #2 diagnostics all passed. Human terrain/horizon/refresh/route-change smoke passed; delayed forest appearance is tracked separately as issue #5 and is not folded into this structural move.
+
 ---
 
 # 3. Open issues relevant to R8
@@ -176,6 +209,12 @@ Focused QA, full R8 baseline, A8, C6 and Dev Integration passed on exact `dev` H
 **OPEN — pre-existing visual defect.** On Manic-2 → Manic-5, Photo OFF can reveal large solid-black procedural terrain patches with sharp polygon boundaries. Photo ON looks normal. The defect reproduced on both the R8.2 candidate and the prior `dev`, so it is not caused by the imagery move.
 
 Treat issue #4 in a dedicated later R8 correction candidate. Preserve Photo ON while correcting it. Do not mix that visual fix into structural moves.
+
+## Issue #5 — delayed forest appearance during R8.5 smoke
+
+**OPEN / deferred until end of R8 / non-blocking.** During the R8.5 human smoke, terrain and road were already visible while forest population appeared noticeably later than expected. The rest of the R8.5 visual/runtime smoke passed.
+
+Human direction is to record the observation and investigate it **at the end of R8**, not to tune forest during the structural move. Before any correction, compare startup/front-load timing with the pre-R8.5 baseline and determine whether the delay is actually causal to current R8 work.
 
 ---
 
@@ -199,6 +238,7 @@ Treat issue #4 in a dedicated later R8 correction candidate. Preserve Photo ON w
 - R8.2 imagery structure: DONE + A/B human validation.
 - R8.3 streaming structure: DONE automation + human PASS.
 - R8.4 local-world P9.26 structure: DONE automation + human PASS.
+- R8.5 terrain P9.26 structure: DONE automation + human PASS; issue #5 deferred.
 
 Intentional root water layout remains:
 
@@ -218,7 +258,7 @@ Preserve all accepted physics, road/bridge geometry, terrain authority, forest/s
 Do not mix into R8:
 
 - physics/handling tuning;
-- terrain/road/forest visual tuning except a separately approved correction such as issue #4;
+- terrain/road/forest visual tuning except a separately approved correction such as issue #4 or the later evidence-backed issue #5 investigation;
 - dependency/security fixes (`npm audit fix --force` forbidden);
 - GitHub Actions runtime upgrades;
 - historical P9/V21 naming cleanup (Phase O only);
@@ -237,7 +277,9 @@ Generated/source Geofabrik data remain out of Git until packaging is explicitly 
 - R8.2 imagery structure: DONE.
 - R8.3 streaming structure: DONE.
 - R8.4 local-world P9.26 structure: DONE.
-- **R8.5 terrain: ACTIVE — read-only P9.26-only audit first.**
+- R8.5 terrain P9.26 structure: DONE.
+- **R8.6 remaining terrain/world ownership: ACTIVE — read-only audit first; P9.25 protected root.**
+- End-of-R8 follow-up: investigate issue #5 forest appearance timing before declaring R8 closed.
 - Further R8 structural moves/corrections: separate candidates only after evidence.
 - R9 permanent root-cleanliness gate: after R8 stabilizes.
 - Phase O historical naming cleanup: only after Phase R folders stabilize.
@@ -252,7 +294,8 @@ Generated/source Geofabrik data remain out of Git until packaging is explicitly 
 | R8 ownership | `qa/qa-r8-current-ownership.mjs` |
 | R8 streaming P9.17–P9.27 | `qa/qa-r8-streaming-baseline.mjs` |
 | Local-world structure | `qa/qa-source-tree-r8-local-world.mjs` |
-| Terrain/imagery | Terrain R1 + Terrain R2 + human visual smoke |
+| Terrain structure | `qa/qa-source-tree-r8-terrain.mjs` + P9.26 horizon + Terrain R1/R2 |
+| Terrain/imagery visuals | Terrain R1 + Terrain R2 + human visual smoke |
 | Frame pacing | P9.37–P9.42 + `WorldDriveFramePacing()` |
 | Imagery structure | `qa/qa-source-tree-r8-imagery.mjs` |
 | Streaming structure | `qa/qa-source-tree-r8-streaming.mjs` |
