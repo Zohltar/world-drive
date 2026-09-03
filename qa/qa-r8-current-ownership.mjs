@@ -18,6 +18,8 @@ const required=[
   'local-world-builder-p925.js',
   'terrain.js',
   'terrain-p926.js',
+  'terrain/terrain-p926.js',
+  'terrain/terrain-p925.js',
   'terrain-p925.js',
   'imagery.js',
   'imagery/imagery-p913.js',
@@ -38,7 +40,9 @@ const builderP926Facade=read('local-world-builder-p926.js');
 const builderP926=read('local-world/local-world-builder-p926.js');
 const builderP925=read('local-world-builder-p925.js');
 const terrain=read('terrain.js');
-const terrainP926=read('terrain-p926.js');
+const terrainP926Facade=read('terrain-p926.js');
+const terrainP926=read('terrain/terrain-p926.js');
+const terrainP925Bridge=read('terrain/terrain-p925.js');
 const terrainP925=read('terrain-p925.js');
 const imagery=read('imagery.js');
 const imageryP913=read('imagery/imagery-p913.js');
@@ -69,8 +73,16 @@ assert.match(builderP926,/p926Horizon/);
 assert.match(builderP925,/export function createLocalWorldBuilder\s*\(/);
 assert.match(builder,/road-transition/);
 
+// Terrain current P9.27 owner keeps the stable root P9.26 path. P9.26 itself
+// lives under src/terrain/, while a thin sibling bridge preserves its original
+// import and leaves sensitive P9.25 implementation at the root owner.
 assert.match(terrain,/createTerrainService as createTerrainServiceP926/);
+assert.match(terrain,/from ['"]\.\/terrain-p926\.js['"]/);
+assert.doesNotMatch(terrain,/\.\/terrain\/terrain-p926\.js/);
+assert.match(terrainP926Facade,/export\s*\{\s*createTerrainService\s*\}\s*from\s*['"]\.\/terrain\/terrain-p926\.js['"]/);
 assert.match(terrainP926,/createTerrainService as createTerrainServiceP925/);
+assert.match(terrainP926,/from ['"]\.\/terrain-p925\.js['"]/);
+assert.match(terrainP925Bridge,/export\s*\{\s*createTerrainService\s*\}\s*from\s*['"]\.\.\/terrain-p925\.js['"]/);
 assert.match(terrainP925,/export function createTerrainService\s*\(/);
 assert.match(terrain,/P927_TRANSITION_BUDGET_MS/);
 assert.match(terrainP926,/P926_HORIZON_BUDGET_MS/);
@@ -88,7 +100,7 @@ console.log('R8 CURRENT OWNERSHIP BASELINE: PASS',{
   policy:'world-streaming',
   scheduler:'streaming-coordinator -> root facade -> streaming/P9.13 sync base',
   localWorld:'local-world-builder -> root P9.26 facade -> local-world/P9.26 -> root P9.25',
-  terrain:'terrain P9.27 -> P9.26 -> P9.25',
+  terrain:'terrain P9.27 -> root P9.26 facade -> terrain/P9.26 -> thin terrain/P9.25 bridge -> root P9.25',
   imagery:'imagery -> imagery/P9.13 satellite chunks',
   startup:'forced synchronous local-world commit'
 });
