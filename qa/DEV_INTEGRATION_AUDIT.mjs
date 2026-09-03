@@ -7,4 +7,5 @@ await import('./qa-source-tree-r8-world-scene.mjs');
 await import('./qa-source-tree-r8-world-materials.mjs');
 await import('./qa-r8-streaming-baseline.mjs');
 await import('./qa-r8-issue2-imagery-diagnostics.mjs');
+await import('./qa-route-start-final-placement-r8.mjs');
 await import('./DEV_INTEGRATION_AUDIT_BASE.mjs');
