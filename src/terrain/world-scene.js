@@ -120,6 +120,15 @@ export function createWorldScene({THREE,scene}){
     return [];
   };
   const layerObjects=name=>layerRoots[name]?[layerRoots[name]]:dynamicMatches(name);
+  const transitionMeshes=()=>dynamicMatches('transition').flatMap(object=>[...(object.children||[])].filter(child=>child?.isMesh));
+  const transitionShadowState=()=>{
+    const meshes=transitionMeshes();
+    return {
+      meshes:meshes.length,
+      receiveShadow:meshes.length?meshes.every(mesh=>mesh.receiveShadow!==false):null,
+      values:meshes.map(mesh=>!!mesh.receiveShadow)
+    };
+  };
   const issue4Layers={
     names:()=>[...Object.keys(layerRoots),'transition','satellite'],
     list:()=>Object.fromEntries(
@@ -137,9 +146,14 @@ export function createWorldScene({THREE,scene}){
       for(const object of objects)object.visible=!!visible;
       return {name:String(name),visible:!!visible,objects:objects.length,state:issue4Layers.list()[String(name)]??null};
     },
+    transitionShadow:(receive=true)=>{
+      for(const mesh of transitionMeshes())mesh.receiveShadow=!!receive;
+      return transitionShadowState();
+    },
     restore:()=>{
       for(const name of Object.keys(layerRoots))for(const object of layerObjects(name))object.visible=true;
       for(const name of ['transition','satellite'])for(const object of layerObjects(name))object.visible=true;
+      for(const mesh of transitionMeshes())mesh.receiveShadow=true;
       return issue4Layers.list();
     }
   };
