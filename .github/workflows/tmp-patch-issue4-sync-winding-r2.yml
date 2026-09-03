@@ -10,12 +10,12 @@ permissions:
 
 jobs:
   patch:
-    if: github.event.head_commit.message == 'Chore: apply sync winding patch'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
       - name: Patch P9.25 sync transition winding
+        shell: bash
         run: |
           python - <<'PY'
           from pathlib import Path
@@ -29,12 +29,14 @@ jobs:
           };
           if(triangleClear(a,c,b))pushUpwardTriangle(a,c,b);
           if(triangleClear(b,c,d))pushUpwardTriangle(b,c,d);"""
-          if source.count(old) != 1:
-              raise SystemExit(f'expected exactly one sync transition index block, found {source.count(old)}')
+          count = source.count(old)
+          if count != 1:
+              raise SystemExit(f'expected exactly one sync transition index block, found {count}')
           path.write_text(source.replace(old, new))
           PY
           git diff --check
       - name: Commit focused patch
+        shell: bash
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
