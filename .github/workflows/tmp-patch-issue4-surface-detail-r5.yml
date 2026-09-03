@@ -1,0 +1,96 @@
+name: Temporary Issue 4 Surface Detail Probe
+
+on:
+  push:
+    branches:
+      - candidate/issue4-surface-probe-r5
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: "${{ github.event.head_commit.message == 'Chore: seed issue 4 surface detail probe' }}"
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Add read-only transition hit detail probe
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path=Path('src/main.js')
+          source=path.read_text()
+          anchor="// V21.27.2 diagnostics only. Safe to inspect from DevTools; values do not\n"
+          if source.count(anchor)!=1:
+              raise SystemExit(f'expected one diagnostics anchor, found {source.count(anchor)}')
+          insert=r'''// Issue #4 read-only detail probe: enumerate every transition triangle hit at
+// one X/Z so overlapping ribbons from another route branch can be identified.
+worldDriveDiagnostics.presentation.issue4SurfaceDetail=(x=absX,z=absZ)=>{
+  const worldX=Number.isFinite(Number(x))?Number(x):absX;
+  const worldZ=Number.isFinite(Number(z))?Number(z):absZ;
+  const renderX=worldX-worldOffset.x;
+  const renderZ=worldZ-worldOffset.z;
+  const roots=scene.children.filter(child=>
+    child?.name==='road-terrain-transition'||
+    child?.name==='road-terrain-transition-p927-hold'
+  );
+  scene.updateMatrixWorld?.(true);
+  issue4SurfaceRayOrigin.set(renderX,5000,renderZ);
+  issue4SurfaceRaycaster.set(issue4SurfaceRayOrigin,issue4SurfaceRayDirection);
+  issue4SurfaceRaycaster.near=0;
+  issue4SurfaceRaycaster.far=10000;
+  const hits=issue4SurfaceRaycaster.intersectObjects(roots,true);
+  const round=issue4Round;
+  const describeVertex=(object,index)=>{
+    const position=object?.geometry?.getAttribute?.('position');
+    const color=object?.geometry?.getAttribute?.('color');
+    if(!position||!Number.isInteger(index)||index<0||index>=position.count)return null;
+    const local=new THREE.Vector3(position.getX(index),position.getY(index),position.getZ(index));
+    object.localToWorld(local);
+    const vx=local.x+worldOffset.x;
+    const vz=local.z+worldOffset.z;
+    const nearest=nearestRoute(vx,vz);
+    return {
+      index,
+      worldX:round(vx),worldY:round(local.y),worldZ:round(vz),
+      nearestRouteDistance:round(nearest?.d),
+      color:color?{
+        r:round(color.getX(index)),g:round(color.getY(index)),b:round(color.getZ(index))
+      }:null
+    };
+  };
+  return hits.slice(0,12).map((hit,hitIndex)=>{
+    const object=hit.object;
+    const parent=object?.parent;
+    const face=hit.face;
+    const material=Array.isArray(object?.material)?object.material[0]:object?.material;
+    return {
+      hitIndex,
+      y:round(hit.point?.y),
+      object:object?.name||null,
+      parent:parent?.name||null,
+      meshIndex:parent?.children?.indexOf?.(object)??null,
+      material:material?.type||null,
+      materialColor:material?.color?.getHexString?.()||null,
+      vertexColors:!!material?.vertexColors,
+      renderOrder:object?.renderOrder??null,
+      faceIndex:Number.isInteger(hit.faceIndex)?hit.faceIndex:null,
+      faceNormal:face?{x:round(face.normal?.x),y:round(face.normal?.y),z:round(face.normal?.z)}:null,
+      vertices:face?[describeVertex(object,face.a),describeVertex(object,face.b),describeVertex(object,face.c)]:[]
+    };
+  });
+};
+
+'''
+          path.write_text(source.replace(anchor,insert+anchor))
+          PY
+          git diff --check
+      - name: Commit focused diagnostic
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/main.js
+          git commit -m "Diagnostics: enumerate issue 4 transition hits"
+          git push origin HEAD:candidate/issue4-surface-probe-r5
