@@ -1,0 +1,41 @@
+name: Issue 4 Surface Probe QA
+
+on:
+  push:
+    branches:
+      - candidate/issue4-surface-probe-r5
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  qa:
+    runs-on: ubuntu-latest
+    timeout-minutes: 18
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install
+        run: npm ci
+      - name: Issue 4 physical/rendered surface probe QA
+        run: node qa/qa-issue4-surface-probe.mjs
+      - name: Issue 4 transition geometry probe QA
+        run: node qa/qa-issue4-transition-geometry-probe.mjs
+      - name: World scene C5.3 QA
+        run: node qa/qa-main-c5-world-scene.mjs
+      - name: Current local-world ownership QA
+        run: node qa/qa-local-world-current-a8.mjs
+      - name: R8 streaming baseline aggregate
+        run: node qa/qa-r8-streaming-baseline.mjs
+      - name: Runtime import and source-tree audit
+        run: node qa/DEV_INTEGRATION_AUDIT.mjs
+      - name: Production build
+        run: npm run build
+      - name: Production code split QA
+        run: node qa/BUILD_V21_31_CODE_SPLIT_QA.mjs
