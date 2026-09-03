@@ -3,7 +3,8 @@ import fs from 'node:fs';
 const read=path=>fs.readFileSync(new URL('../'+path,import.meta.url),'utf8');
 const main=read('src/main.js');
 const streaming=read('src/streaming/streaming-coordinator-p913.js');
-const worldScene=read('src/world-scene.js');
+const worldSceneFacade=read('src/world-scene.js');
+const worldScene=read('src/terrain/world-scene.js');
 const worldMaterials=read('src/world-materials.js');
 const terrain=read('src/terrain.js');
 const distantTerrainFacade=read('src/terrain-p926.js');
@@ -34,6 +35,7 @@ has(main,'worldDriveDiagnostics.framePacing.snapshot=()=>({','canonical quiet hi
 has(main,"'WorldDriveFramePacing'",'frame-pacing compatibility alias missing');
 
 // Preserve the accepted visual scope now owned by responsibility-based modules.
+has(worldSceneFacade,"from './terrain/world-scene.js'",'stable world-scene facade changed');
 has(worldScene,'export const NEAR_TERRAIN_SIZE=5600;','near-terrain footprint changed');
 has(worldScene,'export const NEAR_TERRAIN_SEGMENTS=448;','near-terrain density changed');
 has(worldMaterials,'const size=512;','road texture resolution changed');

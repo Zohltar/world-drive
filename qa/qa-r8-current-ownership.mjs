@@ -25,6 +25,7 @@ const required=[
   'imagery/imagery-p913.js',
   'elevation.js',
   'world-scene.js',
+  'terrain/world-scene.js',
   'routing/route-lifecycle.js'
 ];
 for(const name of required){
@@ -47,7 +48,8 @@ const terrainP925=read('terrain-p925.js');
 const imagery=read('imagery.js');
 const imageryP913=read('imagery/imagery-p913.js');
 const elevation=read('elevation.js');
-const worldScene=read('world-scene.js');
+const worldSceneFacade=read('world-scene.js');
+const worldScene=read('terrain/world-scene.js');
 const routeLifecycle=read('routing/route-lifecycle.js');
 
 assert.match(worldStreaming,/unified world streaming policy/);
@@ -93,7 +95,10 @@ assert.match(imageryP913,/satellite-terrain-chunks/);
 assert.match(imageryP913,/function invalidateGeometry\s*\(/);
 
 assert.match(elevation,/export function createElevationService\s*\(/);
+assert.match(worldSceneFacade,/from ['"]\.\/terrain\/world-scene\.js['"]/);
 assert.match(worldScene,/export function createWorldScene\s*\(/);
+assert.match(worldScene,/export const NEAR_TERRAIN_SIZE=5600/);
+assert.match(worldScene,/export const NEAR_TERRAIN_SEGMENTS=448/);
 assert.match(routeLifecycle,/commitLocalWorldRefresh\(\)/);
 
 console.log('R8 CURRENT OWNERSHIP BASELINE: PASS',{
@@ -101,6 +106,7 @@ console.log('R8 CURRENT OWNERSHIP BASELINE: PASS',{
   scheduler:'streaming-coordinator -> root facade -> streaming/P9.13 sync base',
   localWorld:'local-world-builder -> root P9.26 facade -> local-world/P9.26 -> root P9.25',
   terrain:'terrain P9.27 -> root P9.26 facade -> terrain/P9.26 -> thin terrain/P9.25 bridge -> root P9.25',
+  worldScene:'root facade -> terrain/world-scene implementation',
   imagery:'imagery -> imagery/P9.13 satellite chunks',
   startup:'forced synchronous local-world commit'
 });

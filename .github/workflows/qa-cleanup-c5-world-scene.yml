@@ -7,6 +7,7 @@ on:
     paths:
       - 'src/main.js'
       - 'src/world-scene.js'
+      - 'src/terrain/world-scene.js'
       - 'src/terrain*.js'
       - 'src/local-world-builder*.js'
       - 'src/streaming-coordinator*.js'

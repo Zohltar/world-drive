@@ -1,0 +1,51 @@
+name: R8 World Scene Structure QA
+
+on:
+  push:
+    branches:
+      - dev
+      - candidate/r8-world-scene-r1
+    paths:
+      - 'src/world-scene.js'
+      - 'src/terrain/world-scene.js'
+      - 'src/main.js'
+      - 'qa/qa-source-tree-r8-world-scene.mjs'
+      - 'qa/qa-r8-current-ownership.mjs'
+      - 'qa/qa-main-c5-world-scene.mjs'
+      - 'qa/V21_22_3_HITCH_FREE_QA.mjs'
+      - 'qa/DEV_INTEGRATION_AUDIT.mjs'
+      - '.github/workflows/qa-cleanup-c5-world-scene.yml'
+      - '.github/workflows/qa-source-tree-r8-world-scene.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  qa:
+    runs-on: ubuntu-latest
+    timeout-minutes: 18
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install
+        run: npm ci
+      - name: R8 world-scene source-tree boundary
+        run: node qa/qa-source-tree-r8-world-scene.mjs
+      - name: C5.3 world-scene behavior contract
+        run: node qa/qa-main-c5-world-scene.mjs
+      - name: V21.22.3 hitch-free visual ownership
+        run: node qa/V21_22_3_HITCH_FREE_QA.mjs
+      - name: R8 current ownership baseline
+        run: node qa/qa-r8-current-ownership.mjs
+      - name: Runtime import and source-tree audit
+        run: node qa/DEV_INTEGRATION_AUDIT.mjs
+      - name: Production build
+        run: npm run build
+      - name: Production code split QA
+        run: node qa/BUILD_V21_31_CODE_SPLIT_QA.mjs
