@@ -87,10 +87,9 @@ export function createWorldScene({THREE,scene}){
   ground.renderOrder=-5;
   scene.add(ground);
 
-  // Issue #4 diagnostic candidate: preserve transition geometry and all depth /
-  // stencil ordering, but remove every lighting, normal, texture and vertex-colour
-  // contribution. If a black corridor survives this material, the cause is below
-  // the material/shading layer and the next audit can focus on raster geometry.
+  // Issue #4 diagnostic candidate: preserve the exact basic-material probe state
+  // but hide the whole transition group so the user can compare the underlying
+  // procedural terrain directly against the visible green ribbon candidate.
   const transitionBasicTint=0x6f8150;
   const createTransitionBasicMaterial=source=>{
     const material=new THREE.MeshBasicMaterial({
@@ -135,6 +134,8 @@ export function createWorldScene({THREE,scene}){
       'road-terrain-transition',
       'road-terrain-transition-p927-hold'
     ].includes(group?.name))return group;
+
+    group.visible=false;
 
     group.traverse?.(child=>{
       if(!child?.isMesh||child.userData?.issue4BasicTransitionMaterial)return;
