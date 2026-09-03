@@ -27,17 +27,17 @@ At the start of every World Drive coding/architecture/QA conversation:
 
 # 1. CURRENT CHECKPOINT
 
-**Plan phase:** **R8 end-of-phase stabilization**  
-**State:** **R8 STRUCTURAL REORGANIZATION COMPLETE / FROZEN — issue #6 corrected + automation/human PASS; issue #5 causal audit is next**  
-**Runtime integration HEAD before this docs commit:** `a4267ec3c92a84ad16beea29037312c05b4f25f6` — `QA: add R8 post-structure spawn gate`  
-**R8 Post-Structure Spawn QA:** run `33711906871` — **PASS** on exact integrated `dev` HEAD  
-**R8 Terrain Streaming Baseline:** run `33711906868` — **PASS**  
-**Dev Integration:** run `33711906922` — **PASS 100/100 functional steps** on exact integrated `dev` HEAD  
-**Human checkpoint:** multi-route creation + normal driving + reset — **PASS**  
+**Plan phase:** **R9 permanent root-cleanliness gate**  
+**State:** **R8 COMPLETE / STABILIZED / FROZEN — structural work + issues #5 and #6 corrections automation/human PASS**  
+**Final R8 runtime integration HEAD before this docs commit:** `31561c128696f045aeaf98fde9de8a1f9ecdabd6` — `QA: add forest route readiness workflow`  
+**R8 Forest Route Readiness QA:** run `33712481302` — **PASS**  
+**R8 Terrain Streaming Baseline:** run `33712481234` — **PASS**  
+**Human checkpoint:** repeated in-game route changes / forest readiness / normal driving — **PASS**  
+**Issue #5:** **CLOSED / corrected**  
 **Issue #6:** **CLOSED / corrected**  
 **Stable `main`:** `111df5d84bf7fd700590abbd9c129b303ac92fad` — unchanged.
 
-R8 structural ownership is now intentionally frozen. Do not perform more organization-only moves merely to reduce root-file count.
+R8 terrain/imagery/local-world/streaming ownership is now intentionally frozen. Do not perform more organization-only moves merely to reduce root-file count.
 
 Final R8 ownership decisions:
 
@@ -69,23 +69,22 @@ src/world-materials.js
 src/elevation.js                                    # KEEP ROOT / P9.19 hot DEM owner
 ```
 
-`src/elevation.js` remains root-owned because it combines Terrarium network/image loading, cache/prefetch state and the high-frequency P9.19 world-space sampler/compatibility contract. Moving it now adds runtime/path risk without enough architectural benefit.
+`src/elevation.js` remains root-owned because it combines Terrarium network/image loading, cache/prefetch state and the high-frequency P9.19 world-space sampler/compatibility contract. Moving it adds runtime/path risk without enough architectural benefit.
 
 `src/terrain-p925.js` remains **KEEP ROOT / protected** because it owns sensitive near-ground preparation, road-bed state, geometry reuse and prepared commits. `src/terrain.js` remains the current P9.27 root owner.
 
-## Exact next action — issue #5 forest appearance timing audit
+## Exact next action — R9 permanent root-cleanliness gate
 
-Issue #5 was observed during the R8.5 human smoke: terrain/road appeared ready while forest population arrived noticeably later. Structural work is now complete, so this is the next end-of-R8 task.
+Proceed **read-only first**. R9 is not another broad file-moving phase. Its purpose is to make the accepted root/folder architecture enforceable so future work cannot silently reintroduce structural debt.
 
-Proceed **read-only / causal first**:
-
-1. Compare current forest startup/front-load behavior and relevant source history against pre-R8.5 baseline `9d328e142ff01d44ea4d8b324f3cb58cf05c7ac1`.
-2. Determine whether R8.5 or any later structural move changed forest code, scheduling, activation order, route-change readiness or only exposed an existing timing characteristic.
-3. Inspect the current route-change sequence, forest cache reset, scenery rebuild, forest asset activation, startup direction seeding and P9.35 readiness gate.
-4. Do **not** tune chunk budgets, thresholds, density, visuals or streaming policy without evidence.
-5. If timing evidence is insufficient, prefer a telemetry-only candidate that timestamps route change → scenery rebuild → first forest chunk → readiness milestones.
-6. Human A/B/runtime testing is required only once there is a meaningful diagnostic or correction candidate.
-7. Keep issues #2 and #4 separate; do not fold unrelated terrain/imagery fixes into issue #5.
+1. Inventory the current `src/` root after R8 and classify each remaining root module as public/stable facade, intentional protected owner, application bootstrap/runtime owner, or migration debt.
+2. Reuse the already-certified R1–R8 source-tree boundary QAs instead of duplicating them.
+3. Define the smallest permanent root-cleanliness policy that rejects **new unexplained root modules** while explicitly allowing the accepted current root set.
+4. The gate must not require renaming historical P9/V21 files; historical naming cleanup remains Phase O.
+5. Do not move protected owners merely to satisfy the gate. The gate must encode architecture decisions, not force cosmetic churn.
+6. Candidate first for the permanent QA/workflow; validate against current `dev`, build and exact-head Dev Integration.
+7. No human driving checkpoint is required for a QA-only R9 gate unless runtime files are unexpectedly changed.
+8. Keep issues #2 and #4 separate backlog items; do not mix their corrections into R9.
 
 ---
 
@@ -165,7 +164,7 @@ src/terrain/terrain-p925.js
 src/terrain-p925.js                              # KEEP ROOT
 ```
 
-P9.26 implementation moved behind the stable root facade while sensitive P9.25 remained root-owned. P9.27 stayed at root. Automation and human terrain/horizon/refresh/route-change smoke passed. Issue #5 was recorded separately.
+P9.26 implementation moved behind the stable root facade while sensitive P9.25 remained root-owned. P9.27 stayed at root. Automation and human terrain/horizon/refresh/route-change smoke passed.
 
 Permanent focused coverage:
 
@@ -190,7 +189,7 @@ src/world-materials.js
 src/terrain/world-materials.js
 ```
 
-World-materials implementation moved behind the stable root facade with focused/permanent QA. The exact certified runtime checkpoint was:
+World-materials implementation moved behind the stable root facade with focused/permanent QA. Certified runtime checkpoint:
 
 - `dev @ d09017137e671d1d5a098ccfc5d0c058c8b78d07` — `QA: certify R8 world-materials boundary`;
 - R8 World Materials Structure QA `33705740429` — **PASS**;
@@ -206,7 +205,7 @@ Read-only review of remaining terrain/world owners concluded:
 - `src/terrain-p925.js` — **KEEP ROOT / protected**;
 - `src/terrain.js` — **KEEP ROOT / current P9.27 owner**.
 
-This closes structural R8. No further organization-only terrain/streaming moves are planned.
+This closed structural R8.
 
 ## R8 post-structure — issue #6 route-start final placement — DONE / CLOSED
 
@@ -238,9 +237,37 @@ Validation:
 
 GitHub issue #6 is **CLOSED / completed**.
 
+## R8 post-structure — issue #5 route-change forest readiness — DONE / CLOSED
+
+Causal audit proved R8.5 non-causal: the forest/scenery owners were byte-identical across the R8.5 move. The actual defect was an older route-change sequencing asymmetry: initial startup waited for P9.35 forest readiness, but in-game route creation exposed terrain immediately after starting scenery asynchronously.
+
+Dedicated candidate:
+
+```text
+candidate/r8-forest-route-readiness-r1
+final HEAD 31561c128696f045aeaf98fde9de8a1f9ecdabd6
+```
+
+Correction:
+
+- in-game route changes reuse the existing P9.35 readiness barrier before hiding the loading overlay;
+- initial startup behavior is unchanged;
+- no forest density/budget/threshold/visual tuning;
+- route-start final-placement correction remains preserved.
+
+Validation:
+
+- R8 Forest Route Readiness QA `33712481302` — **PASS**;
+- R8 Terrain Streaming Baseline `33712481234` — **PASS**;
+- P9.35 startup/front-load, rolling prefetch, prepared forest retention — **PASS**;
+- route placement preservation, runtime audit, build and code split — **PASS**;
+- human repeated multi-route smoke — **PASS**, including acceptance of the small additional loading wait.
+
+GitHub issue #5 is **CLOSED / completed**.
+
 ---
 
-# 3. R8 issues
+# 3. Open/deferred issues after R8
 
 ## Issue #2 — delayed terrain startup adjustment
 
@@ -250,17 +277,15 @@ GitHub issue #6 is **CLOSED / completed**.
 
 **OPEN / pre-existing visual defect.** Photo OFF can reveal large solid-black procedural terrain patches; Photo ON looks normal. A/B reproduction on pre-R8.2 `dev` proved the imagery structural move non-causal.
 
-Treat only in a dedicated correction candidate. Preserve Photo ON.
+Treat only in a dedicated correction candidate. Preserve Photo ON. This is not part of R9 root-cleanliness work.
 
-## Issue #5 — delayed forest appearance
+## Issue #5 — route-change forest readiness
 
-**OPEN / ACTIVE NEXT / evidence first.** During R8.5 human smoke, terrain/road were already visible while forest population appeared noticeably later than expected.
-
-No forest tuning is authorized yet. Compare with pre-R8.5 baseline `9d328e142ff01d44ea4d8b324f3cb58cf05c7ac1`, establish causality, then add telemetry or correct only the proven cause.
+**CLOSED / corrected.** In-game route changes now wait on the already-proven P9.35 forest readiness gate before exposing the route.
 
 ## Issue #6 — vehicle can spawn below terrain on a new route
 
-**CLOSED / corrected.** Final route-start placement now re-samples the final road-profile height after the initial DEM/world commit. Candidate, exact integrated automation and human multi-route/reset validation passed.
+**CLOSED / corrected.** Final route-start placement re-samples the final road-profile height after the initial DEM/world commit.
 
 ---
 
@@ -281,6 +306,8 @@ No forest tuning is authorized yet. Compare with pre-R8.5 baseline `9d328e142ff0
 - R7 app/input/UI/routing/services: DONE automation + human PASS.
 - R8.0–R8.7 structural work: DONE / frozen.
 - R8 issue #6 correction: DONE automation + human PASS; issue CLOSED.
+- R8 issue #5 correction: DONE automation + human PASS; issue CLOSED.
+- **R8 overall: COMPLETE / STABILIZED / FROZEN.**
 
 Intentional root water layout remains:
 
@@ -306,16 +333,17 @@ src/local-world-builder-p925.js
 
 Preserve accepted physics, road/bridge geometry, terrain authority, forest/scenery behavior, hydro semantics, settings/routing/UI contracts, local-first Quebec hydro, cache behavior, Photo ON quality, streaming frame pacing and compatibility diagnostic aliases.
 
-Do not mix into R8 stabilization:
+Do not mix into R9:
 
+- runtime file moves merely to reduce root count;
 - physics/handling tuning;
-- terrain/road/forest visual tuning without a dedicated evidence-backed correction;
+- terrain/road/forest visual tuning;
 - dependency/security fixes (`npm audit fix --force` forbidden);
 - GitHub Actions runtime upgrades;
 - historical P9/V21 naming cleanup (Phase O only);
 - scenery/sign offline migration;
 - regional-data packaging decisions;
-- unrelated issue #2/#4 changes inside issue #5 work.
+- issue #2/#4 corrections.
 
 Generated/source Geofabrik data remain out of Git until packaging is explicitly decided.
 
@@ -332,12 +360,12 @@ Generated/source Geofabrik data remain out of Git until packaging is explicitly 
 - R8.5 terrain structure: DONE.
 - R8.6 world-scene structure: DONE.
 - R8.7 world-materials + remaining-owner audit: DONE; `elevation.js`, P9.25 and P9.27 KEEP ROOT.
-- R8 structural reorganization: **CLOSED / FROZEN**.
 - R8 issue #6 route-start placement: DONE / CLOSED.
-- **End-of-R8 active task: issue #5 forest timing causal audit.**
+- R8 issue #5 route-change forest readiness: DONE / CLOSED.
+- **R8 overall: CLOSED / FROZEN.**
+- **R9 permanent root-cleanliness gate: ACTIVE — read-only inventory and policy first.**
 - Issue #2: watch-only unless reproduced.
-- Issue #4: dedicated Photo OFF correction later; do not mix into #5.
-- R9 permanent root-cleanliness gate: after R8 stabilization closes.
+- Issue #4: dedicated Photo OFF correction later; keep separate from R9.
 - Phase O historical naming cleanup: after R9 / folder stabilization.
 
 ---
@@ -355,10 +383,11 @@ Generated/source Geofabrik data remain out of Git until packaging is explicitly 
 | World-materials structure | `qa/qa-source-tree-r8-world-materials.mjs` + C5.1 + V21.22.3 |
 | Elevation owner | `qa/qa-streaming-p919-elevation.mjs` |
 | Route-start placement | `qa/qa-route-start-final-placement-r8.mjs` + finite placement QA + human multi-route smoke |
-| Forest timing | P9.35 startup + P9.36 prefetch + P9.38 retention + telemetry/A-B if correction proposed |
+| Route-change forest readiness | `qa/qa-r8-forest-route-readiness.mjs` + P9.35/P9.36/P9.38 + human multi-route smoke |
 | Terrain/imagery visuals | Terrain R1 + Terrain R2 + human visual smoke |
 | Frame pacing | P9.37–P9.42 + `WorldDriveFramePacing()` |
 | Build | `npm run build` + code-split QA |
+| R9 root cleanliness | permanent allowlist/policy gate + existing R1–R8 boundary QAs |
 | Final integration | Dev Integration on exact final `dev` HEAD |
 
 Automation cannot replace human-visible validation.
