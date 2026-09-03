@@ -121,12 +121,21 @@ export function createWorldScene({THREE,scene}){
   };
   const layerObjects=name=>layerRoots[name]?[layerRoots[name]]:dynamicMatches(name);
   const transitionMeshes=()=>dynamicMatches('transition').flatMap(object=>[...(object.children||[])].filter(child=>child?.isMesh));
+  const transitionMaterials=()=>transitionMeshes().flatMap(mesh=>Array.isArray(mesh.material)?mesh.material:[mesh.material]).filter(Boolean);
   const transitionShadowState=()=>{
     const meshes=transitionMeshes();
     return {
       meshes:meshes.length,
       receiveShadow:meshes.length?meshes.every(mesh=>mesh.receiveShadow!==false):null,
       values:meshes.map(mesh=>!!mesh.receiveShadow)
+    };
+  };
+  const transitionStencilState=()=>{
+    const materials=transitionMaterials();
+    return {
+      materials:materials.length,
+      stencilWrite:materials.length?materials.every(material=>material.stencilWrite!==false):null,
+      values:materials.map(material=>!!material.stencilWrite)
     };
   };
   const issue4Layers={
@@ -150,10 +159,21 @@ export function createWorldScene({THREE,scene}){
       for(const mesh of transitionMeshes())mesh.receiveShadow=!!receive;
       return transitionShadowState();
     },
+    transitionStencil:(enabled=true)=>{
+      for(const material of transitionMaterials()){
+        material.stencilWrite=!!enabled;
+        material.needsUpdate=true;
+      }
+      return transitionStencilState();
+    },
     restore:()=>{
       for(const name of Object.keys(layerRoots))for(const object of layerObjects(name))object.visible=true;
       for(const name of ['transition','satellite'])for(const object of layerObjects(name))object.visible=true;
       for(const mesh of transitionMeshes())mesh.receiveShadow=true;
+      for(const material of transitionMaterials()){
+        material.stencilWrite=true;
+        material.needsUpdate=true;
+      }
       return issue4Layers.list();
     }
   };
