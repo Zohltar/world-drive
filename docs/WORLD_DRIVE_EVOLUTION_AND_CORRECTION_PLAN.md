@@ -20,63 +20,80 @@ At the start of every World Drive coding/architecture/QA conversation:
 5. Use certified blocks: read-only audit → candidate → focused QA → permanent coverage → exact-head Dev Integration → human checkpoint where visuals/runtime/performance can change.
 6. **Never move `main` without explicit user approval.**
 7. Human-visible FAIL overrides green automation; A/B may establish that a defect predates a candidate.
-8. One intent per commit. Do not mix dependency/security/Actions/behavioral work into unrelated structural or naming work.
+8. One intent per commit. Do not mix dependency/security/Actions/behavioral work into unrelated structural or correction work.
 9. Prefer meaningful work blocks. Involve the user only at critical runtime/visual/integration checkpoints.
 
 ---
 
 # 1. CURRENT CHECKPOINT
 
-**Plan phase:** **post-architecture visual correction backlog — issue #4 Photo OFF terrain patches**  
-**State:** **R1–R9 + Phase O DONE/CERTIFIED; R8 architecture FROZEN; issue #4 is next concrete runtime defect**  
-**Phase O integration HEAD before this docs commit:** `f6ec24c955504217d2cf87a62b89af8259d80898` — `QA: include hidden P9.41 runtime state in naming boundary`  
-**Phase O Historical Naming Boundary QA:** run `33750048026` — **PASS** on exact integrated `dev` HEAD  
-**Dev Integration:** run `33750047938` — **PASS 100/100 functional steps** on exact integrated `dev` HEAD  
-**Triggered workflow set:** **15/15 completed successfully** on exact integrated Phase O HEAD  
-**Candidate focused Phase O run:** `33749970701` — **PASS**  
-**Human checkpoint:** not required; Phase O changed QA/workflow files only.  
+**Plan phase:** **post-architecture correction backlog — issue #8 bridge/off-road wheel support**  
+**State:** **R1–R9 + Phase O DONE/CERTIFIED; R8 architecture FROZEN; issue #4 CLOSED / HUMAN PASS; issue #8 is next concrete defect**  
+**Issue #4 runtime integration HEAD before this docs checkpoint:** `4d85c7078442cf7c308d53b2f1d2dd2f9bb63f15` — `QA: run issue 4 retired transition candidate`  
+**Issue #4 focused candidate QA:** run `33807775191` — **PASS**  
+**Issue #4 exact-head Dev Integration:** run `33807859257` — **PASS 100/100 functional steps** on `4d85c7078442cf7c308d53b2f1d2dd2f9bb63f15`  
+**Issue #4 triggered workflow set:** **11/11 completed successfully** on the integrated runtime HEAD  
+**Issue #4 human checkpoint:** **PASS** — hidden transition presentation is better in all tested cases, including Manic-5 Photo OFF/ON and steep/tight-road comparisons.  
 **Stable `main`:** `111df5d84bf7fd700590abbd9c129b303ac92fad` — unchanged.
 
-## Phase O decision — KEEP existing historical lineage, prevent new naming debt
+## Issue #4 final decision — retire legacy transition presentation
 
-Phase O did **not** rename runtime files. The audit concluded that current `P9`, `V21` and `Mx` names still encode compatibility boundaries, implementation lineage, active branding or diagnostic provenance. Mechanical renames would add path/compatibility risk while erasing useful history.
+The visible black Photo-OFF patches were isolated to the legacy `road-terrain-transition` presentation layer.
 
-Permanent Phase O policy:
+Causal evidence:
+
+- hiding the main `ground` did not remove the black patches;
+- hiding `road-terrain-transition` removed them;
+- shadow, stencil, winding, shading-floor, vertex-color and polygon-offset candidates were HUMAN FAIL / non-causal;
+- an unlit fixed `MeshBasicMaterial` probe removed the black, proving the transition presentation path was responsible rather than the underlying terrain;
+- hiding the transition entirely was visually cleaner than keeping the helper ribbon.
+
+Final runtime correction:
 
 ```text
-qa/qa-phase-o-naming-boundary.mjs
-.github/workflows/qa-phase-o-naming-boundary.yml
-qa/DEV_INTEGRATION_AUDIT.mjs  # imports Phase O boundary
+src/terrain/world-scene.js
 ```
 
-The gate freezes:
+`road-terrain-transition` and `road-terrain-transition-p927-hold` are presentation-retired with `visible=false` when added to the scene. Their generation, material, depth, geometry and physics contracts are otherwise left intact for minimal risk.
 
-- **21** accepted historical runtime source paths;
-- **15** historical compatibility/diagnostic/runtime-state globals;
-- existing lineage remains allowed;
-- **new** milestone/version-stamped runtime filenames (`P9`, `Vxx`, `Mx`) require explicit policy review.
+Permanent focused coverage:
 
-Important audit refinements:
+```text
+qa/qa-issue4-transition-retired.mjs
+.github/workflows/qa-issue4-transition-retired.yml
+```
 
-- binary/media names are not naming debt merely because they contain version-like text (example: `f1-v8.ogg`);
-- hidden computed runtime state `__WORLD_DRIVE_P941_FRAME_RUNTIME_STATE__` is explicitly retained as P9.41 lineage state;
-- `vehicle-presentation-v21.29.js` and M3 multiplayer layers are explicitly retained because current QA/runtime contracts treat them as historical compatibility layers.
+Issue #4 is **CLOSED / corrected / HUMAN PASS**.
 
-## Exact next action — issue #4 Photo OFF black procedural terrain patches
+## Exact next action — issue #8 elevated road/bridge wheel-support bleed
 
-Issue #4 is concrete, reproducible and pre-existing. Photo OFF can expose large solid-black procedural terrain patches with sharp polygon boundaries beside the road; Photo ON is visually correct.
+Issue #8 is a **separate physical defect** discovered while diagnosing issue #4. Near/under an elevated bridge, wheel support can follow the elevated road plane even when the vehicle is on natural terrain beside or below it.
 
-Proceed **read-only / causal first**:
+Measured bad point:
 
-1. Re-read issue #4 and preserve its A/B conclusion: the defect predates R8.2 and is not caused by the imagery structural move.
-2. Trace what Photo OFF actually toggles in `imagery.js` and what terrain/material becomes visible underneath.
-3. Inspect the procedural near-ground material/vertex-color/texture path across `world-materials`, current `terrain.js`, P9.26/P9.25 and local-world prepared commits.
-4. Search for black material defaults, missing/zero vertex colors, uninitialized texture/material slots, invalid normals/UVs, transparent/stencil interactions or stale material state that could create polygon-shaped black regions.
-5. Compare Photo ON vs OFF ownership; **do not alter Photo ON imagery quality**.
-6. Do not tune terrain geometry, road shape, physics, forest or streaming merely to mask the artifact.
-7. If source evidence identifies a narrow cause, create a dedicated issue-#4 candidate with focused permanent QA and Photo ON/OFF regression protection.
-8. Human visual A/B is mandatory before integration of any issue-#4 runtime correction.
-9. If evidence is insufficient, add narrowly scoped diagnostics rather than speculative visual tuning.
+- route distance `5.762 m`;
+- road surface `2.889 m`;
+- physical DEM `-2.113 m`;
+- rendered ground `-1.640 m`;
+- wheel support `2.786 m`.
+
+Healthy nearby point:
+
+- route distance `8.041 m`;
+- physical DEM `1.892 m`;
+- rendered ground `2.037 m`;
+- wheel support `1.962 m`.
+
+Proceed conservatively:
+
+1. Re-read issue #8 and preserve the measured surface-probe evidence.
+2. Audit `wheel-ground-support` road/terrain blending and identify the exact ownership of elevated-road rejection.
+3. Preserve support **on the bridge itself** and normal smooth road-edge/re-entry behavior.
+4. Do not retune handling, suspension, road geometry or terrain geometry.
+5. Treat prior `candidate/issue4-bridge-support-r1` as exploratory only; it is **not certified for integration**.
+6. If the existing guard is structurally sound, create a clean issue-#8 candidate from current `dev` with focused permanent QA.
+7. Human validation must cover: driving on bridge, directly below/beside bridge, ordinary road exit/re-entry, and at least one non-bridge route.
+8. Integrate only after focused QA + exact-head Dev Integration + human PASS.
 
 ---
 
@@ -90,7 +107,7 @@ Proceed **read-only / causal first**:
 - R4 vehicles/presentation/models/truck: DONE automation + human PASS.
 - R4.5 audio: DONE automation + human PASS.
 - QA root-layout: DONE.
-- R5 vehicle dynamics / wheel-ground / transmission: CLOSED; no physics tuning.
+- R5 vehicle dynamics / wheel-ground / transmission: CLOSED; no broad physics retune.
 - R6.1 road furniture/signs: DONE automation + human PASS.
 - R6.2 road geometry/bridges: DONE automation + human PASS.
 - R6.3 scenery/forest: CLOSED; scenery moved, forest KEEP ROOT.
@@ -142,19 +159,11 @@ R8 structural moves R8.2–R8.7 all passed focused automation, exact-head Dev In
 
 ### Issue #6 — route-start vehicle under terrain — CLOSED
 
-Root cause: initial/fallback road height could be sampled before final DEM/local-world commit.
-
-Correction: lightweight final road-profile height re-sample after initial DEM/world commit, without second full recenter or physics retune.
-
-Candidate/integrated automation + human multi-route/reset smoke: PASS.
+Final road-profile height is re-sampled after initial DEM/world commit. Candidate/integrated automation + human multi-route/reset smoke: PASS.
 
 ### Issue #5 — late forest on route change — CLOSED
 
-R8.5 was proven non-causal. Actual cause was older sequencing asymmetry: initial startup waited for P9.35 readiness but in-game route changes exposed terrain before the same forest readiness barrier.
-
-Correction: in-game route changes now reuse existing P9.35 readiness before hiding loading overlay. No forest density/budget/threshold tuning.
-
-Automation + repeated human multi-route smoke: PASS.
+In-game route changes reuse the existing P9.35 readiness barrier before exposing the route. No forest density/budget/threshold tuning. Automation + repeated human multi-route smoke: PASS.
 
 ## R9 permanent root-cleanliness — DONE / CERTIFIED
 
@@ -165,21 +174,7 @@ qa/qa-r9-root-cleanliness.mjs
 .github/workflows/qa-r9-root-cleanliness.yml
 ```
 
-R9 freezes **67** accepted direct `src/` files:
-
-- 32 stable/public facades;
-- 14 intentional protected owners;
-- 21 bootstrap/runtime owners;
-- 0 direct-root placement debt.
-
-New owned subdirectories remain allowed. A new direct `src/` file requires explicit R9 policy update/architectural justification.
-
-Certified:
-
-- candidate focused `33748697259` — PASS;
-- integrated R9 `33748842006` — PASS;
-- integrated Dev Integration `33748841800` — PASS 100/100;
-- 14/14 triggered workflows — PASS.
+R9 freezes the accepted direct `src/` topology and requires explicit policy review for new direct-root source owners.
 
 ## Phase O historical naming boundary — DONE / CERTIFIED
 
@@ -192,12 +187,7 @@ qa/qa-phase-o-naming-boundary.mjs
 .github/workflows/qa-phase-o-naming-boundary.yml
 ```
 
-Certified:
-
-- candidate focused final `33749970701` — PASS;
-- integrated Phase O `33750048026` — PASS;
-- integrated Dev Integration `33750047938` — PASS 100/100;
-- 15/15 triggered workflows — PASS.
+Existing historical `P9`, `V21` and `Mx` lineage remains accepted; new milestone/version-stamped runtime names require explicit review.
 
 ---
 
@@ -209,7 +199,7 @@ Certified:
 
 ## Issue #4 — Photo OFF black procedural terrain patches
 
-**OPEN / ACTIVE NEXT / pre-existing.** Photo OFF can reveal large solid-black polygonal terrain patches. Photo ON is correct. A/B reproduction before R8.2 proved the imagery structural move non-causal. Dedicated causal audit/correction only; preserve Photo ON.
+**CLOSED / corrected / HUMAN PASS.** Root visible artifact was the legacy `road-terrain-transition` presentation. Final correction retires that presentation while leaving its internal generation contracts intact.
 
 ## Issue #5 — route-change forest readiness
 
@@ -219,20 +209,28 @@ Certified:
 
 **CLOSED / corrected.** Final placement re-samples final road-profile height after initial DEM/world commit.
 
+## Issue #7 — accidental placeholder
+
+**CLOSED / not planned.** No project defect.
+
+## Issue #8 — elevated road/bridge wheel-support bleed
+
+**OPEN / ACTIVE NEXT.** Measured physical mismatch between natural terrain and wheel support beside/below elevated road geometry. Dedicated physics-support correction only; do not mix with visual issue #4.
+
 ---
 
 # 4. Protected behavior / prohibitions
 
-Preserve accepted physics, road/bridge geometry, terrain authority, forest/scenery behavior, hydro semantics, settings/routing/UI contracts, local-first Quebec hydro, cache behavior, Photo ON quality, streaming frame pacing and compatibility diagnostic aliases.
+Preserve accepted physics except for narrowly proven issue-specific corrections, road/bridge geometry, terrain authority, forest/scenery behavior, hydro semantics, settings/routing/UI contracts, local-first Quebec hydro, cache behavior, Photo ON quality, streaming frame pacing and compatibility diagnostic aliases.
 
-Do not mix into issue #4 work:
+Do not mix into issue #8 work:
 
-- physics/handling tuning;
+- broad handling/suspension tuning;
 - road geometry or terrain-shape tuning;
 - forest/scenery tuning;
 - dependency/security fixes (`npm audit fix --force` forbidden);
 - GitHub Actions runtime upgrades;
-- new architecture/file moves merely for cleanliness;
+- architecture/file moves merely for cleanliness;
 - historical naming churn already closed by Phase O;
 - issue #2 speculative fixes;
 - scenery/sign offline migration;
@@ -251,7 +249,8 @@ Generated/source Geofabrik data remain out of Git until packaging is explicitly 
 - R8 overall: CLOSED / STABILIZED / FROZEN.
 - R9 permanent root-cleanliness: DONE / CERTIFIED.
 - Phase O historical naming boundary: DONE / CERTIFIED; KEEP existing lineage.
-- **Issue #4 Photo OFF procedural-terrain correction: ACTIVE — read-only audit first.**
+- Issue #4 Photo OFF procedural-terrain correction: DONE / CLOSED / HUMAN PASS.
+- **Issue #8 bridge/off-road wheel support: ACTIVE — causal audit / clean candidate next.**
 - Issue #2: watch-only unless reproduced.
 - `main` promotion: only after explicit user approval.
 
@@ -267,7 +266,8 @@ Generated/source Geofabrik data remain out of Git until packaging is explicitly 
 | R8 ownership | `qa/qa-r8-current-ownership.mjs` |
 | R8 streaming | `qa/qa-r8-streaming-baseline.mjs` |
 | Terrain structure | R8 terrain source-tree + Terrain R1/R2 |
-| Issue #4 material/visual fix | focused permanent QA + Terrain R1/R2 + Photo ON/OFF human A/B |
+| Issue #4 retired transition | `qa/qa-issue4-transition-retired.mjs` + Photo ON/OFF human A/B |
+| Issue #8 wheel support | focused issue-#8 QA + R5b/R14 + bridge/off-road human smoke |
 | Elevation owner | `qa/qa-streaming-p919-elevation.mjs` |
 | Route-start placement | `qa/qa-route-start-final-placement-r8.mjs` |
 | Forest readiness | `qa/qa-r8-forest-route-readiness.mjs` + P9.35/P9.36/P9.38 |
@@ -275,7 +275,7 @@ Generated/source Geofabrik data remain out of Git until packaging is explicitly 
 | Build | `npm run build` + code-split QA |
 | Final integration | Dev Integration on exact final `dev` HEAD |
 
-Automation cannot replace human-visible validation when runtime or visuals change.
+Automation cannot replace human-visible validation when runtime, physics or visuals change.
 
 ---
 
