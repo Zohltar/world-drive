@@ -19,20 +19,29 @@ jobs:
         run: |
           python - <<'PY'
           from pathlib import Path
+          import re
           path = Path('src/terrain-p925.js')
           source = path.read_text()
-          old = """          if(triangleClear(a,c,b))indices.push(a,c,b);
-          if(triangleClear(b,c,d))indices.push(b,c,d);"""
-          new = """          const pushUpwardTriangle=(i0,i1,i2)=>{
-            if(side<0)indices.push(i0,i1,i2);
-            else indices.push(i0,i2,i1);
-          };
-          if(triangleClear(a,c,b))pushUpwardTriangle(a,c,b);
-          if(triangleClear(b,c,d))pushUpwardTriangle(b,c,d);"""
-          count = source.count(old)
+          pattern = re.compile(
+              r"(?m)^(?P<indent>[ \t]*)if\(triangleClear\(a,c,b\)\)indices\.push\(a,c,b\);\n"
+              r"(?P=indent)if\(triangleClear\(b,c,d\)\)indices\.push\(b,c,d\);"
+          )
+          match = pattern.search(source)
+          if not match:
+              raise SystemExit('sync transition index block not found')
+          indent = match.group('indent')
+          replacement = "\n".join([
+              f"{indent}const pushUpwardTriangle=(i0,i1,i2)=>{{",
+              f"{indent}  if(side<0)indices.push(i0,i1,i2);",
+              f"{indent}  else indices.push(i0,i2,i1);",
+              f"{indent}}};",
+              f"{indent}if(triangleClear(a,c,b))pushUpwardTriangle(a,c,b);",
+              f"{indent}if(triangleClear(b,c,d))pushUpwardTriangle(b,c,d);",
+          ])
+          source, count = pattern.subn(replacement, source, count=1)
           if count != 1:
-              raise SystemExit(f'expected exactly one sync transition index block, found {count}')
-          path.write_text(source.replace(old, new))
+              raise SystemExit(f'expected one replacement, got {count}')
+          path.write_text(source)
           PY
           git diff --check
       - name: Commit focused patch
