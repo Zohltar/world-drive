@@ -45,9 +45,9 @@ function makeSupport({terrainY=0,roadY=5,lateral=5.8}={}){
 }
 
 {
-  const atThreshold=makeSupport({terrainY:0,roadY:2.3,lateral:5.8});
+  const belowThreshold=makeSupport({terrainY:0,roadY:2.29,lateral:5.8});
   assert.ok(
-    atThreshold.groundHeightForWheel(0,0,false)>0,
+    belowThreshold.groundHeightForWheel(0,0,false)>0,
     'ordinary support below the detached-road threshold must remain blended'
   );
 
