@@ -23,6 +23,8 @@ jobs:
           cache: npm
       - name: Install
         run: npm ci
+      - name: Issue 4 transition shadow probe QA
+        run: node qa/qa-issue4-transition-shadow-probe.mjs
       - name: World scene C5.3 QA
         run: node qa/qa-main-c5-world-scene.mjs
       - name: R8 world-scene source-tree QA
