@@ -63,6 +63,7 @@ export function createRouteLifecycle({
     vehicle:{generation:0},
     ui:{generation:0}
   };
+  let activeForestRouteKey=null;
 
   function bumpRouteGeneration(){
     worldDrive.route.generation++;
@@ -73,7 +74,23 @@ export function createRouteLifecycle({
     return worldDrive.route.generation===generation;
   }
 
-  function resetWorldCaches(){
+  function routeFingerprint(coordinates){
+    let hash=2166136261>>>0;
+    for(const coordinate of coordinates||[]){
+      const lon=Math.round((Number(coordinate?.[0])||0)*1e5);
+      const lat=Math.round((Number(coordinate?.[1])||0)*1e5);
+      hash=Math.imul((hash^lon)>>>0,16777619)>>>0;
+      hash=Math.imul((hash^lat)>>>0,16777619)>>>0;
+    }
+    return `${coordinates?.length||0}:${hash.toString(16)}`;
+  }
+
+  function resetRouteForest(){
+    sceneryRenderer.clearForestCache?.();
+    clearGroup(forestGroup);
+  }
+
+  function resetWorldCaches({preserveForest=false}={}){
     setState({currentRoadGuideSign:null});
     resetStreamingCoordinator();
     waterData.reset();
@@ -122,12 +139,11 @@ export function createRouteLifecycle({
     terrainService.clearRoadBed();
     clearGroup(roadGroup);
 
-    // A new route changes the coordinate origin and road blockers. Persistent
-    // P9 forest chunks from the previous route must never survive this boundary.
-    // Ordinary local-world refreshes still use sceneryRenderer.clear(), which
-    // deliberately preserves the forest cache for performance.
-    sceneryRenderer.clearForestCache?.();
-    clearGroup(forestGroup);
+    // Ordinary route requests keep the currently active forest alive while the
+    // replacement route is only speculative. Once a route is proven current and
+    // its terrain is ready, a geometry fingerprint decides whether those chunks
+    // are safe to reuse or must be invalidated for a genuinely different route.
+    if(!preserveForest)resetRouteForest();
 
     clearGroup(infrastructureGroup);
     clearGroup(signGroup);
@@ -151,6 +167,7 @@ export function createRouteLifecycle({
 
     routingStatus.textContent=provider;
     const coordsGeo=coordinates;
+    const routeKey=routeFingerprint(coordsGeo);
 
     route.length=0;
     segments.length=0;
@@ -194,11 +211,11 @@ export function createRouteLifecycle({
     setState({routeLength});
     statusEl.textContent=
       `Trajet chargé · ${(routeLength/1000).toFixed(1)} km · ${route.length.toLocaleString('fr-CA')} points`;
-    return true;
+    return routeKey;
   }
 
   async function loadRoute(){
-    return loadRouteForGeneration(worldDrive.route.generation);
+    return (await loadRouteForGeneration(worldDrive.route.generation))!==false;
   }
 
   async function createRequestedRoute(start,end,waypoints=[]){
@@ -234,7 +251,7 @@ export function createRouteLifecycle({
       origin:{lat:routeStart.lat,lon:routeStart.lon}
     });
 
-    resetWorldCaches();
+    resetWorldCaches({preserveForest:true});
     resetRunChallenge();
 
     if(routeChangeNeedsForestReady){
@@ -271,9 +288,9 @@ export function createRouteLifecycle({
         `Calcul du trajet ${start.name||'Départ'} → ${end.name||'Arrivée'}`
       );
 
-      const routeLoaded=await loadRouteForGeneration(routeGeneration);
+      const routeKey=await loadRouteForGeneration(routeGeneration);
       if(stopIfStale())return false;
-      if(!routeLoaded)return false;
+      if(routeKey===false)return false;
 
       setBootProgress('route','done','Trajet prêt');
 
@@ -356,6 +373,15 @@ export function createRouteLifecycle({
       }
 
       if(stopIfStale())return false;
+
+      // Only now is the requested route far enough through startup to own the
+      // forest. A stale/interrupted route never gets to evict the previous route's
+      // expensive chunk cache. Returning to identical routed geometry reuses it.
+      if(activeForestRouteKey!==routeKey){
+        resetRouteForest();
+        activeForestRouteKey=routeKey;
+      }
+
       prefetchRouteAhead();
       position=getState();
       loadSceneryAround(position.absX,position.absZ)
