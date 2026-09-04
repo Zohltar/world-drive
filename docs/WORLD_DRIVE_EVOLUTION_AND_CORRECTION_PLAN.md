@@ -63,22 +63,24 @@ If any answer is unknown, resolve it before coding.
 **Runtime correction state:** issues #4 and #8 CLOSED / HUMAN PASS  
 **Issue #2:** OPEN / watch-only / not reproduced  
 **Block 1 — DOM safety:** **DONE/CERTIFIED — HUMAN PASS**  
-**Certified runtime `dev` baseline before this plan update:** `28ffbee1cc63f4a250e59d6d136d007854fcddc4` — `Security: render dynamic UI labels as text`  
-**Focused Block 1 candidate QA:** run `33869854637` — **PASS** on exact candidate HEAD `28ffbee1cc63f4a250e59d6d136d007854fcddc4`  
-**Human checkpoint:** **PASS** — route search results, startup vehicle chooser, route summary and route launch visually/functionally accepted by the user.  
-**Exact-head Dev Integration on that runtime baseline:** run `33871178836` — **PASS; all workflow checks green**, including permanent DOM safety QA, R7 UI/routing boundaries, runtime/source-tree audit, production build and production code-split QA.  
+**Block 2 — Route lifecycle stale-generation guard:** **DONE/CERTIFIED — HUMAN PASS**  
+**Block 3 — Retired road-terrain transition workload:** **ACTIVE — MEASURE FIRST**  
+**Final Block 2 candidate:** `candidate/post-refactor-route-generation-r7` @ `d00acf06128dbd4eb3f75831d04c96d1a81d41cf`  
+**Block 2 human checkpoint:** **PASS** — rapid A→B→A route switching retained/restored A forest without the prior ~10 s refill and stale B did not regain authority.  
+**Post-integration QA correction:** `da42ab9ad43b89d10df0055985ac1d9a9672ba5c` — `QA: allow explicit forest terrain matrix reprojection`; QA-only, no runtime behavior change.  
+**Exact-head Dev Integration before this docs checkpoint:** run `33892857490` — **PASS** on `da42ab9ad43b89d10df0055985ac1d9a9672ba5c`.  
 **Stable `main`:** `9055d5682afcf512c91b1ae7dc97dcb4b16d6d9e` — fast-forwarded from `dev` on 2026-09-04 after explicit user approval.  
 **Previous stable rollback/reference:** `111df5d84bf7fd700590abbd9c129b303ac92fad` — `Release V21.31 post-C6 stable`.
 
-This plan synchronization is docs-only and may place `dev` one commit ahead of the certified runtime baseline and farther ahead of `main`; that is intentional and does not constitute a new runtime baseline.
+This plan synchronization is docs-only and may place `dev` one commit ahead of the certified runtime/QA checkpoint and farther ahead of `main`; that is intentional and does not constitute a new runtime baseline.
 
 The codebase-wide post-refactor review found no systemic reason for another broad architecture refactor. The current architecture is usable and well covered. The next work is a set of **narrow correctness, security and runtime-efficiency blocks**, in priority order.
 
 ## Exact next action
 
-Start **Block 2 — route lifecycle stale-generation guard**.
+Start **Block 3 — retired `road-terrain-transition` workload**, **measurement only first**.
 
-Do not combine it with transition retirement, multiplayer hardening, diagnostics timing changes or any structural move.
+Before disabling or deleting any transition presentation work, capture the baseline diagnostics named in Block 3. Do not combine this measurement pass with Block 4 diagnostics changes, multiplayer hardening, dependency work, terrain tuning or structural moves.
 
 ---
 
@@ -117,8 +119,8 @@ This table is the canonical forward backlog. Status must be updated here after e
 | Priority | Finding | Primary files | Current status |
 |---|---|---|---|
 | P1 | Network/user-derived labels are inserted through `innerHTML` in parts of UI | `src/ui/route-planner-ui.js`, `src/ui/startup-ui.js`, possibly related UI helpers | **DONE/CERTIFIED — HUMAN PASS** |
-| P1 | Route creation can overlap; route generation exists but async continuations are not stale-guarded | `src/routing/route-lifecycle.js` | **ACTIVE — Block 2** |
-| P2 | Retired `road-terrain-transition` is hidden but still prepared/allocated/committed | `src/terrain.js`, `src/local-world-builder.js`, `src/terrain/world-scene.js` | PLANNED — Block 3 |
+| P1 | Route creation can overlap; route generation exists but async continuations are not stale-guarded | `src/routing/route-lifecycle.js` | **DONE/CERTIFIED — HUMAN PASS — Block 2** |
+| P2 | Retired `road-terrain-transition` is hidden but still prepared/allocated/committed | `src/terrain.js`, `src/local-world-builder.js`, `src/terrain/world-scene.js` | **ACTIVE — Block 3 — MEASURE FIRST** |
 | P2 | `visualJobs` timing records Promise creation time instead of full async completion time | `src/streaming-coordinator.js` | PLANNED — Block 4 |
 | P2 | LAN WebSocket relay accepts broad LAN traffic with permissive handshake and no explicit session/rate/client policy | `server/multiplayer-server.mjs`, `electron/multiplayer-runtime.cjs` | PLANNED — Block 5A |
 | P2 | Electron multiplayer IPC does not explicitly verify caller origin | `electron/main.cjs`, `electron/preload.cjs` | PLANNED — Block 5B |
@@ -224,15 +226,33 @@ Validation evidence:
 
 ## Block 2 — Route lifecycle stale-generation guard
 
+### Status
+
+**DONE/CERTIFIED — HUMAN PASS (2026-09-04).**
+
+Final candidate:
+
+```text
+candidate/post-refactor-route-generation-r7
+```
+
+Final candidate/runtime HEAD:
+
+```text
+d00acf06128dbd4eb3f75831d04c96d1a81d41cf
+```
+
+The user completed the rapid route-switch checkpoint and reported **PASS**.
+
 ### Goal
 
 Prevent an older asynchronous route creation from committing after a newer route request has already started.
 
 ### Problem model
 
-`routeLifecycle.worldDrive.route.generation` already exists and `createRequestedRoute()` bumps it, but asynchronous continuations do not consistently verify that the operation still owns the active generation.
+`routeLifecycle.worldDrive.route.generation` already existed and `createRequestedRoute()` bumped it, but asynchronous continuations did not consistently verify that the operation still owned the active generation.
 
-A slow earlier route can theoretically finish after a later route and mutate:
+A slow earlier route could theoretically finish after a later route and mutate:
 
 - route/segments;
 - loading/status UI;
@@ -240,43 +260,87 @@ A slow earlier route can theoretically finish after a later route and mutate:
 - final placement;
 - scenery/metadata/sign prefetch.
 
-### Implementation rule
+### Certified implementation
 
-Capture an operation generation/token at route creation start and verify it after meaningful `await` boundaries and before authoritative commits/UI completion.
+The route lifecycle now captures the request generation and validates ownership after meaningful asynchronous boundaries and before authoritative commits/UI completion.
 
-Stale work should stop quietly and must not:
+Stale work stops quietly and cannot:
 
 - overwrite the active route;
 - hide/show loading UI incorrectly;
 - reset the newer world;
 - place the vehicle on the older route;
-- emit misleading success/failure toast.
+- emit misleading success/failure state.
 
-### Non-goals
+The final candidate also preserves the active forest through speculative route requests and supports rapid A→B→A restoration without forcing the previous ~10 s forest rebuild. Forest route ownership/restoration remains aligned with the currently committed terrain; explicit terrain-height reprojection is allowed when retained forest matrices must follow a rebuilt terrain surface.
 
-- Do not change route providers.
-- Do not retune routing timeout values unless a separate causal issue is proven.
-- Do not modify forest readiness or terrain preload behavior.
+Protected public source/API contracts were preserved:
 
-### Required QA
+```text
+async function loadRoute()
+function resetWorldCaches()
+```
 
-Create a deterministic race test:
+Both remain no-argument public facades. Route-specific internal behavior stays behind private helpers.
 
-1. start route A;
-2. before A resolves, start route B;
-3. resolve B first;
-4. resolve A later;
-5. assert B remains authoritative and stale A cannot commit.
+The P9.35 forest readiness policy was **not retuned**:
 
-Run R7 routing/UI, route-start placement R8, forest readiness R8, Dev Integration and build.
+- no readiness threshold change;
+- no timeout change;
+- no forest density change;
+- no streamer-budget tuning as part of Block 2.
+
+### Permanent QA / evidence
+
+Permanent deterministic coverage includes:
+
+- stale route A starts;
+- route B starts before A resolves;
+- B resolves first and remains authoritative;
+- A resolves later and cannot publish geometry/UI/status/success/failure state;
+- stale failsafe cannot overwrite the newer request;
+- rapid A→B→A retains/restores A forest;
+- stale B cannot later take forest/route ownership;
+- retained forest can be reprojected to newly committed terrain height without rebuilding its route cache.
+
+The final integrated runtime candidate was `d00acf06128dbd4eb3f75831d04c96d1a81d41cf`.
+
+The first post-integration Dev Integration run `33891384598` failed only because the older `qa-forest-active-stress.mjs` contract still asserted that an instance matrix could be uploaded at exactly one source site. Runtime inspection proved the second site was intentional and pre-existing in the certified forest-retention work: one upload occurs on initial chunk-mesh creation and the second occurs during explicit terrain-height reprojection of retained forest.
+
+The correction was therefore **QA-only**, not a runtime change:
+
+```text
+da42ab9ad43b89d10df0055985ac1d9a9672ba5c
+QA: allow explicit forest terrain matrix reprojection
+```
+
+The QA now requires exactly those two legitimate upload sites and still rejects arbitrary matrix-upload growth.
+
+Final exact-head Dev Integration before this docs checkpoint:
+
+```text
+run 33892857490
+head da42ab9ad43b89d10df0055985ac1d9a9672ba5c
+PASS
+```
 
 ### Human checkpoint
 
-Recommended: in-game rapidly request two different presets/routes and confirm only the second becomes active.
+**PASS.** The user tested the final r7 candidate with rapid route switching. Returning to A retained/restored the forest without the earlier ~10 s refill and stale B did not regain control.
+
+### Done state
+
+**DONE/CERTIFIED.** Do not reopen or broaden this block without new evidence.
 
 ---
 
 ## Block 3 — Stop generating the retired road-terrain transition presentation
+
+### Status
+
+**ACTIVE — MEASURE FIRST.**
+
+No Block 3 runtime change has been made at this checkpoint. The first step is baseline measurement only.
 
 ### Goal
 
