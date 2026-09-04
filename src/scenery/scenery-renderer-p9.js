@@ -15,6 +15,7 @@ export function createSceneryRenderer({
   let forestAssets=getForestWaterAssets();
   let forestAssetsActivated=false;
   let sceneryReadyForForest=false;
+  let forestRouteCacheSuspended=false;
   let forestBlockers=[];
   let blockerSignature='';
   let lastShown=0;
@@ -199,18 +200,45 @@ export function createSceneryRenderer({
     onStats:updateForestStatus
   });
 
+  function suspendForestRouteCache(){
+    if(forestRouteCacheSuspended)return false;
+    forestRouteCacheSuspended=true;
+    forestStreamer.setAssets(null);
+    return true;
+  }
+
   function switchForestRouteCache(routeKey){
-    return forestStreamer.switchRouteCache(routeKey);
+    const result=forestStreamer.switchRouteCache(routeKey);
+    if(forestRouteCacheSuspended){
+      forestRouteCacheSuspended=false;
+      if(sceneryReadyForForest&&forestAssets?.trees?.length){
+        forestAssetsActivated=true;
+        forestStreamer.setAssets(forestAssets);
+      }
+    }
+    return result;
   }
 
   function activateForestAssetsIfReady(){
-    if(!sceneryReadyForForest||!forestAssets||forestAssetsActivated)return false;
+    if(
+      !sceneryReadyForForest||!forestAssets||forestAssetsActivated||
+      forestRouteCacheSuspended
+    )return false;
     forestAssetsActivated=true;
     forestStreamer.setAssets(forestAssets);
     return true;
   }
 
   function clear(){
+    // A route request clears the routing geometry before it clears scenery. Freeze
+    // the currently visible route cache at that exact boundary: it may remain on
+    // screen while the replacement route is speculative, but it must not poll or
+    // rebuild against the replacement route's geometry.
+    const center=getWorldOffset?.()||{x:0,z:0};
+    let routeAvailable=false;
+    try{routeAvailable=!!nearestRoute?.(center.x||0,center.z||0);}catch{}
+    if(!routeAvailable)suspendForestRouteCache();
+
     clearGroup(terrainDetailGroup);
     clearGroup(infrastructureGroup);
     clearGroup(buildingGroup);
@@ -228,6 +256,7 @@ export function createSceneryRenderer({
     // road/terrain state, then rebuild from the already-loaded forest asset.
     forestStreamer.setAssets(null);
     forestStreamer.clearAll();
+    forestRouteCacheSuspended=false;
     forestAssetsActivated=false;
     sceneryReadyForForest=false;
     forestBlockers=[];
@@ -312,7 +341,7 @@ export function createSceneryRenderer({
     // chunks; the expensive distant P9 cache remains intact.
     sceneryReadyForForest=true;
     const activatedNow=activateForestAssetsIfReady();
-    if(forestAssetsActivated&&!activatedNow){
+    if(forestAssetsActivated&&!activatedNow&&!forestRouteCacheSuspended){
       forestStreamer.refreshVisibleHeights();
       forestStreamer.requestUpdate(true);
     }
@@ -343,10 +372,11 @@ export function createSceneryRenderer({
     rebuild,
     clear,
     clearForestCache,
+    suspendForestRouteCache,
     switchForestRouteCache,
     removeTreesOverWater,
     requestForestRefresh,
     whenInitialForestReady:()=>forestStreamer.whenInitialReady(),
-    forestStats:()=>forestStreamer.stats()
+    forestStats:()=>({...forestStreamer.stats(),routeCacheSuspended:forestRouteCacheSuspended})
   };
 }
