@@ -5,6 +5,7 @@ await import('./qa-forest-route-cache-r3.mjs');
 await import('./qa-forest-terrain-commit-alignment-r6.mjs');
 await import('./qa-forest-route-cache-suspension-r7.mjs');
 await import('./qa-post-refactor-road-transition-baseline-r1.mjs');
+await import('./qa-post-refactor-visual-job-timing-r1.mjs');
 await import('./qa-source-tree-r7-app-services.mjs');
 await import('./qa-source-tree-r8-imagery.mjs');
 await import('./qa-source-tree-r8-streaming.mjs');
