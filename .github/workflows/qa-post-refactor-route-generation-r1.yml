@@ -1,9 +1,9 @@
-name: Post-refactor Route Generation R6 QA
+name: Post-refactor Route Generation R7 QA
 
 on:
   push:
     branches:
-      - candidate/post-refactor-route-generation-r6
+      - candidate/post-refactor-route-generation-r7
   workflow_dispatch:
 
 permissions:
@@ -31,6 +31,8 @@ jobs:
         run: node qa/qa-forest-route-cache-r3.mjs
       - name: Forest terrain commit alignment R6 QA
         run: node qa/qa-forest-terrain-commit-alignment-r6.mjs
+      - name: Speculative forest cache suspension R7 QA
+        run: node qa/qa-forest-route-cache-suspension-r7.mjs
       - name: Route lifecycle refactor regression
         run: node qa/V21_26_ROUTE_LIFECYCLE_REFACTOR_QA.mjs
       - name: R7 routing boundary QA
