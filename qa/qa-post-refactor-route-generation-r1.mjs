@@ -182,7 +182,7 @@ try{
   assert.equal(route.length,3,'newer route point count changed');
   assert.equal(segments.length,2,'newer route segment count changed');
   assert.equal(route[0].x,2000000,'newer route geometry is not authoritative');
-  assert.equal(state.routeLength,400,'newer route length changed');
+  assert.ok(Math.abs(state.routeLength-400)<1e-6,'newer route length changed');
   assert.deepEqual(
     authoritative,
     ['map:Route B','place:Route B','preload:Route B','prefetch:Route B'],
