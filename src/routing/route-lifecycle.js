@@ -327,7 +327,9 @@ export function createRouteLifecycle({
 
       if(initialElevationReady||hasPendingWorld()){
         cancelVisualJob('world-rebuild');
-        if(commitLocalWorldRefresh())placeAt(0,{finalizeOnly:true});
+        if(commitLocalWorldRefresh()){
+          placeAt(0,{finalizeOnly:true});
+        }
       }
 
       if(stopIfStale())return false;
