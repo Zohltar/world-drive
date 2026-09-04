@@ -185,7 +185,7 @@ try{
   assert.ok(Math.abs(state.routeLength-400)<1e-6,'newer route length changed');
   assert.deepEqual(
     authoritative,
-    ['map:Route B','place:Route B','preload:Route B','prefetch:Route B'],
+    ['map:Route B','place:Route B','preload:Route B','cancel:world-rebuild','prefetch:Route B'],
     'stale or unrelated route work reached authoritative post-route commits'
   );
   assert.deepEqual(toasts,['Trajet prêt · terrain préchargé'],
