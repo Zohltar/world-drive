@@ -5,7 +5,7 @@ class Vec3{
   set(x,y,z){this.x=x;this.y=y;this.z=z;return this;}
 }
 class Group{
-  constructor(){this.children=[];this.parent=null;this.position=new Vec3();this.matrixAutoUpdate=true;this.name='';}
+  constructor(){this.children=[];this.parent=null;this.position=new Vec3();this.matrixAutoUpdate=true;this.name='';this.visible=true;this.userData={};}
   add(object){if(object.parent)object.parent.remove(object);this.children.push(object);object.parent=this;}
   remove(object){const i=this.children.indexOf(object);if(i>=0)this.children.splice(i,1);object.parent=null;}
   updateMatrix(){}
@@ -39,26 +39,20 @@ for(let iz=0;iz<=gridZ;iz++)for(let ix=0;ix<=gridX;ix++){
 const attr={array,itemSize:3,count:row*(gridZ+1)};
 const ground={
   isMesh:true,parent:null,position:new Vec3(),
-  geometry:{
-    parameters:{width,height:depth,widthSegments:gridX,heightSegments:gridZ},
-    getAttribute:name=>name==='position'?attr:null
-  },
+  geometry:{parameters:{width,height:depth,widthSegments:gridX,heightSegments:gridZ},getAttribute:name=>name==='position'?attr:null},
   getWorldPosition(out){out.set(this.position.x,this.position.y,this.position.z);return out;},
   traverse(fn){fn(this);}
 };
 root.add(ground);
 
 let offset={x:0,z:0};
-globalThis.requestIdleCallback=callback=>
-  setImmediate(()=>callback({didTimeout:false,timeRemaining:()=>8}));
+globalThis.requestIdleCallback=callback=>setImmediate(()=>callback({didTimeout:false,timeRemaining:()=>8}));
 
 const streamer=createForestChunkStreamer({
   THREE,
   forestGroup,
   getWorldOffset:()=>offset,
   terrainHeight:(x,z)=>1.5*Math.sin((x+2800)/12.5*.025)+1.2*Math.cos((z+2800)/12.5*.021),
-  // Straight route travelling toward +Z. The P9.34 seed must make this known
-  // before any vehicle movement/recenter occurs.
   nearestRoute:(x,z)=>({d:Math.abs(x),i:0,angle:0,cum:z,px:0,pz:z}),
   isWaterAt:()=>false,
   blocksForest:()=>false
@@ -66,8 +60,19 @@ const streamer=createForestChunkStreamer({
 
 streamer.setAssets({trees:[{name:'proxy-mid',parts:[{geometry:{},material:{}}]}]});
 
+function visibleChunks(){
+  const out=[];
+  const visit=node=>{
+    if(!node||node.visible===false)return;
+    if(/^forest-chunk-/.test(String(node.name||'')))out.push(node);
+    for(const child of node.children||[])visit(child);
+  };
+  visit(forestGroup);
+  return out;
+}
+
 const deadline=Date.now()+5000;
-while(forestGroup.children.filter(child=>/^forest-chunk-/.test(child.name)).length<14){
+while(visibleChunks().length<14){
   if(Date.now()>deadline)throw new Error('P9.35 startup did not reach 14 active chunks in mock');
   await new Promise(resolve=>setImmediate(resolve));
 }
@@ -75,7 +80,7 @@ while(forestGroup.children.filter(child=>/^forest-chunk-/.test(child.name)).leng
 const chunkSize=480;
 const lateralBand=chunkSize*.15;
 let front=0,rear=0,lateral=0,total=0;
-for(const child of forestGroup.children){
+for(const child of visibleChunks()){
   const match=/^forest-chunk-(-?\d+):(-?\d+)$/.exec(String(child?.name||''));
   if(!match)continue;
   total++;
