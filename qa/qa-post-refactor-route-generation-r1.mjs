@@ -10,16 +10,22 @@ assert.match(source,/async function loadRouteForGeneration\(routeGeneration\)\{/
   'token-aware internal route loader missing');
 assert.match(source,/if\(!ownsRouteGeneration\(routeGeneration\)\)return false;/,
   'stale route geometry must stop before authoritative mutation');
-assert.match(source,/async function loadRoute\(\)\{\s*return loadRouteForGeneration\(worldDrive\.route\.generation\);\s*\}/s,
+assert.match(source,/async function loadRoute\(\)\{\s*return \(await loadRouteForGeneration\(worldDrive\.route\.generation\)\)!==false;\s*\}/s,
   'public loadRoute facade contract changed');
 assert.match(source,/if\(!completed&&ownsRouteGeneration\(routeGeneration\)\)\{/,
   'routing failsafe is not generation-owned');
-assert.match(source,/const routeLoaded=await loadRouteForGeneration\(routeGeneration\);/,
+assert.match(source,/const routeKey=await loadRouteForGeneration\(routeGeneration\);/,
   'route creation does not pass its captured generation to the route loader');
 assert.match(source,/const stopIfStale=\(\)=>\{[\s\S]*?clearTimeout\(failsafe\);[\s\S]*?return true;/,
   'stale route completion helper must clear its own failsafe and stop quietly');
 assert.match(source,/catch\(error\)\{\s*if\(!ownsRouteGeneration\(routeGeneration\)\)\{[\s\S]*?return false;\s*\}/s,
   'stale route errors must not publish failure UI');
+assert.match(source,/resetWorldCaches\(\{preserveForest:true\}\);/,
+  'speculative route requests must preserve the active forest cache');
+assert.match(source,/function routeFingerprint\(coordinates\)\{/,
+  'routed-geometry forest fingerprint missing');
+assert.match(source,/if\(activeForestRouteKey!==routeKey\)\{\s*resetRouteForest\(\);\s*activeForestRouteKey=routeKey;\s*\}/s,
+  'forest cache is not conditionally owned by routed geometry');
 
 function deferred(){
   let resolve;
@@ -80,7 +86,7 @@ try{
   const resetService={reset:noop};
 
   const lifecycle=createRouteLifecycle({
-    version:'route-generation-r1',
+    version:'route-generation-r2',
     getState:()=>state,
     setState:patch=>Object.assign(state,patch),
     validLatLon:(lat,lon)=>Number.isFinite(lat)&&Number.isFinite(lon),
@@ -234,13 +240,149 @@ try{
   assert.ok(boot.some(args=>args[0]==='route'&&args[1]==='loading'),
     'route boot progress contract disappeared');
 
-  console.log('POST-REFACTOR ROUTE GENERATION R1 QA: PASS',{
+  // Human-checkpoint regression: A is fully active, B starts but is abandoned,
+  // then the user returns to the same routed A geometry. B must not evict A's
+  // expensive forest cache, and A must not evict its own still-valid cache.
+  const forestState={
+    gameStarted:true,
+    autopilot:false,
+    routeStart:{lat:0,lon:0,name:'Old'},
+    routeEnd:{lat:0,lon:.004,name:'Old end'},
+    routeWaypoints:[],
+    origin:{lat:0,lon:0},
+    absX:0,
+    absZ:0,
+    routeLength:0,
+    vehicleNearestHint:-1,
+    vehicleNearestLastX:Infinity,
+    vehicleNearestLastZ:Infinity
+  };
+  const forestRoute=[];
+  const forestSegments=[];
+  const forestRequests=new Map();
+  const forestGroup={name:'forest'};
+  let forestCacheClears=0;
+  let forestGroupClears=0;
+  const forestLifecycle=createRouteLifecycle({
+    version:'route-generation-r2-forest',
+    getState:()=>forestState,
+    setState:patch=>Object.assign(forestState,patch),
+    validLatLon:()=>true,
+    geoDist:()=>1000,
+    toast:noop,
+    setAutopilot:noop,
+    resetStreamingCoordinator:noop,
+    waterData:resetService,
+    skidMarks:{clear:noop},
+    route:forestRoute,
+    segments:forestSegments,
+    bridgeManager:{reset:noop,resetCounter:noop},
+    bridgeStatus:{textContent:''},
+    waterRenderer:{clear:noop},
+    sceneryData:resetService,
+    elevationService:resetService,
+    imageryService:{enabled:false,reset:noop},
+    signData:resetService,
+    resetMinimapSignReadout:noop,
+    signStatus:{textContent:''},
+    updateRoadMetaHUD:noop,
+    clearActiveRoadProfile:noop,
+    terrainService:{clearRoadBed:noop,clearHorizon:noop},
+    clearGroup:group=>{if(group===forestGroup)forestGroupClears++;},
+    roadGroup:{name:'road'},
+    forestGroup,
+    infrastructureGroup:{name:'infra'},
+    signGroup:{name:'sign'},
+    sceneryRenderer:{
+      clearForestCache(){forestCacheClears++;},
+      clear:noop,
+      whenInitialForestReady:async()=>true
+    },
+    resetRunChallenge:noop,
+    loading:{classList:classList()},
+    loadingText:{textContent:''},
+    routingStatus:{textContent:''},
+    statusEl:{textContent:''},
+    setBootProgress:noop,
+    routingService:{
+      fetchRoute({start}){
+        const gate=deferred();
+        forestRequests.set(start.name,gate);
+        return gate.promise;
+      }
+    },
+    toWorld:(lat,lon)=>({x:lon*100000,z:lat*100000}),
+    prepMap:noop,
+    placeAt:()=>{forestState.absX=forestRoute[0]?.x??0;forestState.absZ=forestRoute[0]?.z??0;},
+    loadWaterAround:async()=>({ok:true}),
+    preloadRoute:noop,
+    loadElevationAround:async()=>true,
+    primeInitialTerrainPreloadBuffer:async()=>{},
+    buildImageryMosaic:async()=>{},
+    onElevationFallback:noop,
+    onImageryFallback:noop,
+    promiseWithTimeout:promise=>Promise.resolve(promise),
+    hasPendingWorld:()=>false,
+    cancelVisualJob:noop,
+    commitLocalWorldRefresh:()=>false,
+    prefetchRouteAhead:noop,
+    loadSceneryAround:async()=>true,
+    onSceneryUnavailable:noop,
+    loadRoadMetadataAround:async()=>true,
+    loadGeographicSignsAround:async()=>true
+  });
+
+  const aCoords=[[10,0],[10.002,0],[10.004,0]];
+  const initialA=forestLifecycle.createRequestedRoute(
+    {lat:0,lon:10,name:'A initial'},
+    {lat:0,lon:10.004,name:'A end'}
+  );
+  forestRequests.get('A initial').resolve({provider:'A',coordinates:aCoords});
+  assert.equal(await initialA,true,'initial A route did not establish forest ownership');
+  assert.equal(forestCacheClears,1,'initial A must invalidate unknown prior forest once');
+  assert.equal(forestGroupClears,1,'initial A forest group reset count changed');
+
+  const staleB=forestLifecycle.createRequestedRoute(
+    {lat:0,lon:20,name:'B pending'},
+    {lat:0,lon:20.004,name:'B end'}
+  );
+  assert.equal(forestCacheClears,1,
+    'speculative B request evicted active A forest before becoming authoritative');
+  assert.equal(forestGroupClears,1,
+    'speculative B request cleared active A forest group');
+
+  const returnA=forestLifecycle.createRequestedRoute(
+    {lat:0,lon:10,name:'A return'},
+    {lat:0,lon:10.004,name:'A end'}
+  );
+  assert.equal(forestCacheClears,1,
+    'return-to-A request cleared A forest before route ownership');
+
+  forestRequests.get('A return').resolve({provider:'A',coordinates:aCoords});
+  assert.equal(await returnA,true,'return to identical A route failed');
+  assert.equal(forestCacheClears,1,
+    'identical A routed geometry failed to reuse the active forest cache');
+  assert.equal(forestGroupClears,1,
+    'identical A routed geometry unnecessarily cleared the forest group');
+
+  forestRequests.get('B pending').resolve({
+    provider:'B',
+    coordinates:[[20,0],[20.002,0],[20.004,0]]
+  });
+  assert.equal(await staleB,false,'abandoned B route did not stop as stale');
+  assert.equal(forestCacheClears,1,
+    'stale B completion evicted A forest after A regained ownership');
+  assert.equal(forestGroupClears,1,
+    'stale B completion cleared A forest group after A regained ownership');
+
+  console.log('POST-REFACTOR ROUTE GENERATION R2 QA: PASS',{
     generation:lifecycle.worldDrive.route.generation,
     activeRoute:state.routeStart.name,
     staleResult:false,
     newerResult:true,
     staleTimeoutIgnored:true,
-    authoritativeCalls:authoritative.length
+    forestCacheRetainedAcrossAbandonedRoute:true,
+    forestCacheClears
   });
 }finally{
   globalThis.setTimeout=realSetTimeout;
