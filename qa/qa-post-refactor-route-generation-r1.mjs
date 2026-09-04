@@ -12,6 +12,8 @@ assert.match(source,/if\(!ownsRouteGeneration\(routeGeneration\)\)return false;/
   'stale route geometry must stop before authoritative mutation');
 assert.match(source,/async function loadRoute\(\)\{\s*return \(await loadRouteForGeneration\(worldDrive\.route\.generation\)\)!==false;\s*\}/s,
   'public loadRoute facade contract changed');
+assert.match(source,/function resetWorldCaches\(\)\{\s*return resetWorldCachesForRequest\(\);\s*\}/s,
+  'public resetWorldCaches facade contract changed');
 assert.match(source,/if\(!completed&&ownsRouteGeneration\(routeGeneration\)\)\{/,
   'routing failsafe is not generation-owned');
 assert.match(source,/const routeKey=await loadRouteForGeneration\(routeGeneration\);/,
@@ -20,7 +22,7 @@ assert.match(source,/const stopIfStale=\(\)=>\{[\s\S]*?clearTimeout\(failsafe\);
   'stale route completion helper must clear its own failsafe and stop quietly');
 assert.match(source,/catch\(error\)\{\s*if\(!ownsRouteGeneration\(routeGeneration\)\)\{[\s\S]*?return false;\s*\}/s,
   'stale route errors must not publish failure UI');
-assert.match(source,/resetWorldCaches\(\{preserveForest:true\}\);/,
+assert.match(source,/resetWorldCachesForRequest\(\{preserveForest:true\}\);/,
   'speculative route requests must preserve the active forest cache');
 assert.match(source,/function routeFingerprint\(coordinates\)\{/,
   'routed-geometry forest fingerprint missing');
