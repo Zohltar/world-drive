@@ -171,10 +171,7 @@ export function createForestChunkStreamer({
       travelConfidence=Math.min(1,travelConfidence+.18);
     }
     lastRecenterDistance=distance;
-    priorityLeadM=Math.max(
-      minAheadLead,
-      Math.min(maxAheadLead,distance*1.65)
-    );
+    priorityLeadM=Math.max(minAheadLead,Math.min(maxAheadLead,distance*1.65));
     perf.priorityLeadM=priorityLeadM;
     perf.travelConfidence=travelConfidence;
     perf.travelDirX=travelDir.x;
@@ -184,18 +181,12 @@ export function createForestChunkStreamer({
 
   function aheadPriorityCenter(center){
     if(travelConfidence<.25||priorityLeadM<=0)return center;
-    return {
-      x:center.x+travelDir.x*priorityLeadM,
-      z:center.z+travelDir.z*priorityLeadM
-    };
+    return {x:center.x+travelDir.x*priorityLeadM,z:center.z+travelDir.z*priorityLeadM};
   }
 
   function prefetchPriorityCenter(center){
     if(travelConfidence<.25)return center;
-    return {
-      x:center.x+travelDir.x*prefetchLeadM,
-      z:center.z+travelDir.z*prefetchLeadM
-    };
+    return {x:center.x+travelDir.x*prefetchLeadM,z:center.z+travelDir.z*prefetchLeadM};
   }
 
   function signedForwardDistance(chunk,center){
@@ -207,43 +198,23 @@ export function createForestChunkStreamer({
   function queuePriority(chunk,center){
     const nearDistance=chunkPriorityDistance(chunk,center);
     const forward=signedForwardDistance(chunk,center);
-
-    // P9.36 prefetch work must never displace genuinely visible work. Once the
-    // visible set is healthy, detached future chunks use the remaining idle time.
     if(!visibleKeys.has(chunk.key)){
       const pc=prefetchPriorityCenter(center);
-      return {
-        band:2,
-        score:chunkPriorityDistance(chunk,pc)+Math.max(0,prefetchMinForwardM-forward)*2,
-        nearDistance,
-        forward
-      };
+      return {band:2,score:chunkPriorityDistance(chunk,pc)+Math.max(0,prefetchMinForwardM-forward)*2,nearDistance,forward};
     }
-
     if(nearDistance<=nearPriorityDistance){
       let score=nearDistance;
       if(travelConfidence>=.25){
-        if(forward>=0){
-          score-=Math.min(520,forward*perf.nearForwardBonus);
-        }else{
-          score+=Math.min(760,-forward*perf.nearRearPenalty);
-        }
+        if(forward>=0)score-=Math.min(520,forward*perf.nearForwardBonus);
+        else score+=Math.min(760,-forward*perf.nearRearPenalty);
       }
       return {band:0,score,nearDistance,forward};
     }
-
     const aheadCenter=aheadPriorityCenter(center);
     const aheadDistance=chunkPriorityDistance(chunk,aheadCenter);
     let behindPenalty=0;
-    if(travelConfidence>=.25&&forward<0){
-      behindPenalty=Math.min(620,-forward*.48);
-    }
-    return {
-      band:1,
-      score:aheadDistance+nearDistance*.12+behindPenalty,
-      nearDistance,
-      forward
-    };
+    if(travelConfidence>=.25&&forward<0)behindPenalty=Math.min(620,-forward*.48);
+    return {band:1,score:aheadDistance+nearDistance*.12+behindPenalty,nearDistance,forward};
   }
 
   function sortQueueByPriority(center,force=false){
@@ -317,7 +288,6 @@ export function createForestChunkStreamer({
     const outerStart=FOREST.outerFadeStart||1540;
     const edgeFraction=FOREST.edgeDensityFraction||.20;
     const outerEnd=FOREST.maxDistance||1750;
-
     if(distance<=nearFull)return 1;
     if(distance<nearSparse){
       const t=smooth01((distance-nearFull)/Math.max(1,nearSparse-nearFull));
@@ -341,8 +311,7 @@ export function createForestChunkStreamer({
 
   function cellNearRoad(x,z){
     const nr=nearestRoute(x,z);
-    return !!nr&&Number.isFinite(nr.d)&&
-      nr.d<=FOREST.roadClearance+cellHalfDiagonal+4;
+    return !!nr&&Number.isFinite(nr.d)&&nr.d<=FOREST.roadClearance+cellHalfDiagonal+4;
   }
 
   function tooCloseToRoadExact(x,z,nearRoadCell){
@@ -386,33 +355,17 @@ export function createForestChunkStreamer({
   }
 
   function createBuilder(desc,buildSerial){
-    return {
-      desc,
-      buildSerial,
-      cellIndex:0,
-      candidateIndex:0,
-      cell:null,
-      accepted:0,
-      buckets:Array.from({length:densityBuckets},()=>[])
-    };
+    return {desc,buildSerial,cellIndex:0,candidateIndex:0,cell:null,accepted:0,buckets:Array.from({length:densityBuckets},()=>[])};
   }
 
   function beginBuilderCell(builder){
     if(builder.cellIndex>=totalCells)return false;
     const index=builder.cellIndex;
-    const sx=Math.floor(index/chunkCells);
-    const sz=index%chunkCells;
-    const cellCx=builder.desc.cx*chunkCells+sx;
-    const cellCz=builder.desc.cz*chunkCells+sz;
-    const cellX=(cellCx+.5)*FOREST.cellSize;
-    const cellZ=(cellCz+.5)*FOREST.cellSize;
+    const sx=Math.floor(index/chunkCells),sz=index%chunkCells;
+    const cellCx=builder.desc.cx*chunkCells+sx,cellCz=builder.desc.cz*chunkCells+sz;
+    const cellX=(cellCx+.5)*FOREST.cellSize,cellZ=(cellCz+.5)*FOREST.cellSize;
     builder.candidateIndex=0;
-    builder.cell={
-      cellCx,
-      cellCz,
-      nearRoadCell:cellNearRoad(cellX,cellZ),
-      baseDensity:densityAt(cellX,cellZ)
-    };
+    builder.cell={cellCx,cellCz,nearRoadCell:cellNearRoad(cellX,cellZ),baseDensity:densityAt(cellX,cellZ)};
     return true;
   }
 
@@ -429,16 +382,12 @@ export function createForestChunkStreamer({
   function processBuilderCandidate(builder){
     if(builder.buildSerial!==serial)return true;
     if(!builder.cell&&!beginBuilderCell(builder))return true;
-
     const {cellCx,cellCz,nearRoadCell,baseDensity}=builder.cell;
     const i=builder.candidateIndex;
-    const rx=forestHash(cellCx,cellCz,17+i*7919);
-    const rz=forestHash(cellCx,cellCz,31+i*104729);
-    const x=(cellCx+rx)*FOREST.cellSize;
-    const z=(cellCz+rz)*FOREST.cellSize;
+    const rx=forestHash(cellCx,cellCz,17+i*7919),rz=forestHash(cellCx,cellCz,31+i*104729);
+    const x=(cellCx+rx)*FOREST.cellSize,z=(cellCz+rz)*FOREST.cellSize;
     const slope=terrainSlope(x,z);
     if(slope>FOREST.maxSlope)return advanceBuilderCandidate(builder);
-
     let keep=baseDensity;
     if(slope>.82)keep*=.72;
     const keepSeed=forestHash(cellCx,cellCz,(0x51f15e+Math.imul(i,0x9e3779b1))|0);
@@ -446,17 +395,13 @@ export function createForestChunkStreamer({
     if(tooCloseToRoadExact(x,z,nearRoadCell))return advanceBuilderCandidate(builder);
     if(isWaterAt(x,z,8))return advanceBuilderCandidate(builder);
     if(blocksForest(x,z))return advanceBuilderCandidate(builder);
-
     const height=8.2+forestHash(cellCx,cellCz,0x191+i*1013)*9.6;
     const widthScale=.78+forestHash(cellCx,cellCz,0x2b7+i*2029)*.42;
     const rot=forestHash(cellCx,cellCz,0x391+i*4093)*Math.PI*2;
     const y=forestHeight(x,z);
     const rank=forestHash(cellCx,cellCz,(0x73a2d1+Math.imul(i,2246822519))|0);
     const bucket=Math.min(densityBuckets-1,Math.floor(rank*densityBuckets));
-    pushMatrix(
-      builder.buckets[bucket],x,z,y,height,widthScale,rot,
-      builder.desc.originX,builder.desc.originZ
-    );
+    pushMatrix(builder.buckets[bucket],x,z,y,height,widthScale,rot,builder.desc.originX,builder.desc.originZ);
     builder.accepted++;
     return advanceBuilderCandidate(builder);
   }
@@ -466,31 +411,14 @@ export function createForestChunkStreamer({
     for(const bucket of builder.buckets)floats+=bucket.length;
     const matrices=new Float32Array(floats);
     let cursor=0;
-    for(const bucket of builder.buckets){
-      if(bucket.length){matrices.set(bucket,cursor);cursor+=bucket.length;}
-    }
-    return {
-      ...builder.desc,
-      matrices,
-      maxCount:Math.floor(floats/16),
-      accepted:builder.accepted,
-      lastUsed:performance.now(),
-      mesh:null,
-      group:null,
-      visibleCount:0,
-      state:null,
-      prefetched:false
-    };
+    for(const bucket of builder.buckets){if(bucket.length){matrices.set(bucket,cursor);cursor+=bucket.length;}}
+    return {...builder.desc,matrices,maxCount:Math.floor(floats/16),accepted:builder.accepted,lastUsed:performance.now(),mesh:null,group:null,visibleCount:0,state:null,prefetched:false};
   }
 
   function positionChunkGroup(data){
     if(!data.group)return;
     const offset=getWorldOffset()||{x:0,z:0};
-    data.group.position.set(
-      data.originX-offset.x-(forestGroup.position.x||0),
-      0,
-      data.originZ-offset.z-(forestGroup.position.z||0)
-    );
+    data.group.position.set(data.originX-offset.x-(forestGroup.position.x||0),0,data.originZ-offset.z-(forestGroup.position.z||0));
     data.group.updateMatrix();
   }
 
@@ -499,21 +427,14 @@ export function createForestChunkStreamer({
     const distance=chunkPriorityDistance(data,center);
     const fraction=densityFractionForDistance(distance);
     const count=Math.max(0,Math.min(data.maxCount,Math.round(data.maxCount*fraction)));
-    if(force||count!==data.visibleCount){
-      data.mesh.count=count;
-      data.visibleCount=count;
-      perf.densityCountUpdates++;
-    }
+    if(force||count!==data.visibleCount){data.mesh.count=count;data.visibleCount=count;perf.densityCountUpdates++;}
     data.state=densityBand(distance);
     data.lastUsed=performance.now();
   }
 
   function installConservativeBounds(mesh){
     if(!THREE.Vector3)return false;
-    mesh.boundingSphere={
-      center:new THREE.Vector3(chunkSize*.5,12,chunkSize*.5),
-      radius:halfChunkDiagonal+40
-    };
+    mesh.boundingSphere={center:new THREE.Vector3(chunkSize*.5,12,chunkSize*.5),radius:halfChunkDiagonal+40};
     return true;
   }
 
@@ -525,75 +446,45 @@ export function createForestChunkStreamer({
       const mesh=new THREE.InstancedMesh(part.geometry,part.material,capacity);
       mesh.userData.sharedForestGeometry=true;
       mesh.userData.forestChunk=data.key;
-      mesh.castShadow=false;
-      mesh.receiveShadow=false;
-      mesh.frustumCulled=true;
+      mesh.castShadow=false;mesh.receiveShadow=false;mesh.frustumCulled=true;
       mesh.instanceMatrix.setUsage(THREE.StaticDrawUsage);
       if(data.matrices.length)mesh.instanceMatrix.array.set(data.matrices,0);
-      mesh.count=data.maxCount;
-      mesh.instanceMatrix.needsUpdate=true;
-      perf.matrixUploads++;
+      mesh.count=data.maxCount;mesh.instanceMatrix.needsUpdate=true;perf.matrixUploads++;
       if(!installConservativeBounds(mesh))mesh.computeBoundingSphere?.();
-      mesh.matrixAutoUpdate=false;
-      mesh.updateMatrix();
-
+      mesh.matrixAutoUpdate=false;mesh.updateMatrix();
       const group=new THREE.Group();
-      group.name=`forest-chunk-${data.key}`;
-      group.matrixAutoUpdate=false;
-      group.add(mesh);
-      data.mesh=mesh;
-      data.group=group;
+      group.name=`forest-chunk-${data.key}`;group.matrixAutoUpdate=false;group.add(mesh);
+      data.mesh=mesh;data.group=group;
     }
     positionChunkGroup(data);
     updateChunkDensity(data,center,true);
     return true;
   }
 
-  function detach(data){
-    if(data?.group?.parent===forestGroup)forestGroup.remove(data.group);
-  }
-
-  function disposeChunk(data){
-    detach(data);
-    data?.mesh?.dispose?.();
-    data.mesh=null;
-    data.group=null;
-  }
+  function detach(data){if(data?.group?.parent===forestGroup)forestGroup.remove(data.group);}
+  function disposeChunk(data){detach(data);data?.mesh?.dispose?.();data.mesh=null;data.group=null;}
 
   function attach(data,center){
     const wasPrefetched=data?.prefetched===true;
     if(!ensureMesh(data,center))return false;
     if(data.group.parent!==forestGroup)forestGroup.add(data.group);
-    active.set(data.key,data);
-    cache.set(data.key,data);
-    data.lastUsed=performance.now();
-    if(wasPrefetched){
-      perf.prefetchHits++;
-      data.prefetched=false;
-    }
+    active.set(data.key,data);cache.set(data.key,data);data.lastUsed=performance.now();
+    if(wasPrefetched){perf.prefetchHits++;data.prefetched=false;}
     return true;
   }
 
   function preparePrefetchMesh(data,center){
     if(!ensureMesh(data,center))return false;
-    data.mesh.count=0;
-    data.visibleCount=0;
-    data.state='prefetch';
-    data.prefetched=true;
-    detach(data);
-    perf.prefetchMeshPrepares++;
+    data.mesh.count=0;data.visibleCount=0;data.state='prefetch';data.prefetched=true;detach(data);perf.prefetchMeshPrepares++;
     return true;
   }
 
   function replaceActive(oldData,newData,center){
     if(!ensureMesh(newData,center))return false;
     if(newData.group.parent!==forestGroup)forestGroup.add(newData.group);
-    active.set(newData.key,newData);
-    cache.set(newData.key,newData);
+    active.set(newData.key,newData);cache.set(newData.key,newData);
     if(oldData&&oldData!==newData)disposeChunk(oldData);
-    newData.lastUsed=performance.now();
-    perf.chunksReplaced++;
-    return true;
+    newData.lastUsed=performance.now();perf.chunksReplaced++;return true;
   }
 
   function trimCache(){
@@ -607,29 +498,15 @@ export function createForestChunkStreamer({
     });
     let disposed=0;
     while(cache.size>cacheLimit&&inactive.length&&disposed<4){
-      const data=inactive.shift();
-      cache.delete(data.key);
-      disposeChunk(data);
-      disposed++;
+      const data=inactive.shift();cache.delete(data.key);disposeChunk(data);disposed++;
     }
     const elapsed=performance.now()-started;
-    perf.cacheTrimRuns++;
-    perf.lastCacheTrimMs=elapsed;
-    perf.maxCacheTrimMs=Math.max(perf.maxCacheTrimMs,elapsed);
+    perf.cacheTrimRuns++;perf.lastCacheTrimMs=elapsed;perf.maxCacheTrimMs=Math.max(perf.maxCacheTrimMs,elapsed);
     return disposed>0;
   }
 
-  function prefetchReadyCount(){
-    let count=0;
-    for(const key of prefetchKeys){if(cache.has(key))count++;}
-    return count;
-  }
-
-  function prefetchQueuedCount(){
-    let count=0;
-    for(const job of queue){if(prefetchKeys.has(job.key))count++;}
-    return count;
-  }
+  function prefetchReadyCount(){let count=0;for(const key of prefetchKeys){if(cache.has(key))count++;}return count;}
+  function prefetchQueuedCount(){let count=0;for(const job of queue){if(prefetchKeys.has(job.key))count++;}return count;}
 
   function report(force=false){
     const now=performance.now();
@@ -637,22 +514,10 @@ export function createForestChunkStreamer({
     lastReportAt=now;
     let trees=0,near=0,mid=0,far=0,edge=0;
     for(const data of active.values()){
-      const count=data.visibleCount||0;
-      trees+=count;
-      if(data.state==='near')near+=count;
-      else if(data.state==='mid')mid+=count;
-      else if(data.state==='far')far+=count;
-      else edge+=count;
+      const count=data.visibleCount||0;trees+=count;
+      if(data.state==='near')near+=count;else if(data.state==='mid')mid+=count;else if(data.state==='far')far+=count;else edge+=count;
     }
-    onStats?.({
-      trees,near,mid,far,edge,
-      chunks:active.size,cached:cache.size,queued:queue.length,
-      visibleWanted:visibleKeys.size,
-      prefetchWanted:prefetchKeys.size,
-      prefetchedReady:prefetchReadyCount(),
-      prefetchQueued:prefetchQueuedCount(),
-      maxForestSliceMs:perf.maxSliceMs
-    });
+    onStats?.({trees,near,mid,far,edge,chunks:active.size,cached:cache.size,queued:queue.length,visibleWanted:visibleKeys.size,prefetchWanted:prefetchKeys.size,prefetchedReady:prefetchReadyCount(),prefetchQueued:prefetchQueuedCount(),maxForestSliceMs:perf.maxSliceMs});
     return true;
   }
 
@@ -660,137 +525,77 @@ export function createForestChunkStreamer({
     if(initialResolved)return;
     const readyDistance=FOREST.initialReadyDistance||720;
     const required=requiredChunks(center).filter(chunk=>chunk.priorityDistance<=readyDistance);
-    if(required.length&&required.every(chunk=>active.has(chunk.key))){
-      initialResolved=true;
-      resolveInitialReady?.(true);
-    }
+    if(required.length&&required.every(chunk=>active.has(chunk.key))){initialResolved=true;resolveInitialReady?.(true);}
   }
 
   function scheduleIdle(callback){
-    if(typeof globalThis.requestIdleCallback==='function'){
-      globalThis.requestIdleCallback(callback,{timeout:90});
-    }else{
-      setTimeout(()=>callback({didTimeout:true,timeRemaining:()=>5}),0);
-    }
+    if(typeof globalThis.requestIdleCallback==='function')globalThis.requestIdleCallback(callback,{timeout:90});
+    else setTimeout(()=>callback({didTimeout:true,timeRemaining:()=>5}),0);
   }
 
   function queueJob(desc,{replace=false}={}){
     const existing=queued.get(desc.key);
-    if(existing){
-      if(replace)existing.replace=true;
-      return existing;
-    }
+    if(existing){if(replace)existing.replace=true;return existing;}
     const job={...desc,replace,builder:null,readyToCommit:false};
-    queued.set(job.key,job);
-    queue.push(job);
-    queuePriorityDirty=true;
-    return job;
+    queued.set(job.key,job);queue.push(job);queuePriorityDirty=true;return job;
   }
 
   function finishJob(job,data){
     const old=cache.get(job.key)||active.get(job.key)||null;
-    const wanted=wantedKeys.has(job.key);
-    const visible=visibleKeys.has(job.key);
-
+    const wanted=wantedKeys.has(job.key),visible=visibleKeys.has(job.key);
     if(job.replace){
-      if(visible&&active.has(job.key)){
-        replaceActive(active.get(job.key),data,lastCenter);
-      }else{
+      if(visible&&active.has(job.key))replaceActive(active.get(job.key),data,lastCenter);
+      else{
         if(old&&old!==data)disposeChunk(old);
         cache.set(job.key,data);
-        if(visible)attach(data,lastCenter);
-        else if(wanted)preparePrefetchMesh(data,lastCenter);
+        if(visible)attach(data,lastCenter);else if(wanted)preparePrefetchMesh(data,lastCenter);
       }
-    }else if(visible){
-      attach(data,lastCenter);
-    }else{
-      cache.set(job.key,data);
-      if(wanted)preparePrefetchMesh(data,lastCenter);
-    }
+    }else if(visible)attach(data,lastCenter);
+    else{cache.set(job.key,data);if(wanted)preparePrefetchMesh(data,lastCenter);}
     perf.chunksBuilt++;
   }
 
   function recordSlice(sliceStart,candidates=0,catchup=false){
-    const ended=performance.now();
-    const elapsed=ended-sliceStart;
-    perf.lastSliceMs=elapsed;
-    perf.lastSliceAt=ended;
-    perf.maxSliceMs=Math.max(perf.maxSliceMs,elapsed);
-    perf.sliceCount++;
-    perf.lastCandidates=candidates;
-    perf.maxCandidates=Math.max(perf.maxCandidates,candidates);
-    if(catchup)perf.catchupSlices++;
+    const ended=performance.now(),elapsed=ended-sliceStart;
+    perf.lastSliceMs=elapsed;perf.lastSliceAt=ended;perf.maxSliceMs=Math.max(perf.maxSliceMs,elapsed);perf.sliceCount++;
+    perf.lastCandidates=candidates;perf.maxCandidates=Math.max(perf.maxCandidates,candidates);if(catchup)perf.catchupSlices++;
   }
 
   function runQueue(){
     if(queueRunning||!queue.length||!assets?.trees?.length)return;
     queueRunning=true;
-
     const step=deadline=>{
       const sliceStart=performance.now();
+      if(!assets?.trees?.length){queueRunning=false;recordSlice(sliceStart,0,false);return;}
       if(!queue.length){queueRunning=false;report(true);return;}
-      // P9.40: requestUpdate/queueJob mark priority dirty. Between those events
-      // the center and wanted sets are unchanged, so resorting the same queue on
-      // every candidate slice only burns CPU without changing which job runs.
       sortQueueByPriority(lastCenter);
       const job=queue[0];
       let candidates=0;
-      const idleRemaining=!deadline.didTimeout&&typeof deadline.timeRemaining==='function'
-        ?deadline.timeRemaining()
-        :0;
-      const catchup=
-        queue.length>=catchupQueueThreshold&&
-        idleRemaining>=catchupMinIdleMs;
+      const idleRemaining=!deadline.didTimeout&&typeof deadline.timeRemaining==='function'?deadline.timeRemaining():0;
+      const catchup=queue.length>=catchupQueueThreshold&&idleRemaining>=catchupMinIdleMs;
       const activeBudgetMs=catchup?catchupSliceBudgetMs:sliceBudgetMs;
       const activeCandidateCap=catchup?catchupCandidateBatchSize:candidateBatchSize;
-
-      if(!wantedKeys.has(job.key)&&!job.replace){
-        queue.shift();queued.delete(job.key);
-      }else if(!job.replace&&active.has(job.key)){
-        queue.shift();queued.delete(job.key);
-      }else if(!job.replace&&cache.has(job.key)){
-        queue.shift();queued.delete(job.key);
-        if(visibleKeys.has(job.key))attach(cache.get(job.key),lastCenter);
+      if(!wantedKeys.has(job.key)&&!job.replace){queue.shift();queued.delete(job.key);}
+      else if(!job.replace&&active.has(job.key)){queue.shift();queued.delete(job.key);}
+      else if(!job.replace&&cache.has(job.key)){
+        queue.shift();queued.delete(job.key);if(visibleKeys.has(job.key))attach(cache.get(job.key),lastCenter);
       }else if(job.readyToCommit){
         const commitStarted=performance.now();
-        const data=finalizeBuilder(job.builder);
-        queue.shift();queued.delete(job.key);
-        finishJob(job,data);
-        // P9.40: cache size can only grow on a completed job. Trim here instead
-        // of rebuilding/sorting the inactive-cache list on every generation slice.
-        trimCache();
-        const commitEnded=performance.now();
-        perf.lastCommitMs=commitEnded-commitStarted;
-        perf.lastCommitAt=commitEnded;
-        perf.maxCommitMs=Math.max(perf.maxCommitMs,perf.lastCommitMs);
+        const data=finalizeBuilder(job.builder);queue.shift();queued.delete(job.key);finishJob(job,data);trimCache();
+        const commitEnded=performance.now();perf.lastCommitMs=commitEnded-commitStarted;perf.lastCommitAt=commitEnded;perf.maxCommitMs=Math.max(perf.maxCommitMs,perf.lastCommitMs);
       }else{
         if(!job.builder)job.builder=createBuilder(job,serial);
-        if(job.builder.buildSerial!==serial){
-          job.builder=createBuilder(job,serial);
-          job.readyToCommit=false;
-        }
-
+        if(job.builder.buildSerial!==serial){job.builder=createBuilder(job,serial);job.readyToCommit=false;}
         const stopAt=sliceStart+activeBudgetMs;
         while(job.builder.cellIndex<totalCells&&candidates<activeCandidateCap){
-          if(candidates>0){
-            if(performance.now()>=stopAt)break;
-            if(!deadline.didTimeout&&deadline.timeRemaining()<.35)break;
-          }
-          processBuilderCandidate(job.builder);
-          candidates++;
+          if(candidates>0){if(performance.now()>=stopAt)break;if(!deadline.didTimeout&&deadline.timeRemaining()<.35)break;}
+          processBuilderCandidate(job.builder);candidates++;
         }
-        if(job.builder.cellIndex>=totalCells){
-          job.readyToCommit=true;
-        }
+        if(job.builder.cellIndex>=totalCells)job.readyToCommit=true;
       }
-
-      report(false);
-      maybeResolveInitial(lastCenter);
-      recordSlice(sliceStart,candidates,catchup);
-
-      if(queue.length){scheduleIdle(step);return;}
-      queueRunning=false;
-      report(true);
+      report(false);maybeResolveInitial(lastCenter);recordSlice(sliceStart,candidates,catchup);
+      if(queue.length&&assets?.trees?.length){scheduleIdle(step);return;}
+      queueRunning=false;report(true);
     };
     scheduleIdle(step);
   }
@@ -799,130 +604,79 @@ export function createForestChunkStreamer({
     if(!assets?.trees?.length)return false;
     const offset=getWorldOffset()||{x:0,z:0};
     const center={x:offset.x,z:offset.z};
-    const moved=Number.isFinite(lastCenter.x)
-      ?Math.hypot(center.x-lastCenter.x,center.z-lastCenter.z)
-      :Infinity;
-
+    const moved=Number.isFinite(lastCenter.x)?Math.hypot(center.x-lastCenter.x,center.z-lastCenter.z):Infinity;
     if(!force&&moved<Math.min(FOREST.cellSize,120)){
-      for(const data of active.values()){
-        positionChunkGroup(data);
-        updateChunkDensity(data,center,false);
-      }
+      for(const data of active.values()){positionChunkGroup(data);updateChunkDensity(data,center,false);}
       return false;
     }
-
-    updateTravelDirection(lastCenter,center);
-    lastCenter=center;
-
-    const visible=requiredChunks(center);
-    visibleKeys=new Set(visible.map(chunk=>chunk.key));
-    const prefetched=prefetchChunks(center).filter(chunk=>!visibleKeys.has(chunk.key));
-    prefetchKeys=new Set(prefetched.map(chunk=>chunk.key));
+    updateTravelDirection(lastCenter,center);lastCenter=center;
+    const visible=requiredChunks(center);visibleKeys=new Set(visible.map(chunk=>chunk.key));
+    const prefetched=prefetchChunks(center).filter(chunk=>!visibleKeys.has(chunk.key));prefetchKeys=new Set(prefetched.map(chunk=>chunk.key));
     const wantedMap=new Map();
     for(const desc of visible)wantedMap.set(desc.key,desc);
     for(const desc of prefetched)if(!wantedMap.has(desc.key))wantedMap.set(desc.key,desc);
-    const wanted=[...wantedMap.values()];
-    wantedKeys=new Set(wantedMap.keys());
-
-    for(const [key,data] of active){
-      if(visibleKeys.has(key))continue;
-      detach(data);
-      active.delete(key);
-      data.lastUsed=performance.now();
-    }
-
-    queue=queue.filter(job=>{
-      if(wantedKeys.has(job.key))return true;
-      queued.delete(job.key);
-      return false;
-    });
-    queuePriorityDirty=true;
-
+    const wanted=[...wantedMap.values()];wantedKeys=new Set(wantedMap.keys());
+    for(const [key,data] of active){if(visibleKeys.has(key))continue;detach(data);active.delete(key);data.lastUsed=performance.now();}
+    queue=queue.filter(job=>{if(wantedKeys.has(job.key))return true;queued.delete(job.key);return false;});queuePriorityDirty=true;
     for(const desc of wanted){
-      const isVisible=visibleKeys.has(desc.key);
-      const existing=active.get(desc.key);
-      if(existing){
-        if(isVisible){
-          positionChunkGroup(existing);
-          updateChunkDensity(existing,center,false);
-        }
-        continue;
-      }
+      const isVisible=visibleKeys.has(desc.key),existing=active.get(desc.key);
+      if(existing){if(isVisible){positionChunkGroup(existing);updateChunkDensity(existing,center,false);}continue;}
       const cached=cache.get(desc.key);
-      if(cached){
-        cached.lastUsed=performance.now();
-        if(isVisible)attach(cached,center);
-        continue;
-      }
+      if(cached){cached.lastUsed=performance.now();if(isVisible)attach(cached,center);continue;}
       queueJob(desc);
     }
+    sortQueueByPriority(center,true);trimCache();report(true);maybeResolveInitial(center);runQueue();return true;
+  }
 
-    sortQueueByPriority(center,true);
-    trimCache();
-    report(true);
-    maybeResolveInitial(center);
-    runQueue();
+  function ensurePolling(){
+    if(pollTimer||!assets?.trees?.length||typeof globalThis.setInterval!=='function')return;
+    pollTimer=globalThis.setInterval(()=>requestUpdate(false),FOREST.pollMs||180);
+  }
+
+  function stopPolling(){
+    if(!pollTimer)return false;
+    if(typeof globalThis.clearInterval==='function')globalThis.clearInterval(pollTimer);
+    pollTimer=null;
     return true;
   }
 
   function setAssets(next){
-    assets=next;
+    assets=next||null;
+    if(!assets?.trees?.length){
+      stopPolling();
+      queueRunning=false;
+      return false;
+    }
+    ensurePolling();
     requestUpdate(true);
+    return true;
   }
 
   function refreshVisibleHeights(){
     serial++;
     for(const job of queue){job.builder=null;job.readyToCommit=false;}
-    forestTerrain.invalidate?.();
-    slopeCache.clear();
+    forestTerrain.invalidate?.();slopeCache.clear();
     const center=Number.isFinite(lastCenter.x)?lastCenter:(getWorldOffset()||{x:0,z:0});
     const refreshDistance=FOREST.heightRefreshDistance||520;
     let replacements=0;
-
     for(const data of active.values()){
       const d=chunkCenterDistance(data,center);
       if(d>refreshDistance+halfChunkDiagonal)continue;
-      queueJob(chunkDescriptor(data.cx,data.cz),{replace:true});
-      replacements++;
+      queueJob(chunkDescriptor(data.cx,data.cz),{replace:true});replacements++;
     }
-    queuePriorityDirty=true;
-    sortQueueByPriority(center,true);
-    runQueue();
-    return replacements;
+    queuePriorityDirty=true;sortQueueByPriority(center,true);runQueue();return replacements;
   }
 
   function clearAll(){
     serial++;
-    queue=[];
-    queued.clear();
-    queueRunning=false;
-    queuePriorityDirty=true;
-    visibleKeys.clear();
-    prefetchKeys.clear();
-    wantedKeys.clear();
+    queue=[];queued.clear();queueRunning=false;queuePriorityDirty=true;
+    visibleKeys.clear();prefetchKeys.clear();wantedKeys.clear();
     for(const data of cache.values())disposeChunk(data);
-    active.clear();
-    cache.clear();
-    slopeCache.clear();
-    lastCenter={x:NaN,z:NaN};
-    travelDir={x:0,z:0};
-    travelConfidence=0;
-    lastRecenterDistance=0;
-    priorityLeadM=0;
-    perf.priorityLeadM=0;
-    perf.travelConfidence=0;
-    perf.travelDirX=0;
-    perf.travelDirZ=0;
-    forestTerrain.invalidate?.();
-    report(true);
+    active.clear();cache.clear();slopeCache.clear();lastCenter={x:NaN,z:NaN};
+    travelDir={x:0,z:0};travelConfidence=0;lastRecenterDistance=0;priorityLeadM=0;
+    perf.priorityLeadM=0;perf.travelConfidence=0;perf.travelDirX=0;perf.travelDirZ=0;
+    forestTerrain.invalidate?.();report(true);
   }
-
-  function ensurePolling(){
-    if(pollTimer||typeof globalThis.setInterval!=='function')return;
-    pollTimer=globalThis.setInterval(()=>requestUpdate(false),FOREST.pollMs||180);
-  }
-
-  ensurePolling();
 
   return Object.freeze({
     setAssets,
@@ -931,13 +685,10 @@ export function createForestChunkStreamer({
     clearAll,
     whenInitialReady:()=>initialReady,
     stats:()=>({
-      activeChunks:active.size,
-      cachedChunks:cache.size,
-      queuedChunks:queue.length,
-      visibleWantedChunks:visibleKeys.size,
-      prefetchWantedChunks:prefetchKeys.size,
-      prefetchedReadyChunks:prefetchReadyCount(),
-      prefetchQueuedChunks:prefetchQueuedCount(),
+      activeChunks:active.size,cachedChunks:cache.size,queuedChunks:queue.length,
+      visibleWantedChunks:visibleKeys.size,prefetchWantedChunks:prefetchKeys.size,
+      prefetchedReadyChunks:prefetchReadyCount(),prefetchQueuedChunks:prefetchQueuedCount(),
+      pollingActive:!!pollTimer,
       ...perf
     })
   });
