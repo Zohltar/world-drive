@@ -1,9 +1,9 @@
-name: Post-refactor Route Generation R4 QA
+name: Post-refactor Route Generation R5 QA
 
 on:
   push:
     branches:
-      - candidate/post-refactor-route-generation-r4
+      - candidate/post-refactor-route-generation-r5
   workflow_dispatch:
 
 permissions:
