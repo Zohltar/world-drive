@@ -272,7 +272,8 @@ export function createRouteLifecycle({
       );
 
       const routeLoaded=await loadRouteForGeneration(routeGeneration);
-      if(!routeLoaded||stopIfStale())return false;
+      if(stopIfStale())return false;
+      if(!routeLoaded)return false;
 
       setBootProgress('route','done','Trajet prêt');
 
