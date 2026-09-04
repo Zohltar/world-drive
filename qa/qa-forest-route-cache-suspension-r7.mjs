@@ -4,12 +4,15 @@ import {createForestChunkStreamer} from '../src/forest-chunk-streamer.js';
 import {ensureWorldDriveDiagnostics} from '../src/diagnostics.js';
 
 const scenerySource=fs.readFileSync(new URL('../src/scenery/scenery-renderer-p9.js',import.meta.url),'utf8');
+const readinessSource=fs.readFileSync(new URL('../src/scenery/scenery-renderer-p933.js',import.meta.url),'utf8');
 const lifecycleSource=fs.readFileSync(new URL('../src/routing/route-lifecycle.js',import.meta.url),'utf8');
 
 assert.match(scenerySource,/let forestRouteCacheSuspended=false;/,'route-cache suspension state missing');
 assert.match(scenerySource,/if\(!routeAvailable\)suspendForestRouteCache\(\);/,'route clear does not suspend retained forest');
 assert.match(scenerySource,/function suspendForestRouteCache\(\)[\s\S]*forestStreamer\.setAssets\(null\);/,'suspension does not stop forest streamer assets/polling');
-assert.match(scenerySource,/function switchForestRouteCache\(routeKey\)[\s\S]*forestRouteCacheSuspended=false;[\s\S]*forestStreamer\.setAssets\(forestAssets\);/,'authoritative route switch does not reactivate suspended forest');
+assert.match(scenerySource,/function switchForestRouteCache\(routeKey\)\{\s*return forestStreamer\.switchRouteCache\(routeKey\);\s*\}/s,'R6 dense-forest route-cache ownership contract changed');
+assert.match(scenerySource,/function resumeForestRouteCache\(\)[\s\S]*forestRouteCacheSuspended=false;[\s\S]*forestStreamer\.setAssets\(forestAssets\);/,'suspended forest cannot resume after authoritative switch');
+assert.match(readinessSource,/function switchForestRouteCache\(routeKey\)[\s\S]*base\.switchForestRouteCache\?\.\(routeKey\);[\s\S]*base\.resumeForestRouteCache\?\.\(\);/,'P9.35 facade does not resume frozen cache after authoritative route switch');
 assert.match(scenerySource,/if\(forestAssetsActivated&&!activatedNow&&!forestRouteCacheSuspended\)/,'scenery rebuild can mutate a suspended route cache');
 const clearRouteAt=lifecycleSource.indexOf('route.length=0;');
 const clearSceneryAt=lifecycleSource.indexOf('sceneryRenderer.clear();');
