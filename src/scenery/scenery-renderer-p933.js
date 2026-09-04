@@ -44,24 +44,29 @@ export function createSceneryRenderer(options){
 
   function directionalCoverage(){
     const dir=routeDirection();
-    const children=options.forestGroup?.children||[];
     const chunkCells=Math.max(1,FOREST.chunkCells||4);
     const chunkSize=(FOREST.cellSize||120)*chunkCells;
     const lateralBand=chunkSize*.15;
     let front=0,rear=0,lateral=0,total=0;
 
-    for(const child of children){
-      const match=/^forest-chunk-(-?\d+):(-?\d+)$/.exec(String(child?.name||''));
-      if(!match)continue;
-      total++;
-      if(!dir){lateral++;continue;}
-      const cx=Number(match[1]),cz=Number(match[2]);
-      const x=(cx+.5)*chunkSize,z=(cz+.5)*chunkSize;
-      const forward=(x-dir.center.x)*dir.x+(z-dir.center.z)*dir.z;
-      if(forward>lateralBand)front++;
-      else if(forward<-lateralBand)rear++;
-      else lateral++;
-    }
+    const inspect=child=>{
+      if(!child||child.visible===false)return;
+      const match=/^forest-chunk-(-?\d+):(-?\d+)$/.exec(String(child.name||''));
+      if(match){
+        total++;
+        if(!dir){lateral++;return;}
+        const cx=Number(match[1]),cz=Number(match[2]);
+        const x=(cx+.5)*chunkSize,z=(cz+.5)*chunkSize;
+        const forward=(x-dir.center.x)*dir.x+(z-dir.center.z)*dir.z;
+        if(forward>lateralBand)front++;
+        else if(forward<-lateralBand)rear++;
+        else lateral++;
+        return;
+      }
+      for(const nested of child.children||[])inspect(nested);
+    };
+
+    for(const child of options.forestGroup?.children||[])inspect(child);
 
     return {
       total,front,rear,lateral,
