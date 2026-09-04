@@ -86,6 +86,8 @@ export function createRouteLifecycle({
   }
 
   function managedForestSwitch(){
+    const rendererSwitch=sceneryRenderer?.switchForestRouteCache;
+    if(typeof rendererSwitch==='function')return routeKey=>rendererSwitch(routeKey);
     const fn=forestGroup?.userData?.worldDriveSwitchForestRouteCache;
     return typeof fn==='function'?fn:null;
   }
