@@ -77,7 +77,9 @@ assert.match(builderP926,/from ['"]\.\.\/local-world-builder-p925\.js['"]/);
 assert.match(builderP926,/rebuildHorizonIncremental/);
 assert.match(builderP926,/p926Horizon/);
 assert.match(builderP925,/export function createLocalWorldBuilder\s*\(/);
-assert.match(builder,/road-transition/);
+// Block 3 retires only the road-transition presentation worker. Prepared
+// local-world ownership remains here, but it must no longer schedule that job.
+assert.doesNotMatch(builder,/scheduleVisualJob\?\.\(\s*['"]road-transition['"]/);
 
 // Terrain current P9.27 owner keeps the stable root P9.26 path. P9.26 itself
 // lives under src/terrain/, while a thin sibling bridge preserves its original
