@@ -7,11 +7,19 @@ import crypto from 'node:crypto';
 const HOST='0.0.0.0';
 const PORT=Number(process.env.WORLD_DRIVE_MP_PORT||8081);
 const MAGIC='258EAFA5-E914-47DA-95CA-C5AB0DC85B11';
+const WS_PATH='/';
+const WS_MAX_CLIENTS=32;
+const WS_MAX_MESSAGE_BYTES=4096;
+const WS_MAX_BUFFER_BYTES=64*1024;
+const WS_MAX_MESSAGES_PER_SECOND=120;
+const WS_HELLO_TIMEOUT_MS=10000;
+const WS_MAX_HEADER_BYTES=8192;
+const UTF8_DECODER=new TextDecoder('utf-8',{fatal:true});
 const clients=new Map();
 let nextId=1;
 
-function frameText(text,opcode=0x1){
-  const payload=Buffer.from(text,'utf8');
+function framePayload(payload,opcode=0x1){
+  payload=Buffer.isBuffer(payload)?payload:Buffer.from(payload||'');
   let header;
 
   if(payload.length<126){
@@ -29,6 +37,10 @@ function frameText(text,opcode=0x1){
 
   header[0]=0x80|opcode;
   return Buffer.concat([header,payload]);
+}
+
+function frameText(text,opcode=0x1){
+  return framePayload(Buffer.from(text,'utf8'),opcode);
 }
 
 function send(client,message){
@@ -161,12 +173,17 @@ function safeState(client,message){
 }
 
 function handleMessage(client,message){
-  if(!message||typeof message!=='object')return;
+  if(!message||typeof message!=='object'||Array.isArray(message))return;
 
   if(message.type==='hello'){
+    if(client.hello)return;
     client.name=cleanName(message.name);
     client.vehicleId=String(message.vehicleId||'wrx').slice(0,32);
     client.hello=true;
+    if(client.helloTimer){
+      clearTimeout(client.helloTimer);
+      client.helloTimer=null;
+    }
 
     send(client,{
       type:'welcome',
@@ -208,16 +225,68 @@ function handleMessage(client,message){
   }
 }
 
+function destroyClient(client){
+  try{client.socket.destroy();}catch{}
+}
+
+function acceptApplicationMessage(client,payload){
+  const now=Date.now();
+  if(now-client.rateWindowStart>=1000){
+    client.rateWindowStart=now;
+    client.rateCount=0;
+  }
+  client.rateCount++;
+  if(client.rateCount>WS_MAX_MESSAGES_PER_SECOND){
+    destroyClient(client);
+    return false;
+  }
+
+  let text;
+  try{
+    text=UTF8_DECODER.decode(payload);
+  }catch{
+    destroyClient(client);
+    return false;
+  }
+
+  let message;
+  try{
+    message=JSON.parse(text);
+  }catch{
+    destroyClient(client);
+    return false;
+  }
+
+  handleMessage(client,message);
+  return true;
+}
+
 function parseFrames(client,chunk){
+  if(client.buffer.length+chunk.length>WS_MAX_BUFFER_BYTES){
+    destroyClient(client);
+    return;
+  }
   client.buffer=Buffer.concat([client.buffer,chunk]);
 
   while(client.buffer.length>=2){
     const first=client.buffer[0];
     const second=client.buffer[1];
+    const fin=(first&0x80)!==0;
+    const rsv=first&0x70;
     const opcode=first&0x0f;
     const masked=(second&0x80)!==0;
+    const control=opcode>=0x8;
     let length=second&0x7f;
     let offset=2;
+
+    if(rsv!==0||!masked||![0x0,0x1,0x8,0x9,0xA].includes(opcode)){
+      destroyClient(client);
+      return;
+    }
+    if(control&&!fin){
+      destroyClient(client);
+      return;
+    }
 
     if(length===126){
       if(client.buffer.length<4)return;
@@ -226,55 +295,132 @@ function parseFrames(client,chunk){
     }else if(length===127){
       if(client.buffer.length<10)return;
       const big=client.buffer.readBigUInt64BE(2);
-      if(big>BigInt(1024*1024)){
-        client.socket.destroy();
+      if(big>BigInt(WS_MAX_BUFFER_BYTES)){
+        destroyClient(client);
         return;
       }
       length=Number(big);
       offset=10;
     }
 
-    let mask=null;
-    if(masked){
-      if(client.buffer.length<offset+4)return;
-      mask=client.buffer.subarray(offset,offset+4);
-      offset+=4;
-    }
-
-    if(client.buffer.length<offset+length)return;
-
-    const payload=Buffer.from(
-      client.buffer.subarray(offset,offset+length)
-    );
-    client.buffer=client.buffer.subarray(offset+length);
-
-    if(mask){
-      for(let i=0;i<payload.length;i++){
-        payload[i]^=mask[i%4];
-      }
-    }
-
-    if(opcode===0x8){
-      client.socket.end(frameText('',0x8));
+    if(control&&length>125){
+      destroyClient(client);
       return;
     }
+    if(!control&&length>WS_MAX_MESSAGE_BYTES){
+      destroyClient(client);
+      return;
+    }
+    if(client.buffer.length<offset+4)return;
 
+    const mask=client.buffer.subarray(offset,offset+4);
+    offset+=4;
+    if(client.buffer.length<offset+length)return;
+
+    const payload=Buffer.from(client.buffer.subarray(offset,offset+length));
+    client.buffer=client.buffer.subarray(offset+length);
+    for(let i=0;i<payload.length;i++)payload[i]^=mask[i%4];
+
+    if(opcode===0x8){
+      try{client.socket.end(framePayload(payload,0x8));}catch{destroyClient(client);}
+      return;
+    }
     if(opcode===0x9){
-      client.socket.write(frameText(payload.toString('utf8'),0xA));
+      try{client.socket.write(framePayload(payload,0xA));}catch{destroyClient(client);}
+      continue;
+    }
+    if(opcode===0xA)continue;
+
+    if(opcode===0x1){
+      if(client.fragmentedText){
+        destroyClient(client);
+        return;
+      }
+      if(fin){
+        if(!acceptApplicationMessage(client,payload))return;
+        continue;
+      }
+      client.fragmentedText=[payload];
+      client.fragmentedBytes=payload.length;
       continue;
     }
 
-    if(opcode!==0x1)continue;
-
-    try{
-      handleMessage(client,JSON.parse(payload.toString('utf8')));
-    }catch{
-      // Ignore malformed client messages.
+    if(!client.fragmentedText){
+      destroyClient(client);
+      return;
+    }
+    client.fragmentedBytes+=payload.length;
+    if(client.fragmentedBytes>WS_MAX_MESSAGE_BYTES){
+      destroyClient(client);
+      return;
+    }
+    client.fragmentedText.push(payload);
+    if(fin){
+      const messagePayload=Buffer.concat(client.fragmentedText,client.fragmentedBytes);
+      client.fragmentedText=null;
+      client.fragmentedBytes=0;
+      if(!acceptApplicationMessage(client,messagePayload))return;
     }
   }
 }
 
-const server=http.createServer((req,res)=>{
+function hasUpgradeToken(value){
+  return String(value||'')
+    .split(',')
+    .some(token=>token.trim().toLowerCase()==='upgrade');
+}
+
+function validWebSocketKey(value){
+  if(typeof value!=='string'||!/^[A-Za-z0-9+/]{22}==$/.test(value))return false;
+  try{return Buffer.from(value,'base64').length===16;}catch{return false;}
+}
+
+function hostNameFromHeader(value){
+  const text=String(value||'').trim();
+  if(!text)return '';
+  try{return new URL(`http://${text}`).hostname.toLowerCase();}catch{return '';}
+}
+
+function isLoopbackHost(hostname){
+  return hostname==='localhost'||hostname==='::1'||/^127(?:\.|$)/.test(hostname);
+}
+
+function isPrivateIPv4(hostname){
+  return /^10\./.test(hostname)||
+    /^192\.168\./.test(hostname)||
+    /^172\.(?:1[6-9]|2\d|3[01])\./.test(hostname);
+}
+
+function allowedOrigin(req){
+  const origin=req.headers.origin;
+  if(origin===undefined)return true;
+  try{
+    const parsed=new URL(String(origin));
+    if(parsed.protocol!=='http:'&&parsed.protocol!=='https:')return false;
+    const originHost=parsed.hostname.toLowerCase();
+    const requestHost=hostNameFromHeader(req.headers.host);
+    return isLoopbackHost(originHost)||
+      isPrivateIPv4(originHost)||
+      (!!requestHost&&originHost===requestHost);
+  }catch{
+    return false;
+  }
+}
+
+function rejectUpgrade(socket,status='400 Bad Request',extraHeaders=''){
+  try{
+    socket.end(
+      `HTTP/1.1 ${status}\r\n`+
+      extraHeaders+
+      'Connection: close\r\n'+
+      'Content-Length: 0\r\n\r\n'
+    );
+  }catch{
+    try{socket.destroy();}catch{}
+  }
+}
+
+const server=http.createServer({maxHeaderSize:WS_MAX_HEADER_BYTES},(req,res)=>{
   res.writeHead(200,{'content-type':'text/plain; charset=utf-8'});
   res.end(
     `World Drive multiplayer relay\nPlayers: ${activeClientCount()}\n`
@@ -284,9 +430,26 @@ const server=http.createServer((req,res)=>{
 server.on('upgrade',(req,socket)=>{
   const key=req.headers['sec-websocket-key'];
   const upgrade=String(req.headers.upgrade||'').toLowerCase();
+  const version=String(req.headers['sec-websocket-version']||'');
 
-  if(!key||upgrade!=='websocket'){
-    socket.destroy();
+  if(req.method!=='GET'||upgrade!=='websocket'||!hasUpgradeToken(req.headers.connection)||!validWebSocketKey(key)){
+    rejectUpgrade(socket);
+    return;
+  }
+  if(req.url!==WS_PATH){
+    rejectUpgrade(socket,'404 Not Found');
+    return;
+  }
+  if(version!=='13'){
+    rejectUpgrade(socket,'426 Upgrade Required','Sec-WebSocket-Version: 13\r\n');
+    return;
+  }
+  if(!allowedOrigin(req)){
+    rejectUpgrade(socket,'403 Forbidden');
+    return;
+  }
+  if(clients.size>=WS_MAX_CLIENTS){
+    rejectUpgrade(socket,'503 Service Unavailable');
     return;
   }
 
@@ -310,15 +473,30 @@ server.on('upgrade',(req,socket)=>{
     name:'Conducteur',
     vehicleId:'wrx',
     hello:false,
-    lastState:null
+    lastState:null,
+    fragmentedText:null,
+    fragmentedBytes:0,
+    rateWindowStart:Date.now(),
+    rateCount:0,
+    helloTimer:null
   };
   clients.set(client.id,client);
+
+  client.helloTimer=setTimeout(()=>{
+    if(!client.hello)destroyClient(client);
+  },WS_HELLO_TIMEOUT_MS);
+  client.helloTimer.unref?.();
 
   socket.on('data',chunk=>parseFrames(client,chunk));
 
   const cleanup=()=>{
     if(!clients.has(client.id))return;
     clients.delete(client.id);
+    if(client.helloTimer){
+      clearTimeout(client.helloTimer);
+      client.helloTimer=null;
+    }
+    if(!client.hello)return;
     broadcast({type:'leave',id:client.id});
     broadcastRoster();
     console.log(`[leave] ${client.id} ${client.name}`);
