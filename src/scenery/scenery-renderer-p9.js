@@ -199,6 +199,10 @@ export function createSceneryRenderer({
     onStats:updateForestStatus
   });
 
+  function switchForestRouteCache(routeKey){
+    return forestStreamer.switchRouteCache(routeKey);
+  }
+
   function activateForestAssetsIfReady(){
     if(!sceneryReadyForForest||!forestAssets||forestAssetsActivated)return false;
     forestAssetsActivated=true;
@@ -339,6 +343,7 @@ export function createSceneryRenderer({
     rebuild,
     clear,
     clearForestCache,
+    switchForestRouteCache,
     removeTreesOverWater,
     requestForestRefresh,
     whenInitialForestReady:()=>forestStreamer.whenInitialReady(),
