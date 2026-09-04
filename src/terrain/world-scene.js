@@ -87,26 +87,6 @@ export function createWorldScene({THREE,scene}){
   ground.renderOrder=-5;
   scene.add(ground);
 
-  // Issue #4: retire the legacy road-terrain transition presentation. Human
-  // A/B on Manic-5 and Yungas found the refined main ground cleaner in Photo OFF
-  // and Photo ON without this helper ribbon. Keep geometry/material/depth/physics
-  // contracts intact for now and suppress presentation only.
-  const retireRoadTerrainTransition=group=>{
-    if(![
-      'road-terrain-transition',
-      'road-terrain-transition-p927-hold'
-    ].includes(group?.name))return group;
-
-    group.visible=false;
-    return group;
-  };
-
-  const originalSceneAdd=scene.add;
-  scene.add=function(...objects){
-    for(const object of objects)retireRoadTerrainTransition(object);
-    return originalSceneAdd.apply(this,objects);
-  };
-
   function resetStreamedWorldOrigins(){
     for(const group of streamedWorldGroups)resetStaticGroupOrigin(group);
     ground?.position?.set?.(0,0,0);
