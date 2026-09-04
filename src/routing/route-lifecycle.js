@@ -85,10 +85,33 @@ export function createRouteLifecycle({
     return `${coordinates?.length||0}:${hash.toString(16)}`;
   }
 
+  function managedForestSwitch(){
+    const fn=forestGroup?.userData?.worldDriveSwitchForestRouteCache;
+    return typeof fn==='function'?fn:null;
+  }
+
   function resetRouteForest(){
+    const managed=!!managedForestSwitch();
     sceneryRenderer.clearForestCache?.();
-    clearGroup(forestGroup);
+    // The managed streamer owns persistent route-cache subgroups. Its clearAll
+    // already disposes their contents; removing those container groups here would
+    // orphan the fixed cache slots. Legacy/mocked renderers keep the old fallback.
+    if(!managed)clearGroup(forestGroup);
     activeForestRouteKey=null;
+  }
+
+  function switchRouteForest(routeKey){
+    if(activeForestRouteKey===routeKey)return {restored:true,key:routeKey};
+    const switcher=managedForestSwitch();
+    if(switcher){
+      const result=switcher(routeKey);
+      activeForestRouteKey=routeKey;
+      return result||{restored:false,key:routeKey};
+    }
+    // Compatibility path for QA/legacy renderers without route-cache namespaces.
+    resetRouteForest();
+    activeForestRouteKey=routeKey;
+    return {restored:false,key:routeKey};
   }
 
   function resetWorldCachesForRequest({preserveForest=false}={}){
@@ -131,19 +154,16 @@ export function createRouteLifecycle({
     signData.reset();
     resetMinimapSignReadout();
     if(signStatus)signStatus.textContent='0';
-    setState({
-      lastRoadMetaCenter:{x:Infinity,z:Infinity},
-      roadMetaLoading:false
-    });
+    setState({lastRoadMetaCenter:{x:Infinity,z:Infinity},roadMetaLoading:false});
     updateRoadMetaHUD();
     clearActiveRoadProfile();
     terrainService.clearRoadBed();
     clearGroup(roadGroup);
 
-    // Ordinary route requests keep the currently active forest alive while the
-    // replacement route is only speculative. Once a route is proven current and
-    // its terrain is ready, a geometry fingerprint decides whether those chunks
-    // are safe to reuse or must be invalidated for a genuinely different route.
+    // Ordinary route requests keep the active forest alive while replacement
+    // work is speculative. Once the route owns final terrain it switches to its
+    // geometry-keyed forest slot; the previous slot remains available for a
+    // rapid return instead of being destroyed and regenerated.
     if(!preserveForest)resetRouteForest();
 
     clearGroup(infrastructureGroup);
@@ -163,11 +183,7 @@ export function createRouteLifecycle({
     const routeWaypoints=state.routeWaypoints;
     const routePoints=[routeStart,...routeWaypoints,routeEnd];
 
-    const {coordinates,provider}=await routingService.fetchRoute({
-      points:routePoints,
-      start:routeStart
-    });
-
+    const {coordinates,provider}=await routingService.fetchRoute({points:routePoints,start:routeStart});
     if(!ownsRouteGeneration(routeGeneration))return false;
 
     routingStatus.textContent=provider;
@@ -177,45 +193,28 @@ export function createRouteLifecycle({
     route.length=0;
     segments.length=0;
     let routeLength=0;
-    setState({
-      routeLength:0,
-      vehicleNearestHint:-1,
-      vehicleNearestLastX:Infinity,
-      vehicleNearestLastZ:Infinity
-    });
+    setState({routeLength:0,vehicleNearestHint:-1,vehicleNearestLastX:Infinity,vehicleNearestLastZ:Infinity});
 
     for(let i=0;i<coordsGeo.length;i++){
       const [lon,lat]=coordsGeo[i];
       const p=toWorld(lat,lon);
       let cum=routeLength;
-
       if(i){
         const prev=route[i-1];
         const len=Math.hypot(p.x-prev.x,p.z-prev.z);
         if(len>.02){
-          segments.push({
-            ax:prev.x,
-            az:prev.z,
-            bx:p.x,
-            bz:p.z,
-            len,
-            cum:routeLength
-          });
+          segments.push({ax:prev.x,az:prev.z,bx:p.x,bz:p.z,len,cum:routeLength});
           routeLength+=len;
         }
         cum=routeLength;
       }
-
       route.push({x:p.x,z:p.z,lat,lon,cum});
     }
 
-    if(segments.length<2||routeLength<100){
-      throw new Error('Tracé routier trop court ou invalide');
-    }
+    if(segments.length<2||routeLength<100)throw new Error('Tracé routier trop court ou invalide');
 
     setState({routeLength});
-    statusEl.textContent=
-      `Trajet chargé · ${(routeLength/1000).toFixed(1)} km · ${route.length.toLocaleString('fr-CA')} points`;
+    statusEl.textContent=`Trajet chargé · ${(routeLength/1000).toFixed(1)} km · ${route.length.toLocaleString('fr-CA')} points`;
     return routeKey;
   }
 
@@ -238,38 +237,24 @@ export function createRouteLifecycle({
 
     const routeChangeNeedsForestReady=!!getState().gameStarted;
 
-    if(getState().autopilot){
-      setAutopilot(false,'Pilote auto désactivé');
-    }
+    if(getState().autopilot)setAutopilot(false,'Pilote auto désactivé');
 
     const routeStart={...start,name:start.name||'Départ'};
     const routeEnd={...end,name:end.name||'Arrivée'};
     const routeWaypoints=Array.isArray(waypoints)?waypoints.slice(0,8):[];
 
-    setState({
-      speed:0,
-      steer:0,
-      autopilotSteer:0,
-      routeStart,
-      routeEnd,
-      routeWaypoints,
-      origin:{lat:routeStart.lat,lon:routeStart.lon}
-    });
+    setState({speed:0,steer:0,autopilotSteer:0,routeStart,routeEnd,routeWaypoints,origin:{lat:routeStart.lat,lon:routeStart.lon}});
 
     resetWorldCachesForRequest({preserveForest:true});
     resetRunChallenge();
 
-    if(routeChangeNeedsForestReady){
-      loading.classList.remove('hidden');
-    }else{
-      loading.classList.add('hidden');
-    }
+    if(routeChangeNeedsForestReady)loading.classList.remove('hidden');
+    else loading.classList.add('hidden');
 
     loadingText.textContent='Initialisation du trajet…';
     routingStatus.textContent='Connexion…';
     statusEl.textContent='Création du trajet…';
 
-    // Absolute failsafe: UI must never stay hidden forever.
     let completed=false;
     const failsafe=setTimeout(()=>{
       if(!completed&&ownsRouteGeneration(routeGeneration)){
@@ -287,68 +272,42 @@ export function createRouteLifecycle({
     };
 
     try{
-      setBootProgress(
-        'route',
-        'loading',
-        `Calcul du trajet ${start.name||'Départ'} → ${end.name||'Arrivée'}`
-      );
+      setBootProgress('route','loading',`Calcul du trajet ${start.name||'Départ'} → ${end.name||'Arrivée'}`);
 
       const routeKey=await loadRouteForGeneration(routeGeneration);
       if(stopIfStale())return false;
       if(routeKey===false)return false;
 
       setBootProgress('route','done','Trajet prêt');
-
       prepMap();
       placeAt(0);
-
-      // Routing failsafe no longer owns the hydrography wait.
       clearTimeout(failsafe);
 
       loadingText.textContent='Chargement de l’hydrographie initiale…';
       setBootProgress('hydro','loading','Hydrographie initiale');
 
       let position=getState();
-      // V21.31 — Hydrography is optional. Overpass mirrors can time out, reject
-      // CORS or return 5xx responses; none of those failures should block the
-      // drivable route. Let the request continue safely in the background, but
-      // give initial boot only a short grace period before moving on to DEM.
-      const hydroAttempt=Promise.resolve(
-        loadWaterAround(position.absX,position.absZ)
-      ).catch(error=>{
-        if(ownsRouteGeneration(routeGeneration)){
-          console.warn('Initial hydrography failed',error);
-        }
+      const hydroAttempt=Promise.resolve(loadWaterAround(position.absX,position.absZ)).catch(error=>{
+        if(ownsRouteGeneration(routeGeneration))console.warn('Initial hydrography failed',error);
         return {ok:false,error};
       });
       const hydroResult=await Promise.race([
         hydroAttempt,
-        new Promise(resolve=>setTimeout(
-          ()=>resolve({ok:false,timeout:true}),
-          2500
-        ))
+        new Promise(resolve=>setTimeout(()=>resolve({ok:false,timeout:true}),2500))
       ]);
       if(stopIfStale())return false;
       const hydroReady=hydroResult?.ok===true;
 
-      setBootProgress(
-        'hydro',
-        hydroReady?'done':'warn',
-        hydroReady?'Hydrographie prête':'Hydrographie différée / indisponible'
-      );
-
-      // Do not expose fallback terrain while the first real DEM/image tiles
-      // are still arriving. This is intentionally performed while stationary.
+      setBootProgress('hydro',hydroReady?'done':'warn',hydroReady?'Hydrographie prête':'Hydrographie différée / indisponible');
       loadingText.textContent='Préchargement du terrain en avance…';
 
       position=getState();
       preloadRoute(position.absX,position.absZ);
 
-      const initialElevationReady=await loadElevationAround(position.absX,position.absZ)
-        .catch(()=>{
-          if(ownsRouteGeneration(routeGeneration))onElevationFallback();
-          return false;
-        });
+      const initialElevationReady=await loadElevationAround(position.absX,position.absZ).catch(()=>{
+        if(ownsRouteGeneration(routeGeneration))onElevationFallback();
+        return false;
+      });
       if(stopIfStale())return false;
 
       await primeInitialTerrainPreloadBuffer().catch(()=>{});
@@ -357,11 +316,10 @@ export function createRouteLifecycle({
       if(imageryService.enabled){
         position=getState();
         await promiseWithTimeout(
-          buildImageryMosaic(position.absX,position.absZ)
-            .catch(()=>{
-              if(ownsRouteGeneration(routeGeneration))return onImageryFallback();
-              return false;
-            }),
+          buildImageryMosaic(position.absX,position.absZ).catch(()=>{
+            if(ownsRouteGeneration(routeGeneration))return onImageryFallback();
+            return false;
+          }),
           4500
         );
         if(stopIfStale())return false;
@@ -369,41 +327,25 @@ export function createRouteLifecycle({
 
       if(initialElevationReady||hasPendingWorld()){
         cancelVisualJob('world-rebuild');
-        if(commitLocalWorldRefresh()){
-          // Initial placement may have sampled the fallback/pre-DEM road.
-          // Re-sample the same stored cumulative road point against the final
-          // committed terrain without forcing a second world rebuild.
-          placeAt(0,{finalizeOnly:true});
-        }
+        if(commitLocalWorldRefresh())placeAt(0,{finalizeOnly:true});
       }
 
       if(stopIfStale())return false;
 
-      // Only now is the requested route far enough through startup to own the
-      // forest. A stale/interrupted route never gets to evict the previous route's
-      // expensive chunk cache. Returning to identical routed geometry reuses it.
-      if(activeForestRouteKey!==routeKey){
-        resetRouteForest();
-        activeForestRouteKey=routeKey;
-      }
+      // Forest ownership changes only after final route/terrain work is current.
+      // The streamer keeps one previous route slot, so A → B → A can restore A's
+      // already-built chunks immediately even if B had entered its P9.35 wait.
+      switchRouteForest(routeKey);
 
       prefetchRouteAhead();
       position=getState();
-      loadSceneryAround(position.absX,position.absZ)
-        .catch(()=>{
-          if(ownsRouteGeneration(routeGeneration))onSceneryUnavailable();
-        });
+      loadSceneryAround(position.absX,position.absZ).catch(()=>{
+        if(ownsRouteGeneration(routeGeneration))onSceneryUnavailable();
+      });
       loadRoadMetadataAround(position.absX,position.absZ).catch(()=>{});
       loadGeographicSignsAround(position.absX,position.absZ).catch(()=>{});
 
-      // Initial app startup already waits on P9.35 from the vehicle chooser.
-      // In-game route changes historically exposed terrain immediately and let
-      // the forest fill in afterward. Reuse the same proven readiness gate here
-      // without changing forest density, budgets or P9.35 thresholds.
-      if(
-        routeChangeNeedsForestReady&&
-        typeof sceneryRenderer.whenInitialForestReady==='function'
-      ){
+      if(routeChangeNeedsForestReady&&typeof sceneryRenderer.whenInitialForestReady==='function'){
         loadingText.textContent='Préparation de la forêt devant…';
         await sceneryRenderer.whenInitialForestReady().catch(()=>false);
         if(stopIfStale())return false;
@@ -431,11 +373,5 @@ export function createRouteLifecycle({
     }
   }
 
-  return {
-    worldDrive,
-    bumpRouteGeneration,
-    resetWorldCaches,
-    loadRoute,
-    createRequestedRoute
-  };
+  return {worldDrive,bumpRouteGeneration,resetWorldCaches,loadRoute,createRequestedRoute};
 }
