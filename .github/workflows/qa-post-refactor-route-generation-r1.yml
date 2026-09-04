@@ -1,9 +1,9 @@
-name: Post-refactor Route Generation R2 QA
+name: Post-refactor Route Generation R3 QA
 
 on:
   push:
     branches:
-      - candidate/post-refactor-route-generation-r2
+      - candidate/post-refactor-route-generation-r3
   workflow_dispatch:
 
 permissions:
@@ -23,8 +23,12 @@ jobs:
           cache: npm
       - name: Install
         run: npm ci
-      - name: Route generation race and forest retention QA
-        run: node qa/qa-post-refactor-route-generation-r1.mjs
+      - name: Deterministic stale route race QA
+        run: node qa/qa-route-generation-race-r3.mjs
+      - name: Route return during P9.35 QA
+        run: node qa/qa-route-generation-p935-r3.mjs
+      - name: Forest route cache identity QA
+        run: node qa/qa-forest-route-cache-r3.mjs
       - name: Route lifecycle refactor regression
         run: node qa/V21_26_ROUTE_LIFECYCLE_REFACTOR_QA.mjs
       - name: R7 routing boundary QA
@@ -35,6 +39,18 @@ jobs:
         run: node qa/qa-route-start-final-placement-r8.mjs
       - name: Forest route readiness R8 QA
         run: node qa/qa-r8-forest-route-readiness.mjs
+      - name: Active forest runtime mock
+        run: node qa/qa-forest-active-runtime.mjs
+      - name: P9.29 forest frame-budget QA
+        run: node qa/qa-forest-p929-frame-budget.mjs
+      - name: P9.35 forest startup QA
+        run: node qa/qa-forest-p935-front-startup.mjs
+      - name: P9.36 forest rolling prefetch QA
+        run: node qa/qa-forest-p936-rolling-prefetch.mjs
+      - name: P9.38 forest retention QA
+        run: node qa/qa-p938-forest-retention.mjs
+      - name: P9.40 forest maintenance QA
+        run: node qa/qa-forest-p940-maintenance.mjs
       - name: Runtime import and source-tree audit
         run: node qa/DEV_INTEGRATION_AUDIT.mjs
       - name: Production build
