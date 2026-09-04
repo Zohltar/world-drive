@@ -10,6 +10,7 @@ export function createLocalWorldBuilder(options={}){
   const originalClearGroup=options.clearGroup;
   const originalFreezeStaticMatrices=options.freezeStaticMatrices;
   const forestGroup=options.forestGroup;
+  const sceneryRenderer=options.sceneryRenderer;
   let incrementalInstall=false;
   let preserveForestDuringPreparedCommit=false;
   let roadReplay=null;
@@ -29,7 +30,10 @@ export function createLocalWorldBuilder(options={}){
     commits:0,
     lastPreservedChildren:0,
     maxPreservedChildren:0,
-    freezeSkips:0
+    freezeSkips:0,
+    terrainAlignments:0,
+    lastAlignedTrees:0,
+    maxAlignedTrees:0
   };
 
   const sameOffset=(a,b)=>!!a&&!!b&&Math.hypot(
@@ -81,6 +85,18 @@ export function createLocalWorldBuilder(options={}){
       return;
     }
     return originalFreezeStaticMatrices?.(root,...args);
+  }
+
+  function alignForestToCommittedTerrain(){
+    const routeKey=sceneryRenderer?.forestStats?.()?.routeCacheKey;
+    if(!routeKey||typeof sceneryRenderer?.switchForestRouteCache!=='function')return false;
+    const result=sceneryRenderer.switchForestRouteCache(routeKey);
+    if(!result)return false;
+    const trees=Math.max(0,Number(result.reprojectedTrees)||0);
+    forestRetentionPerf.terrainAlignments++;
+    forestRetentionPerf.lastAlignedTrees=trees;
+    forestRetentionPerf.maxAlignedTrees=Math.max(forestRetentionPerf.maxAlignedTrees,trees);
+    return result;
   }
 
   function takePrepared(kind,fallback,args){
@@ -167,7 +183,9 @@ export function createLocalWorldBuilder(options={}){
 
   function rebuild(...args){
     terrainService?.cancelRoadTransitionPreparation?.();
-    return base.rebuild?.(...args);
+    const result=base.rebuild?.(...args);
+    if(result)alignForestToCommittedTerrain();
+    return result;
   }
 
   async function prepareIncremental(...args){
@@ -210,6 +228,7 @@ export function createLocalWorldBuilder(options={}){
       // clearGroup(forestGroup) here removes redundant synchronous traversal,
       // geometry disposal and subsequent recreation from the atomic swap.
       const result=base.commitPrepared?.(prepared);
+      if(result)alignForestToCommittedTerrain();
       if(result&&typeof terrainService?.rebuildRoadTransitionIncremental==='function'){
         terrainService.cancelRoadTransitionPreparation?.();
         scheduleVisualJob?.(
@@ -261,7 +280,10 @@ export function createLocalWorldBuilder(options={}){
         commits:forestRetentionPerf.commits,
         lastPreservedChildren:forestRetentionPerf.lastPreservedChildren,
         maxPreservedChildren:forestRetentionPerf.maxPreservedChildren,
-        freezeSkips:forestRetentionPerf.freezeSkips
+        freezeSkips:forestRetentionPerf.freezeSkips,
+        terrainAlignments:forestRetentionPerf.terrainAlignments,
+        lastAlignedTrees:forestRetentionPerf.lastAlignedTrees,
+        maxAlignedTrees:forestRetentionPerf.maxAlignedTrees
       }
     };
   }
