@@ -1,9 +1,9 @@
-name: Post-refactor Route Generation R1 QA
+name: Post-refactor Route Generation R2 QA
 
 on:
   push:
     branches:
-      - candidate/post-refactor-route-generation-r1
+      - candidate/post-refactor-route-generation-r2
   workflow_dispatch:
 
 permissions:
@@ -23,7 +23,7 @@ jobs:
           cache: npm
       - name: Install
         run: npm ci
-      - name: Route generation race QA
+      - name: Route generation race and forest retention QA
         run: node qa/qa-post-refactor-route-generation-r1.mjs
       - name: Route lifecycle refactor regression
         run: node qa/V21_26_ROUTE_LIFECYCLE_REFACTOR_QA.mjs
