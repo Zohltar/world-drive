@@ -98,26 +98,65 @@ export function createStreamingCoordinator(options){
   }
   function backgroundAllowed(now=performance.now()){return now-lastAdaptiveHitchAt>=BACKGROUND_COOLDOWN_MS;}
   function runtimeState(){try{return options.getRuntimeState?.()||{};}catch{return {};}}
-  function recordVisualJob(key,ms,endedAt=performance.now()){
+  function visualJobEntry(key){
+    let entry=visualJobStats.get(key);
+    if(!entry){
+      entry={
+        runs:0,totalMs:0,maxMs:0,lastMs:0,
+        settledRuns:0,succeededRuns:0,failedRuns:0,inFlight:0,
+        totalWallMs:0,maxWallMs:0,lastWallMs:0,lastOutcome:null,lastSettledAt:null
+      };
+      visualJobStats.set(key,entry);
+    }
+    return entry;
+  }
+  function recordVisualJobSync(key,ms,endedAt=performance.now()){
     if(!Number.isFinite(ms))return;
-    const previous=visualJobStats.get(key)||{runs:0,totalMs:0,maxMs:0,lastMs:0};
-    previous.runs++;previous.totalMs+=ms;previous.lastMs=ms;previous.maxMs=Math.max(previous.maxMs,ms);
-    visualJobStats.set(key,previous);
+    const entry=visualJobEntry(key);
+    entry.runs++;entry.totalMs+=ms;entry.lastMs=ms;entry.maxMs=Math.max(entry.maxMs,ms);
     lastVisualJobEvent={key:String(key),ms,at:endedAt};
+  }
+  function recordVisualJobSettlement(key,wallMs,outcome,endedAt=performance.now()){
+    if(!Number.isFinite(wallMs))return;
+    const entry=visualJobEntry(key);
+    entry.settledRuns++;entry.totalWallMs+=wallMs;entry.lastWallMs=wallMs;entry.maxWallMs=Math.max(entry.maxWallMs,wallMs);
+    entry.lastOutcome=outcome;entry.lastSettledAt=endedAt;
+    if(outcome==='sync-return'||outcome==='async-resolve')entry.succeededRuns++;
+    else entry.failedRuns++;
+    if(outcome==='async-resolve'||outcome==='async-reject')entry.inFlight=Math.max(0,entry.inFlight-1);
   }
   function scheduleVisualJob(key,job,timeout=180){
     return base.scheduleVisualJob(key,()=>{
       const started=performance.now();
+      let result;
       try{
-        const result=job();
-        const ended=performance.now();
-        recordVisualJob(key,ended-started,ended);
-        return result;
+        result=job();
       }catch(error){
         const ended=performance.now();
-        recordVisualJob(key,ended-started,ended);
+        const syncMs=ended-started;
+        recordVisualJobSync(key,syncMs,ended);
+        recordVisualJobSettlement(key,syncMs,'sync-throw',ended);
         throw error;
       }
+      const syncEnded=performance.now();
+      recordVisualJobSync(key,syncEnded-started,syncEnded);
+      if(result&&typeof result.then==='function'){
+        visualJobEntry(key).inFlight++;
+        return Promise.resolve(result).then(
+          value=>{
+            const ended=performance.now();
+            recordVisualJobSettlement(key,ended-started,'async-resolve',ended);
+            return value;
+          },
+          error=>{
+            const ended=performance.now();
+            recordVisualJobSettlement(key,ended-started,'async-reject',ended);
+            throw error;
+          }
+        );
+      }
+      recordVisualJobSettlement(key,syncEnded-started,'sync-return',syncEnded);
+      return result;
     },timeout);
   }
 
@@ -374,7 +413,21 @@ export function createStreamingCoordinator(options){
     const legacy=base.diagnostics();
     const visualJobs={};
     for(const [key,value] of visualJobStats){
-      visualJobs[key]={runs:value.runs,lastMs:Number(value.lastMs.toFixed(3)),maxMs:Number(value.maxMs.toFixed(3)),avgMs:Number((value.totalMs/Math.max(1,value.runs)).toFixed(3))};
+      visualJobs[key]={
+        runs:value.runs,
+        lastMs:Number(value.lastMs.toFixed(3)),
+        maxMs:Number(value.maxMs.toFixed(3)),
+        avgMs:Number((value.totalMs/Math.max(1,value.runs)).toFixed(3)),
+        settledRuns:value.settledRuns,
+        succeededRuns:value.succeededRuns,
+        failedRuns:value.failedRuns,
+        inFlight:value.inFlight,
+        lastWallMs:Number(value.lastWallMs.toFixed(3)),
+        maxWallMs:Number(value.maxWallMs.toFixed(3)),
+        avgWallMs:Number((value.totalWallMs/Math.max(1,value.settledRuns)).toFixed(3)),
+        lastOutcome:value.lastOutcome,
+        lastSettledAt:Number.isFinite(value.lastSettledAt)?Number(value.lastSettledAt.toFixed(3)):null
+      };
     }
     const phaseMax={};for(const [key,value] of Object.entries(localWorldPhaseMax))phaseMax[key]=Number(value.toFixed(3));
     const attributionCounts={};
