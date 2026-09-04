@@ -69,6 +69,10 @@ export function createRouteLifecycle({
     worldDrive.streaming.generation++;
   }
 
+  function ownsRouteGeneration(generation){
+    return worldDrive.route.generation===generation;
+  }
+
   function resetWorldCaches(){
     setState({currentRoadGuideSign:null});
     resetStreamingCoordinator();
@@ -131,7 +135,7 @@ export function createRouteLifecycle({
     terrainService.clearHorizon();
   }
 
-  async function loadRoute(){
+  async function loadRoute(routeGeneration=worldDrive.route.generation){
     const state=getState();
     const routeStart=state.routeStart;
     const routeEnd=state.routeEnd;
@@ -142,6 +146,8 @@ export function createRouteLifecycle({
       points:routePoints,
       start:routeStart
     });
+
+    if(!ownsRouteGeneration(routeGeneration))return false;
 
     routingStatus.textContent=provider;
     const coordsGeo=coordinates;
@@ -193,6 +199,7 @@ export function createRouteLifecycle({
 
   async function createRequestedRoute(start,end,waypoints=[]){
     bumpRouteGeneration();
+    const routeGeneration=worldDrive.route.generation;
 
     if(!validLatLon(start.lat,start.lon)||!validLatLon(end.lat,end.lon)){
       toast('Coordonnées invalides');
@@ -239,13 +246,19 @@ export function createRouteLifecycle({
     // Absolute failsafe: UI must never stay hidden forever.
     let completed=false;
     const failsafe=setTimeout(()=>{
-      if(!completed){
+      if(!completed&&ownsRouteGeneration(routeGeneration)){
         loading.classList.add('hidden');
         routingStatus.textContent='Timeout';
         statusEl.textContent='Routage trop lent — tu peux réessayer';
         toast('Le routeur ne répond pas');
       }
     },15000);
+    const stopIfStale=()=>{
+      if(ownsRouteGeneration(routeGeneration))return false;
+      completed=true;
+      clearTimeout(failsafe);
+      return true;
+    };
 
     try{
       setBootProgress(
@@ -254,7 +267,8 @@ export function createRouteLifecycle({
         `Calcul du trajet ${start.name||'Départ'} → ${end.name||'Arrivée'}`
       );
 
-      await loadRoute();
+      const routeLoaded=await loadRoute(routeGeneration);
+      if(!routeLoaded||stopIfStale())return false;
 
       setBootProgress('route','done','Trajet prêt');
 
@@ -275,7 +289,9 @@ export function createRouteLifecycle({
       const hydroAttempt=Promise.resolve(
         loadWaterAround(position.absX,position.absZ)
       ).catch(error=>{
-        console.warn('Initial hydrography failed',error);
+        if(ownsRouteGeneration(routeGeneration)){
+          console.warn('Initial hydrography failed',error);
+        }
         return {ok:false,error};
       });
       const hydroResult=await Promise.race([
@@ -285,6 +301,7 @@ export function createRouteLifecycle({
           2500
         ))
       ]);
+      if(stopIfStale())return false;
       const hydroReady=hydroResult?.ok===true;
 
       setBootProgress(
@@ -302,19 +319,25 @@ export function createRouteLifecycle({
 
       const initialElevationReady=await loadElevationAround(position.absX,position.absZ)
         .catch(()=>{
-          onElevationFallback();
+          if(ownsRouteGeneration(routeGeneration))onElevationFallback();
           return false;
         });
+      if(stopIfStale())return false;
 
       await primeInitialTerrainPreloadBuffer().catch(()=>{});
+      if(stopIfStale())return false;
 
       if(imageryService.enabled){
         position=getState();
         await promiseWithTimeout(
           buildImageryMosaic(position.absX,position.absZ)
-            .catch(()=>onImageryFallback()),
+            .catch(()=>{
+              if(ownsRouteGeneration(routeGeneration))return onImageryFallback();
+              return false;
+            }),
           4500
         );
+        if(stopIfStale())return false;
       }
 
       if(initialElevationReady||hasPendingWorld()){
@@ -327,10 +350,13 @@ export function createRouteLifecycle({
         }
       }
 
+      if(stopIfStale())return false;
       prefetchRouteAhead();
       position=getState();
       loadSceneryAround(position.absX,position.absZ)
-        .catch(()=>onSceneryUnavailable());
+        .catch(()=>{
+          if(ownsRouteGeneration(routeGeneration))onSceneryUnavailable();
+        });
       loadRoadMetadataAround(position.absX,position.absZ).catch(()=>{});
       loadGeographicSignsAround(position.absX,position.absZ).catch(()=>{});
 
@@ -344,13 +370,20 @@ export function createRouteLifecycle({
       ){
         loadingText.textContent='Préparation de la forêt devant…';
         await sceneryRenderer.whenInitialForestReady().catch(()=>false);
+        if(stopIfStale())return false;
       }
 
+      if(stopIfStale())return false;
       completed=true;
       loading.classList.add('hidden');
       toast('Trajet prêt · terrain préchargé');
       return true;
     }catch(error){
+      if(!ownsRouteGeneration(routeGeneration)){
+        completed=true;
+        clearTimeout(failsafe);
+        return false;
+      }
       completed=true;
       clearTimeout(failsafe);
       console.error('Route creation failed:',error);
