@@ -10,14 +10,35 @@ const GROUND_SIZE=420;
 const GROUND_SEGMENTS=32;
 const ORIGIN_X=1600;
 
-const worldSceneSource=fs.readFileSync(
-  new URL('../src/terrain/world-scene.js',import.meta.url),
-  'utf8'
+const terrainP925Source=fs.readFileSync(
+  new URL('../src/terrain-p925.js',import.meta.url),'utf8'
 );
-assert.match(worldSceneSource,/road-terrain-transition/,
-  'Block 3 baseline requires the retired transition presentation contract');
-assert.match(worldSceneSource,/group\.visible=false/,
-  'Block 3 baseline requires the transition to remain hidden in production');
+const localWorldSource=fs.readFileSync(
+  new URL('../src/local-world-builder.js',import.meta.url),'utf8'
+);
+const worldSceneSource=fs.readFileSync(
+  new URL('../src/terrain/world-scene.js',import.meta.url),'utf8'
+);
+
+// Block 3 permanent source contract: the presentation worker is retired, but
+// the authoritative terrain/road-bed state machinery remains intact.
+assert.match(terrainP925Source,/function gradedHeight\(/,
+  'Block 3 must preserve authoritative road-bed grading');
+assert.match(terrainP925Source,/function renderedTerrainHeight\(/,
+  'Block 3 must preserve visible terrain height authority');
+assert.match(terrainP925Source,/roadSegmentIndex/,
+  'Block 3 must preserve the road spatial index');
+assert.match(
+  terrainP925Source,
+  /function rebuildRoadBedVisual\(\)\{[\s\S]*?if\(activeRoadProfile\.length<2\)\{[\s\S]*?return false;[\s\S]*?\}[\s\S]*?return true;[\s\S]*?const offset=getWorldOffset\(\);/,
+  'Block 3 synchronous transition retirement guard missing'
+);
+assert.doesNotMatch(localWorldSource,/scheduleVisualJob\?\.\(\s*'road-transition'/,
+  'Block 3 must not schedule the retired P9.27 road-transition visual job');
+assert.doesNotMatch(worldSceneSource,/road-terrain-transition/,
+  'Block 3 world scene must not retain retired transition interception');
+assert.doesNotMatch(worldSceneSource,/scene\.add\s*=\s*function/,
+  'Block 3 must not monkey-patch scene.add for the retired layer');
 
 const scene=new THREE.Scene();
 const world=new THREE.Group();
@@ -61,7 +82,7 @@ const elevation={
   relativeWorldHeight:(x,z)=>naturalHeight(x,z),
   relativeElevationAt:()=>0,
   prefetchAt:()=>Promise.resolve(true),
-  diagnostics:()=>({mock:'block3-baseline'})
+  diagnostics:()=>({mock:'block3-retired-transition'})
 };
 
 const profile=[];
@@ -88,9 +109,8 @@ const terrainService=createTerrainService({
   groundSegments:GROUND_SEGMENTS
 });
 
-// Block 3 measures transition work only. Keep the independent P9.26 horizon
-// worker out of this benchmark so its large incremental build cannot obscure
-// the retired road-transition cost we are trying to quantify.
+// Keep the independent P9.26 horizon worker out of this focused benchmark so
+// its large incremental build cannot obscure the retired transition contract.
 const builderTerrain={...terrainService,rebuildHorizonIncremental:undefined};
 
 const noopService={
@@ -195,28 +215,43 @@ async function waitFor(predicate,label,timeoutMs=10000){
   throw new Error(`Timed out waiting for ${label}`);
 }
 
-// Baseline path 1: forced/startup rebuild. This is the synchronous P9.25
-// transition builder that still allocates and installs road-terrain-transition.
+// Runtime gate 1: forced/startup rebuild keeps terrain state and performs no
+// transition allocation. The diagnostic phase remains for compatibility, but
+// it now measures only the retirement guard/cleanup call.
 const fullReport=builder.rebuild();
 assert.ok(fullReport&&Number.isFinite(fullReport.totalMs),
-  'Block 3 full rebuild baseline did not return timing diagnostics');
-const terrainAfterFull=terrainService.diagnostics();
-const legacyTransitionMs=terrainAfterFull.last?.roadTransition;
-assert.ok(Number.isFinite(legacyTransitionMs),
-  'Block 3 legacy road-transition timing is missing');
-assert.ok(scene.getObjectByName('road-terrain-transition'),
-  'Block 3 baseline expected the retired transition mesh to still be allocated');
-assert.equal(terrainService.p927Diagnostics().transitionPreparations,0,
-  'Full rebuild unexpectedly entered the P9.27 prepared transition path');
+  'Block 3 full rebuild did not return timing diagnostics');
+assert.equal(scene.getObjectByName('road-terrain-transition'),undefined,
+  'Block 3 full rebuild allocated the retired road transition mesh');
+assert.equal(scene.getObjectByName('road-terrain-transition-p927-hold'),undefined,
+  'Block 3 full rebuild retained a P9.27 transition hold mesh');
 
-// Reset coordinator-only telemetry after the full rebuild so the prepared
-// refresh measurements below describe exactly the three requested refreshes.
+const terrainAfterFull=terrainService.diagnostics();
+assert.ok(Number.isFinite(terrainAfterFull.last?.roadTransition),
+  'Block 3 must preserve terrain phase telemetry shape');
+assert.equal(terrainService.p927Diagnostics().transitionPreparations,0,
+  'Full rebuild unexpectedly entered the P9.27 transition preparation path');
+assert.equal(terrainService.p927Diagnostics().transitionCommits,0,
+  'Full rebuild unexpectedly committed P9.27 transition geometry');
+
+// Issue #4 regression gate: road-state authority must still grade the visible
+// terrain even though the separate presentation ribbon is gone. Scan the real
+// profile and require a meaningful cut relative to untouched DEM at some point.
+let maxVisibleReduction=0;
+for(const point of profile){
+  const natural=naturalHeight(point.x,point.z)-.15;
+  const rendered=terrainService.renderHeightAt(point.x,point.z);
+  assert.ok(Number.isFinite(rendered),'Rendered road terrain height became non-finite');
+  assert.ok(rendered<=natural+1e-6,
+    'Road terrain authority raised visible terrain above the natural DEM');
+  maxVisibleReduction=Math.max(maxVisibleReduction,natural-rendered);
+}
+assert.ok(maxVisibleReduction>.1,
+  'Block 3 accidentally removed road-bed/refined terrain grading authority');
+
 coordinator.resetTelemetry();
 coordinator.state.lastHitchAt=-Infinity;
 
-// A lightweight event-loop frame probe runs while the real incremental work is
-// happening. It is observational only: no thresholds are enforced because CI
-// runner load is not a gameplay performance contract.
 let frameProbeLast=performance.now();
 const frameProbe=setInterval(()=>{
   const now=performance.now();
@@ -228,7 +263,6 @@ const frameProbe=setInterval(()=>{
 try{
   for(let i=0;i<REFRESH_COUNT;i++){
     const beforeWorld=coordinator.diagnostics().p923.preparedCommits;
-    const beforeTransition=terrainService.p927Diagnostics().transitionCommits;
     coordinator.state.lastHitchAt=-Infinity;
     coordinator.markWorldRefresh('recenter');
     assert.equal(coordinator.scheduleWorldRefresh({urgent:false}),true,
@@ -238,42 +272,37 @@ try{
       ()=>coordinator.diagnostics().p923.preparedCommits===beforeWorld+1,
       `prepared world commit ${i+1}`
     );
-    await waitFor(
-      ()=>terrainService.p927Diagnostics().transitionCommits===beforeTransition+1,
-      `road-transition commit ${i+1}`
-    );
+    // Give any accidentally scheduled visual job enough time to become visible
+    // in diagnostics; correct Block 3 runtime schedules none.
+    await wait(40);
   }
 }finally{
   clearInterval(frameProbe);
 }
 
-// Let the final probe/post-world timer settle before taking the snapshot.
-await wait(40);
 coordinator.cancelVisualJob?.('post-world-imagery');
-
 const transitionDiag=terrainService.p927Diagnostics();
 const streamDiag=coordinator.diagnostics();
 const builderDiag=builder.p923Diagnostics();
-const roadVisual=streamDiag.visualJobs['road-transition'];
 
 assert.equal(transitionDiag.stateOnlyInstalls,REFRESH_COUNT,
-  'Prepared refreshes did not use the state-only road install exactly once each');
-assert.equal(transitionDiag.transitionPreparations,REFRESH_COUNT,
-  'Retired P9.27 transition was not prepared exactly once per prepared refresh');
-assert.equal(transitionDiag.transitionCommits,REFRESH_COUNT,
-  'Retired P9.27 transition was not committed exactly once per prepared refresh');
+  'Prepared refreshes must retain the P9.27 state-only road install');
+assert.equal(transitionDiag.transitionPreparations,0,
+  'Retired P9.27 transition geometry was still prepared');
+assert.equal(transitionDiag.transitionCommits,0,
+  'Retired P9.27 transition geometry was still committed');
+assert.equal(transitionDiag.transitionDiscards,0,
+  'Retired P9.27 transition unexpectedly entered discard accounting');
+assert.equal(streamDiag.visualJobs['road-transition'],undefined,
+  'Retired road-transition visualJobs activity is still present');
 assert.equal(streamDiag.p923.preparedCommits,REFRESH_COUNT,
   'Coordinator prepared-world commit count does not match the benchmark');
 assert.equal(builderDiag.preparedCommits,REFRESH_COUNT,
   'Local-world builder prepared commit count does not match the benchmark');
-assert.equal(roadVisual?.runs,REFRESH_COUNT,
-  'visualJobs did not record the road-transition activity for every refresh');
-assert.ok(Number.isFinite(transitionDiag.maxSliceMs),
-  'P9.27 max slice timing missing');
-assert.ok(Number.isFinite(transitionDiag.maxCommitMs),
-  'P9.27 max commit timing missing');
-assert.ok(Number.isFinite(transitionDiag.last?.prepareWallMs),
-  'P9.27 preparation wall timing missing');
+assert.equal(scene.getObjectByName('road-terrain-transition'),undefined,
+  'Prepared refresh recreated the retired transition mesh');
+assert.equal(scene.getObjectByName('road-terrain-transition-p927-hold'),undefined,
+  'Prepared refresh recreated the retired transition hold mesh');
 assert.ok(streamDiag.frameBins.gameplayFrames>0,
   'Frame probe did not capture any event-loop frames');
 assert.ok(Number.isFinite(streamDiag.p923.maxPreparedCommitMs),
@@ -281,38 +310,30 @@ assert.ok(Number.isFinite(streamDiag.p923.maxPreparedCommitMs),
 assert.ok(Number.isFinite(streamDiag.localWorldPhases?.p923?.groundCommitMs),
   'Prepared local-world ground commit timing missing');
 
-const visualAsyncUndercountMs=Math.max(
-  0,
-  Number(transitionDiag.last.prepareWallMs||0)-Number(roadVisual?.lastMs||0)
-);
-
-console.log('POST-REFACTOR ROAD TRANSITION BASELINE R1: PASS');
+console.log('POST-REFACTOR ROAD TRANSITION RETIREMENT R1: PASS');
 console.log({
   routeProfile:'deterministic mountain profile',
   profilePoints:profile.length,
   refreshes:REFRESH_COUNT,
-  retiredPresentationHidden:true,
+  issue4Gate:{
+    transitionMeshes:0,
+    maxVisibleRoadTerrainReductionM:Number(maxVisibleReduction.toFixed(3)),
+    roadBedAuthorityPreserved:true
+  },
   fullRebuild:{
     totalMs:Number(fullReport.totalMs.toFixed(3)),
     terrainRoadBedMs:Number(fullReport.phases.terrainRoadBed.toFixed(3)),
-    legacyTransitionMs:Number(legacyTransitionMs.toFixed(3)),
-    transitionMeshAllocated:true
+    retiredTransitionPhaseMs:terrainAfterFull.last.roadTransition,
+    transitionMeshAllocated:false,
+    baselineLegacyTransitionMs:21.352
   },
   preparedTransition:{
     stateOnlyInstalls:transitionDiag.stateOnlyInstalls,
     preparations:transitionDiag.transitionPreparations,
     commits:transitionDiag.transitionCommits,
-    discards:transitionDiag.transitionDiscards,
-    maxSliceMs:transitionDiag.maxSliceMs,
-    maxCommitMs:transitionDiag.maxCommitMs,
-    lastPrepareWallMs:Number((transitionDiag.last?.prepareWallMs||0).toFixed(3)),
-    lastPrepareCpuMs:Number((transitionDiag.last?.prepareCpuMs||0).toFixed(3)),
-    vertices:transitionDiag.last?.vertices||0,
-    triangles:transitionDiag.last?.triangles||0
-  },
-  visualJobs:{
-    roadTransition:roadVisual,
-    asyncTimingUndercountMs:Number(visualAsyncUndercountMs.toFixed(3))
+    visualJobRuns:0,
+    baselineLastPrepareWallMs:88.551,
+    baselineLastPrepareCpuMs:8.904
   },
   frameProbe:{
     hitchCount:streamDiag.hitchCount,
@@ -326,5 +347,6 @@ console.log({
     maxPrepareWallMs:streamDiag.p923.maxPrepareWallMs,
     localWorldTotalMs:streamDiag.localWorldPhases.totalMs,
     groundCommitMs:Number(streamDiag.localWorldPhases.p923.groundCommitMs.toFixed(3))
-  }
+  },
+  sceneAddInterceptor:false
 });

@@ -1,4 +1,4 @@
-name: Post-refactor Road Transition R1 Baseline
+name: Post-refactor Road Transition R1 QA
 
 on:
   push:
@@ -12,7 +12,7 @@ permissions:
 jobs:
   qa:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -23,13 +23,39 @@ jobs:
           cache: npm
       - name: Install
         run: npm ci
-      - name: Block 3 road-transition baseline measurement
+      - name: Block 3 retired road-transition regression and issue 4 gate
         run: node qa/qa-post-refactor-road-transition-baseline-r1.mjs
-      - name: P9.27 road-transition regression
+      - name: P9.27 retired transition compatibility QA
         run: node qa/qa-streaming-p927-road-transition.mjs
+      - name: P9.22 terrain profile regression
+        run: node qa/qa-streaming-p922-road-transition.mjs
       - name: P9.23 prepared-refresh regression
         run: node qa/qa-streaming-p923-prepared-refresh.mjs
       - name: P9.23 scheduler regression
         run: node qa/qa-streaming-p923-scheduler.mjs
-      - name: P9.20 local-world phase regression
-        run: node qa/qa-streaming-p920-world-phases.mjs
+      - name: R8 terrain source-tree QA
+        run: node qa/qa-source-tree-r8-terrain.mjs
+      - name: R8 world-scene source-tree QA
+        run: node qa/qa-source-tree-r8-world-scene.mjs
+      - name: R8 local-world source-tree QA
+        run: node qa/qa-source-tree-r8-local-world.mjs
+      - name: R8 streaming source-tree QA
+        run: node qa/qa-source-tree-r8-streaming.mjs
+      - name: R8 streaming baseline aggregate
+        run: node qa/qa-r8-streaming-baseline.mjs
+      - name: P9.24 frame-budget QA
+        run: node qa/qa-streaming-p924-frame-budget.mjs
+      - name: P9.39 hitch-attribution QA
+        run: node qa/qa-p939-hitch-attribution.mjs
+      - name: P9.41 frame-runtime attribution QA
+        run: node qa/qa-p941-frame-runtime-attribution.mjs
+      - name: Wheel-ground road terrain reentry regression
+        run: node qa/qa-wheel-ground-reentry-r14.mjs
+      - name: Route-start final placement R8 QA
+        run: node qa/qa-route-start-final-placement-r8.mjs
+      - name: Full Dev Integration audit
+        run: node qa/DEV_INTEGRATION_AUDIT.mjs
+      - name: Production build
+        run: npm run build
+      - name: Production code split QA
+        run: node qa/BUILD_V21_31_CODE_SPLIT_QA.mjs
