@@ -18,6 +18,7 @@ export function createForestChunkStreamer({
   THREE,
   forestGroup,
   getWorldOffset,
+  getParentRenderOffset,
   terrainHeight,
   nearestRoute,
   isWaterAt,
@@ -57,6 +58,7 @@ export function createForestChunkStreamer({
   let queuePriorityDirty=true;
   let pollTimer=null;
   let serial=0;
+  let cacheTerrainRevision=0;
   let lastCenter={x:NaN,z:NaN};
   let visibleKeys=new Set();
   let prefetchKeys=new Set();
@@ -82,6 +84,10 @@ export function createForestChunkStreamer({
     maxCandidates:0,
     densityCountUpdates:0,
     matrixUploads:0,
+    heightReprojections:0,
+    heightReprojectedTrees:0,
+    lastHeightReprojectionMs:0,
+    maxHeightReprojectionMs:0,
     lastCommitMs:0,
     maxCommitMs:0,
     lastCommitAt:0,
@@ -412,13 +418,52 @@ export function createForestChunkStreamer({
     const matrices=new Float32Array(floats);
     let cursor=0;
     for(const bucket of builder.buckets){if(bucket.length){matrices.set(bucket,cursor);cursor+=bucket.length;}}
-    return {...builder.desc,matrices,maxCount:Math.floor(floats/16),accepted:builder.accepted,lastUsed:performance.now(),mesh:null,group:null,visibleCount:0,state:null,prefetched:false};
+    return {...builder.desc,matrices,maxCount:Math.floor(floats/16),accepted:builder.accepted,lastUsed:performance.now(),mesh:null,group:null,visibleCount:0,state:null,prefetched:false,cacheTerrainRevision};
+  }
+
+  function reprojectChunkHeights(data){
+    const matrices=data?.matrices;
+    if(!matrices?.length){if(data)data.cacheTerrainRevision=cacheTerrainRevision;return 0;}
+    const started=performance.now();
+    let changed=0;
+    const count=Math.min(data.maxCount||0,Math.floor(matrices.length/16));
+    for(let i=0;i<count;i++){
+      const base=i*16;
+      const x=data.originX+matrices[base+12];
+      const z=data.originZ+matrices[base+14];
+      const y=forestHeight(x,z);
+      if(!Number.isFinite(y))continue;
+      matrices[base+13]=y-.28;
+      changed++;
+    }
+    if(data.mesh?.instanceMatrix?.array&&changed){
+      data.mesh.instanceMatrix.array.set(matrices,0);
+      data.mesh.instanceMatrix.needsUpdate=true;
+      perf.matrixUploads++;
+    }
+    data.cacheTerrainRevision=cacheTerrainRevision;
+    const elapsed=performance.now()-started;
+    perf.heightReprojections++;
+    perf.heightReprojectedTrees+=changed;
+    perf.lastHeightReprojectionMs=elapsed;
+    perf.maxHeightReprojectionMs=Math.max(perf.maxHeightReprojectionMs,elapsed);
+    return changed;
+  }
+
+  function ensureCurrentTerrain(data){
+    if(data?.cacheTerrainRevision===cacheTerrainRevision)return 0;
+    return reprojectChunkHeights(data);
   }
 
   function positionChunkGroup(data){
     if(!data.group)return;
     const offset=getWorldOffset()||{x:0,z:0};
-    data.group.position.set(data.originX-offset.x-(forestGroup.position.x||0),0,data.originZ-offset.z-(forestGroup.position.z||0));
+    const parentOffset=typeof getParentRenderOffset==='function'?(getParentRenderOffset()||{}):{};
+    data.group.position.set(
+      data.originX-offset.x-(forestGroup.position.x||0)-(Number(parentOffset.x)||0),
+      0,
+      data.originZ-offset.z-(forestGroup.position.z||0)-(Number(parentOffset.z)||0)
+    );
     data.group.updateMatrix();
   }
 
@@ -466,6 +511,7 @@ export function createForestChunkStreamer({
 
   function attach(data,center){
     const wasPrefetched=data?.prefetched===true;
+    ensureCurrentTerrain(data);
     if(!ensureMesh(data,center))return false;
     if(data.group.parent!==forestGroup)forestGroup.add(data.group);
     active.set(data.key,data);cache.set(data.key,data);data.lastUsed=performance.now();
@@ -474,6 +520,7 @@ export function createForestChunkStreamer({
   }
 
   function preparePrefetchMesh(data,center){
+    ensureCurrentTerrain(data);
     if(!ensureMesh(data,center))return false;
     data.mesh.count=0;data.visibleCount=0;data.state='prefetch';data.prefetched=true;detach(data);perf.prefetchMeshPrepares++;
     return true;
@@ -652,6 +699,21 @@ export function createForestChunkStreamer({
     return true;
   }
 
+  function rebaseCachedTerrainHeights(){
+    serial++;
+    cacheTerrainRevision++;
+    for(const job of queue){job.builder=null;job.readyToCommit=false;}
+    forestTerrain.invalidate?.();slopeCache.clear();
+    const started=performance.now();
+    let chunks=0,trees=0;
+    for(const data of active.values()){
+      trees+=reprojectChunkHeights(data);
+      chunks++;
+    }
+    const elapsed=performance.now()-started;
+    return {chunks,trees,revision:cacheTerrainRevision,ms:elapsed};
+  }
+
   function refreshVisibleHeights(){
     serial++;
     for(const job of queue){job.builder=null;job.readyToCommit=false;}
@@ -681,6 +743,7 @@ export function createForestChunkStreamer({
   return Object.freeze({
     setAssets,
     requestUpdate,
+    rebaseCachedTerrainHeights,
     refreshVisibleHeights,
     clearAll,
     whenInitialReady:()=>initialReady,
@@ -689,6 +752,7 @@ export function createForestChunkStreamer({
       visibleWantedChunks:visibleKeys.size,prefetchWantedChunks:prefetchKeys.size,
       prefetchedReadyChunks:prefetchReadyCount(),prefetchQueuedChunks:prefetchQueuedCount(),
       pollingActive:!!pollTimer,
+      cacheTerrainRevision,
       ...perf
     })
   });
