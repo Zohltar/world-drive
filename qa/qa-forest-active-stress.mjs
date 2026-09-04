@@ -57,8 +57,13 @@ assert.ok(P.forestSliceBudgetMs<=1.10,'normal active forest slice budget is too 
 assert.ok(P.forestCatchupCandidatesPerSlice<=24,'catch-up candidate batch is too large');
 assert.ok(P.forestCatchupSliceBudgetMs<=1.75,'catch-up forest slice budget is too large');
 assert.ok(activeBytes/legacyBytes<.40,'single-matrix chunk cache memory regression');
-assert.equal((impl.match(/instanceMatrix\.needsUpdate\s*=\s*true/g)||[]).length,1,
-  'active streamer should upload an instance matrix only when a chunk mesh is created');
+const matrixUploadSites=(impl.match(/instanceMatrix\.needsUpdate\s*=\s*true/g)||[]).length;
+assert.equal(matrixUploadSites,2,
+  'active streamer should upload instance matrices only on mesh creation and explicit terrain-height reprojection');
+assert.ok(impl.includes('function reprojectChunkHeights(data){')&&impl.includes('data.mesh.instanceMatrix.needsUpdate=true;'),
+  'terrain-height reprojection must retain the explicit post-creation matrix upload');
+assert.ok(impl.includes('mesh.count=data.maxCount;mesh.instanceMatrix.needsUpdate=true;perf.matrixUploads++;'),
+  'chunk mesh creation must retain its initial matrix upload');
 assert.ok(impl.includes('THREE.StaticDrawUsage'),'active forest matrices should remain immutable GPU buffers');
 assert.ok(impl.includes('replaceActive'),'terrain refresh must retain double-buffer replacement chunks');
 assert.ok(impl.includes('preparePrefetchMesh'),'active streamer must retain detached rolling prefetch preparation');
@@ -74,5 +79,6 @@ console.log({
   serpentine20km:bends,
   legacyWorstCaseMatrixCacheMB:Number((legacyBytes/1e6).toFixed(1)),
   activeWorstCaseMatrixCacheMB:Number((activeBytes/1e6).toFixed(1)),
-  matrixMemoryReductionPct:Number(((1-activeBytes/legacyBytes)*100).toFixed(1))
+  matrixMemoryReductionPct:Number(((1-activeBytes/legacyBytes)*100).toFixed(1)),
+  matrixUploadSites
 });
