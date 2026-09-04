@@ -1,0 +1,43 @@
+name: Post-refactor Route Generation R1 QA
+
+on:
+  push:
+    branches:
+      - candidate/post-refactor-route-generation-r1
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  qa:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install
+        run: npm ci
+      - name: Route generation race QA
+        run: node qa/qa-post-refactor-route-generation-r1.mjs
+      - name: Route lifecycle refactor regression
+        run: node qa/V21_26_ROUTE_LIFECYCLE_REFACTOR_QA.mjs
+      - name: R7 routing boundary QA
+        run: node qa/qa-source-tree-r7-routing.mjs
+      - name: R7 UI boundary QA
+        run: node qa/qa-source-tree-r7-ui.mjs
+      - name: Route-start final placement R8 QA
+        run: node qa/qa-route-start-final-placement-r8.mjs
+      - name: Forest route readiness R8 QA
+        run: node qa/qa-r8-forest-route-readiness.mjs
+      - name: Runtime import and source-tree audit
+        run: node qa/DEV_INTEGRATION_AUDIT.mjs
+      - name: Production build
+        run: npm run build
+      - name: Production code split QA
+        run: node qa/BUILD_V21_31_CODE_SPLIT_QA.mjs
