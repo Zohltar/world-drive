@@ -60,15 +60,18 @@ If any answer is unknown, resolve it before coding.
 
 **Plan phase:** **post-refactor hardening and correctness**  
 **Architecture state:** **R1–R9 + Phase O DONE/CERTIFIED; R8 architecture FROZEN**  
-**Runtime correction state:** issues #4 and #8 CLOSED / HUMAN PASS  
+**Runtime correction state:** issues #4 and #8 CLOSED / HUMAN PASS; issue #9 OPEN / pre-existing terrain-over-road bug  
 **Issue #2:** OPEN / watch-only / not reproduced  
+**Issue #9:** OPEN / reproduced on Yungas / explicitly predates Block 3  
 **Block 1 — DOM safety:** **DONE/CERTIFIED — HUMAN PASS**  
 **Block 2 — Route lifecycle stale-generation guard:** **DONE/CERTIFIED — HUMAN PASS**  
-**Block 3 — Retired road-terrain transition workload:** **ACTIVE — MEASURE FIRST**  
-**Final Block 2 candidate:** `candidate/post-refactor-route-generation-r7` @ `d00acf06128dbd4eb3f75831d04c96d1a81d41cf`  
-**Block 2 human checkpoint:** **PASS** — rapid A→B→A route switching retained/restored A forest without the prior ~10 s refill and stale B did not regain authority.  
-**Post-integration QA correction:** `da42ab9ad43b89d10df0055985ac1d9a9672ba5c` — `QA: allow explicit forest terrain matrix reprojection`; QA-only, no runtime behavior change.  
-**Exact-head Dev Integration before this docs checkpoint:** run `33892857490` — **PASS** on `da42ab9ad43b89d10df0055985ac1d9a9672ba5c`.  
+**Block 3 — Retired road-terrain transition workload:** **DONE/CERTIFIED — HUMAN PASS**  
+**Block 4 — Accurate asynchronous visual-job diagnostics:** **ACTIVE**  
+**Final Block 3 candidate:** `candidate/post-refactor-road-transition-r1` @ `1731cd476984ba736c61527e05bd00a5f36202d8`  
+**Block 3 baseline run:** `33902426615` — **PASS** on `c31d8425a1f0f939873617c81632e77f950f7b0b`  
+**Block 3 focused final run:** `33903521697` — **PASS** on `1731cd476984ba736c61527e05bd00a5f36202d8`  
+**Block 3 human checkpoint:** **PASS** — Photo ON/OFF and steep-terrain testing accepted the scoped transition-work retirement. A terrain-over-asphalt defect was observed on Yungas, but the user explicitly confirmed it already existed before Block 3; it is tracked separately as issue #9.  
+**Post-integration exact-head Dev Integration:** run `33913262016` — **PASS** on `1731cd476984ba736c61527e05bd00a5f36202d8`.  
 **Stable `main`:** `9055d5682afcf512c91b1ae7dc97dcb4b16d6d9e` — fast-forwarded from `dev` on 2026-09-04 after explicit user approval.  
 **Previous stable rollback/reference:** `111df5d84bf7fd700590abbd9c129b303ac92fad` — `Release V21.31 post-C6 stable`.
 
@@ -78,9 +81,16 @@ The codebase-wide post-refactor review found no systemic reason for another broa
 
 ## Exact next action
 
-Start **Block 3 — retired `road-terrain-transition` workload**, **measurement only first**.
+Start **Block 4 — accurate asynchronous `visualJobs` diagnostics** with a deterministic audit/test first.
 
-Before disabling or deleting any transition presentation work, capture the baseline diagnostics named in Block 3. Do not combine this measurement pass with Block 4 diagnostics changes, multiplayer hardening, dependency work, terrain tuning or structural moves.
+Prove the current timing defect using four controlled jobs in `src/streaming-coordinator.js`:
+
+- synchronous success with measurable duration;
+- delayed Promise resolve;
+- rejected Promise;
+- synchronous throw.
+
+Then make the narrowest instrumentation-only correction so async wall time is recorded through Promise settlement without changing visual-job scheduling, timeouts, ordering, error semantics or hitch policy. Do not combine this with issue #9 terrain work, multiplayer hardening, dependencies, Actions upgrades or structural moves.
 
 ---
 
@@ -106,7 +116,7 @@ The review conclusion:
 1. **No broad refactor is justified now.**
 2. Physics/transmission/bridge support are currently stable; do not retune them casually.
 3. There are a few concrete issues worth fixing one at a time.
-4. One retired visual pipeline still consumes runtime work even though its output is hidden.
+4. The retired road-transition presentation workload identified by the review has now been removed and certified in Block 3.
 5. Some diagnostics should become more accurate before relying on them to debug issue #2.
 6. Multiplayer/Electron security can be hardened without changing gameplay semantics.
 
@@ -120,12 +130,12 @@ This table is the canonical forward backlog. Status must be updated here after e
 |---|---|---|---|
 | P1 | Network/user-derived labels are inserted through `innerHTML` in parts of UI | `src/ui/route-planner-ui.js`, `src/ui/startup-ui.js`, possibly related UI helpers | **DONE/CERTIFIED — HUMAN PASS** |
 | P1 | Route creation can overlap; route generation exists but async continuations are not stale-guarded | `src/routing/route-lifecycle.js` | **DONE/CERTIFIED — HUMAN PASS — Block 2** |
-| P2 | Retired `road-terrain-transition` is hidden but still prepared/allocated/committed | `src/terrain.js`, `src/local-world-builder.js`, `src/terrain/world-scene.js` | **ACTIVE — Block 3 — MEASURE FIRST** |
-| P2 | `visualJobs` timing records Promise creation time instead of full async completion time | `src/streaming-coordinator.js` | PLANNED — Block 4 |
+| P2 | Retired `road-terrain-transition` is hidden but still prepared/allocated/committed | `src/terrain.js`, `src/local-world-builder.js`, `src/terrain/world-scene.js` | **DONE/CERTIFIED — HUMAN PASS — Block 3** |
+| P2 | `visualJobs` timing records Promise creation time instead of full async completion time | `src/streaming-coordinator.js` | **ACTIVE — Block 4** |
 | P2 | LAN WebSocket relay accepts broad LAN traffic with permissive handshake and no explicit session/rate/client policy | `server/multiplayer-server.mjs`, `electron/multiplayer-runtime.cjs` | PLANNED — Block 5A |
 | P2 | Electron multiplayer IPC does not explicitly verify caller origin | `electron/main.cjs`, `electron/preload.cjs` | PLANNED — Block 5B |
 | P3 | Overpass allowlists/proxy limits differ between Vite, browser transport and Electron | `vite.config.js`, `src/services/desktop-overpass-transport.js`, `electron/main.cjs`, `src/services/overpass.js` | PLANNED — Block 6 |
-| P3 | `scene.add` is monkey-patched only to hide an already-retired transition | `src/terrain/world-scene.js` | Resolve together with Block 3 |
+| P3 | `scene.add` is monkey-patched only to hide an already-retired transition | `src/terrain/world-scene.js` | **DONE — removed with Block 3** |
 | P3 | `src/main.js` remains large composition root | `src/main.js` | **DEFERRED — no refactor without concrete benefit** |
 
 ## Severity meaning
@@ -316,7 +326,7 @@ QA: allow explicit forest terrain matrix reprojection
 
 The QA now requires exactly those two legitimate upload sites and still rejects arbitrary matrix-upload growth.
 
-Final exact-head Dev Integration before this docs checkpoint:
+Final exact-head Dev Integration before the Block 2 docs checkpoint:
 
 ```text
 run 33892857490
@@ -338,81 +348,113 @@ PASS
 
 ### Status
 
-**ACTIVE — MEASURE FIRST.**
+**DONE/CERTIFIED — HUMAN PASS (2026-09-04).**
 
-No Block 3 runtime change has been made at this checkpoint. The first step is baseline measurement only.
+Final candidate:
+
+```text
+candidate/post-refactor-road-transition-r1
+```
+
+Final candidate HEAD:
+
+```text
+1731cd476984ba736c61527e05bd00a5f36202d8
+```
 
 ### Goal
 
-Eliminate CPU/allocation/commit work for `road-terrain-transition` now that human A/B proved the main refined ground is visually better without it.
+Eliminate CPU/allocation/commit work for the already-retired `road-terrain-transition` presentation while preserving the authoritative road-bed state, refined terrain surface, road geometry and wheel support.
 
-### Current certified behavior
+### Baseline measurement
 
-Issue #4 is CLOSED/HUMAN PASS because:
+The mandatory measurement pass was committed QA-only and run before runtime removal:
 
 ```text
-road-terrain-transition
-road-terrain-transition-p927-hold
+c31d8425a1f0f939873617c81632e77f950f7b0b
+QA: measure retired road transition baseline
+run 33902426615 — PASS
 ```
 
-are forced `visible=false` in `src/terrain/world-scene.js`.
+On the deterministic mountain profile, the hidden transition still consumed real work:
 
-The geometry generation remains alive only as a minimal-risk historical holdover.
+- synchronous full-rebuild hidden transition: **21.352 ms**;
+- prepared P9.27 path: **3 preparations + 3 commits** for 3 refreshes;
+- last prepared transition: **88.551 ms wall / 8.904 ms CPU**;
+- prepared geometry: **972 vertices / 1600 triangles**;
+- `visualJobs['road-transition']`: **3 runs**;
+- the existing `visualJobs` metric undercounted the async work by roughly **88.346 ms**, reinforcing the need for Block 4.
 
-### Why this block is separate
+### Certified implementation
 
-This changes streaming workload. It can improve frame pacing but must not accidentally change terrain state/road-bed physics or the protected P9.25/P9.26 terrain behavior.
+The runtime change is deliberately narrow:
 
-### Required method
+- synchronous P9.25 road-bed state and main-terrain rebuild still run;
+- the retired synchronous transition visual returns before Group/geometry/material/color allocation;
+- prepared commits no longer schedule `visualJobs['road-transition']`;
+- P9.27 state-only road installation remains available for prepared world refreshes;
+- historical transition helpers remain in source for rollback/reference, but are not entered by normal runtime;
+- the `scene.add` monkey-patch used only to hide transition groups was removed;
+- no terrain-height, road geometry, physics, wheel-support or streaming-budget retuning was made.
 
-**Measure first.** Before candidate change, capture baseline diagnostics on a known route with several world refreshes:
+Final regression measurements show:
 
-- transition preparations;
-- transition commits;
-- transition max slice/commit timing;
-- `visualJobs` road-transition activity;
-- frame/hitch counts;
-- local-world prepared commit timings.
+- transition meshes: **0**;
+- P9.27 transition preparations: **0**;
+- P9.27 transition commits: **0**;
+- `visualJobs['road-transition']` runs: **0**;
+- global transition `scene.add` interceptor: **absent**;
+- road-bed/refined terrain authority: **preserved**;
+- deterministic frame probe: **0 hitches**.
 
-Then make the narrowest candidate that disables **presentation preparation/commit only** while keeping road-bed state and terrain/physics authority intact.
+### Permanent QA / evidence
 
-Preferred final state:
+Permanent coverage locks:
 
-- no transition mesh allocation;
-- no transition geometry CPU work;
-- no `road-transition` visual job;
-- no global `scene.add` interception solely for this retired layer;
-- identical Photo ON/OFF terrain and identical wheel support.
-
-### Do not do
-
-- Do not retune terrain heights.
-- Do not remove protected road-bed state logic just because names contain “transition”.
-- Do not edit road geometry/physics.
-- Do not delete historical code until runtime ownership is proven unnecessary and QA is permanent.
-
-### Required QA
-
-- issue #4 regression gate;
-- R8 terrain/world-scene/local-world/streaming source-tree QA;
+- issue #4 approved refined-ground presentation;
+- zero retired transition mesh allocation;
+- zero prepared transition work/job activity;
+- P9.22/P9.23/P9.27 compatibility contracts;
+- R8 terrain/world-scene/local-world/streaming ownership;
 - R8 baseline aggregate;
-- frame-pacing QA;
+- P9.24 frame budget;
+- P9.39/P9.41 attribution;
+- wheel-ground road/terrain re-entry;
+- route-start final placement;
 - production build/code split;
-- exact-head Dev Integration.
+- full Dev Integration audit.
 
-### Human checkpoint — mandatory
+Focused final candidate run:
 
-Photo OFF + Photo ON on:
+```text
+run 33903521697
+head 1731cd476984ba736c61527e05bd00a5f36202d8
+PASS
+```
 
-- Manic-2 → Manic-5;
-- Yungas / steep road;
-- at least one bridge/large elevation change.
+Post-integration exact-head Dev Integration:
 
-Also confirm no terrain-over-asphalt wedges/holes.
+```text
+run 33913262016
+head 1731cd476984ba736c61527e05bd00a5f36202d8
+PASS
+```
+
+### Human checkpoint
+
+**PASS.** The user accepted Block 3 after Photo ON/OFF and steep-terrain testing. During the Yungas test, terrain was seen intruding over the asphalt. The user explicitly stated this defect **already existed before Block 3 but had not been declared**. It is therefore not a Block 3 regression and is tracked separately as **issue #9 — Terrain occasionally intrudes over the road surface**.
+
+### Done state
+
+**DONE/CERTIFIED.** Do not re-enable or rebuild `road-terrain-transition` as a workaround for issue #9 without new causal evidence.
 
 ---
 
 ## Block 4 — Accurate asynchronous visual-job diagnostics
+
+### Status
+
+**ACTIVE.**
 
 ### Goal
 
@@ -420,7 +462,7 @@ Make `visualJobs` instrumentation measure actual asynchronous completion time, n
 
 ### Why it matters
 
-Issue #2 is watch-only and future debugging depends on reliable timing attribution. Incorrect async measurements can misidentify or hide the source of a hitch.
+Issue #2 is watch-only and future debugging depends on reliable timing attribution. Block 3 baseline measurement directly demonstrated the current undercount: a transition preparation taking ~88.551 ms wall time could be reported as a ~sub-2-ms visual job because only Promise creation time was captured.
 
 ### Implementation concept
 
@@ -431,7 +473,7 @@ Issue #2 is watch-only and future debugging depends on reliable timing attributi
 - success/failure;
 - optional resolved job key/reason.
 
-Avoid double-counting and preserve existing diagnostic aliases/contracts.
+Avoid double-counting and preserve existing diagnostic aliases/contracts. **Do not change scheduling policy.**
 
 ### Required QA
 
@@ -578,9 +620,11 @@ Any such future block must name the exact responsibility being extracted and pre
 
 ---
 
-# 5. Issue #2 watch-only protocol
+# 5. Open issue protocols
 
-Issue #2 — intermittent delayed terrain adjustment after route startup — remains **OPEN / NOT REPRODUCED / NO SPECULATIVE FIX**.
+## Issue #2 — delayed terrain adjustment after route startup
+
+Issue #2 remains **OPEN / NOT REPRODUCED / NO SPECULATIVE FIX**.
 
 If it reappears, capture diagnostics **before the world converges**:
 
@@ -595,6 +639,21 @@ p939HitchAttribution
 After Block 4, prefer the improved async visual-job timing in that evidence.
 
 Do not tune terrain/imagery/streaming just to “see if it helps”. A correction requires reproducible evidence.
+
+## Issue #9 — terrain occasionally intrudes over the road surface
+
+**OPEN / PRE-EXISTING / REPRODUCED ON YUNGAS.**
+
+The user declared this during the Block 3 human checkpoint after observing a steep mountainside visibly crossing/covering part of the asphalt near the start of the Yungas route. The user explicitly confirmed the defect was already present before Block 3 and had simply not been declared previously.
+
+Rules for future diagnosis:
+
+- reproduce/measure first;
+- treat Yungas as a confirmed reproduction area;
+- investigate terrain/road intersection authority and coarse terrain triangles near steep cuts/switchbacks;
+- preserve road geometry, wheel-ground physics and accepted issue #4 visuals;
+- do **not** re-enable retired `road-terrain-transition` presentation as a workaround;
+- do not mix this issue into Block 4 diagnostics unless the user explicitly changes priority.
 
 ---
 
@@ -671,15 +730,9 @@ Keep current historical runtime lineage. Do not introduce new milestone/version-
 
 The black patches were isolated to the legacy `road-terrain-transition` presentation layer. Shadow, stencil, winding, shading-floor, vertex-color and polygon-offset probes were non-causal. An unlit fixed material removed the black, and hiding the transition entirely looked better in Photo OFF and Photo ON.
 
-Current final correction:
+Block 3 has now permanently stopped normal runtime from allocating/building/committing this retired presentation. The authoritative road-bed/refined terrain logic remains active and human-approved visuals remain PASS.
 
-```text
-src/terrain/world-scene.js
-```
-
-sets the transition groups `visible=false` when added.
-
-Block 3 may remove their **presentation workload**, but must preserve terrain/road-bed state and the human-approved visuals.
+Do not reintroduce the transition presentation merely to mask another terrain defect.
 
 ## Issue #8 — elevated road/bridge wheel support bleed
 
@@ -799,6 +852,7 @@ This post-refactor roadmap is considered complete when:
 - Block 5A/5B multiplayer/Electron hardening are DONE or explicitly deferred by user decision;
 - Block 6 Overpass consistency is DONE or documented as intentionally divergent with QA;
 - issue #2 remains watch-only unless reproduced;
+- issue #9 is resolved or explicitly scheduled/deferred with its status recorded;
 - exact final `dev` HEAD is green;
 - this file records the final checkpoint and next feature priority.
 
