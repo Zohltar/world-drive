@@ -26,6 +26,12 @@ export function createSceneryRenderer(options){
     return base.clearForestCache?.(...args);
   }
 
+  function switchForestRouteCache(routeKey){
+    const result=base.switchForestRouteCache?.(routeKey);
+    base.resumeForestRouteCache?.();
+    return result;
+  }
+
   function routeDirection(){
     const center=options.getWorldOffset?.()||{x:0,z:0};
     try{
@@ -150,6 +156,7 @@ export function createSceneryRenderer(options){
   return Object.freeze({
     ...base,
     clearForestCache,
+    switchForestRouteCache,
     whenInitialForestReady,
     startupForestStatus
   });
