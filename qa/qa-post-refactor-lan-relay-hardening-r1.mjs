@@ -387,7 +387,7 @@ const expectedConstants={
 };
 for(const [name,value] of Object.entries(expectedConstants)){
   for(const [label,source] of [['standalone',standaloneSource],['electron',electronSource]]){
-    assert.match(source,new RegExp(`const ${name}=${value.replace(/[.*+?^${}()|[\\]\\]/g,'\\$&')};`),`${label}: ${name} policy drift`);
+    assert.ok(source.includes(`const ${name}=${value};`),`${label}: ${name} policy drift`);
   }
 }
 for(const marker of [
