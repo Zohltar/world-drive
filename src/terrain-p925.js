@@ -526,6 +526,12 @@ export function createTerrainService({
       return false;
     }
 
+    // Block 3: issue #4 retired this presentation layer after human Photo
+    // OFF/ON validation. Preserve the historical implementation below for
+    // rollback/reference, but normal runtime stops before any transition
+    // Group, geometry, material, colour or scene allocation occurs.
+    return true;
+
     const offset=getWorldOffset();
     const group=new THREE.Group();
     group.name='road-terrain-transition';
