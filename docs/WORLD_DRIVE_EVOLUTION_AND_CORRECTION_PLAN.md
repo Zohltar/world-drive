@@ -62,20 +62,23 @@ If any answer is unknown, resolve it before coding.
 **Architecture state:** **R1–R9 + Phase O DONE/CERTIFIED; R8 architecture FROZEN**  
 **Runtime correction state:** issues #4 and #8 CLOSED / HUMAN PASS  
 **Issue #2:** OPEN / watch-only / not reproduced  
-**Certified `dev` baseline before this plan update:** `9055d5682afcf512c91b1ae7dc97dcb4b16d6d9e` — `Docs: open post-refactor development plan`  
-**Exact-head Dev Integration on that baseline:** run `33823147399` — **PASS 100/100 functional steps**  
+**Block 1 — DOM safety:** **DONE/CERTIFIED — HUMAN PASS**  
+**Certified runtime `dev` baseline before this plan update:** `28ffbee1cc63f4a250e59d6d136d007854fcddc4` — `Security: render dynamic UI labels as text`  
+**Focused Block 1 candidate QA:** run `33869854637` — **PASS** on exact candidate HEAD `28ffbee1cc63f4a250e59d6d136d007854fcddc4`  
+**Human checkpoint:** **PASS** — route search results, startup vehicle chooser, route summary and route launch visually/functionally accepted by the user.  
+**Exact-head Dev Integration on that runtime baseline:** run `33871178836` — **PASS; all workflow checks green**, including permanent DOM safety QA, R7 UI/routing boundaries, runtime/source-tree audit, production build and production code-split QA.  
 **Stable `main`:** `9055d5682afcf512c91b1ae7dc97dcb4b16d6d9e` — fast-forwarded from `dev` on 2026-09-04 after explicit user approval.  
 **Previous stable rollback/reference:** `111df5d84bf7fd700590abbd9c129b303ac92fad` — `Release V21.31 post-C6 stable`.
 
-This plan synchronization is docs-only and may place `dev` one commit ahead of `main`; that is intentional and does not constitute a new runtime baseline.
+This plan synchronization is docs-only and may place `dev` one commit ahead of the certified runtime baseline and farther ahead of `main`; that is intentional and does not constitute a new runtime baseline.
 
 The codebase-wide post-refactor review found no systemic reason for another broad architecture refactor. The current architecture is usable and well covered. The next work is a set of **narrow correctness, security and runtime-efficiency blocks**, in priority order.
 
 ## Exact next action
 
-Start **Block 1 — safe DOM rendering for network/user-derived text**.
+Start **Block 2 — route lifecycle stale-generation guard**.
 
-Do not combine it with route concurrency, transition retirement, multiplayer hardening or any structural move.
+Do not combine it with transition retirement, multiplayer hardening, diagnostics timing changes or any structural move.
 
 ---
 
@@ -113,8 +116,8 @@ This table is the canonical forward backlog. Status must be updated here after e
 
 | Priority | Finding | Primary files | Current status |
 |---|---|---|---|
-| P1 | Network/user-derived labels are inserted through `innerHTML` in parts of UI | `src/ui/route-planner-ui.js`, `src/ui/startup-ui.js`, possibly related UI helpers | **ACTIVE — Block 1** |
-| P1 | Route creation can overlap; route generation exists but async continuations are not stale-guarded | `src/routing/route-lifecycle.js` | PLANNED — Block 2 |
+| P1 | Network/user-derived labels are inserted through `innerHTML` in parts of UI | `src/ui/route-planner-ui.js`, `src/ui/startup-ui.js`, possibly related UI helpers | **DONE/CERTIFIED — HUMAN PASS** |
+| P1 | Route creation can overlap; route generation exists but async continuations are not stale-guarded | `src/routing/route-lifecycle.js` | **ACTIVE — Block 2** |
 | P2 | Retired `road-terrain-transition` is hidden but still prepared/allocated/committed | `src/terrain.js`, `src/local-world-builder.js`, `src/terrain/world-scene.js` | PLANNED — Block 3 |
 | P2 | `visualJobs` timing records Promise creation time instead of full async completion time | `src/streaming-coordinator.js` | PLANNED — Block 4 |
 | P2 | LAN WebSocket relay accepts broad LAN traffic with permissive handshake and no explicit session/rate/client policy | `server/multiplayer-server.mjs`, `electron/multiplayer-runtime.cjs` | PLANNED — Block 5A |
@@ -135,69 +138,87 @@ This table is the canonical forward backlog. Status must be updated here after e
 
 ## Block 1 — Safe DOM rendering for network/user-derived text
 
+### Status
+
+**DONE/CERTIFIED — HUMAN PASS (2026-09-04).**
+
 ### Goal
 
 Ensure any string originating from a remote service, route label, vehicle metadata or user-editable input is rendered as text unless HTML is fully static and controlled by World Drive.
 
-### Known audit evidence
+### Audit evidence and certified result
 
-`src/routing/geocoding.js` accepts Nominatim `display_name`. `src/ui/route-planner-ui.js` currently places `p.name` into `innerHTML`. `src/ui/startup-ui.js` also interpolates route and vehicle strings into HTML templates.
+Before correction, `src/routing/geocoding.js` accepted Nominatim `display_name`, `src/ui/route-planner-ui.js` placed `p.name` directly into `innerHTML`, and `src/ui/startup-ui.js` interpolated route and vehicle strings into HTML templates.
 
-### Expected implementation scope
-
-Primary audit targets:
+The read-only audit covered:
 
 ```text
 src/ui/route-planner-ui.js
 src/ui/startup-ui.js
 src/ui/v21-menu.js
 src/ui/minimap.js
+src/ui/instrument-cluster.js
+multiplayer UI/status surfaces
 ```
 
-Search the rest of runtime UI for dynamic `innerHTML` / `insertAdjacentHTML` / template-string DOM insertion before changing code.
+No comparable unsafe network/user-derived HTML insertion was found in the wider audited UI surfaces. The correction was therefore kept narrow to the two affected runtime files.
 
-### Rules
+Certified implementation:
 
-- Prefer `textContent`, `createElement`, `append`, `replaceChildren`.
-- Static World Drive markup may remain `innerHTML` if it contains no dynamic/untrusted interpolation.
-- Do not sanitize by fragile regex if text rendering solves the problem.
-- Preserve exact visual layout and labels.
-- Do not alter geocoding behavior, route selection or vehicle metadata semantics.
+- remote geocoding place names are inserted with `textContent`;
+- route summary labels are assembled as text nodes/content;
+- vehicle names/descriptions are inserted with `textContent`;
+- controlled static World Drive markup remains allowed through `innerHTML` where no untrusted interpolation exists;
+- geocoding behavior, route selection and vehicle metadata semantics were not changed;
+- visible classes/IDs and layout contracts were preserved.
 
 ### Candidate
-
-Use a dedicated candidate, e.g.:
 
 ```text
 candidate/post-refactor-dom-safety-r1
 ```
 
-### Required QA
-
-Add focused permanent QA that proves:
-
-- remote place names are not inserted as executable markup;
-- route/vehicle labels remain displayed correctly;
-- static menu HTML remains allowed where appropriate;
-- no UI contract regression.
-
-Also run:
+Candidate/runtime commit:
 
 ```text
-R7 UI boundary QA
-R7 routing boundary QA
-DEV_INTEGRATION_AUDIT.mjs
-production build
-production code split QA
+28ffbee1cc63f4a250e59d6d136d007854fcddc4
+Security: render dynamic UI labels as text
 ```
+
+### Permanent QA
+
+Added:
+
+```text
+qa/qa-post-refactor-dom-safety-r1.mjs
+.github/workflows/qa-post-refactor-dom-safety-r1.yml
+```
+
+and imported the permanent regression coverage into:
+
+```text
+qa/DEV_INTEGRATION_AUDIT.mjs
+```
+
+The focused QA deliberately feeds markup-looking remote/route/vehicle strings and proves they remain literal text rather than executable DOM.
+
+Validation evidence:
+
+- focused candidate run `33869854637`: **PASS**;
+- R7 UI boundary QA: **PASS**;
+- R7 routing boundary QA: **PASS**;
+- runtime/source-tree audit: **PASS**;
+- production build: **PASS**;
+- production code-split QA: **PASS**;
+- post-integration exact-head Dev Integration run `33871178836`: **PASS** on `28ffbee1cc63f4a250e59d6d136d007854fcddc4`.
 
 ### Human checkpoint
 
-A quick visual smoke is required only if markup construction changes visible layout. Test route search results, startup vehicle chooser and route summary.
+**PASS.** User accepted route search results, startup vehicle chooser, route summary and route launch after pulling the candidate.
 
-### Done when
+### Done state
 
-Candidate QA green → human smoke if needed → integrate to `dev` → exact-head Dev Integration green → update this plan.
+**DONE/CERTIFIED.** Do not reopen or broaden this block without new evidence.
 
 ---
 
