@@ -1,0 +1,37 @@
+name: Post-refactor DOM Safety R1 QA
+
+on:
+  push:
+    branches:
+      - candidate/post-refactor-dom-safety-r1
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  qa:
+    runs-on: ubuntu-latest
+    timeout-minutes: 18
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install
+        run: npm ci
+      - name: Post-refactor DOM safety R1 QA
+        run: node qa/qa-post-refactor-dom-safety-r1.mjs
+      - name: R7 UI boundary QA
+        run: node qa/qa-source-tree-r7-ui.mjs
+      - name: R7 routing boundary QA
+        run: node qa/qa-source-tree-r7-routing.mjs
+      - name: Runtime import and source-tree audit
+        run: node qa/DEV_INTEGRATION_AUDIT.mjs
+      - name: Production build
+        run: npm run build
+      - name: Production code split QA
+        run: node qa/BUILD_V21_31_CODE_SPLIT_QA.mjs

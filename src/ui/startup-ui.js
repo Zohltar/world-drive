@@ -23,7 +23,7 @@ export function createStartupUi({
       <div class="v21StartupCard">
         <div class="v21StartupBrand">
           <h1>WORLD DRIVE</h1>
-          <p>${versionLabel} · initialisation du monde</p>
+          <p id="v21StartupVersion"></p>
         </div>
         <div id="v21BootContent">
           <div class="v21RouteSummary">
@@ -39,6 +39,8 @@ export function createStartupUi({
       </div>
     `;
     document.body.appendChild(overlay);
+    const versionText=$('v21StartupVersion');
+    if(versionText)versionText.textContent=`${versionLabel} · initialisation du monde`;
     document.title=title;
     const oldLoadingTitle=loading?.querySelector('h1');
     if(oldLoadingTitle)oldLoadingTitle.textContent=title;
@@ -60,20 +62,27 @@ export function createStartupUi({
     selectedVehicle=null;
     const route=getRouteSummary()||{};
     content.innerHTML=`
-      <div class="v21RouteSummary"><span>Trajet prêt</span><b>${route.start||'Départ'} → ${route.end||'Arrivée'}</b></div>
+      <div class="v21RouteSummary"><span>Trajet prêt</span><b id="v21RouteReadySummary"></b></div>
       <div style="margin-top:18px">
         <div style="font-size:11px;color:#8aa0b3;text-transform:uppercase;letter-spacing:.12em;font-weight:800">Choisissez votre véhicule</div>
         <div class="v21VehicleGrid" id="v21VehicleGrid"></div>
       </div>
       <button id="v21StartButton" disabled>DÉMARRER</button>
     `;
+    const routeSummary=$('v21RouteReadySummary');
+    if(routeSummary)routeSummary.textContent=`${route.start||'Départ'} → ${route.end||'Arrivée'}`;
     const grid=$('v21VehicleGrid');
     for(const vehicle of getVehicles()||[]){
       const button=document.createElement('button');
       button.type='button';
       button.className='v21VehicleChoice';
       button.dataset.vehicleId=vehicle.id;
-      button.innerHTML=`<b>${vehicle.name}</b><span>${vehicle.description}</span>`;
+      const vehicleName=document.createElement('b');
+      const vehicleDescription=document.createElement('span');
+      vehicleName.textContent=String(vehicle.name||'');
+      vehicleDescription.textContent=String(vehicle.description||'');
+      button.appendChild(vehicleName);
+      button.appendChild(vehicleDescription);
       button.addEventListener('click',()=>{
         selectedVehicle=vehicle.id;
         grid.querySelectorAll('.v21VehicleChoice').forEach(item=>item.classList.toggle('selected',item===button));

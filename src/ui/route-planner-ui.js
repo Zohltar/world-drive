@@ -33,14 +33,17 @@ export function createRoutePlannerUi({
   
   function renderSearchResults(which,items){
     const box=$(which==='start'?'startSearchResults':'endSearchResults');
-    box.innerHTML='';
+    box.replaceChildren();
     if(!items.length){
       const d=documentRef.createElement('div');d.className='searchChoice';d.textContent='Aucun résultat';box.appendChild(d);
       box.classList.add('open');return;
     }
     for(const p of items){
       const b=documentRef.createElement('button');b.className='searchChoice';
-      b.innerHTML=`${p.name}<span class="searchMeta">${p.lat.toFixed(5)}, ${p.lon.toFixed(5)}</span>`;
+      const meta=documentRef.createElement('span');meta.className='searchMeta';
+      b.textContent=String(p.name||'');
+      meta.textContent=`${p.lat.toFixed(5)}, ${p.lon.toFixed(5)}`;
+      b.appendChild(meta);
       b.onclick=()=>setSelectedPlace(which,p);
       box.appendChild(b);
     }
