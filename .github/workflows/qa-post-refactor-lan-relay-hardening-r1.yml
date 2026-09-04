@@ -1,0 +1,41 @@
+name: Post-refactor LAN Relay Hardening R1 QA
+
+on:
+  push:
+    branches:
+      - candidate/post-refactor-lan-relay-hardening-r1
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  qa:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install
+        run: npm ci
+      - name: Block 5A LAN relay hardening QA
+        run: node qa/qa-post-refactor-lan-relay-hardening-r1.mjs
+      - name: M3 client contract QA
+        run: node qa/V21_31_MULTIPLAYER_M3_CLIENT_QA.mjs
+      - name: M3 relay protocol parity QA
+        run: node qa/V21_31_MULTIPLAYER_M3_PROTOCOL_QA.mjs
+      - name: M4.11 reverse relay end-to-end QA
+        run: node qa/V21_31_MULTIPLAYER_M411_REVERSE_E2E_QA.mjs
+      - name: Live shared traffic relay QA
+        run: node qa/qa-traffic-mp1-live.mjs
+      - name: Full Dev Integration audit
+        run: node qa/DEV_INTEGRATION_AUDIT.mjs
+      - name: Production build
+        run: npm run build
+      - name: Production code split QA
+        run: node qa/BUILD_V21_31_CODE_SPLIT_QA.mjs
