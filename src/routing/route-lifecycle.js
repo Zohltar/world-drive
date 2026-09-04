@@ -135,7 +135,7 @@ export function createRouteLifecycle({
     terrainService.clearHorizon();
   }
 
-  async function loadRoute(routeGeneration=worldDrive.route.generation){
+  async function loadRouteForGeneration(routeGeneration){
     const state=getState();
     const routeStart=state.routeStart;
     const routeEnd=state.routeEnd;
@@ -195,6 +195,10 @@ export function createRouteLifecycle({
     statusEl.textContent=
       `Trajet chargé · ${(routeLength/1000).toFixed(1)} km · ${route.length.toLocaleString('fr-CA')} points`;
     return true;
+  }
+
+  async function loadRoute(){
+    return loadRouteForGeneration(worldDrive.route.generation);
   }
 
   async function createRequestedRoute(start,end,waypoints=[]){
@@ -267,7 +271,7 @@ export function createRouteLifecycle({
         `Calcul du trajet ${start.name||'Départ'} → ${end.name||'Arrivée'}`
       );
 
-      const routeLoaded=await loadRoute(routeGeneration);
+      const routeLoaded=await loadRouteForGeneration(routeGeneration);
       if(!routeLoaded||stopIfStale())return false;
 
       setBootProgress('route','done','Trajet prêt');
