@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import {createForestChunkStreamer} from '../src/forest-chunk-streamer.js';
+import {FOREST_STREAMING_POLICY as FOREST} from '../src/forest-streaming-policy.js';
 import {ensureWorldDriveDiagnostics} from '../src/diagnostics.js';
 
 class Vec3{
@@ -48,11 +49,12 @@ try{
 
   const forestGroup=new Group();
   let offset={x:0,z:0};
+  let terrainY=0;
   const streamer=createForestChunkStreamer({
     THREE,
     forestGroup,
     getWorldOffset:()=>offset,
-    terrainHeight:()=>0,
+    terrainHeight:()=>terrainY,
     nearestRoute:(x,z)=>({d:Math.abs(x),i:0,angle:0,cum:z,px:0,pz:z}),
     isWaterAt:()=>false,
     blocksForest:()=>false
@@ -70,6 +72,9 @@ try{
   const chunkA=slotA.children.find(child=>/^forest-chunk-/.test(child.name));
   assert.ok(chunkA,'route A did not build a real forest chunk');
   const meshA=chunkA.children[0];
+  assert.ok(meshA.instanceMatrix.array.length>=16,'route A test chunk has no tree matrix');
+  const initialTreeY=meshA.instanceMatrix.array[13];
+  assert.ok(Math.abs(initialTreeY+.28)<1e-4,'initial A tree did not use the initial terrain height');
   const aChildCount=slotA.children.length;
   const disposeBeforeB=disposeCount;
 
@@ -87,8 +92,12 @@ try{
   const meshB=chunkB.children[0];
   assert.equal(disposeCount,disposeBeforeB,'switching A to B disposed retained A geometry');
 
+  // Human FAIL regression: returning to A after its terrain has been rebuilt must
+  // retain the same forest mesh but reproject its instance Y values before reveal.
+  terrainY=42;
   const switchA=streamer.switchRouteCache('route-A');
   assert.equal(switchA.restored,true,'return A did not restore the existing forest slot');
+  assert.ok(switchA.reprojectedTrees>0,'return A did not reproject retained tree heights');
   assert.equal(slotA.visible,true,'restored A slot is not visible');
   assert.equal(slotB.visible,false,'B slot remained visible after returning A');
   assert.equal(intervalHandles.size,1,'return A left more than one forest polling loop active');
@@ -100,6 +109,34 @@ try{
   );
   assert.strictEqual(chunkA.children[0],meshA,'return A replaced the retained A mesh');
   assert.equal(meshA.disposed,undefined,'return A reused an already-disposed mesh');
+  assert.ok(
+    Math.abs(meshA.instanceMatrix.array[13]-(terrainY-.28))<1e-4,
+    'restored A tree matrix kept the stale pre-return terrain Y'
+  );
+
+  // Route-cache nesting must preserve the original streamer render-origin contract.
+  // A shifted parent group must be cancelled exactly once by chunk placement.
+  forestGroup.position.set(-640,0,310);
+  streamer.requestUpdate(false);
+  const match=/^forest-chunk-(-?\d+):(-?\d+)$/.exec(chunkA.name);
+  assert.ok(match,'could not decode retained A chunk coordinates');
+  const chunkSize=FOREST.cellSize*Math.max(1,FOREST.chunkCells||4);
+  const originX=Number(match[1])*chunkSize;
+  const originZ=Number(match[2])*chunkSize;
+  const localTreeX=meshA.instanceMatrix.array[12];
+  const localTreeZ=meshA.instanceMatrix.array[14];
+  const renderedTreeX=forestGroup.position.x+slotA.position.x+chunkA.position.x+localTreeX;
+  const renderedTreeZ=forestGroup.position.z+slotA.position.z+chunkA.position.z+localTreeZ;
+  assert.ok(
+    Math.abs(renderedTreeX-(originX+localTreeX-offset.x))<1e-4,
+    'nested route cache double-applied parent X render-origin shift'
+  );
+  assert.ok(
+    Math.abs(renderedTreeZ-(originZ+localTreeZ-offset.z))<1e-4,
+    'nested route cache double-applied parent Z render-origin shift'
+  );
+  forestGroup.position.set(0,0,0);
+  streamer.requestUpdate(false);
 
   // A third unique route must recycle only the inactive B slot, keeping memory bounded.
   const switchC=streamer.switchRouteCache('route-C');
@@ -113,8 +150,10 @@ try{
   assert.equal(intervalHandles.size,0,'hard forest clear left route-cache polling active');
   assert.equal(meshA.disposed,true,'hard forest clear did not dispose retained A geometry');
 
-  console.log('FOREST ROUTE CACHE R3 QA: PASS',{
+  console.log('FOREST ROUTE CACHE R4 QA: PASS',{
     restoredAObjectIdentity:true,
+    restoredATerrainY:true,
+    nestedParentOriginCompensated:true,
     activePollingLoops:intervalHandles.size,
     boundedSlots:forestGroup.children.length,
     hardClearDisposedA:meshA.disposed===true
