@@ -5,7 +5,6 @@ const P938_PRESERVE_FOREST_DURING_PREPARED_COMMIT=true;
 
 export function createLocalWorldBuilder(options={}){
   const terrainService=options.terrainService;
-  const scheduleVisualJob=options.scheduleVisualJob;
   const getWorldOffset=options.getWorldOffset;
   const originalClearGroup=options.clearGroup;
   const originalFreezeStaticMatrices=options.freezeStaticMatrices;
@@ -229,14 +228,10 @@ export function createLocalWorldBuilder(options={}){
       // geometry disposal and subsequent recreation from the atomic swap.
       const result=base.commitPrepared?.(prepared);
       if(result)alignForestToCommittedTerrain();
-      if(result&&typeof terrainService?.rebuildRoadTransitionIncremental==='function'){
-        terrainService.cancelRoadTransitionPreparation?.();
-        scheduleVisualJob?.(
-          'road-transition',
-          ()=>terrainService.rebuildRoadTransitionIncremental(),
-          360
-        );
-      }
+      // Block 3: issue #4 permanently retired the road-terrain transition
+      // presentation. The authoritative road-bed state and committed terrain
+      // remain unchanged, but prepared refreshes no longer schedule the P9.27
+      // visual geometry worker.
       return result;
     }finally{
       preserveForestDuringPreparedCommit=false;
