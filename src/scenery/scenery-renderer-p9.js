@@ -207,16 +207,19 @@ export function createSceneryRenderer({
     return true;
   }
 
+  // R6 protected ownership contract: keep the dense-forest cache owner narrow.
   function switchForestRouteCache(routeKey){
-    const result=forestStreamer.switchRouteCache(routeKey);
-    if(forestRouteCacheSuspended){
-      forestRouteCacheSuspended=false;
-      if(sceneryReadyForForest&&forestAssets?.trees?.length){
-        forestAssetsActivated=true;
-        forestStreamer.setAssets(forestAssets);
-      }
+    return forestStreamer.switchRouteCache(routeKey);
+  }
+
+  function resumeForestRouteCache(){
+    if(!forestRouteCacheSuspended)return false;
+    forestRouteCacheSuspended=false;
+    if(sceneryReadyForForest&&forestAssets?.trees?.length){
+      forestAssetsActivated=true;
+      forestStreamer.setAssets(forestAssets);
     }
-    return result;
+    return true;
   }
 
   function activateForestAssetsIfReady(){
@@ -374,6 +377,7 @@ export function createSceneryRenderer({
     clearForestCache,
     suspendForestRouteCache,
     switchForestRouteCache,
+    resumeForestRouteCache,
     removeTreesOverWater,
     requestForestRefresh,
     whenInitialForestReady:()=>forestStreamer.whenInitialReady(),
