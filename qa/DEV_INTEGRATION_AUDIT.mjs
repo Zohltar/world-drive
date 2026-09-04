@@ -1,5 +1,7 @@
 await import('./qa-post-refactor-dom-safety-r1.mjs');
-await import('./qa-post-refactor-route-generation-r1.mjs');
+await import('./qa-route-generation-race-r3.mjs');
+await import('./qa-route-generation-p935-r3.mjs');
+await import('./qa-forest-route-cache-r3.mjs');
 await import('./qa-source-tree-r7-app-services.mjs');
 await import('./qa-source-tree-r8-imagery.mjs');
 await import('./qa-source-tree-r8-streaming.mjs');
