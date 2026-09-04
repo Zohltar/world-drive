@@ -59,6 +59,7 @@ const expected=new Map([
   ['__WORLD_DRIVE_P936_FOREST__',['diagnostic-alias:src/forest-chunk-streamer.js']],
   ['__WORLD_DRIVE_P940_FOREST__',['diagnostic-alias:src/forest-chunk-streamer.js']],
   ['__WORLD_DRIVE_P941_FOREST__',['diagnostic-alias:src/forest-chunk-streamer.js']],
+  ['clearInterval',['direct-write:src/forest-chunk-streamer-core.js']],
   ['requestAnimationFrame',['direct-write:src/frame-runtime-profiler.js']],
   ['requestIdleCallback',[
     'direct-write:src/forest-chunk-streamer-core.js',
@@ -105,7 +106,7 @@ const runtimeContracts=new Set(['__WORLD_DRIVE_P923_LOCAL_WORLD__']);
 const buildMetadata=new Set(['worldDriveBuild']);
 const compatibilityBootstrap=new Set(['WorldDriveTraffic','WorldDriveTrafficPool']);
 const functionalControls=new Set(['WorldDriveTrafficSpawn']);
-const platformPolyfills=new Set(['requestAnimationFrame','requestIdleCallback','setTimeout']);
+const platformPolyfills=new Set(['clearInterval','requestAnimationFrame','requestIdleCallback','setTimeout']);
 const allowedDirect=new Set([
   ...runtimeContracts,
   ...buildMetadata,
