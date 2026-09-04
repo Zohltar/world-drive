@@ -255,7 +255,9 @@ async function runRelaySuite(label,startRelay,stopRelay){
     for(const [name,options,status] of [
       ['valid no-origin',{},'101 Switching Protocols'],
       ['wrong path',{requestPath:'/not-world-drive'},'404 Not Found'],
-      ['missing connection',{connection:'keep-alive'},'400 Bad Request'],
+      // Node treats a request lacking Connection: Upgrade as ordinary HTTP;
+      // the relay status endpoint returns 200, which still safely prevents WS upgrade.
+      ['missing connection',{connection:'keep-alive'},'200 OK'],
       ['wrong version',{version:'12'},'426 Upgrade Required'],
       ['invalid key',{key:'not-a-websocket-key'},'400 Bad Request'],
       ['public origin',{origin:'https://evil.example'},'403 Forbidden'],
@@ -265,6 +267,7 @@ async function runRelaySuite(label,startRelay,stopRelay){
     ]){
       const result=await handshake(port,options);
       assert.ok(result.response.includes(status),`${label}: ${name} expected ${status}, got ${result.response.split('\r\n')[0]}`);
+      if(name==='missing connection')assert.ok(!result.response.includes('101 Switching Protocols'),`${label}: missing Connection header must not upgrade`);
       if(options.version==='12')assert.ok(result.response.includes('Sec-WebSocket-Version: 13'),`${label}: version rejection must advertise 13`);
       await destroySocket(result.socket);
     }
@@ -354,6 +357,7 @@ async function runRelaySuite(label,startRelay,stopRelay){
     await consumeJoin(abusive.socket);
     abusive.socket.write(Buffer.concat(Array.from({length:121},(_,i)=>clientFrame(JSON.stringify({type:'noop',i})))));
     await waitClosed(abusive.socket);
+    await sleep(20);
 
     // Upgraded sockets, including clients that never send hello, are bounded.
     const held=[];
