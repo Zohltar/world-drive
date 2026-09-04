@@ -88,9 +88,10 @@ export function createRouteLifecycle({
   function resetRouteForest(){
     sceneryRenderer.clearForestCache?.();
     clearGroup(forestGroup);
+    activeForestRouteKey=null;
   }
 
-  function resetWorldCaches({preserveForest=false}={}){
+  function resetWorldCachesForRequest({preserveForest=false}={}){
     setState({currentRoadGuideSign:null});
     resetStreamingCoordinator();
     waterData.reset();
@@ -149,6 +150,10 @@ export function createRouteLifecycle({
     clearGroup(signGroup);
     sceneryRenderer.clear();
     terrainService.clearHorizon();
+  }
+
+  function resetWorldCaches(){
+    return resetWorldCachesForRequest();
   }
 
   async function loadRouteForGeneration(routeGeneration){
@@ -251,7 +256,7 @@ export function createRouteLifecycle({
       origin:{lat:routeStart.lat,lon:routeStart.lon}
     });
 
-    resetWorldCaches({preserveForest:true});
+    resetWorldCachesForRequest({preserveForest:true});
     resetRunChallenge();
 
     if(routeChangeNeedsForestReady){
