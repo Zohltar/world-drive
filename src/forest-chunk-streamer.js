@@ -22,6 +22,7 @@ export function createForestChunkStreamer(options){
   let offsetOverride=null;
   let currentAssets=null;
   let activeEntry=null;
+  let lastRouteCacheRebase=null;
   const entries=[];
   let visible={
     trees:0,near:0,mid:0,far:0,edge:0,chunks:0,cached:0,queued:0,
@@ -47,6 +48,11 @@ export function createForestChunkStreamer(options){
     const value=realGetWorldOffset?.()||{x:0,z:0};
     return {x:finite(value.x),z:finite(value.z)};
   };
+
+  const readParentRenderOffset=()=>({
+    x:finite(parentForestGroup?.position?.x),
+    z:finite(parentForestGroup?.position?.z)
+  });
 
   function routeDirectionAt(center){
     try{
@@ -89,6 +95,7 @@ export function createForestChunkStreamer(options){
       ...options,
       forestGroup:group,
       getWorldOffset:()=>offsetOverride||readRealOffset(),
+      getParentRenderOffset:readParentRenderOffset,
       onStats:stats=>updateVisible(entry,stats)
     });
     entries.push(entry);
@@ -133,14 +140,29 @@ export function createForestChunkStreamer(options){
     return entry;
   }
 
+  function alignRestoredEntry(entry,key){
+    const result=entry.core.rebaseCachedTerrainHeights?.()||{chunks:0,trees:0,revision:null,ms:0};
+    lastRouteCacheRebase={
+      key,
+      chunks:finite(result.chunks),
+      trees:finite(result.trees),
+      revision:Number.isFinite(result.revision)?result.revision:null,
+      ms:round3(result.ms),
+      at:round3(performance.now())
+    };
+    return result;
+  }
+
   function switchRouteCache(routeKey){
     const key=String(routeKey||DEFAULT_ROUTE_CACHE_KEY);
     if(activeEntry.key===key){
       activeEntry.lastUsed=performance.now();
-      activeEntry.group.visible=true;
+      activeEntry.group.visible=false;
+      alignRestoredEntry(activeEntry,key);
       activateAssets(activeEntry);
       activeEntry.core.requestUpdate(true);
-      return {restored:true,key,slots:entries.length};
+      activeEntry.group.visible=true;
+      return {restored:true,key,slots:entries.length,reprojectedTrees:lastRouteCacheRebase?.trees||0};
     }
 
     const previous=activeEntry;
@@ -166,11 +188,13 @@ export function createForestChunkStreamer(options){
 
     activeEntry=target;
     target.lastUsed=performance.now();
-    target.group.visible=true;
+    target.group.visible=false;
+    if(restored)alignRestoredEntry(target,key);
     activateAssets(target);
     target.core.requestUpdate(true);
+    target.group.visible=true;
     updateVisible(target,target.lastStats);
-    return {restored,key,slots:entries.length};
+    return {restored,key,slots:entries.length,reprojectedTrees:restored?(lastRouteCacheRebase?.trees||0):0};
   }
 
   // Route lifecycle owns the route fingerprint but the forest streamer owns the
@@ -240,7 +264,7 @@ export function createForestChunkStreamer(options){
     return {
       enabled:true,observerMode:'p931-ahead-priority',startupMode:'p934-startup-route-seed',streamingMode:'p940-dirty-priority-queue',
       hitchMode:'p941-frame-window-runtime',legacyObserverMode:'p929-direct-last-slice',
-      routeCache:{key:activeEntry.key,slots:entries.length,maxSlots:ROUTE_CACHE_SLOTS},
+      routeCache:{key:activeEntry.key,slots:entries.length,maxSlots:ROUTE_CACHE_SLOTS,lastRebase:lastRouteCacheRebase?{...lastRouteCacheRebase}:null},
       trees:visible.trees,near:visible.near,mid:visible.mid,far:visible.far,edge:visible.edge,
       activeChunks:finite(raw.activeChunks),cachedChunks:finite(raw.cachedChunks),queuedChunks:finite(raw.queuedChunks),
       chunksBuilt:finite(raw.chunksBuilt),chunksReplaced:finite(raw.chunksReplaced),matrixUploads:finite(raw.matrixUploads),densityCountUpdates:finite(raw.densityCountUpdates),
@@ -303,6 +327,7 @@ export function createForestChunkStreamer(options){
       }
       activeEntry=entries[0];activeEntry.key=DEFAULT_ROUTE_CACHE_KEY;activeEntry.group.name='forest-route-cache-default';activeEntry.group.visible=true;
       currentAssets=null;
+      lastRouteCacheRebase=null;
       visible={trees:0,near:0,mid:0,far:0,edge:0,chunks:0,cached:0,queued:0,visibleWanted:0,prefetchWanted:0,prefetchedReady:0,prefetchQueued:0};
       return true;
     },
