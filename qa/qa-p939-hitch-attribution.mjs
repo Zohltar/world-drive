@@ -35,11 +35,18 @@ expect(
   'P9.39 must timestamp prepared world commits'
 );
 expect(
-  source.includes('recordVisualJob(key,ended-started,ended)'),
-  'P9.39 must timestamp synchronous visual job work'
+  source.includes('recordVisualJobSync(key,syncEnded-started,syncEnded)')&&
+  source.includes('lastVisualJobEvent={key:String(key),ms,at:endedAt}'),
+  'P9.39 must keep hitch attribution on synchronous visual CPU time'
+);
+expect(
+  source.includes("recordVisualJobSettlement(key,ended-started,'async-resolve',ended)")&&
+  source.includes("recordVisualJobSettlement(key,ended-started,'async-reject',ended)"),
+  'Block 4 async settlement timing must remain separate from P9.39 sync attribution'
 );
 
 console.log('PASS P9.39 hitch-attribution QA');
 console.log('  - >20ms gameplay hitches keep a bounded attribution history');
-console.log('  - prepared world, visual jobs and forest correlation are distinguished');
+console.log('  - prepared world, synchronous visual CPU and forest correlation are distinguished');
+console.log('  - async wall time is diagnostic-only and does not become a false hitch culprit');
 console.log('  - unknown remains explicit instead of guessing a culprit');
