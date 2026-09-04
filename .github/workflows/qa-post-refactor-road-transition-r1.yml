@@ -1,0 +1,35 @@
+name: Post-refactor Road Transition R1 Baseline
+
+on:
+  push:
+    branches:
+      - candidate/post-refactor-road-transition-r1
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  qa:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install
+        run: npm ci
+      - name: Block 3 road-transition baseline measurement
+        run: node qa/qa-post-refactor-road-transition-baseline-r1.mjs
+      - name: P9.27 road-transition regression
+        run: node qa/qa-streaming-p927-road-transition.mjs
+      - name: P9.23 prepared-refresh regression
+        run: node qa/qa-streaming-p923-prepared-refresh.mjs
+      - name: P9.23 scheduler regression
+        run: node qa/qa-streaming-p923-scheduler.mjs
+      - name: P9.20 local-world phase regression
+        run: node qa/qa-streaming-p920-world-phases.mjs
