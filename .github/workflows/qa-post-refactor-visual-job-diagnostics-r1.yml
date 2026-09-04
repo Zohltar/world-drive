@@ -1,0 +1,45 @@
+name: Post-refactor Visual Job Diagnostics R1 QA
+
+on:
+  push:
+    branches:
+      - candidate/post-refactor-visual-job-diagnostics-r1
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  qa:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install
+        run: npm ci
+      - name: Block 4 async visual-job timing QA
+        run: node qa/qa-post-refactor-visual-job-timing-r1.mjs
+      - name: P9.39 hitch-attribution QA
+        run: node qa/qa-p939-hitch-attribution.mjs
+      - name: P9.41 frame-runtime attribution QA
+        run: node qa/qa-p941-frame-runtime-attribution.mjs
+      - name: P9.42 browser long-frame attribution QA
+        run: node qa/qa-p942-browser-long-frame.mjs
+      - name: P9.37 combined frame-pacing QA
+        run: node qa/qa-p937-combined-frame-pacing.mjs
+      - name: R8 streaming source-tree QA
+        run: node qa/qa-source-tree-r8-streaming.mjs
+      - name: R8 streaming baseline aggregate
+        run: node qa/qa-r8-streaming-baseline.mjs
+      - name: Full Dev Integration audit
+        run: node qa/DEV_INTEGRATION_AUDIT.mjs
+      - name: Production build
+        run: npm run build
+      - name: Production code split QA
+        run: node qa/BUILD_V21_31_CODE_SPLIT_QA.mjs
