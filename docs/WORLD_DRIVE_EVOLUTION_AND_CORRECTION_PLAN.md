@@ -2,7 +2,8 @@
 
 Canonical work branch: `dev`  
 Stable branch: `main`  
-Stable rollback/reference: `111df5d84bf7fd700590abbd9c129b303ac92fad` — `Release V21.31 post-C6 stable`  
+Current stable `main`: `9055d5682afcf512c91b1ae7dc97dcb4b16d6d9e` — `Docs: open post-refactor development plan`  
+Previous rollback/reference: `111df5d84bf7fd700590abbd9c129b303ac92fad` — `Release V21.31 post-C6 stable`  
 Status: **ACTIVE — canonical restart source of truth**
 
 GitHub live state + this file override chat memory when they disagree.
@@ -61,9 +62,12 @@ If any answer is unknown, resolve it before coding.
 **Architecture state:** **R1–R9 + Phase O DONE/CERTIFIED; R8 architecture FROZEN**  
 **Runtime correction state:** issues #4 and #8 CLOSED / HUMAN PASS  
 **Issue #2:** OPEN / watch-only / not reproduced  
-**Certified `dev` baseline before this plan update:** `d1a5be3b4c547dc34ea4d396dcda0e383fa87268` — `Docs: close issue 8 correction backlog`  
-**Exact-head Dev Integration on that baseline:** run `33814182310` — **PASS 100/100 functional steps**  
-**Stable `main`:** `111df5d84bf7fd700590abbd9c129b303ac92fad` — unchanged.
+**Certified `dev` baseline before this plan update:** `9055d5682afcf512c91b1ae7dc97dcb4b16d6d9e` — `Docs: open post-refactor development plan`  
+**Exact-head Dev Integration on that baseline:** run `33823147399` — **PASS 100/100 functional steps**  
+**Stable `main`:** `9055d5682afcf512c91b1ae7dc97dcb4b16d6d9e` — fast-forwarded from `dev` on 2026-09-04 after explicit user approval.  
+**Previous stable rollback/reference:** `111df5d84bf7fd700590abbd9c129b303ac92fad` — `Release V21.31 post-C6 stable`.
+
+This plan synchronization is docs-only and may place `dev` one commit ahead of `main`; that is intentional and does not constitute a new runtime baseline.
 
 The codebase-wide post-refactor review found no systemic reason for another broad architecture refactor. The current architecture is usable and well covered. The next work is a set of **narrow correctness, security and runtime-efficiency blocks**, in priority order.
 
@@ -719,16 +723,20 @@ Block 7 (`main.js` decomposition) is **not required** for roadmap completion.
 
 # 12. Main promotion rule
 
-`main @ 111df5d84bf7fd700590abbd9c129b303ac92fad` remains the stable rollback/reference baseline.
+`main @ 9055d5682afcf512c91b1ae7dc97dcb4b16d6d9e` is the current stable baseline, promoted from `dev` on 2026-09-04 after explicit user approval.
 
-Promotion requires:
+Previous rollback/reference:
+
+`111df5d84bf7fd700590abbd9c129b303ac92fad` — `Release V21.31 post-C6 stable`.
+
+Future promotion requires:
 
 1. exact final `dev` green;
 2. all required human checkpoints green;
 3. no unresolved high-priority regression introduced by this roadmap;
 4. **explicit user approval to move `main`**.
 
-Until that approval is given, `main` must remain untouched.
+Until the next explicit approval, `main` must remain untouched.
 
 ---
 
