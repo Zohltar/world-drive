@@ -1,3 +1,6 @@
+// Dev Integration permanent regression inventory.
+// Issue #9 stays here after certification: future imagery/terrain changes must
+// keep the road-aware satellite tessellation clearance contract green.
 await import('./qa-post-refactor-dom-safety-r1.mjs');
 await import('./qa-route-generation-race-r3.mjs');
 await import('./qa-route-generation-p935-r3.mjs');
