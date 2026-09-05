@@ -66,10 +66,11 @@ Before coding, be able to answer:
 **Block 6 — Overpass proxy/configuration consistency:** **DONE/CERTIFIED — AUTOMATED (2026-09-05)**  
 **Block 6B — local-data production build-copy optimization:** **DONE/CERTIFIED — HUMAN PASS (2026-09-05)**  
 **Issue #2:** **OPEN / watch-only / not reproduced**  
-**Issue #9:** **ACTIVE — reproduced on Yungas / diagnostic audit first / explicitly predates Block 3**  
+**Issue #9:** **DONE/CERTIFIED — HUMAN YUNGAS VISUAL/PERFORMANCE PASS (2026-09-05)**  
 **Issue #10:** **OPEN / steep-slope tire grip and steering instability / deferred**  
 **Issue #11:** **OPEN / one civil-traffic model rotated ~90° / deferred**  
 **Issue #12:** **OPEN / forest streaming falls behind after ~5 km / deferred**  
+**Active correction block:** **NONE — await explicit user priority; do not auto-start deferred issues**  
 **Stable `main`:** `9055d5682afcf512c91b1ae7dc97dcb4b16d6d9e` — must remain untouched without explicit user approval.  
 **Previous rollback/reference:** `111df5d84bf7fd700590abbd9c129b303ac92fad`.
 
@@ -283,33 +284,66 @@ Post-integration exact-head Dev Integration:
 head 65f3f6c963fcc992d1e9dd4a426125b9897cbbca
 ```
 
+## Issue #9 certified checkpoint — terrain intrusion over road
+
+Final human-tested candidate:
+
+```text
+candidate/issue-9-road-terrain-intrusion-r1
+bbee7dc9c17d4b045dcc19699d2fb0652117fef5
+```
+
+Diagnosis and certified correction:
+
+- the reproduced defect was caused by coarse fixed-grid satellite imagery triangle interpolation crossing the asphalt on steep cuts/switchbacks;
+- at the Yungas latitude, ordinary imagery geometry spacing was ~18.341 m while the near terrain grid was 12.5 m;
+- the analytic refined road-earthwork sampler remained below the asphalt, isolating the defect to imagery geometry rather than authoritative road geometry;
+- localized road-aware imagery tessellation/refinement reduces geometry spacing to ~3.057 m only around the existing road visual corridor;
+- permanent angle/grid-phase matrix coverage retains positive asphalt clearance in the synthetic stress case;
+- ordinary satellite resolution is not globally increased;
+- terrain is not globally flattened;
+- road geometry, vehicle physics, bridge behavior, issue #8 wheel support, Photo ON/OFF behavior and normal terrain shape remain protected;
+- retired `road-terrain-transition` remains retired and was not restored as a workaround.
+
+Permanent Issue #9 QA:
+
+```text
+qa/qa-issue9-road-terrain-intrusion-r1.mjs
+qa/DEV_INTEGRATION_AUDIT.mjs
+.github/workflows/qa-issue9-road-terrain-intrusion-r1.yml
+```
+
+Focused correction candidate run:
+
+```text
+33989915911 — PASS
+head bbee7dc9c17d4b045dcc19699d2fb0652117fef5
+```
+
+Human Yungas visual/performance checkpoint: **PASS (2026-09-05)**.
+
+Post-integration exact-head Dev Integration:
+
+```text
+33990413241 — PASS
+head bbee7dc9c17d4b045dcc19699d2fb0652117fef5
+```
+
+GitHub Issue #9: **CLOSED / COMPLETED (2026-09-05)**.
+
 ## Exact next action
 
-Start **Issue #9 — terrain occasionally intrudes over the road surface**, **read-only/reproduction audit first**.
+**No active correction block. Await explicit user priority.**
 
-Known evidence:
+Current unresolved work is intentionally not auto-started:
 
-- issue is reproducible on Yungas;
-- it explicitly predates Block 3;
-- the authoritative road itself was reported visually correct while terrain can intrude over it in extreme relief;
-- retired `road-terrain-transition` must not be restored as a workaround.
+- Issue #2 remains **watch-only / not reproduced**; collect diagnostics only if it reappears;
+- Issue #10 remains **deferred**; if prioritized, reproduce steep-slope grip/steering behavior before any physics tuning;
+- Issue #11 remains **deferred**; if prioritized, identify the single affected civil-traffic model and audit its authored forward-axis/yaw contract before editing;
+- Issue #12 remains **deferred**; if prioritized, reproduce a long drive and capture forest queue/prefetch/frame-budget diagnostics before changing streaming policy;
+- Block 7 composition-root reduction remains **deferred / evidence-driven only**.
 
-Audit before changing anything:
-
-- current road-bed/refined-terrain ownership and intersection/clipping logic;
-- terrain triangulation/sampling around steep cuts, switchbacks and large cross-slope deltas;
-- road corridor clearance/terrain depression policy versus actual road mesh elevation;
-- whether the defect is geometric authority, coarse triangle interpolation, stale terrain sampling or presentation-only;
-- existing road/terrain/bridge/wheel-ground QA that constrains a correction.
-
-Rules:
-
-- reproduce/measure before modifying runtime;
-- preserve accepted road geometry, bridge behavior, issue #8 wheel support, Photo ON/OFF visuals and normal terrain shape;
-- no global terrain flattening or broad physics retune;
-- no return of retired `road-terrain-transition` workload;
-- issues #10/#11/#12 remain deferred and must not be mixed into this diagnosis;
-- Block 7 composition-root work remains deferred unless a concrete need emerges.
+Do not modify `main` without explicit user approval. Do not begin a deferred block merely because Issue #9 is complete.
 
 ---
 
@@ -325,6 +359,7 @@ Rules:
 | P2 | Electron multiplayer IPC lacked explicit caller-origin validation | `electron/main.cjs`, `electron/ipc-origin-guard.cjs`, `electron/preload.cjs` | **DONE/CERTIFIED — Block 5B — HUMAN LAN PASS** |
 | P3 | Overpass allowlists/proxy limits differed across environments | Vite/browser/Electron Overpass paths | **DONE/CERTIFIED — Block 6** |
 | P3 | Local generated `public/world-data` was copied into `dist` on desktop builds | Vite/public-data/desktop packaging path | **DONE/CERTIFIED — Block 6B — HUMAN PASS** |
+| P2 | Coarse satellite imagery triangles could cross asphalt on steep road cuts | imagery road-aware geometry refinement | **DONE/CERTIFIED — Issue #9 — HUMAN YUNGAS PASS** |
 | P3 | `src/main.js` remains large composition root | `src/main.js` | **DEFERRED — no refactor without concrete benefit** |
 
 ---
@@ -353,7 +388,7 @@ Exact-head Dev Integration `33892857490`: PASS. Human checkpoint: PASS.
 Final candidate `candidate/post-refactor-road-transition-r1` @ `1731cd476984ba736c61527e05bd00a5f36202d8`.  
 Baseline run `33902426615`: PASS. Focused final run `33903521697`: PASS. Post-integration Dev Integration `33913262016`: PASS. Human checkpoint: PASS.
 
-Issue #9 is separate and explicitly predates this block.
+Issue #9 is separate, explicitly predates this block, and is now independently **DONE/CERTIFIED**.
 
 ## Block 4 — Accurate asynchronous visual-job diagnostics
 
@@ -378,17 +413,19 @@ Focused run `33915664612`: PASS. Post-integration Dev Integration `33915756142`:
 
 **DONE/CERTIFIED — HUMAN PASS (2026-09-05).** See checkpoint above.
 
+## Issue #9 — terrain intrusion over road
+
+**DONE/CERTIFIED — HUMAN YUNGAS VISUAL/PERFORMANCE PASS (2026-09-05).** See checkpoint above.
+
 ---
 
 # 4. Active and future roadmap
 
-## Issue #9 diagnostic block — terrain intrudes over road
+## Current active correction block
 
-### Status
+**NONE — await explicit user priority.**
 
-**ACTIVE — READ-ONLY / REPRODUCE FIRST.**
-
-The defect is known on extreme Yungas terrain and predates the post-refactor road-transition retirement. Diagnose the current authoritative road/terrain intersection before proposing a fix. Human visual checkpoint will be mandatory for any correction.
+Do not automatically promote deferred issues into active work. Preserve the certified Issue #9 correction and all prior certified behavior while waiting for a new priority.
 
 ---
 
@@ -417,12 +454,6 @@ p939HitchAttribution
 ```
 
 Do not tune terrain/imagery/streaming just to see if it helps. A correction requires reproducible evidence.
-
-## Issue #9 — terrain occasionally intrudes over the road surface
-
-**ACTIVE / PRE-EXISTING / REPRODUCED ON YUNGAS.**
-
-Reproduce/measure first; inspect terrain/road intersection authority and coarse terrain triangles near steep cuts/switchbacks; preserve road geometry, wheel-ground physics and accepted issue #4 visuals; do not restore retired `road-terrain-transition` as a workaround.
 
 ## Issue #10 — steep-slope tire grip and steering instability
 
@@ -531,6 +562,22 @@ Protected correction in `src/physics/wheel-ground-support.js`:
 
 Do not retune during unrelated work.
 
+## Issue #9 — terrain intrusion over road
+
+**CLOSED / DONE/CERTIFIED — HUMAN YUNGAS PASS (2026-09-05).**
+
+Protected correction is localized road-aware imagery geometry refinement around the existing road visual corridor. It prevents coarse imagery triangle interpolation from crossing asphalt on steep cuts/switchbacks without globally increasing satellite resolution or flattening terrain.
+
+Preserve:
+
+- the localized refinement scope;
+- authoritative road geometry and refined road-earthwork sampler;
+- bridge behavior and issue #8 wheel support;
+- Photo ON/OFF behavior and normal terrain shape;
+- retired `road-terrain-transition` remaining retired.
+
+Do not replace this with broad terrain flattening, global imagery tessellation increases, or physics retuning without new causal evidence and dedicated QA.
+
 ---
 
 # 8. Protected behavior / prohibitions
@@ -541,6 +588,7 @@ Preserve unless a future block has direct causal evidence and dedicated QA:
 - road/bridge geometry;
 - wheel-ground support including issue #8;
 - terrain authority and DEM shape;
+- certified localized Issue #9 road-aware imagery refinement;
 - Photo ON visual quality;
 - forest density/readiness/streaming policy;
 - local-first Quebec hydro behavior;
