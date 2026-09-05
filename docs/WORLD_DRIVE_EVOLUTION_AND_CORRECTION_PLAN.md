@@ -63,7 +63,8 @@ Before coding, be able to answer:
 **Block 4 — Accurate asynchronous visual-job diagnostics:** **DONE/CERTIFIED — AUTOMATED; no human checkpoint required**  
 **Block 5A — LAN WebSocket relay hardening:** **DONE/CERTIFIED — HUMAN LAN PASS (2026-09-05)**  
 **Block 5B — Electron IPC caller-origin validation:** **DONE/CERTIFIED — HUMAN LAN PASS (2026-09-05)**  
-**Block 6 — Overpass proxy/configuration consistency:** **ACTIVE — READ-ONLY AUDIT FIRST**  
+**Block 6 — Overpass proxy/configuration consistency:** **DONE/CERTIFIED — AUTOMATED (2026-09-05)**  
+**Block 6B — local-data production build-copy optimization:** **ACTIVE — READ-ONLY AUDIT FIRST**  
 **Issue #2:** **OPEN / watch-only / not reproduced**  
 **Issue #9:** **OPEN / reproduced on Yungas / explicitly predates Block 3**  
 **Issue #10:** **OPEN / steep-slope tire grip and steering instability / deferred**  
@@ -118,7 +119,7 @@ QA-only correction `abd3d875623e935cdc36f98601f0837f0a610168`: M4.13 keeps all 3
 Exact-head Dev Integration `33973907521`: PASS.  
 Human LAN checkpoint: PASS.
 
-Human-smoke environment note, **out of Block 5A scope**: the local Windows checkout contains `public/world-data` with 38,018 files / ~16.8 GB. A production Vite build copies that local public dataset into `dist`, making local desktop startup/build take many minutes. The smoke used a temporary local move/build/restore workaround. Any permanent packaging/build optimization must be a separate block and must preserve local-first Quebec hydro semantics.
+Human-smoke environment note, **out of Block 5A scope**: the local Windows checkout contains `public/world-data` with 38,018 files / ~16.8 GB. A production Vite build copies that local public dataset into `dist`, making local desktop startup/build take many minutes. The smoke used a temporary local move/build/restore workaround. Any permanent packaging/build optimization must preserve local-first Quebec hydro semantics.
 
 ## Block 5B certified checkpoint
 
@@ -139,22 +140,12 @@ Security: add Electron IPC caller-origin guard
 Security: validate Electron multiplayer IPC caller origin
 ```
 
-Audit findings:
+Certified caller policy requires:
 
-- Electron already used `nodeIntegration:false`, `contextIsolation:true`, `sandbox:true`, `webSecurity:true`;
-- navigation/new-window/permission boundaries were already restrictive;
-- the app renderer is served from `http://127.0.0.1:<actual-port>`;
-- the preload exposed only the narrow desktop multiplayer API (`host`, `join`, `stop`, `status`);
-- the four `ipcMain.handle(...)` multiplayer handlers were globally callable without an explicit sender/frame/origin check.
-
-Certified caller policy now requires all of the following before a multiplayer IPC handler reaches the runtime:
-
-- sender `WebContents` is exactly the active World Drive `mainWindow.webContents`;
-- caller frame is the sender's main frame, not an iframe/subframe;
-- frame URL origin exactly matches the current loopback `appOrigin`, including the actual port;
+- sender `WebContents` exactly equals active `mainWindow.webContents`;
+- caller frame is the sender's main frame;
+- frame URL origin exactly matches current loopback `appOrigin`, including actual port;
 - sender/frame remain alive and not destroyed.
-
-Untrusted/synthetic callers are rejected before host/join/stop/status runtime behavior executes. The preload API itself was **not broadened or changed**. Multiplayer gameplay/protocol, relay semantics, renderer UX and return/error contracts were preserved.
 
 Permanent Block 5B QA:
 
@@ -165,57 +156,103 @@ qa/DEV_INTEGRATION_AUDIT.mjs
 .github/workflows/qa-post-refactor-electron-ipc-origin-r1.yml
 ```
 
-Focused/full candidate run:
+Candidate run `33974991861`: PASS.  
+Human Windows/LAN checkpoint: PASS.  
+Post-integration exact-head Dev Integration `33975423632`: PASS.
+
+## Block 6 certified checkpoint
+
+Final candidate:
 
 ```text
-33974991861 — PASS
-head 7858826f89c6f869cab187316b392799ce78ba79
+candidate/post-refactor-overpass-parity-r1
+abcc2a0e8ddca70600502499cc0ecf574339dfa5
 ```
 
-That run passed Block 5B caller-origin QA, R2 multiplayer, Block 5A regression, M3 client/protocol, full Dev Integration audit, production build/code split and Electron package smoke.
+Runtime/network commits:
 
-Human Windows/LAN checkpoint: **PASS (2026-09-05)** — host, join, disconnect/reconnect and re-host behavior accepted by the user.
+```text
+6a767e0d48703e1c7d30670e27c8bcbc3571f02e
+Network: align Vite Overpass proxy policy
 
+8ef5e52c3b26b16c0355e8338d039b82c36b142d
+Network: align desktop Overpass mirror allowlist
+```
+
+Audit findings and certified policy:
+
+- maintained Overpass client defaults are exactly `overpass-api.de`, `overpass.kumi.systems`, `overpass.nchc.org.tw`;
+- stale `overpass.private.coffee` allowance was removed from Vite and desktop transport owners;
+- Vite and Electron now both accept only GET/POST and enforce a 1 MiB request-body ceiling;
+- Vite keeps its deliberate HTTP-200 soft-failure envelope (`__worldDriveOverpassFailure`) so expected public-mirror failover does not generate browser network errors;
+- Electron deliberately keeps real upstream/proxy HTTP statuses (including 502/504) for desktop diagnostics;
+- `src/services/overpass.js` mirror health, retry/failover and request cadence were not retuned;
+- Quebec hydro remains local-first; Overpass remains fallback-only when local hydro is unavailable.
+
+Permanent Block 6 QA:
+
+```text
+qa/qa-post-refactor-overpass-parity-r1.mjs
+qa/DEV_INTEGRATION_AUDIT.mjs
+.github/workflows/qa-post-refactor-overpass-parity-r1.yml
+```
+
+QA-only historical ownership correction:
+
+```text
+81cd61a32b8edaa7680716522846527a7d6b89dd
+QA: follow maintained Overpass service ownership
+```
+
+The first focused run `33975834180` failed only because historical V21.26 QA still inspected compatibility re-export facades instead of maintained `src/services/...` owners; runtime behavior was not implicated.  
+Focused corrected run `33975926141`: PASS.  
+Final candidate exact-head run `33975980569`: PASS, including Block 6 parity, Overpass resilience, historical abort/failover, Quebec local hydro, water hydro, full Dev Integration audit, production build and code split.  
 Post-integration exact-head Dev Integration:
 
 ```text
-33975423632 — PASS
-head 7858826f89c6f869cab187316b392799ce78ba79
+33976041635 — PASS
+head abcc2a0e8ddca70600502499cc0ecf574339dfa5
 ```
+
+Human checkpoint: **not required** — no user-facing mirror behavior, hydro authority, retry cadence or gameplay behavior was changed.
 
 ## Exact next action
 
-Start **Block 6 — Overpass proxy/configuration consistency**, **read-only audit first**.
+Start **Block 6B — local-data production build-copy optimization**, **read-only audit first**.
 
 Audit:
 
 ```text
 vite.config.js
-src/services/desktop-overpass-transport.js
+forge.config.cjs
 electron/main.cjs
-src/services/overpass.js
+src/water-offline-hydro-source.js
+src/water-data.js
+.gitignore
+tools/geofabrik/README.md
+tools/geofabrik/build-world-tiles.mjs
+README_PACKAGING.md
 ```
 
 Map before changing anything:
 
-- browser/Vite proxy target allowlist;
-- Electron proxy target allowlist;
-- request methods, body-size ceilings, timeout and redirect behavior;
-- browser vs desktop transport URL construction;
-- fallback/mirror selection and retry behavior in `src/services/overpass.js`;
-- intentional versus accidental environment divergence;
-- existing permanent Overpass/local-hydro QA that constrains changes.
+- why Vite copies generated `public/world-data` into `dist` during production builds;
+- browser-development URL ownership for `/world-data/...`;
+- Electron static-server ownership for `dist` and whether it can safely serve local data from a separate root;
+- Forge package inclusion/exclusion of `public/world-data` and whether current packaging duplicates the dataset;
+- whether generated Quebec data is intentionally untracked/local and how tooling expects it to be laid out;
+- required behavior when the local dataset is absent;
+- browser production, Electron development and packaged Electron differences;
+- permanent QA needed to prove local-first Quebec hydro still works after any packaging/path change.
 
 Rules:
 
-- do not restore Overpass as a mandatory or primary hydro source;
-- preserve local-first Quebec hydro behavior;
-- preserve graceful failure/fallback semantics;
-- align mirror allowlists/body limits only where evidence supports parity;
-- document deliberate divergence and lock it with QA when environments genuinely differ;
-- do not mix Block 6 with the 16.8 GB local-data build-copy optimization;
-- do not mix Block 6 with issues #9/#10/#11/#12;
-- do not mix dependency/npm vulnerability work or Actions upgrades.
+- do not change hydro source priority or data format;
+- do not delete/move the user's generated dataset;
+- do not make Overpass primary again;
+- do not silently exclude required packaged resources without proving the expected deployment model;
+- prefer a build-time exclusion plus explicit desktop serving path only if audit evidence proves it preserves all environments;
+- do not mix issues #9/#10/#11/#12, dependency/npm work or Actions upgrades.
 
 ---
 
@@ -229,8 +266,8 @@ Rules:
 | P2 | `visualJobs` measured Promise creation instead of async settlement | `src/streaming-coordinator.js` | **DONE/CERTIFIED — Block 4** |
 | P2 | LAN relay lacked explicit bounded handshake/client/rate policy | `server/multiplayer-server.mjs`, `electron/multiplayer-runtime.cjs` | **DONE/CERTIFIED — Block 5A — HUMAN LAN PASS** |
 | P2 | Electron multiplayer IPC lacked explicit caller-origin validation | `electron/main.cjs`, `electron/ipc-origin-guard.cjs`, `electron/preload.cjs` | **DONE/CERTIFIED — Block 5B — HUMAN LAN PASS** |
-| P3 | Local `public/world-data` (~16.8 GB / 38,018 files) is copied into `dist` during local production build | Vite/public-data/desktop packaging path | **DISCOVERED — separate follow-up; do not mix into Block 6** |
-| P3 | Overpass allowlists/proxy limits differ across environments | Vite/browser/Electron Overpass paths | **ACTIVE — Block 6 — AUDIT FIRST** |
+| P3 | Overpass allowlists/proxy limits differed across environments | Vite/browser/Electron Overpass paths | **DONE/CERTIFIED — Block 6** |
+| P3 | Local `public/world-data` (~16.8 GB / 38,018 files) is copied into `dist` during local production build | Vite/public-data/desktop packaging path | **ACTIVE — Block 6B — AUDIT FIRST** |
 | P3 | `src/main.js` remains large composition root | `src/main.js` | **DEFERRED — no refactor without concrete benefit** |
 
 ---
@@ -241,137 +278,54 @@ Rules:
 
 **DONE/CERTIFIED — HUMAN PASS (2026-09-04).**
 
-Certified candidate/runtime commit:
-
-```text
-candidate/post-refactor-dom-safety-r1
-28ffbee1cc63f4a250e59d6d136d007854fcddc4
-Security: render dynamic UI labels as text
-```
-
-Focused candidate run `33869854637`: PASS.  
-Post-integration exact-head Dev Integration `33871178836`: PASS.  
-Human checkpoint: PASS.
-
-Protected result: remote geocoding names, route labels and vehicle names/descriptions render as text while controlled static World Drive markup remains allowed.
-
----
+Candidate `candidate/post-refactor-dom-safety-r1` @ `28ffbee1cc63f4a250e59d6d136d007854fcddc4`.  
+Focused run `33869854637`: PASS. Post-integration Dev Integration `33871178836`: PASS. Human checkpoint: PASS.
 
 ## Block 2 — Route lifecycle stale-generation guard
 
 **DONE/CERTIFIED — HUMAN PASS (2026-09-04).**
 
-Final candidate:
-
-```text
-candidate/post-refactor-route-generation-r7
-d00acf06128dbd4eb3f75831d04c96d1a81d41cf
-```
-
-QA-only post-integration compatibility update:
-
-```text
-da42ab9ad43b89d10df0055985ac1d9a9672ba5c
-QA: allow explicit forest terrain matrix reprojection
-```
-
-Final exact-head Dev Integration before docs: `33892857490` — PASS.  
-Human checkpoint: PASS.
-
-Protected result: stale route work cannot regain route/UI/world authority; rapid A→B→A forest readiness remains preserved without retuning accepted forest policy.
-
----
+Final candidate `candidate/post-refactor-route-generation-r7` @ `d00acf06128dbd4eb3f75831d04c96d1a81d41cf`.  
+QA-only compatibility update `da42ab9ad43b89d10df0055985ac1d9a9672ba5c`.  
+Exact-head Dev Integration `33892857490`: PASS. Human checkpoint: PASS.
 
 ## Block 3 — Retire hidden road-terrain transition workload
 
 **DONE/CERTIFIED — HUMAN PASS (2026-09-04).**
 
-Final candidate:
-
-```text
-candidate/post-refactor-road-transition-r1
-1731cd476984ba736c61527e05bd00a5f36202d8
-```
-
-Mandatory QA-only baseline `c31d8425a1f0f939873617c81632e77f950f7b0b`, run `33902426615`: PASS.  
-Focused final run `33903521697`: PASS.  
-Post-integration Dev Integration `33913262016`: PASS.  
-Human Photo ON/OFF + steep-terrain checkpoint: PASS.
-
-Protected result: hidden retired transition mesh allocations/preparations/commits are zero while road-bed/refined terrain authority remains unchanged.
+Final candidate `candidate/post-refactor-road-transition-r1` @ `1731cd476984ba736c61527e05bd00a5f36202d8`.  
+Baseline run `33902426615`: PASS. Focused final run `33903521697`: PASS. Post-integration Dev Integration `33913262016`: PASS. Human checkpoint: PASS.
 
 Issue #9 is separate and explicitly predates this block.
-
----
 
 ## Block 4 — Accurate asynchronous visual-job diagnostics
 
 **DONE/CERTIFIED — AUTOMATED (2026-09-04).**
 
-Final candidate:
-
-```text
-candidate/post-refactor-visual-job-diagnostics-r1
-fd248af831c3626f62c86329d093633509982004
-```
-
-Focused final run `33915664612`: PASS.  
-Post-integration runtime exact-head Dev Integration `33915756142`: PASS.  
-QA-only C6 compatibility correction `b4785c8d76271bb139c4fa5e1506264b99a71fef`.  
-Exact-head Dev Integration `33916468306`: PASS.
-
-Protected result: synchronous CPU/invocation timing remains distinct from full Promise settlement wall timing and async outcome/in-flight diagnostics.
-
----
+Final candidate `candidate/post-refactor-visual-job-diagnostics-r1` @ `fd248af831c3626f62c86329d093633509982004`.  
+Focused run `33915664612`: PASS. Post-integration Dev Integration `33915756142`: PASS. QA-only compatibility correction `b4785c8d76271bb139c4fa5e1506264b99a71fef`. Exact-head Dev Integration `33916468306`: PASS.
 
 ## Block 5A — LAN WebSocket relay hardening
 
-**DONE/CERTIFIED — HUMAN LAN PASS (2026-09-05).**
-
-See the Block 5A certified checkpoint above. Do not broaden/reopen without new evidence.
-
----
+**DONE/CERTIFIED — HUMAN LAN PASS (2026-09-05).** See checkpoint above.
 
 ## Block 5B — Electron IPC caller-origin validation
 
-**DONE/CERTIFIED — HUMAN LAN PASS (2026-09-05).**
+**DONE/CERTIFIED — HUMAN LAN PASS (2026-09-05).** See checkpoint above.
 
-See the Block 5B certified checkpoint above. Do not broaden/reopen without new evidence.
+## Block 6 — Overpass proxy/configuration consistency
+
+**DONE/CERTIFIED — AUTOMATED (2026-09-05).** See checkpoint above.
 
 ---
 
 # 4. Active and future roadmap
 
-## Block 6 — Overpass proxy/configuration consistency
+## Block 6B — local-data production build-copy optimization
 
 ### Status
 
 **ACTIVE — READ-ONLY AUDIT FIRST.**
-
-Audit:
-
-```text
-src/services/overpass.js
-src/services/desktop-overpass-transport.js
-vite.config.js
-electron/main.cjs
-```
-
-Rules:
-
-- do not restore Overpass as a mandatory primary hydro source;
-- preserve local-first Quebec hydro behavior;
-- preserve graceful failure/fallback semantics;
-- align/document mirror allowlists and request-body limits;
-- prefer permanent parity QA if one shared module would create awkward browser/Node coupling.
-
-Human checkpoint only if browser/Electron network behavior changes visibly.
-
----
-
-## Separate follow-up — local-data production build copy
-
-**DISCOVERED / DEFERRED / SEPARATE FROM BLOCK 6.**
 
 Local Windows evidence from 2026-09-05:
 
@@ -381,7 +335,9 @@ public/world-data
 ~16.8 GB
 ```
 
-Vite's production build copies this local dataset into `dist`, making desktop startup/build take many minutes on the user's checkout. Any permanent optimization must preserve local-first Quebec hydro semantics and must be audited as a packaging/data-location change rather than hidden inside another block.
+Vite's production build currently copies this generated local dataset into `dist`, making desktop startup/build take many minutes on the user's checkout. The target is to eliminate unnecessary per-build copying while preserving the exact local-first Quebec hydro behavior and expected browser/Electron/package deployment model.
+
+Human checkpoint is required if desktop local-hydro loading or packaging behavior changes.
 
 ---
 
@@ -409,55 +365,31 @@ visualJobs
 p939HitchAttribution
 ```
 
-For `visualJobs`, use the Block 4 distinction:
-
-- legacy `lastMs/maxMs/avgMs` = synchronous CPU/invocation timing;
-- `lastWallMs/maxWallMs/avgWallMs` = full Promise settlement wall time;
-- `lastOutcome`, `inFlight`, success/failure counters = async state/outcome.
-
 Do not tune terrain/imagery/streaming just to see if it helps. A correction requires reproducible evidence.
 
 ## Issue #9 — terrain occasionally intrudes over the road surface
 
 **OPEN / PRE-EXISTING / REPRODUCED ON YUNGAS.**
 
-Confirmed during Block 3 human testing near the start of Yungas. The user explicitly stated the bug existed before Block 3 and had simply not been declared.
-
-Future diagnosis rules:
-
-- reproduce/measure first;
-- use Yungas as a confirmed reproduction area;
-- inspect terrain/road intersection authority and coarse terrain triangles near steep cuts/switchbacks;
-- preserve road geometry, wheel-ground physics and accepted issue #4 visuals;
-- do not restore retired `road-terrain-transition` as a workaround;
-- do not mix issue #9 into unrelated hardening blocks.
+Future diagnosis: reproduce/measure first; inspect terrain/road intersection authority and coarse terrain triangles near steep cuts/switchbacks; preserve road geometry, wheel-ground physics and accepted issue #4 visuals; do not restore retired `road-terrain-transition` as a workaround.
 
 ## Issue #10 — steep-slope tire grip and steering instability
 
 **OPEN / USER-REPORTED / DEFERRED.**
 
-Reported behavior on very steep grades:
-
-- uphill, small steering corrections can suddenly trigger a spin/loss of directional stability;
-- downhill, the vehicle can continue almost straight despite steering input, as if lateral grip/steering authority collapses.
-
-Future diagnosis must reproduce first and inspect large-pitch wheel support, normal-load/grade effects, longitudinal-vs-lateral tire-force coupling, yaw authority and braking/engine-load interaction. Do not retune accepted flat/normal-grade handling speculatively.
+On very steep grades, uphill small steering corrections can trigger a spin/loss of directional stability; downhill the vehicle can continue almost straight despite steering input. Reproduce first and inspect large-pitch wheel support, normal-load/grade effects, tire-force coupling, yaw authority and braking/engine-load interaction. Do not retune accepted flat/normal-grade handling speculatively.
 
 ## Issue #11 — one civil-traffic vehicle rotated ~90° from route heading
 
 **OPEN / USER-REPORTED / DEFERRED.**
 
-One specific civil-traffic model travels along the correct path but its body is visually rotated roughly 90° sideways. All other observed traffic variants align correctly.
-
-Future fix should identify the exact authored variant and correct only its model-forward/yaw presentation contract while preserving traffic routing, speed, lane placement and all correctly aligned variants.
+One specific civil-traffic model follows the correct path but its body is visually rotated roughly 90° sideways. Correct only the affected authored/model-forward yaw contract while preserving traffic routing, speed, lane placement and all correctly aligned variants.
 
 ## Issue #12 — forest streaming falls behind after ~5 km
 
 **OPEN / USER-REPORTED / DEFERRED.**
 
-After roughly 5 km of continuous driving, forward forest readiness can fall behind the vehicle: terrain ahead is visibly under-populated, trees appear progressively in view, and in worse cases forest generation completes after the vehicle reaches/passes the area.
-
-This is a streaming/readiness timing defect, not a density/style request. Future diagnosis should capture long-drive queue/prefetch/commit/frame-budget diagnostics before changing policy and preserve accepted startup forest density/quality.
+After roughly 5 km of continuous driving, forward forest readiness can fall behind the vehicle. This is a streaming/readiness timing defect, not a density/style request. Capture long-drive queue/prefetch/commit/frame-budget diagnostics before changing policy and preserve accepted startup forest density/quality.
 
 ---
 
