@@ -25,10 +25,11 @@ function copyWorldDriveStaticAssets(){
 
 const OVERPASS_HOSTS=new Set([
   'overpass-api.de',
-  'overpass.private.coffee',
   'overpass.kumi.systems',
   'overpass.nchc.org.tw'
 ]);
+const OVERPASS_MAX_BODY_BYTES=1024*1024;
+const OVERPASS_METHODS=new Set(['GET','POST']);
 
 function sendSoftOverpassFailure(res,{status=502,target=null,message='Overpass upstream failure'}={}){
   // Always answer the browser with HTTP 200. Public Overpass mirrors routinely
@@ -71,17 +72,42 @@ function worldDriveOverpassProxy(){
             throw new Error('Unsupported Overpass target');
           }
 
-          const chunks=[];
-          for await(const chunk of req)chunks.push(chunk);
-          const body=Buffer.concat(chunks);
+          const method=String(req.method||'GET').toUpperCase();
+          if(!OVERPASS_METHODS.has(method)){
+            sendSoftOverpassFailure(res,{
+              status:405,
+              target:target.hostname,
+              message:'Overpass proxy method not allowed'
+            });
+            return;
+          }
+
+          let body;
+          if(method==='POST'){
+            const chunks=[];
+            let total=0;
+            for await(const chunk of req){
+              total+=chunk.length;
+              if(total>OVERPASS_MAX_BODY_BYTES){
+                sendSoftOverpassFailure(res,{
+                  status:413,
+                  target:target.hostname,
+                  message:'Overpass request body too large'
+                });
+                return;
+              }
+              chunks.push(chunk);
+            }
+            body=Buffer.concat(chunks);
+          }
 
           const upstream=await fetch(target,{
-            method:req.method||'POST',
+            method,
             headers:{
               'content-type':req.headers['content-type']||'application/x-www-form-urlencoded;charset=UTF-8',
               'user-agent':'WorldDrive/21.31 local-dev'
             },
-            body:(req.method||'POST').toUpperCase()==='GET'?undefined:body,
+            body,
             signal:AbortSignal.timeout(12000)
           });
 
