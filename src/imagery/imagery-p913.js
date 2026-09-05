@@ -2,6 +2,8 @@
 // Keeps the V21.22 georeferenced chunk architecture while removing avoidable
 // material recompiles and texture-upload overlap during road transitions.
 
+import {buildRoadAwareImageryGrid} from './road-aware-grid.js';
+
 const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
 
 function idleTurn(timeout=700){
@@ -31,6 +33,7 @@ export function createImageryService({
   getWorldOffset,
   getGroundCenter=null,
   sampleTerrainHeight=null,
+  sampleRoadVisualHeight=null,
   scene=null,
   zoom=16,
   groundSize=3200,
@@ -238,44 +241,26 @@ export function createImageryService({
   }
 
   function makeChunkGeometry(spec){
-    const seg=CHUNK_SEGMENTS;
-    const cols=seg+1;
-    const positions=new Float32Array(cols*cols*3);
-    const uvs=new Float32Array(cols*cols*2);
-    const indices=[];
-    let pi=0,ui=0;
-
-    for(let row=0;row<=seg;row++){
-      const tz=row/seg;
-      const absZ=spec.north+(spec.south-spec.north)*tz;
-      for(let col=0;col<=seg;col++){
-        const tx=col/seg;
-        const absX=spec.west+(spec.east-spec.west)*tx;
-        const y=typeof sampleTerrainHeight==='function'
-          ?sampleTerrainHeight(absX,absZ)
-          :0;
-        positions[pi++]=absX-spec.centerX;
-        positions[pi++]=Number.isFinite(y)?y+.018:.018;
-        positions[pi++]=absZ-spec.centerZ;
-        uvs[ui++]=tx;
-        uvs[ui++]=1-tz;
-      }
-    }
-
-    for(let row=0;row<seg;row++){
-      for(let col=0;col<seg;col++){
-        const a=row*cols+col;
-        const b=a+1;
-        const c=a+cols;
-        const d=c+1;
-        indices.push(a,c,b,b,c,d);
-      }
-    }
+    // Issue #9: the normal z16/96 chunk grid is ~18.3 m at Yungas. The
+    // analytical refined road-earthwork sampler can therefore be correct while
+    // one coarse satellite triangle bridges from a mountain-side sample across
+    // the asphalt. Refine only cells touching that existing visual corridor;
+    // ordinary terrain keeps the certified P9.13 grid and cost.
+    const grid=buildRoadAwareImageryGrid({
+      spec,
+      segments:CHUNK_SEGMENTS,
+      sampleTerrainHeight,
+      sampleRoadVisualHeight,
+      refineFactor:6,
+      refinementRing:1,
+      verticalOffset:.018
+    });
 
     const geometry=new THREE.BufferGeometry();
-    geometry.setAttribute('position',new THREE.BufferAttribute(positions,3));
-    geometry.setAttribute('uv',new THREE.BufferAttribute(uvs,2));
-    geometry.setIndex(indices);
+    geometry.setAttribute('position',new THREE.BufferAttribute(grid.positions,3));
+    geometry.setAttribute('uv',new THREE.BufferAttribute(grid.uvs,2));
+    geometry.setIndex(grid.indices);
+    geometry.userData.roadAwareGrid=grid.stats;
     geometry.computeVertexNormals();
     return geometry;
   }
