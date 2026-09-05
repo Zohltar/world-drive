@@ -9,6 +9,8 @@ module.exports = {
       /^\/assets($|\/)/,
       /^\/docs($|\/)/,
       /^\/server($|\/)/,
+      /^\/world-data($|\/)/,
+      /^\/public\/world-data\/osm($|\/)/,
       /^\/README(?:_|\.|$)/i,
       /^\/START_WORLD_DRIVE\.bat$/i,
       /^\/BUILD_WINDOWS_RELEASE\.bat$/i,
