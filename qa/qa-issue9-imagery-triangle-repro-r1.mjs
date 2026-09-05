@@ -11,7 +11,12 @@ const presets=read('src/routing/route-presets.js');
 assert.match(main,/zoom:16,/,'imagery zoom changed; update Issue #9 repro');
 assert.match(main,/chunkTiles:3,/,'imagery chunk tile count changed; update Issue #9 repro');
 assert.match(main,/chunkSegments:96/,'imagery chunk segment count changed; update Issue #9 repro');
-assert.match(imagery,/indices\.push\(a,c,b,b,c,d\)/,'satellite cell triangulation changed; update Issue #9 repro');
+assert.match(imagery,/import \{buildRoadAwareImageryGrid\} from '\.\/road-aware-grid\.js'/,
+  'Issue #9 road-aware grid helper import missing');
+assert.match(imagery,/sampleRoadVisualHeight=null/,
+  'Issue #9 road visual sampler option missing');
+assert.match(imagery,/buildRoadAwareImageryGrid\(\{[\s\S]*sampleRoadVisualHeight,[\s\S]*refineFactor:6,[\s\S]*refinementRing:1/,
+  'Issue #9 localized road-aware refinement wiring missing');
 assert.match(main,/sampleRoadVisualHeight:\(x,z\)=>terrainService\.roadVisualHeightAt\?\.\(x,z\)/,'road visual sampler wiring changed');
 assert.match(terrain,/const visualInner=Math\.max\(roadBedOptions\.roadHalfWidth-\.15,5\.20\)/,'refined road inner corridor changed');
 assert.match(terrain,/const rise=1-Math\.pow\(1-Math\.max\(0,Math\.min\(1,t\)\),2\.35\)/,'refined road side-slope blend changed');
@@ -53,10 +58,11 @@ function refinedVisualY(x){
 }
 
 // Put the road center halfway between two satellite samples: this is a legal
-// phase alignment of the fixed chunk grid. The current geometry samples only
-// the endpoints, then linearly triangulates between them. A steep outside
-// sample can therefore lift the triangle several metres above the asphalt even
-// though the analytic road sampler itself is correct at x=0.
+// phase alignment of the historical fixed chunk grid. Before the Issue #9
+// correction that geometry sampled only the endpoints, then linearly
+// triangulated between them. A steep outside sample could therefore lift the
+// triangle several metres above asphalt even though the analytic sampler was
+// already correct at x=0. Keep this mechanism proof as a regression fixture.
 const halfStep=sampleStep/2;
 const leftY=refinedVisualY(-halfStep);
 const rightY=refinedVisualY(halfStep);
