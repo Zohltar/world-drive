@@ -1,0 +1,45 @@
+name: Post-refactor Overpass Parity QA
+
+on:
+  push:
+    branches:
+      - candidate/post-refactor-overpass-parity-r1
+  workflow_dispatch:
+
+jobs:
+  qa:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22.23.2
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Block 6 Overpass parity QA
+        run: node qa/qa-post-refactor-overpass-parity-r1.mjs
+
+      - name: Overpass resilience regression
+        run: node qa/qa-overpass-resilience-r1.mjs
+
+      - name: Historical Overpass abort/failover regression
+        run: node qa/V21_26_OVERPASS_ABORT_QA.mjs
+
+      - name: Quebec local hydro runtime regression
+        run: node qa/qa-geofabrik-hydro-runtime-r1.mjs
+
+      - name: Water hydro runtime regression
+        run: node qa/qa-water-hydro-runtime.mjs
+
+      - name: Production build
+        run: npm run build
+
+      - name: Production code split QA
+        run: node qa/BUILD_V21_31_CODE_SPLIT_QA.mjs
