@@ -62,9 +62,13 @@ Before coding, be able to answer:
 **Block 3 — Retired road-terrain transition workload:** **DONE/CERTIFIED — HUMAN PASS**  
 **Block 4 — Accurate asynchronous visual-job diagnostics:** **DONE/CERTIFIED — AUTOMATED; no human checkpoint required**  
 **Block 5A — LAN WebSocket relay hardening:** **DONE/CERTIFIED — HUMAN LAN PASS (2026-09-05)**  
-**Block 5B — Electron IPC caller-origin validation:** **ACTIVE — READ-ONLY AUDIT FIRST**  
+**Block 5B — Electron IPC caller-origin validation:** **DONE/CERTIFIED — HUMAN LAN PASS (2026-09-05)**  
+**Block 6 — Overpass proxy/configuration consistency:** **ACTIVE — READ-ONLY AUDIT FIRST**  
 **Issue #2:** **OPEN / watch-only / not reproduced**  
 **Issue #9:** **OPEN / reproduced on Yungas / explicitly predates Block 3**  
+**Issue #10:** **OPEN / steep-slope tire grip and steering instability / deferred**  
+**Issue #11:** **OPEN / one civil-traffic model rotated ~90° / deferred**  
+**Issue #12:** **OPEN / forest streaming falls behind after ~5 km / deferred**  
 **Stable `main`:** `9055d5682afcf512c91b1ae7dc97dcb4b16d6d9e` — must remain untouched without explicit user approval.  
 **Previous rollback/reference:** `111df5d84bf7fd700590abbd9c129b303ac92fad`.
 
@@ -87,13 +91,6 @@ Security: harden standalone LAN WebSocket relay
 Security: harden Electron LAN WebSocket relay
 ```
 
-Audit evidence used to choose bounded policy:
-
-- maintained multiplayer client transmits at **30 Hz**;
-- normal full state is roughly **0.6 kB**, about **1.1 kB** with the maximum two Traffic MP1 agents and bounded strings;
-- Electron renderer is served from loopback and LAN joining proxies the raw TCP/WebSocket handshake;
-- packaged Electron excludes `/server`, so the standalone and Electron relays remain autonomous implementations and parity is enforced through permanent QA rather than a packaging-fragile shared module.
-
 Certified relay policy, identical in standalone and Electron owners:
 
 ```text
@@ -107,89 +104,118 @@ max HTTP header                8192 bytes
 Origin                         absent OR loopback/private/same-host
 ```
 
-Additional hardened behavior:
+Protected semantics preserved:
 
-- WebSocket version/key/Connection/Upgrade validation;
-- client frames must be masked;
-- unsupported RSV/opcodes rejected;
-- bounded RFC-compatible text fragmentation supported;
-- ping/pong payload preserved byte-exact;
-- malformed UTF-8 / malformed JSON / oversized or abusive clients cleaned up deterministically;
-- repeated `hello` ignored after first;
-- 33rd upgraded client rejected while 32 are held;
-- state sanitation, `hello`/`welcome`/`snapshot`/`refresh-state`/`state`/`roster`/`leave` semantics and Traffic MP1 forwarding preserved.
+- `hello`, `welcome`, `snapshot`, `refresh-state`, `state`, `roster`, `leave`;
+- state sanitation;
+- 30 Hz maintained client contract;
+- Traffic MP1 forwarding;
+- packaged Electron LAN host/join UX.
 
-Permanent Block 5A QA:
-
-```text
-qa/qa-post-refactor-lan-relay-hardening-r1.mjs
-.github/workflows/qa-post-refactor-lan-relay-hardening-r1.yml
-qa/DEV_INTEGRATION_AUDIT.mjs
-```
-
-Focused exact-head candidate run:
-
-```text
-33920069528 — PASS
-head 47eecf73d227c54d651fe02f3aaa4c9a75f9402a
-```
-
-After human PASS and fast-forward integration, the first broader exact-head Dev Integration run exposed one stale pre-hardening QA assumption:
-
-```text
-33973743821 — FAIL
-head 47eecf73d227c54d651fe02f3aaa4c9a75f9402a
-only failing stress: M4.13 sent 320 application messages immediately and expected the abusive client to stay connected
-```
-
-The runtime was not changed. M4.13 was corrected to preserve its 320-packet ordering/final-state stress in four bounded 80-packet bursts separated by a fresh rate window, while the dedicated Block 5A QA continues to prove that `>120/s` abusive clients disconnect:
-
-```text
-abd3d875623e935cdc36f98601f0837f0a610168
-QA: pace M4.13 burst below relay rate limit
-```
-
-Exact-head Dev Integration after that QA-only compatibility correction:
-
-```text
-33973907521 — PASS
-head abd3d875623e935cdc36f98601f0837f0a610168
-```
-
-Human LAN checkpoint: **PASS (2026-09-05)** — real Electron/LAN host/join behavior accepted by the user.
+Focused candidate run `33920069528`: PASS.  
+Post-integration stale-QA discovery run `33973743821`: FAIL only because legacy M4.13 intentionally exceeded the new 120/s abuse ceiling.  
+QA-only correction `abd3d875623e935cdc36f98601f0837f0a610168`: M4.13 keeps all 320 packets but sends bounded bursts.  
+Exact-head Dev Integration `33973907521`: PASS.  
+Human LAN checkpoint: PASS.
 
 Human-smoke environment note, **out of Block 5A scope**: the local Windows checkout contains `public/world-data` with 38,018 files / ~16.8 GB. A production Vite build copies that local public dataset into `dist`, making local desktop startup/build take many minutes. The smoke used a temporary local move/build/restore workaround. Any permanent packaging/build optimization must be a separate block and must preserve local-first Quebec hydro semantics.
 
-## Exact next action
+## Block 5B certified checkpoint
 
-Start **Block 5B — Electron IPC caller-origin validation**, **read-only audit first**.
-
-Audit the current trusted renderer/IPC boundary before changing anything:
+Final human-tested candidate:
 
 ```text
-electron/main.cjs
-electron/preload.cjs
+candidate/post-refactor-electron-ipc-origin-r1
+7858826f89c6f869cab187316b392799ce78ba79
 ```
 
-Map:
+Security/runtime commits:
 
-- current app origin creation and navigation restrictions;
-- every multiplayer IPC handler/channel;
-- what Electron sender/frame/origin information is available at each handler;
-- current preload API exposure;
-- host/join/stop/status behavior and error contracts;
-- how to reject synthetic/untrusted callers without changing desktop multiplayer UX.
+```text
+58d6c8a517c6c93845c6929885b1062592cb6a8b
+Security: add Electron IPC caller-origin guard
 
-Do **not** combine Block 5B with:
+2a551c6240480d3923531a02935bec2d9fcdb674
+Security: validate Electron multiplayer IPC caller origin
+```
 
-- the 16.8 GB local-data build-copy optimization;
-- issue #9 terrain work;
-- Block 6 Overpass parity;
-- dependency/npm vulnerability work;
-- Actions upgrades;
-- multiplayer gameplay/protocol redesign;
-- server-side physics/collision;
-- Internet matchmaking/authentication.
+Audit findings:
+
+- Electron already used `nodeIntegration:false`, `contextIsolation:true`, `sandbox:true`, `webSecurity:true`;
+- navigation/new-window/permission boundaries were already restrictive;
+- the app renderer is served from `http://127.0.0.1:<actual-port>`;
+- the preload exposed only the narrow desktop multiplayer API (`host`, `join`, `stop`, `status`);
+- the four `ipcMain.handle(...)` multiplayer handlers were globally callable without an explicit sender/frame/origin check.
+
+Certified caller policy now requires all of the following before a multiplayer IPC handler reaches the runtime:
+
+- sender `WebContents` is exactly the active World Drive `mainWindow.webContents`;
+- caller frame is the sender's main frame, not an iframe/subframe;
+- frame URL origin exactly matches the current loopback `appOrigin`, including the actual port;
+- sender/frame remain alive and not destroyed.
+
+Untrusted/synthetic callers are rejected before host/join/stop/status runtime behavior executes. The preload API itself was **not broadened or changed**. Multiplayer gameplay/protocol, relay semantics, renderer UX and return/error contracts were preserved.
+
+Permanent Block 5B QA:
+
+```text
+electron/ipc-origin-guard.cjs
+qa/qa-post-refactor-electron-ipc-origin-r1.mjs
+qa/DEV_INTEGRATION_AUDIT.mjs
+.github/workflows/qa-post-refactor-electron-ipc-origin-r1.yml
+```
+
+Focused/full candidate run:
+
+```text
+33974991861 — PASS
+head 7858826f89c6f869cab187316b392799ce78ba79
+```
+
+That run passed Block 5B caller-origin QA, R2 multiplayer, Block 5A regression, M3 client/protocol, full Dev Integration audit, production build/code split and Electron package smoke.
+
+Human Windows/LAN checkpoint: **PASS (2026-09-05)** — host, join, disconnect/reconnect and re-host behavior accepted by the user.
+
+Post-integration exact-head Dev Integration:
+
+```text
+33975423632 — PASS
+head 7858826f89c6f869cab187316b392799ce78ba79
+```
+
+## Exact next action
+
+Start **Block 6 — Overpass proxy/configuration consistency**, **read-only audit first**.
+
+Audit:
+
+```text
+vite.config.js
+src/services/desktop-overpass-transport.js
+electron/main.cjs
+src/services/overpass.js
+```
+
+Map before changing anything:
+
+- browser/Vite proxy target allowlist;
+- Electron proxy target allowlist;
+- request methods, body-size ceilings, timeout and redirect behavior;
+- browser vs desktop transport URL construction;
+- fallback/mirror selection and retry behavior in `src/services/overpass.js`;
+- intentional versus accidental environment divergence;
+- existing permanent Overpass/local-hydro QA that constrains changes.
+
+Rules:
+
+- do not restore Overpass as a mandatory or primary hydro source;
+- preserve local-first Quebec hydro behavior;
+- preserve graceful failure/fallback semantics;
+- align mirror allowlists/body limits only where evidence supports parity;
+- document deliberate divergence and lock it with QA when environments genuinely differ;
+- do not mix Block 6 with the 16.8 GB local-data build-copy optimization;
+- do not mix Block 6 with issues #9/#10/#11/#12;
+- do not mix dependency/npm vulnerability work or Actions upgrades.
 
 ---
 
@@ -202,9 +228,9 @@ Do **not** combine Block 5B with:
 | P2 | Retired `road-terrain-transition` still consumed CPU/allocation/commit work | terrain/local-world/world-scene | **DONE/CERTIFIED — Block 3 — HUMAN PASS** |
 | P2 | `visualJobs` measured Promise creation instead of async settlement | `src/streaming-coordinator.js` | **DONE/CERTIFIED — Block 4** |
 | P2 | LAN relay lacked explicit bounded handshake/client/rate policy | `server/multiplayer-server.mjs`, `electron/multiplayer-runtime.cjs` | **DONE/CERTIFIED — Block 5A — HUMAN LAN PASS** |
-| P2 | Electron multiplayer IPC lacks explicit caller-origin validation | `electron/main.cjs`, `electron/preload.cjs` | **ACTIVE — Block 5B — AUDIT FIRST** |
-| P3 | Local `public/world-data` (~16.8 GB / 38,018 files) is copied into `dist` during local production build | Vite/public-data/desktop packaging path | **DISCOVERED — separate follow-up; do not mix into Block 5B** |
-| P3 | Overpass allowlists/proxy limits differ across environments | Vite/browser/Electron Overpass paths | PLANNED — Block 6 |
+| P2 | Electron multiplayer IPC lacked explicit caller-origin validation | `electron/main.cjs`, `electron/ipc-origin-guard.cjs`, `electron/preload.cjs` | **DONE/CERTIFIED — Block 5B — HUMAN LAN PASS** |
+| P3 | Local `public/world-data` (~16.8 GB / 38,018 files) is copied into `dist` during local production build | Vite/public-data/desktop packaging path | **DISCOVERED — separate follow-up; do not mix into Block 6** |
+| P3 | Overpass allowlists/proxy limits differ across environments | Vite/browser/Electron Overpass paths | **ACTIVE — Block 6 — AUDIT FIRST** |
 | P3 | `src/main.js` remains large composition root | `src/main.js` | **DEFERRED — no refactor without concrete benefit** |
 
 ---
@@ -223,17 +249,11 @@ candidate/post-refactor-dom-safety-r1
 Security: render dynamic UI labels as text
 ```
 
-Key result:
-
-- remote geocoding names, route labels and vehicle names/descriptions are rendered as text;
-- controlled static World Drive markup remains allowed;
-- route/geocoding/vehicle UX semantics were preserved.
-
 Focused candidate run `33869854637`: PASS.  
 Post-integration exact-head Dev Integration `33871178836`: PASS.  
 Human checkpoint: PASS.
 
-Do not broaden/reopen without new evidence.
+Protected result: remote geocoding names, route labels and vehicle names/descriptions render as text while controlled static World Drive markup remains allowed.
 
 ---
 
@@ -248,17 +268,6 @@ candidate/post-refactor-route-generation-r7
 d00acf06128dbd4eb3f75831d04c96d1a81d41cf
 ```
 
-Key result:
-
-- request generation ownership is checked after meaningful awaits and before authoritative route/UI/world commits;
-- stale work cannot overwrite a newer route, loading/status UI, placement or success/failure state;
-- stale failsafe is quiet;
-- rapid A→B→A preserves/restores A forest instead of forcing the prior ~10 s refill;
-- stale B cannot regain route/forest authority;
-- retained forest may be explicitly reprojected to newly committed terrain heights without rebuilding its route cache;
-- public no-arg `loadRoute()` and `resetWorldCaches()` facades remain protected;
-- P9.35 thresholds/timeouts/density/streamer budgets were not retuned.
-
 QA-only post-integration compatibility update:
 
 ```text
@@ -269,7 +278,7 @@ QA: allow explicit forest terrain matrix reprojection
 Final exact-head Dev Integration before docs: `33892857490` — PASS.  
 Human checkpoint: PASS.
 
-Do not broaden/reopen without new evidence.
+Protected result: stale route work cannot regain route/UI/world authority; rapid A→B→A forest readiness remains preserved without retuning accepted forest policy.
 
 ---
 
@@ -284,37 +293,14 @@ candidate/post-refactor-road-transition-r1
 1731cd476984ba736c61527e05bd00a5f36202d8
 ```
 
-Mandatory QA-only baseline:
-
-```text
-c31d8425a1f0f939873617c81632e77f950f7b0b
-run 33902426615 — PASS
-```
-
-Baseline proved the hidden presentation still consumed real work:
-
-- synchronous full-rebuild hidden transition: ~21.352 ms;
-- prepared P9.27 path: 3 preparations + 3 commits in the test;
-- last prepared transition: ~88.551 ms wall / ~8.904 ms CPU;
-- 972 vertices / 1600 triangles;
-- `visualJobs['road-transition']`: 3 runs.
-
-Certified result:
-
-- transition mesh allocations: 0;
-- P9.27 transition preparations/commits: 0;
-- `visualJobs['road-transition']`: 0;
-- transition-only `scene.add` interceptor removed;
-- road-bed/refined terrain authority preserved;
-- no terrain-height, road geometry, wheel support, physics or streaming-budget retuning.
-
+Mandatory QA-only baseline `c31d8425a1f0f939873617c81632e77f950f7b0b`, run `33902426615`: PASS.  
 Focused final run `33903521697`: PASS.  
 Post-integration Dev Integration `33913262016`: PASS.  
 Human Photo ON/OFF + steep-terrain checkpoint: PASS.
 
-A terrain-over-asphalt defect seen on Yungas was explicitly confirmed by the user as **pre-existing** and is tracked separately as issue #9.
+Protected result: hidden retired transition mesh allocations/preparations/commits are zero while road-bed/refined terrain authority remains unchanged.
 
-Do not restore the retired transition presentation as a workaround for issue #9 without new causal evidence.
+Issue #9 is separate and explicitly predates this block.
 
 ---
 
@@ -329,148 +315,38 @@ candidate/post-refactor-visual-job-diagnostics-r1
 fd248af831c3626f62c86329d093633509982004
 ```
 
-Runtime owner changed:
+Focused final run `33915664612`: PASS.  
+Post-integration runtime exact-head Dev Integration `33915756142`: PASS.  
+QA-only C6 compatibility correction `b4785c8d76271bb139c4fa5e1506264b99a71fef`.  
+Exact-head Dev Integration `33916468306`: PASS.
 
-```text
-src/streaming-coordinator.js
-```
-
-Permanent QA added/updated:
-
-```text
-qa/qa-post-refactor-visual-job-timing-r1.mjs
-qa/qa-p939-hitch-attribution.mjs
-qa/DEV_INTEGRATION_AUDIT.mjs
-.github/workflows/qa-post-refactor-visual-job-diagnostics-r1.yml
-```
-
-Deterministic QA proves four cases:
-
-- synchronous success;
-- synchronous throw;
-- delayed Promise resolve;
-- delayed Promise reject.
-
-The deterministic async cases prove separate ownership of CPU and wall time (for example 2 ms synchronous / 35 ms wall and 1 ms synchronous / 41 ms wall), while P9.39 continues to attribute the synchronous component only.
-
-Focused final run:
-
-```text
-33915664612 — PASS
-```
-
-Post-integration runtime exact-head Dev Integration:
-
-```text
-33915756142 — PASS
-head fd248af831c3626f62c86329d093633509982004
-```
-
-QA-only C6 compatibility correction:
-
-```text
-b4785c8d76271bb139c4fa5e1506264b99a71fef
-QA: recognize forest polling clearInterval boundary
-```
-
-Exact-head Dev Integration after the QA-only compatibility correction:
-
-```text
-33916468306 — PASS
-```
-
-Human checkpoint: **not required** because no scheduling/runtime policy changed.
+Protected result: synchronous CPU/invocation timing remains distinct from full Promise settlement wall timing and async outcome/in-flight diagnostics.
 
 ---
 
-# 4. Active and future roadmap
-
 ## Block 5A — LAN WebSocket relay hardening
-
-### Status
 
 **DONE/CERTIFIED — HUMAN LAN PASS (2026-09-05).**
 
-### Certified result
-
-Standalone and Electron relay behavior are bounded and permanently parity-tested without changing the presentation-only multiplayer gameplay/protocol contract.
-
-Certified files:
-
-```text
-server/multiplayer-server.mjs
-electron/multiplayer-runtime.cjs
-qa/qa-post-refactor-lan-relay-hardening-r1.mjs
-qa/DEV_INTEGRATION_AUDIT.mjs
-.github/workflows/qa-post-refactor-lan-relay-hardening-r1.yml
-```
-
-Certified policy:
-
-- exact WebSocket path `/`;
-- Origin absent or loopback/private/same-host;
-- 32 clients maximum;
-- 4096-byte text message maximum;
-- 64 KiB aggregate client frame buffer;
-- 120 application messages/s/client;
-- 10 s hello timeout;
-- 8192-byte HTTP header ceiling;
-- strict mask/frame/opcode/fragmentation validation;
-- binary-safe ping/pong;
-- deterministic malformed/oversized/abusive cleanup;
-- standalone/Electron constants and behavior locked to parity by QA.
-
-Protected semantics preserved:
-
-- `hello`, `welcome`, `snapshot`, `refresh-state`, `state`, `roster`, `leave`;
-- state sanitation;
-- 30 Hz maintained client contract;
-- Traffic MP1 forwarding;
-- packaged Electron LAN host/join UX.
-
-Focused candidate run `33920069528`: PASS.  
-Post-integration stale-QA discovery run `33973743821`: FAIL only because legacy M4.13 intentionally exceeded the new 120/s abuse ceiling.  
-QA-only correction `abd3d875623e935cdc36f98601f0837f0a610168`: M4.13 keeps all 320 packets but sends bounded bursts.  
-Exact-head Dev Integration `33973907521`: PASS.  
-Human LAN checkpoint: PASS.
-
-Do not broaden/reopen without new evidence.
+See the Block 5A certified checkpoint above. Do not broaden/reopen without new evidence.
 
 ---
 
 ## Block 5B — Electron IPC caller-origin validation
 
-### Status
+**DONE/CERTIFIED — HUMAN LAN PASS (2026-09-05).**
 
-**ACTIVE — READ-ONLY AUDIT FIRST.**
-
-### Goal
-
-Ensure multiplayer IPC methods are accepted only from the trusted World Drive renderer origin.
-
-Scope:
-
-```text
-electron/main.cjs
-electron/preload.cjs
-```
-
-Electron already uses `nodeIntegration:false`, `contextIsolation:true`, `sandbox:true`, `webSecurity:true`, and blocks unexpected navigation/permissions. Add explicit caller validation around multiplayer IPC without broad Electron changes.
-
-Required QA:
-
-- trusted app origin can host/join/stop/status;
-- synthetic/untrusted sender is rejected;
-- desktop build/package-relevant QA;
-- human Windows multiplayer smoke recommended.
+See the Block 5B certified checkpoint above. Do not broaden/reopen without new evidence.
 
 ---
+
+# 4. Active and future roadmap
 
 ## Block 6 — Overpass proxy/configuration consistency
 
 ### Status
 
-PLANNED.
+**ACTIVE — READ-ONLY AUDIT FIRST.**
 
 Audit:
 
@@ -490,6 +366,22 @@ Rules:
 - prefer permanent parity QA if one shared module would create awkward browser/Node coupling.
 
 Human checkpoint only if browser/Electron network behavior changes visibly.
+
+---
+
+## Separate follow-up — local-data production build copy
+
+**DISCOVERED / DEFERRED / SEPARATE FROM BLOCK 6.**
+
+Local Windows evidence from 2026-09-05:
+
+```text
+public/world-data
+38,018 files
+~16.8 GB
+```
+
+Vite's production build copies this local dataset into `dist`, making desktop startup/build take many minutes on the user's checkout. Any permanent optimization must preserve local-first Quebec hydro semantics and must be audited as a packaging/data-location change rather than hidden inside another block.
 
 ---
 
@@ -539,6 +431,33 @@ Future diagnosis rules:
 - preserve road geometry, wheel-ground physics and accepted issue #4 visuals;
 - do not restore retired `road-terrain-transition` as a workaround;
 - do not mix issue #9 into unrelated hardening blocks.
+
+## Issue #10 — steep-slope tire grip and steering instability
+
+**OPEN / USER-REPORTED / DEFERRED.**
+
+Reported behavior on very steep grades:
+
+- uphill, small steering corrections can suddenly trigger a spin/loss of directional stability;
+- downhill, the vehicle can continue almost straight despite steering input, as if lateral grip/steering authority collapses.
+
+Future diagnosis must reproduce first and inspect large-pitch wheel support, normal-load/grade effects, longitudinal-vs-lateral tire-force coupling, yaw authority and braking/engine-load interaction. Do not retune accepted flat/normal-grade handling speculatively.
+
+## Issue #11 — one civil-traffic vehicle rotated ~90° from route heading
+
+**OPEN / USER-REPORTED / DEFERRED.**
+
+One specific civil-traffic model travels along the correct path but its body is visually rotated roughly 90° sideways. All other observed traffic variants align correctly.
+
+Future fix should identify the exact authored variant and correct only its model-forward/yaw presentation contract while preserving traffic routing, speed, lane placement and all correctly aligned variants.
+
+## Issue #12 — forest streaming falls behind after ~5 km
+
+**OPEN / USER-REPORTED / DEFERRED.**
+
+After roughly 5 km of continuous driving, forward forest readiness can fall behind the vehicle: terrain ahead is visibly under-populated, trees appear progressively in view, and in worse cases forest generation completes after the vehicle reaches/passes the area.
+
+This is a streaming/readiness timing defect, not a density/style request. Future diagnosis should capture long-drive queue/prefetch/commit/frame-budget diagnostics before changing policy and preserve accepted startup forest density/quality.
 
 ---
 
@@ -648,117 +567,3 @@ Preserve unless a future block has direct causal evidence and dedicated QA:
 - cache persistence;
 - diagnostic aliases used by permanent QA;
 - production code-split/lazy GLB behavior.
-
-Forbidden unless explicitly chosen as its own block:
-
-- `npm audit fix --force`;
-- dependency upgrades mixed with feature/fix work;
-- Actions runtime upgrades;
-- broad file moves for cleanliness;
-- historical naming churn;
-- issue #2 speculative correction;
-- road/terrain/forest tuning while fixing unrelated logic;
-- generated Geofabrik/source regional data committed without packaging decision;
-- moving `main` without explicit approval.
-
----
-
-# 9. Branch / commit / QA discipline
-
-Use `dev` as certified integration branch.
-
-For material runtime/security/performance work:
-
-```text
-candidate/<short-purpose>-r1
-```
-
-Increment r2/r3 only when a candidate is rejected or materially redesigned.
-
-Docs-only checkpoint updates may go directly to `dev`.
-
-One intent per commit. Typical sequence:
-
-```text
-Fix/Diagnostics/Security: <runtime intent>
-QA: cover <intent>
-Docs: certify/checkpoint <block>
-```
-
-Before saying a candidate or `dev` is green, verify the workflow `head_sha` equals the HEAD being reported. A green run on an older commit does not certify the current branch.
-
----
-
-# 10. Validation matrix
-
-| Block / risk | Minimum validation |
-|---|---|
-| DOM safety | focused DOM QA + R7 UI/routing + audit + build |
-| Route race guard | deterministic race + R7 routing/UI + route-start R8 + forest readiness |
-| Retired transition | issue #4 + R8 terrain/world-scene/local-world/streaming + frame pacing + mandatory human Photo ON/OFF |
-| Async diagnostics | deterministic sync/async/throw/reject timing + frame-runtime + hitch attribution + R8 streaming |
-| LAN relay hardening | R2 multiplayer + malformed protocol/payload/rate/client QA + live LAN human smoke when handshake behavior changes |
-| Electron IPC validation | Electron/desktop QA + host/join smoke + build/package-relevant QA |
-| Overpass parity | service/network QA + cache/fallback preservation + build |
-| Any final integration | exact-head Dev Integration on final `dev` HEAD |
-
-Automation cannot replace human-visible validation where visuals, physics, runtime timing, LAN join/handshake behavior or other user-visible behavior changes.
-
----
-
-# 11. Completion criteria
-
-This roadmap is complete when:
-
-- Blocks 1–4 are DONE;
-- Block 5A/5B are DONE or explicitly deferred by user decision;
-- Block 6 is DONE or documented as intentionally divergent with QA;
-- issue #2 remains watch-only unless reproduced;
-- issue #9 is resolved or explicitly scheduled/deferred with status recorded;
-- exact final `dev` HEAD is green;
-- this file records the final checkpoint and next feature priority.
-
-Block 7 (`main.js` decomposition) is not required for roadmap completion.
-
----
-
-# 12. Main promotion rule
-
-`main @ 9055d5682afcf512c91b1ae7dc97dcb4b16d6d9e` is the current stable baseline, promoted from `dev` on 2026-09-04 after explicit user approval.
-
-Previous rollback/reference:
-
-`111df5d84bf7fd700590abbd9c129b303ac92fad` — `Release V21.31 post-C6 stable`.
-
-Future promotion requires:
-
-1. exact final `dev` green;
-2. all required human checkpoints green;
-3. no unresolved high-priority regression introduced by the roadmap;
-4. explicit user approval to move `main`.
-
-Until the next explicit approval, `main` must remain untouched.
-
----
-
-# 13. Session handoff template
-
-At the end of any conversation that advances World Drive, update this file with:
-
-```text
-DEV HEAD:
-commit message:
-MAIN HEAD:
-latest exact-head Dev Integration run + result:
-active block:
-candidate branch + candidate HEAD if any:
-focused QA run + result:
-human checkpoint result:
-files changed:
-what was proven:
-what was eliminated:
-exact next action:
-things that must NOT be changed next:
-```
-
-If a human test is pending, say **HUMAN CHECKPOINT PENDING** explicitly. Never infer PASS from automation.
