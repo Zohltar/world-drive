@@ -8,6 +8,7 @@ await import('./qa-post-refactor-road-transition-baseline-r1.mjs');
 await import('./qa-post-refactor-visual-job-timing-r1.mjs');
 await import('./qa-post-refactor-lan-relay-hardening-r1.mjs');
 await import('./qa-post-refactor-electron-ipc-origin-r1.mjs');
+await import('./qa-post-refactor-overpass-parity-r1.mjs');
 await import('./qa-source-tree-r7-app-services.mjs');
 await import('./qa-source-tree-r8-imagery.mjs');
 await import('./qa-source-tree-r8-streaming.mjs');
