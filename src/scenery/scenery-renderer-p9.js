@@ -348,10 +348,8 @@ export function createSceneryRenderer({
     removeTreesOverWater,
     requestForestRefresh,
     whenInitialForestReady:()=>forestStreamer.whenInitialReady(),
-    forestStats:()=>({
-      ...forestStreamer.stats(),
-      blockerIndex:forestBlockerIndex.diagnostics()
-    }),
+    forestStats:()=>forestStreamer.stats(),
+    forestBlockerStats:()=>forestBlockerIndex.diagnostics(),
     forestRouteCacheStatus:()=>({suspended:forestRouteCacheSuspended})
   };
 }
