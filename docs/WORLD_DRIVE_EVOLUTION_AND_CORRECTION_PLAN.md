@@ -728,7 +728,7 @@ Block 7 (`main.js` decomposition) is not required for roadmap completion.
 
 Previous rollback/reference:
 
-`111df5d5682afcf512c91b1ae7dc97dcb4b16d6d9e` — `Release V21.31 post-C6 stable`.
+`111df5d84bf7fd700590abbd9c129b303ac92fad` — `Release V21.31 post-C6 stable`.
 
 Future promotion requires:
 
