@@ -4,11 +4,21 @@ import fs from 'node:fs';
 const terrain=fs.readFileSync(new URL('../src/terrain.js',import.meta.url),'utf8').replace(/\r\n/g,'\n');
 const base=fs.readFileSync(new URL('../src/terrain-p925.js',import.meta.url),'utf8').replace(/\r\n/g,'\n');
 const imagery=fs.readFileSync(new URL('../src/imagery/imagery-p913.js',import.meta.url),'utf8').replace(/\r\n/g,'\n');
+const roadAwareGrid=fs.readFileSync(new URL('../src/imagery/road-aware-grid.js',import.meta.url),'utf8').replace(/\r\n/g,'\n');
 
 // Modern imagery ownership: satellite is its own geometry, never a monolithic ground map.
 assert.match(imagery,/chunkGroup\.name='satellite-terrain-chunks'/,'satellite chunk geometry ownership missing');
 assert.match(imagery,/groundMaterial\.map=null/,'legacy monolithic ground imagery unexpectedly returned');
-assert.match(imagery,/sampleTerrainHeight\(absX,absZ\)/,'satellite chunks no longer follow terrain visual height');
+assert.match(
+  imagery,
+  /buildRoadAwareImageryGrid\(\{[\s\S]*sampleTerrainHeight,[\s\S]*sampleRoadVisualHeight/,
+  'satellite chunks no longer pass terrain visual height into geometry builder'
+);
+assert.match(
+  roadAwareGrid,
+  /const sampled=heightOverride===null[\s\S]*\?terrainSample\(absX,absZ\)/,
+  'road-aware imagery grid no longer samples the visual terrain surface'
+);
 
 // Terrain R1: keep the safety-cut ground separate from the visible refined earthwork height.
 assert.match(base,/function groundTerrainHeight\(x,z\)/,'authoritative safety-cut ground height missing');
