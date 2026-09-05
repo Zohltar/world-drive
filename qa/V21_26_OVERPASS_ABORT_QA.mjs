@@ -4,14 +4,16 @@ import { pathToFileURL, fileURLToPath } from 'node:url';
 import path from 'node:path';
 
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
-const modulePath=path.join(root,'src','overpass.js');
-const desktopTransportPath=path.join(root,'src','desktop-overpass-transport.js');
+const modulePath=path.join(root,'src','services','overpass.js');
+const desktopTransportPath=path.join(root,'src','services','desktop-overpass-transport.js');
 const overpassSource=fs.readFileSync(modulePath,'utf8').replace(/\r\n/g,'\n');
 const desktopTransportSource=fs.readFileSync(desktopTransportPath,'utf8').replace(/\r\n/g,'\n');
 
 // V21.31 stress hardening changed the public mirror set. Keep this historical
 // abort/failover QA aligned with the current production endpoints rather than
-// pinning the superseded Private.coffee fallback from V21.26.
+// pinning the superseded Private.coffee fallback from V21.26. These assertions
+// intentionally follow the maintained services after the R7 ownership move;
+// the root files are compatibility re-export facades only.
 assert.match(
   overpassSource,
   /https:\/\/overpass-api\.de\/api\/interpreter/,
