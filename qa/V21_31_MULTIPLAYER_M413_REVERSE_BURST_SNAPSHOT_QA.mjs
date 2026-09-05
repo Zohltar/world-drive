@@ -97,9 +97,18 @@ async function runRelay(url,label){
 
   const gears=[-1,1,0,-1,3,0,1,-1];
   const burstCount=320;
-  for(let i=0;i<burstCount;i++){
-    const seq=800+i;
-    sender.send(JSON.stringify(packet(seq,gears[i%gears.length])));
+  const burstBatchSize=80;
+  // Preserve the 320-packet ordering/final-state stress, but keep each burst
+  // inside the hardened relay's explicit 120 application-messages/s ceiling.
+  // The hardening suite separately verifies that abusive >120/s clients are
+  // disconnected; M4.13 should exercise valid high-burst forwarding instead.
+  for(let start=0;start<burstCount;start+=burstBatchSize){
+    const end=Math.min(burstCount,start+burstBatchSize);
+    for(let i=start;i<end;i++){
+      const seq=800+i;
+      sender.send(JSON.stringify(packet(seq,gears[i%gears.length])));
+    }
+    if(end<burstCount)await wait(1050);
   }
 
   const finalSeq=800+burstCount-1;
