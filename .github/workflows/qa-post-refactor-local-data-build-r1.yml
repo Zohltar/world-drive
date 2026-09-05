@@ -1,0 +1,60 @@
+name: Post-refactor Local Data Build QA
+
+on:
+  push:
+    branches:
+      - candidate/post-refactor-local-data-build-r1
+  workflow_dispatch:
+
+jobs:
+  qa:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22.23.2
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Block 6B local-data build policy QA
+        run: node qa/qa-post-refactor-local-data-build-r1.mjs
+
+      - name: Desktop build excludes generated world-data only
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p public/world-data/osm-v2/quebec/hydro
+          printf 'world-data-sentinel\n' > public/world-data/osm-v2/quebec/hydro/__qa_world_data_sentinel.txt
+          printf 'public-sentinel\n' > public/__qa_public_sentinel.txt
+          trap 'rm -f public/__qa_public_sentinel.txt; rm -rf public/world-data' EXIT
+          npm run build:desktop
+          test -f dist/__qa_public_sentinel.txt
+          test ! -e dist/world-data/osm-v2/quebec/hydro/__qa_world_data_sentinel.txt
+
+      - name: Electron package smoke from optimized desktop dist
+        run: npx electron-forge package --platform=linux --arch=x64
+
+      - name: Quebec local hydro runtime regression
+        run: node qa/qa-geofabrik-hydro-runtime-r1.mjs
+
+      - name: Water hydro runtime regression
+        run: node qa/qa-water-hydro-runtime.mjs
+
+      - name: Block 6 Overpass parity regression
+        run: node qa/qa-post-refactor-overpass-parity-r1.mjs
+
+      - name: Full Dev Integration audit
+        run: node qa/DEV_INTEGRATION_AUDIT.mjs
+
+      - name: Normal browser production build remains valid
+        run: npm run build
+
+      - name: Production code split QA
+        run: node qa/BUILD_V21_31_CODE_SPLIT_QA.mjs
