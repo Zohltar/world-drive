@@ -64,9 +64,9 @@ Before coding, be able to answer:
 **Block 5A — LAN WebSocket relay hardening:** **DONE/CERTIFIED — HUMAN LAN PASS (2026-09-05)**  
 **Block 5B — Electron IPC caller-origin validation:** **DONE/CERTIFIED — HUMAN LAN PASS (2026-09-05)**  
 **Block 6 — Overpass proxy/configuration consistency:** **DONE/CERTIFIED — AUTOMATED (2026-09-05)**  
-**Block 6B — local-data production build-copy optimization:** **ACTIVE — READ-ONLY AUDIT FIRST**  
+**Block 6B — local-data production build-copy optimization:** **DONE/CERTIFIED — HUMAN PASS (2026-09-05)**  
 **Issue #2:** **OPEN / watch-only / not reproduced**  
-**Issue #9:** **OPEN / reproduced on Yungas / explicitly predates Block 3**  
+**Issue #9:** **ACTIVE — reproduced on Yungas / diagnostic audit first / explicitly predates Block 3**  
 **Issue #10:** **OPEN / steep-slope tire grip and steering instability / deferred**  
 **Issue #11:** **OPEN / one civil-traffic model rotated ~90° / deferred**  
 **Issue #12:** **OPEN / forest streaming falls behind after ~5 km / deferred**  
@@ -119,7 +119,7 @@ QA-only correction `abd3d875623e935cdc36f98601f0837f0a610168`: M4.13 keeps all 3
 Exact-head Dev Integration `33973907521`: PASS.  
 Human LAN checkpoint: PASS.
 
-Human-smoke environment note, **out of Block 5A scope**: the local Windows checkout contains `public/world-data` with 38,018 files / ~16.8 GB. A production Vite build copies that local public dataset into `dist`, making local desktop startup/build take many minutes. The smoke used a temporary local move/build/restore workaround. Any permanent packaging/build optimization must preserve local-first Quebec hydro semantics.
+Historical human-smoke environment note: the local Windows checkout contains `public/world-data` with 38,018 files / ~16.8 GB. Block 6B now prevents desktop builds from duplicating that generated dataset into `dist` while preserving local hydro access.
 
 ## Block 5B certified checkpoint
 
@@ -216,43 +216,100 @@ head abcc2a0e8ddca70600502499cc0ecf574339dfa5
 
 Human checkpoint: **not required** — no user-facing mirror behavior, hydro authority, retry cadence or gameplay behavior was changed.
 
-## Exact next action
+## Block 6B certified checkpoint
 
-Start **Block 6B — local-data production build-copy optimization**, **read-only audit first**.
-
-Audit:
+Final human-tested candidate:
 
 ```text
-vite.config.js
-forge.config.cjs
-electron/main.cjs
-src/water-offline-hydro-source.js
-src/water-data.js
-.gitignore
-tools/geofabrik/README.md
-tools/geofabrik/build-world-tiles.mjs
-README_PACKAGING.md
+candidate/post-refactor-local-data-build-r1
+65f3f6c963fcc992d1e9dd4a426125b9897cbbca
 ```
 
-Map before changing anything:
+Key implementation commits:
 
-- why Vite copies generated `public/world-data` into `dist` during production builds;
-- browser-development URL ownership for `/world-data/...`;
-- Electron static-server ownership for `dist` and whether it can safely serve local data from a separate root;
-- Forge package inclusion/exclusion of `public/world-data` and whether current packaging duplicates the dataset;
-- whether generated Quebec data is intentionally untracked/local and how tooling expects it to be laid out;
-- required behavior when the local dataset is absent;
-- browser production, Electron development and packaged Electron differences;
-- permanent QA needed to prove local-first Quebec hydro still works after any packaging/path change.
+```text
+5ad70dfbf56af6dd8e7052e5b80145d8e43c792c
+Desktop: add local world-data static routing helper
+
+d4087528ff355349490c0f75cedafe68916b5cf8
+Desktop: serve local world-data outside dist
+
+8cba1e56a155f2da4ade82e95a34a08bca31dc83
+Build: exclude generated world-data from desktop dist
+
+093c7c247fa80ef6497cf71f3e31b7429b00038a
+Packaging: exclude local world-data roots
+
+9d4eda8eb70910c4edcaab159ddbc030c0d1fea0
+Build: use optimized desktop build path
+```
+
+Audit evidence and certified behavior:
+
+- the user's generated `public/world-data` contained **38,018 files / ~16.8 GB**;
+- Vite's ordinary public-directory copy was the cause of the multi-minute desktop build, not Node/Vite computation or Block 5 multiplayer runtime;
+- generated `world-data/` and `public/world-data/` are intentionally untracked/local data;
+- local hydro's maintained runtime URL remains `/world-data/osm-v2/quebec/hydro`;
+- Electron now serves `/world-data/...` directly from the local `public` tree instead of requiring a duplicated copy under `dist`;
+- desktop/package/make use the optimized desktop build path that excludes generated world-data from `dist` while retaining ordinary public assets;
+- Electron Forge excludes both local world-data roots so the generated dataset cannot silently bloat the packaged application;
+- normal browser production build behavior remains unchanged;
+- absence of local hydro still preserves the existing cache/Overpass fallback behavior; local-first source priority and hydro data format were not changed.
+
+Permanent Block 6B QA:
+
+```text
+electron/static-resource-routing.cjs
+qa/qa-post-refactor-local-data-build-r1.mjs
+qa/DEV_INTEGRATION_AUDIT.mjs
+.github/workflows/qa-post-refactor-local-data-build-r1.yml
+```
+
+Focused final candidate run:
+
+```text
+33984045538 — PASS
+head 65f3f6c963fcc992d1e9dd4a426125b9897cbbca
+```
+
+That run passed the local-data build policy QA, a real desktop build exclusion check, Electron package smoke, Quebec local-hydro regression, water hydro regression, Block 6 Overpass parity, full Dev Integration audit, normal browser production build and production code-split QA.
+
+Human Windows checkpoint: **PASS (2026-09-05)** — optimized desktop build/startup accepted and local-first Quebec hydro remained operational.
+
+Post-integration exact-head Dev Integration:
+
+```text
+33984338699 — PASS
+head 65f3f6c963fcc992d1e9dd4a426125b9897cbbca
+```
+
+## Exact next action
+
+Start **Issue #9 — terrain occasionally intrudes over the road surface**, **read-only/reproduction audit first**.
+
+Known evidence:
+
+- issue is reproducible on Yungas;
+- it explicitly predates Block 3;
+- the authoritative road itself was reported visually correct while terrain can intrude over it in extreme relief;
+- retired `road-terrain-transition` must not be restored as a workaround.
+
+Audit before changing anything:
+
+- current road-bed/refined-terrain ownership and intersection/clipping logic;
+- terrain triangulation/sampling around steep cuts, switchbacks and large cross-slope deltas;
+- road corridor clearance/terrain depression policy versus actual road mesh elevation;
+- whether the defect is geometric authority, coarse triangle interpolation, stale terrain sampling or presentation-only;
+- existing road/terrain/bridge/wheel-ground QA that constrains a correction.
 
 Rules:
 
-- do not change hydro source priority or data format;
-- do not delete/move the user's generated dataset;
-- do not make Overpass primary again;
-- do not silently exclude required packaged resources without proving the expected deployment model;
-- prefer a build-time exclusion plus explicit desktop serving path only if audit evidence proves it preserves all environments;
-- do not mix issues #9/#10/#11/#12, dependency/npm work or Actions upgrades.
+- reproduce/measure before modifying runtime;
+- preserve accepted road geometry, bridge behavior, issue #8 wheel support, Photo ON/OFF visuals and normal terrain shape;
+- no global terrain flattening or broad physics retune;
+- no return of retired `road-terrain-transition` workload;
+- issues #10/#11/#12 remain deferred and must not be mixed into this diagnosis;
+- Block 7 composition-root work remains deferred unless a concrete need emerges.
 
 ---
 
@@ -267,7 +324,7 @@ Rules:
 | P2 | LAN relay lacked explicit bounded handshake/client/rate policy | `server/multiplayer-server.mjs`, `electron/multiplayer-runtime.cjs` | **DONE/CERTIFIED — Block 5A — HUMAN LAN PASS** |
 | P2 | Electron multiplayer IPC lacked explicit caller-origin validation | `electron/main.cjs`, `electron/ipc-origin-guard.cjs`, `electron/preload.cjs` | **DONE/CERTIFIED — Block 5B — HUMAN LAN PASS** |
 | P3 | Overpass allowlists/proxy limits differed across environments | Vite/browser/Electron Overpass paths | **DONE/CERTIFIED — Block 6** |
-| P3 | Local `public/world-data` (~16.8 GB / 38,018 files) is copied into `dist` during local production build | Vite/public-data/desktop packaging path | **ACTIVE — Block 6B — AUDIT FIRST** |
+| P3 | Local generated `public/world-data` was copied into `dist` on desktop builds | Vite/public-data/desktop packaging path | **DONE/CERTIFIED — Block 6B — HUMAN PASS** |
 | P3 | `src/main.js` remains large composition root | `src/main.js` | **DEFERRED — no refactor without concrete benefit** |
 
 ---
@@ -317,27 +374,21 @@ Focused run `33915664612`: PASS. Post-integration Dev Integration `33915756142`:
 
 **DONE/CERTIFIED — AUTOMATED (2026-09-05).** See checkpoint above.
 
+## Block 6B — local-data production build-copy optimization
+
+**DONE/CERTIFIED — HUMAN PASS (2026-09-05).** See checkpoint above.
+
 ---
 
 # 4. Active and future roadmap
 
-## Block 6B — local-data production build-copy optimization
+## Issue #9 diagnostic block — terrain intrudes over road
 
 ### Status
 
-**ACTIVE — READ-ONLY AUDIT FIRST.**
+**ACTIVE — READ-ONLY / REPRODUCE FIRST.**
 
-Local Windows evidence from 2026-09-05:
-
-```text
-public/world-data
-38,018 files
-~16.8 GB
-```
-
-Vite's production build currently copies this generated local dataset into `dist`, making desktop startup/build take many minutes on the user's checkout. The target is to eliminate unnecessary per-build copying while preserving the exact local-first Quebec hydro behavior and expected browser/Electron/package deployment model.
-
-Human checkpoint is required if desktop local-hydro loading or packaging behavior changes.
+The defect is known on extreme Yungas terrain and predates the post-refactor road-transition retirement. Diagnose the current authoritative road/terrain intersection before proposing a fix. Human visual checkpoint will be mandatory for any correction.
 
 ---
 
@@ -369,9 +420,9 @@ Do not tune terrain/imagery/streaming just to see if it helps. A correction requ
 
 ## Issue #9 — terrain occasionally intrudes over the road surface
 
-**OPEN / PRE-EXISTING / REPRODUCED ON YUNGAS.**
+**ACTIVE / PRE-EXISTING / REPRODUCED ON YUNGAS.**
 
-Future diagnosis: reproduce/measure first; inspect terrain/road intersection authority and coarse terrain triangles near steep cuts/switchbacks; preserve road geometry, wheel-ground physics and accepted issue #4 visuals; do not restore retired `road-terrain-transition` as a workaround.
+Reproduce/measure first; inspect terrain/road intersection authority and coarse terrain triangles near steep cuts/switchbacks; preserve road geometry, wheel-ground physics and accepted issue #4 visuals; do not restore retired `road-terrain-transition` as a workaround.
 
 ## Issue #10 — steep-slope tire grip and steering instability
 
