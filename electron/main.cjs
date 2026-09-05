@@ -9,6 +9,7 @@ const { URL } = require('node:url');
 const squirrelStartup = require('electron-squirrel-startup');
 const { createMultiplayerRuntime } = require('./multiplayer-runtime.cjs');
 const { createTrustedIpcHandler } = require('./ipc-origin-guard.cjs');
+const { staticRootForRequest } = require('./static-resource-routing.cjs');
 const packageInfo = require('../package.json');
 
 const DESKTOP_PACKAGE_VERSION=String(packageInfo.version||'0.0.0');
@@ -199,6 +200,7 @@ function listenHttpServer(server,port){
 
 function startStaticServer(){
   const distRoot=path.resolve(__dirname,'..','dist');
+  const publicRoot=path.resolve(__dirname,'..','public');
   const indexFile=path.join(distRoot,'index.html');
 
   if(!fs.existsSync(indexFile)){
@@ -222,7 +224,8 @@ function startStaticServer(){
         return;
       }
 
-      let filePath=safeFilePath(distRoot,requestUrl.pathname);
+      const staticRoot=staticRootForRequest(requestUrl.pathname,{distRoot,publicRoot});
+      let filePath=safeFilePath(staticRoot,requestUrl.pathname);
 
       if(!filePath){
         res.writeHead(403,{'Content-Type':'text/plain; charset=utf-8'});
