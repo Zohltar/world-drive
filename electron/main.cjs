@@ -8,6 +8,7 @@ const { URL } = require('node:url');
 
 const squirrelStartup = require('electron-squirrel-startup');
 const { createMultiplayerRuntime } = require('./multiplayer-runtime.cjs');
+const { createTrustedIpcHandler } = require('./ipc-origin-guard.cjs');
 const packageInfo = require('../package.json');
 
 const DESKTOP_PACKAGE_VERSION=String(packageInfo.version||'0.0.0');
@@ -331,25 +332,48 @@ function stopStaticServer(){
   staticServer=null;
 }
 
+function multiplayerIpcContext(){
+  return {
+    appOrigin,
+    mainWebContents:mainWindow?.webContents||null
+  };
+}
+
 function registerMultiplayerIpc(){
   if(multiplayerIpcRegistered)return;
   multiplayerIpcRegistered=true;
 
-  ipcMain.handle('worlddrive:multiplayer:host',async(_event,options={})=>{
-    return await multiplayerRuntime.hostSession(options);
-  });
+  ipcMain.handle(
+    'worlddrive:multiplayer:host',
+    createTrustedIpcHandler(
+      (options={})=>multiplayerRuntime.hostSession(options),
+      multiplayerIpcContext
+    )
+  );
 
-  ipcMain.handle('worlddrive:multiplayer:join',async(_event,options={})=>{
-    return await multiplayerRuntime.joinSession(options);
-  });
+  ipcMain.handle(
+    'worlddrive:multiplayer:join',
+    createTrustedIpcHandler(
+      (options={})=>multiplayerRuntime.joinSession(options),
+      multiplayerIpcContext
+    )
+  );
 
-  ipcMain.handle('worlddrive:multiplayer:stop',async()=>{
-    return await multiplayerRuntime.stop();
-  });
+  ipcMain.handle(
+    'worlddrive:multiplayer:stop',
+    createTrustedIpcHandler(
+      ()=>multiplayerRuntime.stop(),
+      multiplayerIpcContext
+    )
+  );
 
-  ipcMain.handle('worlddrive:multiplayer:status',()=>{
-    return multiplayerRuntime.status();
-  });
+  ipcMain.handle(
+    'worlddrive:multiplayer:status',
+    createTrustedIpcHandler(
+      ()=>multiplayerRuntime.status(),
+      multiplayerIpcContext
+    )
+  );
 }
 
 if(squirrelStartup){
