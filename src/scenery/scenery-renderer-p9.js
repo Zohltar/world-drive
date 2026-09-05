@@ -1,5 +1,6 @@
 import {loadForestWaterAssets,getForestWaterAssets} from '../forest-water-assets.js';
 import {createForestChunkStreamer} from '../forest-chunk-streamer.js';
+import {createForestBlockerIndex} from './forest-blocker-index.js';
 
 export function createSceneryRenderer({
   THREE,statusEl,features,terrainDetailGroup,infrastructureGroup,buildingGroup,
@@ -16,8 +17,7 @@ export function createSceneryRenderer({
   let forestAssetsActivated=false;
   let sceneryReadyForForest=false;
   let forestRouteCacheSuspended=false;
-  let forestBlockers=[];
-  let blockerSignature='';
+  const forestBlockerIndex=createForestBlockerIndex({pointInPolygon});
   let lastShown=0;
   let lastForestStats={trees:0,near:0,mid:0,far:0,edge:0,chunks:0,cached:0,queued:0};
 
@@ -139,44 +139,12 @@ export function createSceneryRenderer({
     return mesh;
   }
 
-  function bboxForPoints(points){
-    let minx=Infinity,maxx=-Infinity,minz=Infinity,maxz=-Infinity;
-    for(const p of points){
-      minx=Math.min(minx,p.x);maxx=Math.max(maxx,p.x);
-      minz=Math.min(minz,p.z);maxz=Math.max(maxz,p.z);
-    }
-    return {minx,maxx,minz,maxz};
-  }
-
   function refreshForestMasks(){
-    const next=[];
-    for(const feature of features){
-      const tags=feature.tags||{};
-      const points=feature.points;
-      if(!Array.isArray(points)||points.length<3)continue;
-      const blocked=
-        !!tags.building||
-        ['residential','commercial','industrial','retail','farmland','farmyard','meadow','grass','construction','quarry'].includes(tags.landuse)||
-        ['bare_rock','scree','sand','beach'].includes(tags.natural);
-      if(blocked)next.push({points,bbox:bboxForPoints(points)});
-    }
-    const signature=next.map(item=>{
-      const b=item.bbox;
-      return `${Math.round(b.minx/20)},${Math.round(b.minz/20)},${Math.round(b.maxx/20)},${Math.round(b.maxz/20)}`;
-    }).join('|');
-    const changed=signature!==blockerSignature;
-    forestBlockers=next;
-    blockerSignature=signature;
-    return changed;
+    return forestBlockerIndex.rebuild(features).changed;
   }
 
   function blocksForest(x,z){
-    for(const blocker of forestBlockers){
-      const b=blocker.bbox;
-      if(x<b.minx||x>b.maxx||z<b.minz||z>b.maxz)continue;
-      if(pointInPolygon(x,z,blocker.points))return true;
-    }
-    return false;
+    return forestBlockerIndex.blocksForest(x,z);
   }
 
   function updateForestStatus(stats){
@@ -262,8 +230,7 @@ export function createSceneryRenderer({
     forestRouteCacheSuspended=false;
     forestAssetsActivated=false;
     sceneryReadyForForest=false;
-    forestBlockers=[];
-    blockerSignature='';
+    forestBlockerIndex.clear();
     lastForestStats={trees:0,near:0,mid:0,far:0,edge:0,chunks:0,cached:0,queued:0};
     return true;
   }
@@ -381,7 +348,10 @@ export function createSceneryRenderer({
     removeTreesOverWater,
     requestForestRefresh,
     whenInitialForestReady:()=>forestStreamer.whenInitialReady(),
-    forestStats:()=>forestStreamer.stats(),
+    forestStats:()=>({
+      ...forestStreamer.stats(),
+      blockerIndex:forestBlockerIndex.diagnostics()
+    }),
     forestRouteCacheStatus:()=>({suspended:forestRouteCacheSuspended})
   };
 }
