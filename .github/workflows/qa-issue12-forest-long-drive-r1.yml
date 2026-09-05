@@ -1,0 +1,54 @@
+name: Issue 12 Forest Long Drive QA
+
+on:
+  push:
+    branches:
+      - candidate/issue-12-forest-long-drive-readiness-r1
+  workflow_dispatch:
+
+jobs:
+  qa:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22.23.2
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Issue 12 accumulated blocker index QA
+        run: node qa/qa-issue12-forest-blocker-index-r1.mjs
+
+      - name: Existing rolling forest prefetch QA
+        run: node qa/qa-forest-p936-rolling-prefetch.mjs
+
+      - name: Existing forest queue maintenance QA
+        run: node qa/qa-forest-p940-maintenance.mjs
+
+      - name: Existing prepared forest retention QA
+        run: node qa/qa-p938-forest-retention.mjs
+
+      - name: Existing forest frame budget QA
+        run: node qa/qa-forest-p929-frame-budget.mjs
+
+      - name: Existing combined frame pacing QA
+        run: node qa/qa-p937-combined-frame-pacing.mjs
+
+      - name: R8 forest route readiness QA
+        run: node qa/qa-r8-forest-route-readiness.mjs
+
+      - name: Full Dev Integration audit
+        run: node qa/DEV_INTEGRATION_AUDIT.mjs
+
+      - name: Production build
+        run: npm run build
+
+      - name: Production code split QA
+        run: node qa/BUILD_V21_31_CODE_SPLIT_QA.mjs
