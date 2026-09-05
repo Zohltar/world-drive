@@ -41,6 +41,15 @@ jobs:
       - name: Existing combined frame pacing QA
         run: node qa/qa-p937-combined-frame-pacing.mjs
 
+      - name: Forest route cache ownership QA
+        run: node qa/qa-forest-route-cache-r3.mjs
+
+      - name: Forest terrain commit alignment QA
+        run: node qa/qa-forest-terrain-commit-alignment-r6.mjs
+
+      - name: Forest route cache suspension QA
+        run: node qa/qa-forest-route-cache-suspension-r7.mjs
+
       - name: R8 forest route readiness QA
         run: node qa/qa-r8-forest-route-readiness.mjs
 
