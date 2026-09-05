@@ -61,77 +61,130 @@ Before coding, be able to answer:
 **Block 2 — Route lifecycle stale-generation guard:** **DONE/CERTIFIED — HUMAN PASS**  
 **Block 3 — Retired road-terrain transition workload:** **DONE/CERTIFIED — HUMAN PASS**  
 **Block 4 — Accurate asynchronous visual-job diagnostics:** **DONE/CERTIFIED — AUTOMATED; no human checkpoint required**  
-**Block 5A — LAN WebSocket relay hardening:** **ACTIVE — READ-ONLY AUDIT FIRST**  
+**Block 5A — LAN WebSocket relay hardening:** **DONE/CERTIFIED — HUMAN LAN PASS (2026-09-05)**  
+**Block 5B — Electron IPC caller-origin validation:** **ACTIVE — READ-ONLY AUDIT FIRST**  
 **Issue #2:** **OPEN / watch-only / not reproduced**  
 **Issue #9:** **OPEN / reproduced on Yungas / explicitly predates Block 3**  
 **Stable `main`:** `9055d5682afcf512c91b1ae7dc97dcb4b16d6d9e` — must remain untouched without explicit user approval.  
 **Previous rollback/reference:** `111df5d84bf7fd700590abbd9c129b303ac92fad`.
 
-## Block 4 certified checkpoint
+## Block 5A certified checkpoint
 
-Final candidate:
-
-```text
-candidate/post-refactor-visual-job-diagnostics-r1
-fd248af831c3626f62c86329d093633509982004
-```
-
-Focused final run:
+Final human-tested candidate:
 
 ```text
-33915664612 — PASS
+candidate/post-refactor-lan-relay-hardening-r1
+47eecf73d227c54d651fe02f3aaa4c9a75f9402a
 ```
 
-Post-integration exact-head Dev Integration on the Block 4 runtime/QA candidate:
+Runtime commits:
 
 ```text
-33915756142 — PASS
-head fd248af831c3626f62c86329d093633509982004
+f8f629991b9c4ec3cce02062bc4038e240d77376
+Security: harden standalone LAN WebSocket relay
+
+3bb5f0cdec226a9d40b78dcf7b0a36c66b4fcc8e
+Security: harden Electron LAN WebSocket relay
 ```
 
-A separate stale C6 compatibility inventory then exposed a previously certified Block 2 `clearInterval` boundary in `src/forest-chunk-streamer-core.js`. The runtime was not changed. The QA-only compatibility correction is:
+Audit evidence used to choose bounded policy:
+
+- maintained multiplayer client transmits at **30 Hz**;
+- normal full state is roughly **0.6 kB**, about **1.1 kB** with the maximum two Traffic MP1 agents and bounded strings;
+- Electron renderer is served from loopback and LAN joining proxies the raw TCP/WebSocket handshake;
+- packaged Electron excludes `/server`, so the standalone and Electron relays remain autonomous implementations and parity is enforced through permanent QA rather than a packaging-fragile shared module.
+
+Certified relay policy, identical in standalone and Electron owners:
 
 ```text
-b4785c8d76271bb139c4fa5e1506264b99a71fef
-QA: recognize forest polling clearInterval boundary
+WebSocket path                 /
+max clients                    32
+max text message               4096 bytes
+max aggregate frame buffer     64 KiB
+max application messages       120 / second / client
+hello timeout                  10 s
+max HTTP header                8192 bytes
+Origin                         absent OR loopback/private/same-host
 ```
 
-Exact-head validation of that correction:
+Additional hardened behavior:
+
+- WebSocket version/key/Connection/Upgrade validation;
+- client frames must be masked;
+- unsupported RSV/opcodes rejected;
+- bounded RFC-compatible text fragmentation supported;
+- ping/pong payload preserved byte-exact;
+- malformed UTF-8 / malformed JSON / oversized or abusive clients cleaned up deterministically;
+- repeated `hello` ignored after first;
+- 33rd upgraded client rejected while 32 are held;
+- state sanitation, `hello`/`welcome`/`snapshot`/`refresh-state`/`state`/`roster`/`leave` semantics and Traffic MP1 forwarding preserved.
+
+Permanent Block 5A QA:
 
 ```text
-C6 Final Global Boundary QA 33916468405 — PASS
-Phase O Historical Naming Boundary QA 33916468411 — PASS
-R8 Local-World Structure QA 33916468369 — PASS
-R8 Imagery Structure QA 33916468337 — PASS
-Dev Integration QA 33916468306 — PASS
+qa/qa-post-refactor-lan-relay-hardening-r1.mjs
+.github/workflows/qa-post-refactor-lan-relay-hardening-r1.yml
+qa/DEV_INTEGRATION_AUDIT.mjs
 ```
 
-The Block 4 runtime result is intentionally diagnostic-only:
+Focused exact-head candidate run:
 
-- legacy `visualJobs.*.runs/lastMs/maxMs/avgMs` remain **synchronous CPU/invocation timing**;
-- new `settledRuns`, `succeededRuns`, `failedRuns`, `inFlight`, `lastWallMs`, `maxWallMs`, `avgWallMs`, `lastOutcome`, `lastSettledAt` measure actual Promise settlement;
-- async resolve/reject and sync return/throw are distinguished;
-- P9.39 hitch attribution continues to use synchronous CPU time, so network/Promise wait is not falsely blamed for a frame hitch;
-- the base scheduler, timeout policy, queue ordering, idle policy and error propagation semantics were not changed;
-- no human checkpoint was required because scheduling behavior did not change.
+```text
+33920069528 — PASS
+head 47eecf73d227c54d651fe02f3aaa4c9a75f9402a
+```
+
+After human PASS and fast-forward integration, the first broader exact-head Dev Integration run exposed one stale pre-hardening QA assumption:
+
+```text
+33973743821 — FAIL
+head 47eecf73d227c54d651fe02f3aaa4c9a75f9402a
+only failing stress: M4.13 sent 320 application messages immediately and expected the abusive client to stay connected
+```
+
+The runtime was not changed. M4.13 was corrected to preserve its 320-packet ordering/final-state stress in four bounded 80-packet bursts separated by a fresh rate window, while the dedicated Block 5A QA continues to prove that `>120/s` abusive clients disconnect:
+
+```text
+abd3d875623e935cdc36f98601f0837f0a610168
+QA: pace M4.13 burst below relay rate limit
+```
+
+Exact-head Dev Integration after that QA-only compatibility correction:
+
+```text
+33973907521 — PASS
+head abd3d875623e935cdc36f98601f0837f0a610168
+```
+
+Human LAN checkpoint: **PASS (2026-09-05)** — real Electron/LAN host/join behavior accepted by the user.
+
+Human-smoke environment note, **out of Block 5A scope**: the local Windows checkout contains `public/world-data` with 38,018 files / ~16.8 GB. A production Vite build copies that local public dataset into `dist`, making local desktop startup/build take many minutes. The smoke used a temporary local move/build/restore workaround. Any permanent packaging/build optimization must be a separate block and must preserve local-first Quebec hydro semantics.
 
 ## Exact next action
 
-Start **Block 5A — LAN WebSocket relay hardening**, **read-only audit first**.
+Start **Block 5B — Electron IPC caller-origin validation**, **read-only audit first**.
 
-Audit the standalone and Electron LAN relay side by side:
+Audit the current trusted renderer/IPC boundary before changing anything:
 
 ```text
-server/multiplayer-server.mjs
-electron/multiplayer-runtime.cjs
+electron/main.cjs
+electron/preload.cjs
 ```
 
-Map the current handshake, WebSocket path, Origin behavior, payload/frame limits, masking/protocol validation, client lifecycle, client count, rate behavior, state sanitation and standalone/Electron parity before proposing any runtime change.
+Map:
 
-Do **not** combine Block 5A with:
+- current app origin creation and navigation restrictions;
+- every multiplayer IPC handler/channel;
+- what Electron sender/frame/origin information is available at each handler;
+- current preload API exposure;
+- host/join/stop/status behavior and error contracts;
+- how to reject synthetic/untrusted callers without changing desktop multiplayer UX.
 
+Do **not** combine Block 5B with:
+
+- the 16.8 GB local-data build-copy optimization;
 - issue #9 terrain work;
-- Block 5B Electron IPC caller-origin validation;
+- Block 6 Overpass parity;
 - dependency/npm vulnerability work;
 - Actions upgrades;
 - multiplayer gameplay/protocol redesign;
@@ -148,8 +201,9 @@ Do **not** combine Block 5A with:
 | P1 | Async route creation could overlap/stale-commit | `src/routing/route-lifecycle.js` | **DONE/CERTIFIED — Block 2 — HUMAN PASS** |
 | P2 | Retired `road-terrain-transition` still consumed CPU/allocation/commit work | terrain/local-world/world-scene | **DONE/CERTIFIED — Block 3 — HUMAN PASS** |
 | P2 | `visualJobs` measured Promise creation instead of async settlement | `src/streaming-coordinator.js` | **DONE/CERTIFIED — Block 4** |
-| P2 | LAN relay lacks explicit bounded handshake/client/rate policy | `server/multiplayer-server.mjs`, `electron/multiplayer-runtime.cjs` | **ACTIVE — Block 5A — AUDIT FIRST** |
-| P2 | Electron multiplayer IPC lacks explicit caller-origin validation | `electron/main.cjs`, `electron/preload.cjs` | PLANNED — Block 5B |
+| P2 | LAN relay lacked explicit bounded handshake/client/rate policy | `server/multiplayer-server.mjs`, `electron/multiplayer-runtime.cjs` | **DONE/CERTIFIED — Block 5A — HUMAN LAN PASS** |
+| P2 | Electron multiplayer IPC lacks explicit caller-origin validation | `electron/main.cjs`, `electron/preload.cjs` | **ACTIVE — Block 5B — AUDIT FIRST** |
+| P3 | Local `public/world-data` (~16.8 GB / 38,018 files) is copied into `dist` during local production build | Vite/public-data/desktop packaging path | **DISCOVERED — separate follow-up; do not mix into Block 5B** |
 | P3 | Overpass allowlists/proxy limits differ across environments | Vite/browser/Electron Overpass paths | PLANNED — Block 6 |
 | P3 | `src/main.js` remains large composition root | `src/main.js` | **DEFERRED — no refactor without concrete benefit** |
 
@@ -335,68 +389,52 @@ Human checkpoint: **not required** because no scheduling/runtime policy changed.
 
 ### Status
 
-**ACTIVE — READ-ONLY AUDIT FIRST.**
+**DONE/CERTIFIED — HUMAN LAN PASS (2026-09-05).**
 
-### Goal
+### Certified result
 
-Harden the existing presentation-only LAN relay without changing multiplayer protocol/gameplay semantics or introducing accounts/cloud dependencies.
+Standalone and Electron relay behavior are bounded and permanently parity-tested without changing the presentation-only multiplayer gameplay/protocol contract.
 
-### Audit scope
-
-Keep standalone and Electron relay behavior aligned:
+Certified files:
 
 ```text
 server/multiplayer-server.mjs
 electron/multiplayer-runtime.cjs
+qa/qa-post-refactor-lan-relay-hardening-r1.mjs
+qa/DEV_INTEGRATION_AUDIT.mjs
+.github/workflows/qa-post-refactor-lan-relay-hardening-r1.yml
 ```
 
-Audit before implementation:
+Certified policy:
 
-- HTTP Upgrade/WebSocket path acceptance;
-- Origin policy for browser-dev and packaged Electron LAN use;
-- client count / connection lifecycle;
-- per-client message rate behavior;
-- masking/frame/opcode/fragmentation/protocol validation;
-- text payload maximum and aggregate fragmented-message buffer maximum;
-- ping/pong/close handling;
-- malformed/oversized client cleanup;
-- state sanitation before broadcast;
-- standalone/Electron parity and drift;
-- existing permanent R2 multiplayer contracts that must stay stable.
+- exact WebSocket path `/`;
+- Origin absent or loopback/private/same-host;
+- 32 clients maximum;
+- 4096-byte text message maximum;
+- 64 KiB aggregate client frame buffer;
+- 120 application messages/s/client;
+- 10 s hello timeout;
+- 8192-byte HTTP header ceiling;
+- strict mask/frame/opcode/fragmentation validation;
+- binary-safe ping/pong;
+- deterministic malformed/oversized/abusive cleanup;
+- standalone/Electron constants and behavior locked to parity by QA.
 
-### Candidate hardening areas
+Protected semantics preserved:
 
-Only after evidence from the audit, consider:
+- `hello`, `welcome`, `snapshot`, `refresh-state`, `state`, `roster`, `leave`;
+- state sanitation;
+- 30 Hz maintained client contract;
+- Traffic MP1 forwarding;
+- packaged Electron LAN host/join UX.
 
-- explicit WebSocket path;
-- bounded Origin policy suitable for World Drive LAN use;
-- max clients;
-- max messages per time window per client;
-- stricter mask/frame/protocol validation;
-- bounded payload/aggregate buffers;
-- deterministic cleanup of malformed/abusive clients;
-- parity helpers/tests for standalone and Electron relay.
+Focused candidate run `33920069528`: PASS.  
+Post-integration stale-QA discovery run `33973743821`: FAIL only because legacy M4.13 intentionally exceeded the new 120/s abuse ceiling.  
+QA-only correction `abd3d875623e935cdc36f98601f0837f0a610168`: M4.13 keeps all 320 packets but sends bounded bursts.  
+Exact-head Dev Integration `33973907521`: PASS.  
+Human LAN checkpoint: PASS.
 
-### Non-goals
-
-- no Internet matchmaking;
-- no authentication/account system unless explicitly requested;
-- no server collision/physics;
-- no multiplayer gameplay redesign;
-- no protocol redesign unless required by a proven issue.
-
-### Required QA after any change
-
-- existing R2 multiplayer coverage;
-- live shared traffic coverage;
-- protocol contract tests;
-- new malformed-frame/payload/rate/client-limit coverage;
-- production build/code split as applicable;
-- exact-head Dev Integration.
-
-### Human checkpoint
-
-Required if handshake/path/Origin/join behavior changes: browser/Electron LAN host/join smoke.
+Do not broaden/reopen without new evidence.
 
 ---
 
@@ -404,7 +442,7 @@ Required if handshake/path/Origin/join behavior changes: browser/Electron LAN ho
 
 ### Status
 
-PLANNED — separate from Block 5A.
+**ACTIVE — READ-ONLY AUDIT FIRST.**
 
 ### Goal
 
@@ -690,7 +728,7 @@ Block 7 (`main.js` decomposition) is not required for roadmap completion.
 
 Previous rollback/reference:
 
-`111df5d84bf7fd700590abbd9c129b303ac92fad` — `Release V21.31 post-C6 stable`.
+`111df5d5682afcf512c91b1ae7dc97dcb4b16d6d9e` — `Release V21.31 post-C6 stable`.
 
 Future promotion requires:
 
