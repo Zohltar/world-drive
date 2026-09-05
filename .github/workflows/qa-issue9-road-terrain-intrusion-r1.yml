@@ -1,0 +1,39 @@
+name: Issue 9 Road Terrain Intrusion QA
+
+on:
+  push:
+    branches:
+      - candidate/issue-9-road-terrain-intrusion-r1
+  workflow_dispatch:
+
+jobs:
+  qa:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22.23.2
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Issue 9 imagery triangle reproduction
+        run: node qa/qa-issue9-imagery-triangle-repro-r1.mjs
+
+      - name: Terrain R1 ownership regression
+        run: node qa/qa-terrain-r1-legacy-ownership.mjs
+
+      - name: Terrain R2 road imagery regression
+        run: node qa/qa-terrain-r2-road-imagery.mjs
+
+      - name: Road banking regression
+        run: node qa/qa-road-banking-r1.mjs
+
+      - name: Full Dev Integration audit
+        run: node qa/DEV_INTEGRATION_AUDIT.mjs
