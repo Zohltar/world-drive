@@ -11,13 +11,14 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "build:desktop": "vite build --mode desktop",
     "preview": "vite preview",
     "qa:stress": "node qa/STRESS_V21_31_RUNNER.mjs",
     "qa:geofabrik": "node qa/qa-geofabrik-tiles-r1.mjs",
     "geofabrik:tiles": "node tools/geofabrik/build-world-tiles.mjs",
-    "desktop": "npm run build && electron .",
-    "package": "npm run build && electron-forge package",
-    "make": "npm run build && electron-forge make"
+    "desktop": "npm run build:desktop && electron .",
+    "package": "npm run build:desktop && electron-forge package",
+    "make": "npm run build:desktop && electron-forge make"
   },
   "dependencies": {
     "electron-squirrel-startup": "1.0.1",
