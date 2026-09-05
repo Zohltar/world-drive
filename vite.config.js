@@ -1,5 +1,5 @@
 import { defineConfig } from 'vite';
-import { access, cp } from 'node:fs/promises';
+import { access, cp, readdir } from 'node:fs/promises';
 import path from 'node:path';
 
 // World Drive keeps runtime samples such as assets/audio/*.mp3 in the repository
@@ -18,6 +18,50 @@ function copyWorldDriveStaticAssets(){
         await cp(source,target,{recursive:true,force:true});
       }catch(error){
         if(error?.code!=='ENOENT')throw error;
+      }
+    }
+  };
+}
+
+// Desktop builds serve generated /world-data directly from public/ at runtime,
+// so copying that potentially multi-gigabyte local dataset into dist is both
+// redundant and very slow. Keep the normal browser production build unchanged;
+// only Vite's explicit "desktop" mode suppresses the automatic public copy, then
+// restores every normal public asset except the generated world-data directory.
+function desktopLocalDataBuildPolicy(){
+  let desktopBuild=false;
+  return {
+    name:'world-drive-desktop-local-data-build',
+    apply:'build',
+    config(_config,{mode}){
+      desktopBuild=mode==='desktop';
+      if(!desktopBuild)return;
+      return {
+        build:{
+          copyPublicDir:false
+        }
+      };
+    },
+    async closeBundle(){
+      if(!desktopBuild)return;
+
+      const source=path.resolve('public');
+      const target=path.resolve('dist');
+      let entries;
+      try{
+        entries=await readdir(source,{withFileTypes:true});
+      }catch(error){
+        if(error?.code==='ENOENT')return;
+        throw error;
+      }
+
+      for(const entry of entries){
+        if(entry.name==='world-data')continue;
+        await cp(
+          path.join(source,entry.name),
+          path.join(target,entry.name),
+          {recursive:entry.isDirectory(),force:true}
+        );
       }
     }
   };
@@ -152,6 +196,7 @@ function productionChunkName(id){
 export default defineConfig({
   plugins:[
     copyWorldDriveStaticAssets(),
+    desktopLocalDataBuildPolicy(),
     worldDriveOverpassProxy()
   ],
   build:{
