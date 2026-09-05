@@ -23,8 +23,11 @@ jobs:
       - name: Install
         run: npm ci
 
-      - name: Issue 9 imagery triangle reproduction
+      - name: Issue 9 coarse-triangle mechanism reproduction
         run: node qa/qa-issue9-imagery-triangle-repro-r1.mjs
+
+      - name: Issue 9 road-aware tessellation regression
+        run: node qa/qa-issue9-road-aware-grid-r2.mjs
 
       - name: Terrain R1 ownership regression
         run: node qa/qa-terrain-r1-legacy-ownership.mjs
@@ -35,5 +38,14 @@ jobs:
       - name: Road banking regression
         run: node qa/qa-road-banking-r1.mjs
 
+      - name: Satellite load-smoothing regression
+        run: node qa/qa-streaming-p917-load-smoothing.mjs
+
       - name: Full Dev Integration audit
         run: node qa/DEV_INTEGRATION_AUDIT.mjs
+
+      - name: Production build
+        run: npm run build
+
+      - name: Production code split QA
+        run: node qa/BUILD_V21_31_CODE_SPLIT_QA.mjs
