@@ -18,6 +18,9 @@ import {
 // readiness gate resolves. After that, near-visible work remains highest priority
 // while forward prefetch may interleave with far visible debt so the reserve cannot
 // starve indefinitely during sustained high-speed driving.
+// Issue #12 R4 keeps terrain-refresh invalidation local to the same near radius
+// that is actually rebuilt. Far-visible and prefetch builders retain their partial
+// progress across ordinary floating-origin recenter/terrain refreshes.
 export function createForestChunkStreamer({
   THREE,
   forestGroup,
@@ -125,7 +128,10 @@ export function createForestChunkStreamer({
     catchupQueueThreshold,
     catchupSliceBudgetMs,
     catchupCandidateBatchSize,
-    catchupSlices:0
+    catchupSlices:0,
+    terrainRefreshRuns:0,
+    terrainRefreshBuilderResets:0,
+    terrainRefreshBuilderPreserves:0
   };
 
   const forestTerrain=createForestTerrainSampler({
@@ -738,17 +744,33 @@ export function createForestChunkStreamer({
   }
 
   function refreshVisibleHeights(){
-    serial++;
-    for(const job of queue){job.builder=null;job.readyToCommit=false;}
+    // Issue #12 R4: ordinary terrain/recenter refreshes only alter the near
+    // terrain window. Do not advance the global builder serial here: doing so
+    // discarded every partially-built far-visible/prefetch chunk roughly every
+    // 520 m at high speed. Reset only builders whose chunk overlaps the same
+    // local refresh radius; distant builders keep their deterministic progress.
     forestTerrain.invalidate?.();slopeCache.clear();
     const center=Number.isFinite(lastCenter.x)?lastCenter:(getWorldOffset()||{x:0,z:0});
     const refreshDistance=FOREST.heightRefreshDistance||520;
+    const refreshRadius=refreshDistance+halfChunkDiagonal;
+    let builderResets=0,builderPreserves=0;
+    for(const job of queue){
+      if(!job.builder&&!job.readyToCommit)continue;
+      if(chunkCenterDistance(job,center)<=refreshRadius){
+        job.builder=null;
+        job.readyToCommit=false;
+        builderResets++;
+      }else builderPreserves++;
+    }
     let replacements=0;
     for(const data of active.values()){
       const d=chunkCenterDistance(data,center);
-      if(d>refreshDistance+halfChunkDiagonal)continue;
+      if(d>refreshRadius)continue;
       queueJob(chunkDescriptor(data.cx,data.cz),{replace:true});replacements++;
     }
+    perf.terrainRefreshRuns++;
+    perf.terrainRefreshBuilderResets+=builderResets;
+    perf.terrainRefreshBuilderPreserves+=builderPreserves;
     queuePriorityDirty=true;sortQueueByPriority(center,true);runQueue();return replacements;
   }
 
