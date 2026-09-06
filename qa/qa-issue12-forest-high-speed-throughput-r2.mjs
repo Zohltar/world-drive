@@ -24,7 +24,31 @@ class InstancedMesh{
 }
 const THREE={Vector3:Vec3,Group,InstancedMesh,StaticDrawUsage:35044};
 
+// Give the forest terrain sampler the same kind of reusable near-terrain grid it
+// sees in the real game. Without this, a synthetic scene with no ground forces
+// the fallback path to rescan the whole growing forest scene for every tree and
+// measures the test harness instead of streamer throughput.
+const root=new Group();
 const forestGroup=new Group();
+root.add(forestGroup);
+const groundSegments=400;
+const groundRow=groundSegments+1;
+const groundAttr={
+  itemSize:3,
+  count:groundRow*groundRow,
+  array:new Float32Array(groundRow*groundRow*3)
+};
+const ground={
+  isMesh:true,parent:null,position:new Vec3(),
+  geometry:{
+    parameters:{width:5600,height:5600,widthSegments:groundSegments,heightSegments:groundSegments},
+    getAttribute:name=>name==='position'?groundAttr:null
+  },
+  getWorldPosition(out){out.set(this.position.x,this.position.y,this.position.z);return out;},
+  traverse(fn){fn(this);}
+};
+root.add(ground);
+
 let offset={x:0,z:0};
 const idleQueue=[];
 const realRequestIdleCallback=globalThis.requestIdleCallback;
