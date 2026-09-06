@@ -8,8 +8,7 @@ function expect(condition,message){if(!condition)throw new Error(message);}
 // Human R2 FAIL showed that the larger 96/192 caps were not the causal fix:
 // runtime maxCandidates was only 40 and every forward-prefetch chunk still sat
 // queued. R3 intentionally restores the certified P9.29/P9.36 budgets/caps and
-// changes only queue ownership: forward reserve work may interleave with far
-// visible debt, while near-visible work remains highest priority.
+// changes only queue ownership AFTER the protected initial-ready gate resolves.
 expect(FOREST.forestSliceBudgetMs===.95,'Issue #12 R3 changed normal forest time budget');
 expect(FOREST.forestCatchupSliceBudgetMs===1.55,'Issue #12 R3 changed catch-up forest time budget');
 expect(FOREST.candidatesPerBuildSlice===12,'Issue #12 R3 did not restore normal candidate cap');
@@ -17,10 +16,14 @@ expect(FOREST.forestCatchupCandidatesPerSlice===20,'Issue #12 R3 did not restore
 
 const coreSource=fs.readFileSync(new URL('../src/forest-chunk-streamer-core.js',import.meta.url),'utf8');
 expect(coreSource.includes('prefetchPriorityPenalty=240'),'Issue #12 R3 prefetch priority penalty missing');
-expect(coreSource.includes('prefetchPriorityBand:1'),'Issue #12 R3 diagnostics do not expose shared priority band');
+expect(coreSource.includes('prefetchPriorityBand:2'),'Issue #12 R3 startup diagnostics do not begin in historical band 2');
 expect(
-  /if\(!visibleKeys\.has\(chunk\.key\)\)[\s\S]*?band:1[\s\S]*?prefetchPriorityPenalty/.test(coreSource),
-  'Issue #12 R3 prefetch is still hard-starved below all far-visible work'
+  coreSource.includes('const prefetchBand=initialResolved?1:2'),
+  'Issue #12 R3 does not gate prefetch interleave behind initial readiness'
+);
+expect(
+  coreSource.includes('perf.prefetchPriorityBand=1')&&coreSource.includes('queuePriorityDirty=true'),
+  'Issue #12 R3 does not reprioritize queued reserve work when startup becomes ready'
 );
 expect(
   /if\(nearDistance<=nearPriorityDistance\)[\s\S]*?return \{band:0/.test(coreSource),
@@ -96,23 +99,31 @@ try{
   let initialReady=false;
   streamer.whenInitialReady().then(()=>{initialReady=true;});
   let startupCallbacks=0;
-  while(!initialReady&&startupCallbacks<4000){
+  while(!initialReady&&startupCallbacks<6000){
     const ran=pump(24);
     startupCallbacks+=ran;
     await Promise.resolve();
     if(!ran)break;
   }
-  expect(initialReady,`Issue #12 R3 initial readiness never resolved after ${startupCallbacks} callbacks`);
+  if(!initialReady){
+    const stalled=streamer.stats();
+    throw new Error(
+      `Issue #12 R3 initial readiness never resolved after ${startupCallbacks} callbacks; `+
+      `active=${stalled.activeChunks}, visible=${stalled.visibleWantedChunks}, `+
+      `queued=${stalled.queuedChunks}, prefetchQueued=${stalled.prefetchQueuedChunks}, `+
+      `prefetchBand=${stalled.prefetchPriorityBand}`
+    );
+  }
 
   const initial=streamer.stats();
   expect(initial.prefetchWantedChunks>0,'Issue #12 R3 startup did not create a forward prefetch lobe');
   expect(initial.prefetchQueuedChunks>0,'Issue #12 R3 startup unexpectedly had no queued prefetch debt');
   expect(initial.queuedChunks>initial.prefetchQueuedChunks,'Issue #12 R3 startup lacked far-visible debt needed to reproduce starvation');
-  expect(initial.prefetchPriorityBand===1,'Issue #12 R3 runtime did not expose shared band-1 prefetch priority');
+  expect(initial.prefetchPriorityBand===1,'Issue #12 R3 did not switch prefetch to band 1 after initial readiness');
 
   let firstPrepared=null;
   let serviceCallbacks=0;
-  while(serviceCallbacks<2600){
+  while(serviceCallbacks<3000){
     const ran=pump(20);
     serviceCallbacks+=ran;
     const stats=streamer.stats();
