@@ -303,7 +303,7 @@ export function createForestChunkStreamer({
     const outerEnd=FOREST.maxDistance||1750;
     if(distance<=nearFull)return 1;
     if(distance<nearSparse){
-      const t=smooth01((distance-nearFull)/Math.max(1,nearSparse-nearSparse));
+      const t=smooth01((distance-nearFull)/Math.max(1,nearSparse-nearFull));
       return 1-(1-farFraction)*t;
     }
     if(distance<=outerStart)return farFraction;
