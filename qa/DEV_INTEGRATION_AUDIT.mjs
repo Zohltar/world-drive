@@ -2,7 +2,7 @@
 // Issue #9 stays here after certification: future imagery/terrain changes must
 // keep the road-aware satellite tessellation clearance contract green.
 // Issue #12 keeps accumulated scenery blocker lookup bounded on long drives and
-// preserves enough scheduler throughput for the 300+ km/h vehicle envelope.
+// prevents the rolling forward forest reserve from starving behind far-visible debt.
 await import('./qa-post-refactor-dom-safety-r1.mjs');
 await import('./qa-route-generation-race-r3.mjs');
 await import('./qa-route-generation-p935-r3.mjs');
@@ -30,5 +30,5 @@ await import('./qa-r9-root-cleanliness.mjs');
 await import('./qa-phase-o-naming-boundary.mjs');
 await import('./qa-issue9-road-aware-grid-r2.mjs');
 await import('./qa-issue12-forest-blocker-index-r1.mjs');
-await import('./qa-issue12-forest-high-speed-throughput-r2.mjs');
+await import('./qa-issue12-forest-prefetch-starvation-r3.mjs');
 await import('./DEV_INTEGRATION_AUDIT_BASE.mjs');
