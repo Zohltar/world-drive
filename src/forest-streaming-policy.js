@@ -38,16 +38,19 @@ export const FOREST_STREAMING_POLICY=Object.freeze({
   densityNoiseScale:420,
   cellsPerSlice:30,
 
-  // P9.29 frame budget. P9.36 keeps the normal budget unchanged, but when the
-  // browser reports genuine idle headroom and the queue is falling behind it may
-  // use a slightly larger catch-up slice. This raises throughput without putting
-  // the old 10-50 ms forest bursts back on gameplay frames.
+  // P9.29 frame budget. Issue #12 keeps the exact same 0.95/1.55 ms time
+  // budgets, but removes the obsolete 12/20-candidate throughput ceiling. The
+  // blocker spatial index made each candidate substantially cheaper, so those
+  // tiny caps were ending idle slices before the time guard was reached and the
+  // forest could not replenish its rolling reserve at F1 speeds. The larger caps
+  // are only safety ceilings: performance.now() and requestIdleCallback headroom
+  // still stop each slice at the existing frame-pacing budget.
   forestSliceBudgetMs:.95,
-  candidatesPerBuildSlice:12,
+  candidatesPerBuildSlice:96,
   forestReportIntervalMs:140,
   forestCatchupQueueThreshold:10,
   forestCatchupSliceBudgetMs:1.55,
-  forestCatchupCandidatesPerSlice:20,
+  forestCatchupCandidatesPerSlice:192,
   forestCatchupMinIdleMs:3.2,
 
   // P9.32: hide visible creation by prioritizing work down the direction of
