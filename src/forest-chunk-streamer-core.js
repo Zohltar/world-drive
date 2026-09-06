@@ -14,9 +14,10 @@ import {
 // update remains; candidate generation and matrix upload already happened idle.
 // P9.40 keeps the same visual/streaming policy while removing redundant queue
 // sorting and cache trimming from every candidate slice.
-// Issue #12 R3 keeps near-visible work highest priority but lets the forward
-// prefetch reserve interleave with far visible work. A persistent visible backlog
-// must never starve every forward reserve chunk indefinitely.
+// Issue #12 R3 keeps the historical startup ordering until the protected initial
+// readiness gate resolves. After that, near-visible work remains highest priority
+// while forward prefetch may interleave with far visible debt so the reserve cannot
+// starve indefinitely during sustained high-speed driving.
 export function createForestChunkStreamer({
   THREE,
   forestGroup,
@@ -117,7 +118,7 @@ export function createForestChunkStreamer({
     prefetchLeadM,
     prefetchRadiusM,
     prefetchMinForwardM,
-    prefetchPriorityBand:1,
+    prefetchPriorityBand:2,
     prefetchPriorityPenalty,
     prefetchMeshPrepares:0,
     prefetchHits:0,
@@ -212,13 +213,14 @@ export function createForestChunkStreamer({
     const forward=signedForwardDistance(chunk,center);
     if(!visibleKeys.has(chunk.key)){
       const pc=prefetchPriorityCenter(center);
-      // Issue #12 R3: prefetch used to be hard band 2, below every far-visible
-      // job. With a persistent high-speed visible backlog that made all reserve
-      // chunks starve forever (human snapshot: wanted 24, ready 0, queued 24).
-      // Keep a modest score penalty so forward visible work still wins locally,
-      // but let reserve work interleave before far/rear visible debt.
+      // Preserve the historical startup gate. Once the protected inner ring has
+      // resolved, let reserve work share band 1 with far-visible work. This is
+      // the narrow fix for the human snapshot where all 24 prefetch chunks stayed
+      // queued forever behind a persistent visible backlog.
+      const prefetchBand=initialResolved?1:2;
+      perf.prefetchPriorityBand=prefetchBand;
       return {
-        band:1,
+        band:prefetchBand,
         score:prefetchPriorityPenalty+chunkPriorityDistance(chunk,pc)+Math.max(0,prefetchMinForwardM-forward)*2,
         nearDistance,
         forward
@@ -588,7 +590,12 @@ export function createForestChunkStreamer({
     if(initialResolved)return;
     const readyDistance=FOREST.initialReadyDistance||720;
     const required=requiredChunks(center).filter(chunk=>chunk.priorityDistance<=readyDistance);
-    if(required.length&&required.every(chunk=>active.has(chunk.key))){initialResolved=true;resolveInitialReady?.(true);}
+    if(required.length&&required.every(chunk=>active.has(chunk.key))){
+      initialResolved=true;
+      perf.prefetchPriorityBand=1;
+      queuePriorityDirty=true;
+      resolveInitialReady?.(true);
+    }
   }
 
   function scheduleIdle(callback){
@@ -753,6 +760,7 @@ export function createForestChunkStreamer({
     active.clear();cache.clear();slopeCache.clear();lastCenter={x:NaN,z:NaN};
     travelDir={x:0,z:0};travelConfidence=0;lastRecenterDistance=0;priorityLeadM=0;
     perf.priorityLeadM=0;perf.travelConfidence=0;perf.travelDirX=0;perf.travelDirZ=0;
+    perf.prefetchPriorityBand=2;
     forestTerrain.invalidate?.();report(true);
   }
 
