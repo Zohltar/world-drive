@@ -10,6 +10,7 @@ const INSTALL_RETRY_MS=120;
 const STARTUP_DIRECTION_SEED_M=180;
 const ROUTE_CACHE_SLOTS=2;
 const DEFAULT_ROUTE_CACHE_KEY='__default__';
+const VEHICLE_HEADLIGHT_RIG_NAME='vehicle-headlights';
 
 function finite(value,fallback=0){return Number.isFinite(value)?value:fallback;}
 function round3(value){return Number(finite(value).toFixed(3));}
@@ -23,6 +24,7 @@ export function createForestChunkStreamer(options){
   let currentAssets=null;
   let activeEntry=null;
   let lastRouteCacheRebase=null;
+  let vehicleRenderRoot=null;
   const entries=[];
   let visible={
     trees:0,near:0,mid:0,far:0,edge:0,chunks:0,cached:0,queued:0,
@@ -49,10 +51,62 @@ export function createForestChunkStreamer(options){
     return {x:finite(value.x),z:finite(value.z)};
   };
 
-  const readParentRenderOffset=()=>({
-    x:finite(parentForestGroup?.position?.x),
-    z:finite(parentForestGroup?.position?.z)
-  });
+  function sceneRoot(){
+    let node=parentForestGroup;
+    while(node?.parent)node=node.parent;
+    return node||null;
+  }
+
+  function findVehicleRenderRoot(){
+    if(vehicleRenderRoot?.parent)return vehicleRenderRoot;
+    vehicleRenderRoot=null;
+    const root=sceneRoot();
+    if(!root?.traverse)return null;
+    let rig=null;
+    root.traverse(object=>{
+      if(!rig&&String(object?.name||'')===VEHICLE_HEADLIGHT_RIG_NAME)rig=object;
+    });
+    const candidate=rig?.parent?.parent||null;
+    if(candidate?.position)vehicleRenderRoot=candidate;
+    return vehicleRenderRoot;
+  }
+
+  function readObserverOffset(){
+    const render=readRealOffset();
+    if(offsetOverride){
+      return {
+        x:finite(offsetOverride.x),z:finite(offsetOverride.z),
+        renderOriginX:render.x,renderOriginZ:render.z,
+        observerSource:'startup-route-seed'
+      };
+    }
+    const vehicle=findVehicleRenderRoot();
+    const renderX=finite(vehicle?.position?.x,NaN),renderZ=finite(vehicle?.position?.z,NaN);
+    if(Number.isFinite(renderX)&&Number.isFinite(renderZ)){
+      return {
+        x:render.x+renderX,z:render.z+renderZ,
+        renderOriginX:render.x,renderOriginZ:render.z,
+        observerSource:'vehicle-render-root'
+      };
+    }
+    return {
+      x:render.x,z:render.z,
+      renderOriginX:render.x,renderOriginZ:render.z,
+      observerSource:'render-origin-fallback'
+    };
+  }
+
+  const readParentRenderOffset=()=>{
+    const render=readRealOffset();
+    const observer=readObserverOffset();
+    // The core historically used one coordinate for both streaming interest and
+    // render origin. R5 lets its logical center follow the vehicle continuously,
+    // while this compensation keeps chunk scene placement anchored to worldOffset.
+    return {
+      x:finite(parentForestGroup?.position?.x)+(render.x-observer.x),
+      z:finite(parentForestGroup?.position?.z)+(render.z-observer.z)
+    };
+  };
 
   function routeDirectionAt(center){
     try{
@@ -94,7 +148,10 @@ export function createForestChunkStreamer(options){
     entry.core=createForestChunkStreamerCore({
       ...options,
       forestGroup:group,
-      getWorldOffset:()=>offsetOverride||readRealOffset(),
+      // Logical forest interest follows the moving vehicle, not the stepped
+      // floating render origin. Extra renderOrigin* fields are consumed only by
+      // the terrain sampler so rendered-ground sampling still uses worldOffset.
+      getWorldOffset:readObserverOffset,
       getParentRenderOffset:readParentRenderOffset,
       onStats:stats=>updateVisible(entry,stats)
     });
@@ -260,10 +317,17 @@ export function createForestChunkStreamer(options){
   }
 
   function snapshot(){
-    const raw=activeBase().stats?.()||{},seed=activeEntry;
+    const raw=activeBase().stats?.()||{},seed=activeEntry,observer=readObserverOffset();
+    const lag=Math.hypot(observer.x-observer.renderOriginX,observer.z-observer.renderOriginZ);
     return {
       enabled:true,observerMode:'p931-ahead-priority',startupMode:'p934-startup-route-seed',streamingMode:'p940-dirty-priority-queue',
       hitchMode:'p941-frame-window-runtime',legacyObserverMode:'p929-direct-last-slice',
+      observer:{
+        source:observer.observerSource,
+        x:round3(observer.x),z:round3(observer.z),
+        renderOriginX:round3(observer.renderOriginX),renderOriginZ:round3(observer.renderOriginZ),
+        renderOriginLagM:round3(lag)
+      },
       routeCache:{key:activeEntry.key,slots:entries.length,maxSlots:ROUTE_CACHE_SLOTS,lastRebase:lastRouteCacheRebase?{...lastRouteCacheRebase}:null},
       trees:visible.trees,near:visible.near,mid:visible.mid,far:visible.far,edge:visible.edge,
       activeChunks:finite(raw.activeChunks),cachedChunks:finite(raw.cachedChunks),queuedChunks:finite(raw.queuedChunks),
