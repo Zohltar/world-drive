@@ -14,6 +14,9 @@ import {
 // update remains; candidate generation and matrix upload already happened idle.
 // P9.40 keeps the same visual/streaming policy while removing redundant queue
 // sorting and cache trimming from every candidate slice.
+// Issue #12 R3 keeps near-visible work highest priority but lets the forward
+// prefetch reserve interleave with far visible work. A persistent visible backlog
+// must never starve every forward reserve chunk indefinitely.
 export function createForestChunkStreamer({
   THREE,
   forestGroup,
@@ -48,11 +51,7 @@ export function createForestChunkStreamer({
   const catchupSliceBudgetMs=Math.max(sliceBudgetMs,FOREST.forestCatchupSliceBudgetMs||1.55);
   const catchupCandidateBatchSize=Math.max(candidateBatchSize,FOREST.forestCatchupCandidatesPerSlice||20);
   const catchupMinIdleMs=Math.max(1.5,FOREST.forestCatchupMinIdleMs||3.2);
-  const idleTimeoutMs=Math.max(20,FOREST.forestIdleTimeoutMs||90);
-  const backlogIdleTimeoutMs=Math.max(
-    8,
-    Math.min(idleTimeoutMs,FOREST.forestBacklogIdleTimeoutMs||20)
-  );
+  const prefetchPriorityPenalty=240;
 
   let assets=null;
   let active=new Map();
@@ -99,8 +98,6 @@ export function createForestChunkStreamer({
     manualBounds:true,
     sliceBudgetMs,
     candidateBatchSize,
-    idleTimeoutMs,
-    backlogIdleTimeoutMs,
     queueSorts:0,
     lastQueueSortMs:0,
     maxQueueSortMs:0,
@@ -120,6 +117,8 @@ export function createForestChunkStreamer({
     prefetchLeadM,
     prefetchRadiusM,
     prefetchMinForwardM,
+    prefetchPriorityBand:1,
+    prefetchPriorityPenalty,
     prefetchMeshPrepares:0,
     prefetchHits:0,
     catchupQueueThreshold,
@@ -213,7 +212,17 @@ export function createForestChunkStreamer({
     const forward=signedForwardDistance(chunk,center);
     if(!visibleKeys.has(chunk.key)){
       const pc=prefetchPriorityCenter(center);
-      return {band:2,score:chunkPriorityDistance(chunk,pc)+Math.max(0,prefetchMinForwardM-forward)*2,nearDistance,forward};
+      // Issue #12 R3: prefetch used to be hard band 2, below every far-visible
+      // job. With a persistent high-speed visible backlog that made all reserve
+      // chunks starve forever (human snapshot: wanted 24, ready 0, queued 24).
+      // Keep a modest score penalty so forward visible work still wins locally,
+      // but let reserve work interleave before far/rear visible debt.
+      return {
+        band:1,
+        score:prefetchPriorityPenalty+chunkPriorityDistance(chunk,pc)+Math.max(0,prefetchMinForwardM-forward)*2,
+        nearDistance,
+        forward
+      };
     }
     if(nearDistance<=nearPriorityDistance){
       let score=nearDistance;
@@ -583,14 +592,8 @@ export function createForestChunkStreamer({
   }
 
   function scheduleIdle(callback){
-    const timeout=queue.length>=catchupQueueThreshold
-      ?backlogIdleTimeoutMs
-      :idleTimeoutMs;
-    if(typeof globalThis.requestIdleCallback==='function'){
-      globalThis.requestIdleCallback(callback,{timeout});
-    }else{
-      setTimeout(()=>callback({didTimeout:true,timeRemaining:()=>5}),0);
-    }
+    if(typeof globalThis.requestIdleCallback==='function')globalThis.requestIdleCallback(callback,{timeout:90});
+    else setTimeout(()=>callback({didTimeout:true,timeRemaining:()=>5}),0);
   }
 
   function queueJob(desc,{replace=false}={}){
