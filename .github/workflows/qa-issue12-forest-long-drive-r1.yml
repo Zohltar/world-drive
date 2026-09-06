@@ -29,6 +29,9 @@ jobs:
       - name: Issue 12 forward prefetch starvation QA
         run: node qa/qa-issue12-forest-prefetch-starvation-r3.mjs
 
+      - name: Issue 12 recenter builder preservation QA
+        run: node qa/qa-issue12-forest-recenter-builder-preservation-r4.mjs
+
       - name: Existing rolling forest prefetch QA
         run: node qa/qa-forest-p936-rolling-prefetch.mjs
 
