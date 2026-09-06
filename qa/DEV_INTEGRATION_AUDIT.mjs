@@ -1,8 +1,9 @@
 // Dev Integration permanent regression inventory.
 // Issue #9 stays here after certification: future imagery/terrain changes must
 // keep the road-aware satellite tessellation clearance contract green.
-// Issue #12 keeps accumulated scenery blocker lookup bounded on long drives and
-// prevents the rolling forward forest reserve from starving behind far-visible debt.
+// Issue #12 keeps accumulated scenery blocker lookup bounded on long drives,
+// prevents the rolling forward reserve from starving behind far-visible debt,
+// and preserves distant partial builders across ordinary near-terrain refreshes.
 await import('./qa-post-refactor-dom-safety-r1.mjs');
 await import('./qa-route-generation-race-r3.mjs');
 await import('./qa-route-generation-p935-r3.mjs');
@@ -31,4 +32,5 @@ await import('./qa-phase-o-naming-boundary.mjs');
 await import('./qa-issue9-road-aware-grid-r2.mjs');
 await import('./qa-issue12-forest-blocker-index-r1.mjs');
 await import('./qa-issue12-forest-prefetch-starvation-r3.mjs');
+await import('./qa-issue12-forest-recenter-builder-preservation-r4.mjs');
 await import('./DEV_INTEGRATION_AUDIT_BASE.mjs');
