@@ -64,6 +64,12 @@ export function createForestTerrainSampler({
     if(!array||stride<3)return null;
 
     const offset=getWorldOffset()||{x:0,z:0};
+    // Issue #12 R5: the forest streamer may expose the moving vehicle as its
+    // logical x/z observer while carrying the stepped render origin separately.
+    // Ground geometry is render-space data, so terrain sampling must stay tied
+    // to the render origin rather than to the moving streaming-interest center.
+    const renderOriginX=Number.isFinite(Number(offset.renderOriginX))?Number(offset.renderOriginX):(Number(offset.x)||0);
+    const renderOriginZ=Number.isFinite(Number(offset.renderOriginZ))?Number(offset.renderOriginZ):(Number(offset.z)||0);
     ground.getWorldPosition(worldPosition);
 
     return {
@@ -79,8 +85,8 @@ export function createForestTerrainSampler({
       halfD:depth*.5,
       stepX:width/gridX,
       stepZ:depth/gridZ,
-      centerX:(Number(offset.x)||0)+worldPosition.x,
-      centerZ:(Number(offset.z)||0)+worldPosition.z,
+      centerX:renderOriginX+worldPosition.x,
+      centerZ:renderOriginZ+worldPosition.z,
       baseY:worldPosition.y
     };
   }
