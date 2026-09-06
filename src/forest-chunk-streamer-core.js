@@ -48,6 +48,11 @@ export function createForestChunkStreamer({
   const catchupSliceBudgetMs=Math.max(sliceBudgetMs,FOREST.forestCatchupSliceBudgetMs||1.55);
   const catchupCandidateBatchSize=Math.max(candidateBatchSize,FOREST.forestCatchupCandidatesPerSlice||20);
   const catchupMinIdleMs=Math.max(1.5,FOREST.forestCatchupMinIdleMs||3.2);
+  const idleTimeoutMs=Math.max(20,FOREST.forestIdleTimeoutMs||90);
+  const backlogIdleTimeoutMs=Math.max(
+    8,
+    Math.min(idleTimeoutMs,FOREST.forestBacklogIdleTimeoutMs||20)
+  );
 
   let assets=null;
   let active=new Map();
@@ -94,6 +99,8 @@ export function createForestChunkStreamer({
     manualBounds:true,
     sliceBudgetMs,
     candidateBatchSize,
+    idleTimeoutMs,
+    backlogIdleTimeoutMs,
     queueSorts:0,
     lastQueueSortMs:0,
     maxQueueSortMs:0,
@@ -296,7 +303,7 @@ export function createForestChunkStreamer({
     const outerEnd=FOREST.maxDistance||1750;
     if(distance<=nearFull)return 1;
     if(distance<nearSparse){
-      const t=smooth01((distance-nearFull)/Math.max(1,nearSparse-nearFull));
+      const t=smooth01((distance-nearFull)/Math.max(1,nearSparse-nearSparse));
       return 1-(1-farFraction)*t;
     }
     if(distance<=outerStart)return farFraction;
@@ -576,8 +583,14 @@ export function createForestChunkStreamer({
   }
 
   function scheduleIdle(callback){
-    if(typeof globalThis.requestIdleCallback==='function')globalThis.requestIdleCallback(callback,{timeout:90});
-    else setTimeout(()=>callback({didTimeout:true,timeRemaining:()=>5}),0);
+    const timeout=queue.length>=catchupQueueThreshold
+      ?backlogIdleTimeoutMs
+      :idleTimeoutMs;
+    if(typeof globalThis.requestIdleCallback==='function'){
+      globalThis.requestIdleCallback(callback,{timeout});
+    }else{
+      setTimeout(()=>callback({didTimeout:true,timeRemaining:()=>5}),0);
+    }
   }
 
   function queueJob(desc,{replace=false}={}){
