@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import {createForestChunkStreamer} from '../src/forest-chunk-streamer.js';
 import {FOREST_STREAMING_POLICY as FOREST} from '../src/forest-streaming-policy.js';
+import {ensureWorldDriveDiagnostics} from '../src/diagnostics.js';
 
 function expect(condition,message){if(!condition)throw new Error(message);}
 
@@ -103,6 +104,12 @@ globalThis.setInterval=(fn,ms)=>({fn,ms});
 globalThis.clearInterval=()=>{};
 
 try{
+  // The production wrapper retries diagnostic installation until this callable
+  // exists. Real World Drive installs it before forest activation; the QA must do
+  // the same or Node intentionally keeps a retry timer alive forever.
+  const diagnostics=ensureWorldDriveDiagnostics();
+  diagnostics.framePacing.snapshot=()=>({});
+
   const streamer=createForestChunkStreamer({
     THREE,
     forestGroup,
