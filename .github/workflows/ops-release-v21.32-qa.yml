@@ -25,9 +25,7 @@ jobs:
       - name: Install
         run: npm ci
       - name: Verify stable branding/version contract
-        env:
-          GITHUB_REF_NAME: release/v21.32
-        run: node qa/qa-version-branding-a6.mjs
+        run: node --input-type=module -e "process.env.GITHUB_REF_NAME='release/v21.32'; await import('./qa/qa-version-branding-a6.mjs')"
       - name: Runtime import and debt audit
         run: node qa/DEV_INTEGRATION_AUDIT.mjs
       - name: Root layout QA
