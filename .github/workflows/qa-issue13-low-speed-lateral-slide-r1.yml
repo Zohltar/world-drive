@@ -29,7 +29,7 @@ jobs:
         run: npm ci
       - name: Issue 13 low-speed lateral slide stress probe
         run: node qa/qa-issue13-low-speed-lateral-slide-repro-r1.mjs
-      - name: Existing low-speed traction regression
-        run: node qa/V21_21_15_LOW_SPEED_TRACTION_QA.mjs
+      - name: Current driving dynamics simulation matrix
+        run: node qa/DEV_DRIVING_SIM_QA.mjs
       - name: Issue 10 steep-slope contact regression
         run: node qa/qa-issue10-steep-slope-contact-r2.mjs
