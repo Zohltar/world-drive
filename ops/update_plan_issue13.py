@@ -1,0 +1,179 @@
+from pathlib import Path
+
+path = Path('docs/WORLD_DRIVE_EVOLUTION_AND_CORRECTION_PLAN.md')
+text = path.read_text(encoding='utf-8')
+
+def replace_once(old, new, label):
+    global text
+    count = text.count(old)
+    if count != 1:
+        raise SystemExit(f'{label}: expected exactly one match, found {count}')
+    text = text.replace(old, new, 1)
+
+replace_once(
+    '**Issue #10:** **OPEN / steep-slope tire grip and steering instability / deferred**  ',
+    '**Issue #10:** **DONE/CERTIFIED — HUMAN PASS (2026-09-12) — steep planar road-contact correction**  ',
+    'checkpoint issue 10'
+)
+
+replace_once(
+    '**Issue #12:** **OPEN / PARKED — forest streaming falls behind after sustained driving; resume investigation inside Block 8 biome work**  \n**Block 8 — Biome-aware natural scenery:**',
+    '**Issue #12:** **OPEN / PARKED — forest streaming falls behind after sustained driving; resume investigation inside Block 8 biome work**  \n**Issue #13:** **DONE/CERTIFIED — HUMAN PASS (2026-09-12) — bounded road-articulation contact correction**  \n**Block 8 — Biome-aware natural scenery:**',
+    'checkpoint issue 13'
+)
+
+checkpoint_marker = 'GitHub Issue #9: **CLOSED / COMPLETED (2026-09-05)**.\n\n## Exact next action'
+checkpoint_insert = '''GitHub Issue #9: **CLOSED / COMPLETED (2026-09-05)**.
+
+## Issue #10 certified checkpoint — steep-slope tire grip and steering instability
+
+Final human-tested candidate:
+
+```text
+candidate/issue-10-steep-slope-grip-r1
+e263198ff13fccd068a0571dadf9e4fd70be393c
+```
+
+Diagnosis and certified correction:
+
+- on a uniform steep planar grade, the legacy suspension/contact path could consume road pitch as suspension travel;
+- uphill, the downhill/rear axle could be marked out of contact; downhill, the front/steering axle could be marked out of contact;
+- those false contact flags removed per-wheel normal force and could collapse steering/yaw authority;
+- `src/physics/steep-slope-contact.js` restores contact only while road support owns the chassis, the vehicle is not airborne, and the wheel-ground samples agree on one steep planar support surface;
+- no tire friction, steering curve, suspension constant, engine/brake tuning, terrain authority, Issue #8 wheel-ground ownership or airborne/crest solver was retuned.
+
+Permanent Issue #10 QA:
+
+```text
+qa/qa-issue10-steep-slope-contact-r2.mjs
+qa/DEV_INTEGRATION_AUDIT.mjs
+```
+
+Focused correction run `34707273234`: PASS.  
+Human steep-grade checkpoint: **PASS (2026-09-12)**.  
+Integrated to `dev` with merge commit `c918fbaf3c99815b200d0a30eb01c22cc7fca50f`.  
+Post-integration exact-head Dev Integration `34711772544`: **PASS**.  
+GitHub Issue #10: **CLOSED / COMPLETED (2026-09-12)**.
+
+## Issue #13 certified checkpoint — low-speed four-wheel lateral slide on sloped corner exits
+
+Final human-tested candidate/runtime head:
+
+```text
+candidate/issue-13-low-speed-lateral-slide-r1
+814035fd8dc88ef44191a45b8ec4a8d1d33e106b
+```
+
+Diagnosis and certified correction:
+
+- a sloped corner exit with changing road bank/superelevation can make the four wheel-ground samples form a shallow saddle rather than a perfect plane;
+- the legacy vertical-gap contact test could interpret bounded suspension articulation as separation and falsely drop two diagonal contacts;
+- dynamic low-speed stress reproduced 14 pathological cases before correction; the worst reproduced BMW i3 case reached ~11.13° sideslip at 10.8 km/h versus ~0.28° on flat support;
+- the correction adds a separate bounded road-articulation restoration path that restores only false contacts whose best-plane residual fits inside a bounded fraction of real suspension travel;
+- large one-corner discontinuities remain true contact losses and airborne/crest ownership remains unchanged;
+- no global tire-grip increase, steering-curve retune, stability assist or generic friction multiplier was introduced.
+
+Permanent Issue #13 QA:
+
+```text
+qa/qa-issue13-low-speed-lateral-slide-repro-r1.mjs
+qa/qa-issue13-low-speed-lateral-runtime-r2.mjs
+qa/DEV_INTEGRATION_AUDIT.mjs
+.github/workflows/qa-issue13-low-speed-lateral-slide-r1.yml
+```
+
+Final candidate exact-head run `34712739118`: **PASS**; pathological very-low-speed trajectory cases reduced **14 → 0**, while Issue #10, airborne/crest, road re-entry, wheel-ground ownership, driving simulation, build and code-split regressions stayed green.  
+Human checkpoint: **PASS (2026-09-12)** — the reported slide is gone in the tested scenario and the user also reports generally more stable chassis support.  
+Integrated to `dev` by fast-forward to `814035fd8dc88ef44191a45b8ec4a8d1d33e106b`.  
+Post-integration exact-head Dev Integration `34713263380`: **PASS**.  
+GitHub Issue #13: **CLOSED / COMPLETED (2026-09-12)**.
+
+## Exact next action'''
+replace_once(checkpoint_marker, checkpoint_insert, 'certified checkpoints')
+
+replace_once(
+    '- Issue #10 remains **deferred**; if prioritized, reproduce steep-slope grip/steering behavior before any physics tuning;\n',
+    '',
+    'remove resolved issue 10 from unresolved list'
+)
+
+replace_once(
+    'Do not modify `main` without explicit user approval. Do not begin a deferred block merely because Issue #9 is complete.',
+    'Do not modify `main` without explicit user approval. Do not begin a deferred block merely because the latest certified corrections are complete.',
+    'exact next action tail'
+)
+
+ledger_marker = '| P2 | Coarse satellite imagery triangles could cross asphalt on steep road cuts | imagery road-aware geometry refinement | **DONE/CERTIFIED — Issue #9 — HUMAN YUNGAS PASS** |'
+ledger_insert = ledger_marker + '''
+| P2 | Steep planar road pitch could be consumed as suspension travel and drop an axle contact | `src/physics/steep-slope-contact.js`, vehicle presentation/contact path | **DONE/CERTIFIED — Issue #10 — HUMAN PASS** |
+| P2 | Bounded pitch/bank articulation could drop diagonal wheel contacts and trigger a low-speed lateral slide | `src/physics/steep-slope-contact.js`, `src/vehicles/vehicle-presentation.js` | **DONE/CERTIFIED — Issue #13 — HUMAN PASS** |'''
+replace_once(ledger_marker, ledger_insert, 'audit ledger issues 10 and 13')
+
+completed_marker = '## Issue #9 — terrain intrusion over road\n\n**DONE/CERTIFIED — HUMAN YUNGAS VISUAL/PERFORMANCE PASS (2026-09-05).** See checkpoint above.'
+completed_insert = completed_marker + '''
+
+## Issue #10 — steep-slope tire grip and steering instability
+
+**DONE/CERTIFIED — HUMAN PASS (2026-09-12).** See checkpoint above.
+
+## Issue #13 — low-speed four-wheel lateral slide on sloped corner exits
+
+**DONE/CERTIFIED — HUMAN PASS (2026-09-12).** See checkpoint above.'''
+replace_once(completed_marker, completed_insert, 'completed issues 10 and 13')
+
+replace_once(
+    'Do not automatically promote deferred issues into active work. Preserve the certified Issue #9 correction and all prior certified behavior while waiting for a new priority.',
+    'Do not automatically promote deferred issues into active work. Preserve the certified Issue #9 terrain correction, Issue #10 steep-planar contact correction, Issue #13 bounded-articulation correction and all prior certified behavior while waiting for a new priority.',
+    'active block protected corrections'
+)
+
+old_issue10 = '''## Issue #10 — steep-slope tire grip and steering instability
+
+**OPEN / USER-REPORTED / DEFERRED.**
+
+On very steep grades, uphill small steering corrections can trigger a spin/loss of directional stability; downhill the vehicle can continue almost straight despite steering input. Reproduce first and inspect large-pitch wheel support, normal-load/grade effects, tire-force coupling, yaw authority and braking/engine-load interaction. Do not retune accepted flat/normal-grade handling speculatively.'''
+new_issue10 = '''## Issue #10 — steep-slope tire grip and steering instability
+
+**CLOSED / DONE/CERTIFIED — HUMAN PASS (2026-09-12).**
+
+The defect was reproduced as false axle contact loss on steep but planar road support: road pitch was being consumed as suspension travel. The accepted correction restores contact only when the road already owns support, the vehicle is not airborne and wheel-ground samples agree on one steep planar surface. Preserve this narrow ownership contract; do not replace it with global grip, steering or suspension retuning.'''
+replace_once(old_issue10, new_issue10, 'issue 10 protocol')
+
+issue12_tail = 'When Block 8 is activated, reopen Issue #12 first and use a diagnostic-first approach: trace actual forest job/builder lifetime, completion, abandonment/restart reasons, wanted-set churn and prefetch readiness under sustained driving. Certify a stable forest-readiness baseline before biome-specific asset selection is layered on top. Until then, do not spend additional standalone correction cycles on Issue #12.\n\n---'
+issue13_protocol = '''When Block 8 is activated, reopen Issue #12 first and use a diagnostic-first approach: trace actual forest job/builder lifetime, completion, abandonment/restart reasons, wanted-set churn and prefetch readiness under sustained driving. Certify a stable forest-readiness baseline before biome-specific asset selection is layered on top. Until then, do not spend additional standalone correction cycles on Issue #12.
+
+## Issue #13 — low-speed four-wheel lateral slide on sloped corner exits
+
+**CLOSED / DONE/CERTIFIED — HUMAN PASS (2026-09-12).**
+
+The certified cause was bounded road articulation being misclassified as diagonal wheel separation on sloped corner exits. Preserve the accepted bounded-articulation contact restoration in `src/physics/steep-slope-contact.js` and its vehicle-presentation integration. It must remain road-only, non-airborne and bounded by real suspension travel; large discontinuities must still lose contact. Do not turn this correction into a generic low-speed stability assist or global tire-grip increase.
+
+---'''
+replace_once(issue12_tail, issue13_protocol, 'issue 13 protocol')
+
+protected_marker = 'Do not replace this with broad terrain flattening, global imagery tessellation increases, or physics retuning without new causal evidence and dedicated QA.\n\n---'
+protected_insert = '''Do not replace this with broad terrain flattening, global imagery tessellation increases, or physics retuning without new causal evidence and dedicated QA.
+
+## Issue #10 — steep planar road-contact ownership
+
+**CLOSED / DONE/CERTIFIED — HUMAN PASS (2026-09-12).**
+
+Protected correction in `src/physics/steep-slope-contact.js` restores false wheel contacts only for supported, non-airborne, steep planar road surfaces whose wheel samples agree with one plane. Preserve normal-load and steering/yaw authority without fabricating off-road, airborne or genuinely non-planar contact.
+
+## Issue #13 — bounded road-articulation contact ownership
+
+**CLOSED / DONE/CERTIFIED — HUMAN PASS (2026-09-12).**
+
+Protected correction extends the same contact owner with a separate bounded-articulation path for changing pitch/bank road support. It may restore only false contacts whose best-plane residual fits inside the configured fraction of actual suspension travel. Preserve real discontinuities, airborne/crest behavior and accepted tire/steering calibration.
+
+---'''
+replace_once(protected_marker, protected_insert, 'protected evidence issues 10 and 13')
+
+replace_once(
+    '- wheel-ground support including issue #8;',
+    '- wheel-ground support including issues #8, #10 and #13;',
+    'protected wheel-ground bullet'
+)
+
+path.write_text(text, encoding='utf-8')
+print('Updated canonical plan:', path)
