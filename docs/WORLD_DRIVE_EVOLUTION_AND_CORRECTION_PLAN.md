@@ -70,6 +70,7 @@ Before coding, be able to answer:
 **Issue #10:** **OPEN / steep-slope tire grip and steering instability / deferred**  
 **Issue #11:** **OPEN / one civil-traffic model rotated ~90° / deferred**  
 **Issue #12:** **OPEN / forest streaming falls behind after ~5 km / deferred**  
+**Block 8 — Biome-aware natural scenery:** **PLANNED / DEFERRED — start only after Issue #12 forest streaming/readiness is certified**  
 **Active correction block:** **NONE — await explicit user priority; do not auto-start deferred issues**  
 **Stable `main`:** `9055d5682afcf512c91b1ae7dc97dcb4b16d6d9e` — must remain untouched without explicit user approval.  
 **Previous rollback/reference:** `111df5d84bf7fd700590abbd9c129b303ac92fad`.
@@ -341,7 +342,8 @@ Current unresolved work is intentionally not auto-started:
 - Issue #10 remains **deferred**; if prioritized, reproduce steep-slope grip/steering behavior before any physics tuning;
 - Issue #11 remains **deferred**; if prioritized, identify the single affected civil-traffic model and audit its authored forward-axis/yaw contract before editing;
 - Issue #12 remains **deferred**; if prioritized, reproduce a long drive and capture forest queue/prefetch/frame-budget diagnostics before changing streaming policy;
-- Block 7 composition-root reduction remains **deferred / evidence-driven only**.
+- Block 7 composition-root reduction remains **deferred / evidence-driven only**;
+- Block 8 biome-aware natural scenery remains **planned/deferred** and should begin only after Issue #12 forest streaming/readiness is certified, so biome asset selection cannot obscure streaming diagnosis.
 
 Do not modify `main` without explicit user approval. Do not begin a deferred block merely because Issue #9 is complete.
 
@@ -360,6 +362,7 @@ Do not modify `main` without explicit user approval. Do not begin a deferred blo
 | P3 | Overpass allowlists/proxy limits differed across environments | Vite/browser/Electron Overpass paths | **DONE/CERTIFIED — Block 6** |
 | P3 | Local generated `public/world-data` was copied into `dist` on desktop builds | Vite/public-data/desktop packaging path | **DONE/CERTIFIED — Block 6B — HUMAN PASS** |
 | P2 | Coarse satellite imagery triangles could cross asphalt on steep road cuts | imagery road-aware geometry refinement | **DONE/CERTIFIED — Issue #9 — HUMAN YUNGAS PASS** |
+| P3 | Natural scenery is currently biome-agnostic, allowing ecologically wrong vegetation (for example conifers in tropical regions) | future biome classifier + forest/scenery asset selection | **PLANNED — Block 8** |
 | P3 | `src/main.js` remains large composition root | `src/main.js` | **DEFERRED — no refactor without concrete benefit** |
 
 ---
@@ -434,6 +437,62 @@ Do not automatically promote deferred issues into active work. Preserve the cert
 **DEFERRED — evidence-driven only.**
 
 `src/main.js` may be extracted further only if a concrete feature/bug/testability/performance need proves a coherent ownership boundary. Do not refactor for line count or organization alone.
+
+---
+
+## Block 8 — Biome-aware natural scenery generation
+
+**PLANNED / DEFERRED — start only after Issue #12 forest streaming/readiness is certified.**
+
+Goal: generate natural scenery that matches the biome/ecoregion of the driven route instead of using one globally uniform vegetation set. The primary acceptance example is explicit: a tropical route must not spawn boreal-style fir/conifer forest simply because the generic forest generator is active.
+
+Planned behavior and ownership:
+
+- determine a biome/ecoregion classification from route/world coordinates using a deterministic data source or classifier suitable for global driving;
+- keep biome classification separate from rendering/streaming ownership: the classifier answers **what natural palette belongs here**, while the existing scenery/forest streamer remains responsible for **when and where chunks are built**;
+- select biome-appropriate natural asset pools, including trees, shrubs, ground cover and other lightweight natural props rather than treating all natural scenery as one forest type;
+- support at minimum broad families such as boreal/coniferous, temperate mixed/deciduous, tropical, dry scrub/grassland, desert/semi-arid, alpine/tundra and wetland/riparian where reliable input data supports them;
+- respect authoritative local masks and exclusions already used by scenery: roads, buildings/landuse, hydro/water, bare rock/scree/sand/beach and other existing blocker semantics remain authoritative;
+- allow biome-specific density envelopes without making density a fixed visual-style override; for example desert/tundra should naturally yield sparse or zero tree cover while tropical/temperate forest regions may support dense tree cover;
+- use deterministic chunk/coordinate-based selection so revisiting the same route produces stable scenery instead of random species changes;
+- blend transitions between biome regions over a bounded corridor/chunk range so route crossings do not create a hard vegetation wall;
+- account for elevation where relevant to prevent obviously wrong vegetation above local tree-line/alpine zones, but do not couple this to vehicle physics or terrain authority;
+- if biome data is unavailable or uncertain, use a conservative generic/non-specific natural palette rather than injecting a strongly biome-specific species that can be visibly wrong;
+- prefer cached/offline/global data where practical; do not make every scenery chunk depend on a fragile live web request;
+- preserve current road geometry, terrain/DEM shape, hydro ownership, Photo ON/OFF behavior, multiplayer semantics and deterministic route/cache behavior.
+
+Implementation order when Block 8 is activated:
+
+1. **Data-source audit / prototype** — compare practical global biome/ecoregion sources or deterministic classifiers for coordinate lookup, licensing, resolution, offline size and runtime cost.
+2. **Biome service contract** — expose a small coordinate/route query returning biome id + confidence/transition information, with caching and a conservative fallback.
+3. **Palette registry** — map biome ids to authored natural asset pools and density rules without changing forest streaming scheduling.
+4. **Chunk integration** — forest/scenery generation chooses deterministic biome-appropriate assets for each chunk while preserving existing blockers and route cache ownership.
+5. **Transition blending** — validate smooth biome boundaries and elevation-sensitive variants where applicable.
+6. **Performance/readiness QA** — prove biome lookup and multi-palette selection do not regress the Issue #12-certified forest readiness, frame budgets, cache limits or long-drive behavior.
+7. **Human visual matrix** — test representative routes in materially different environments before certification.
+
+Minimum automated acceptance matrix should include representative coordinates/routes for at least:
+
+```text
+boreal / northern coniferous
+humid temperate / mixed forest
+tropical
+arid desert / semi-arid
+alpine or tundra
+```
+
+Required assertions include:
+
+- tropical classification cannot select a boreal-only fir/conifer pool;
+- desert/semi-arid classification cannot silently fall back to dense generic forest;
+- identical coordinates + biome data yield deterministic asset selection;
+- biome transition logic remains bounded and deterministic;
+- blocker/hydro/road exclusions remain authoritative;
+- Issue #12 readiness/performance regression suite remains green after integration.
+
+Human certification should compare at least one clearly tropical route, one northern/boreal route and one arid/high-altitude route. Visual plausibility, absence of obviously wrong dominant vegetation, smooth transitions and sustained-driving performance are acceptance criteria.
+
+Do not start Block 8 by simply swapping tree models globally. The biome classifier/data contract must exist first so asset selection has an explicit geographic owner.
 
 ---
 
