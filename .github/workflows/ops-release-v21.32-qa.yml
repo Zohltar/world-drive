@@ -25,8 +25,9 @@ jobs:
       - name: Install
         run: npm ci
       - name: Verify stable branding/version contract
-        run: |
-          node -e "const {spawnSync}=require('node:child_process'); const result=spawnSync(process.execPath,['qa/qa-version-branding-a6.mjs'],{stdio:'inherit',env:{...process.env,GITHUB_REF_NAME:'release/v21.32'}}); process.exit(result.status ?? 1)"
+        env:
+          GITHUB_REF_NAME: release/v21.32
+        run: node qa/qa-version-branding-a6.mjs
       - name: Runtime import and debt audit
         run: node qa/DEV_INTEGRATION_AUDIT.mjs
       - name: Root layout QA
