@@ -23,7 +23,9 @@ jobs:
         run: test "$(git rev-parse HEAD)" = "814035fd8dc88ef44191a45b8ec4a8d1d33e106b"
 
       - name: Update canonical correction plan
-        run: python ops/update_plan_issue13.py
+        run: |
+          git show "origin/ops/docs-issue13-checkpoint-20260912:ops/update_plan_issue13.py" > /tmp/update_plan_issue13.py
+          python /tmp/update_plan_issue13.py
 
       - name: Commit canonical checkpoint to dev
         run: |
