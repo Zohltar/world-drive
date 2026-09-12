@@ -1,0 +1,43 @@
+name: Issue 10 Steep Slope Correction QA
+
+on:
+  push:
+    branches:
+      - candidate/issue-10-steep-slope-grip-r1
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  qa:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install
+        run: npm ci
+      - name: Issue 10 steep-slope contact correction
+        run: node qa/qa-issue10-steep-slope-contact-r2.mjs
+      - name: Existing uphill load-transfer regression
+        run: node qa/qa-grip-uphill-r10.mjs
+      - name: Airborne and crest regression
+        run: node qa/qa-grip-jump-r6.mjs
+      - name: Road reentry vertical support regression
+        run: node qa/qa-wheel-ground-reentry-r14.mjs
+      - name: Driving dynamics simulation matrix
+        run: node qa/DEV_DRIVING_SIM_QA.mjs
+      - name: Wheel-ground ownership regression
+        run: node qa/qa-source-tree-r5b-wheel-ground-support.mjs
+      - name: Permanent Dev Integration audit
+        run: node qa/DEV_INTEGRATION_AUDIT.mjs
+      - name: Production build
+        run: npm run build
+      - name: Production code split QA
+        run: node qa/BUILD_V21_31_CODE_SPLIT_QA.mjs

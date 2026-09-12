@@ -1,5 +1,6 @@
 import { createVehiclePresentation as createBaseVehiclePresentation } from './vehicle-presentation-v21.29.js';
 import { antiRollCalibration } from '../physics/vehicle-dynamics.js';
+import { restoreSteepPlanarRoadContacts } from '../physics/steep-slope-contact.js';
 
 function clamp(v,min,max){return Math.max(min,Math.min(max,Number(v)||0));}
 function smoothstep01(v){const t=clamp(v,0,1);return t*t*(3-2*t);}
@@ -11,10 +12,17 @@ export function createVehiclePresentation(args={}){
 
   function updateSuspensionVisuals(dt,onRoad,currentSteerAngle){
     base.updateSuspensionVisuals(dt,onRoad,currentSteerAngle);
-    if(base.airborne)return;
 
     const state=getDrivingState()||{};
     const vehicle=state.VEHICLE||{};
+    restoreSteepPlanarRoadContacts({
+      contacts:Array.isArray(base.wheelContacts)?base.wheelContacts:[],
+      onRoad,
+      airborne:base.airborne,
+      suspensionTravel:vehicle.suspensionTravel
+    });
+    if(base.airborne)return;
+
     const speed=Number(state.speed)||0;
     const wheelbase=Math.max(1.2,Number(vehicle.wheelbase)||2.7);
     const yawRate=(speed/wheelbase)*Math.tan(Number(currentSteerAngle)||0);
