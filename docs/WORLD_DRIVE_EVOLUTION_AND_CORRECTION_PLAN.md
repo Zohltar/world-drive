@@ -71,6 +71,7 @@ Before coding, be able to answer:
 **Issue #11:** **OPEN / one civil-traffic model rotated ~90° / deferred**  
 **Issue #12:** **OPEN / forest streaming falls behind after ~5 km / deferred**  
 **Block 8 — Biome-aware natural scenery:** **PLANNED / DEFERRED — start only after Issue #12 forest streaming/readiness is certified**  
+**Block 9 — AI-assisted 3D asset authoring and selective GLB modernization:** **PLANNED / DEFERRED — pilot-first, no wholesale asset replacement**  
 **Active correction block:** **NONE — await explicit user priority; do not auto-start deferred issues**  
 **Stable `main`:** `9055d5682afcf512c91b1ae7dc97dcb4b16d6d9e` — must remain untouched without explicit user approval.  
 **Previous rollback/reference:** `111df5d84bf7fd700590abbd9c129b303ac92fad`.
@@ -343,7 +344,8 @@ Current unresolved work is intentionally not auto-started:
 - Issue #11 remains **deferred**; if prioritized, identify the single affected civil-traffic model and audit its authored forward-axis/yaw contract before editing;
 - Issue #12 remains **deferred**; if prioritized, reproduce a long drive and capture forest queue/prefetch/frame-budget diagnostics before changing streaming policy;
 - Block 7 composition-root reduction remains **deferred / evidence-driven only**;
-- Block 8 biome-aware natural scenery remains **planned/deferred** and should begin only after Issue #12 forest streaming/readiness is certified, so biome asset selection cannot obscure streaming diagnosis.
+- Block 8 biome-aware natural scenery remains **planned/deferred** and should begin only after Issue #12 forest streaming/readiness is certified, so biome asset selection cannot obscure streaming diagnosis;
+- Block 9 AI-assisted 3D asset authoring remains **planned/deferred**; begin with one controlled pilot asset and do not replace accepted GLBs wholesale without measured visual/runtime benefit.
 
 Do not modify `main` without explicit user approval. Do not begin a deferred block merely because Issue #9 is complete.
 
@@ -363,6 +365,7 @@ Do not modify `main` without explicit user approval. Do not begin a deferred blo
 | P3 | Local generated `public/world-data` was copied into `dist` on desktop builds | Vite/public-data/desktop packaging path | **DONE/CERTIFIED — Block 6B — HUMAN PASS** |
 | P2 | Coarse satellite imagery triangles could cross asphalt on steep road cuts | imagery road-aware geometry refinement | **DONE/CERTIFIED — Issue #9 — HUMAN YUNGAS PASS** |
 | P3 | Natural scenery is currently biome-agnostic, allowing ecologically wrong vegetation (for example conifers in tropical regions) | future biome classifier + forest/scenery asset selection | **PLANNED — Block 8** |
+| P3 | Current authored GLBs come from heterogeneous sources with inconsistent topology, axes, materials and movable-part/light ownership; newer AI-assisted 3D authoring may enable cleaner World Drive-specific assets | future AI/CAD/Blender authoring pipeline + vehicle/scenery asset QA | **PLANNED — Block 9** |
 | P3 | `src/main.js` remains large composition root | `src/main.js` | **DEFERRED — no refactor without concrete benefit** |
 
 ---
@@ -493,6 +496,116 @@ Required assertions include:
 Human certification should compare at least one clearly tropical route, one northern/boreal route and one arid/high-altitude route. Visual plausibility, absence of obviously wrong dominant vegetation, smooth transitions and sustained-driving performance are acceptance criteria.
 
 Do not start Block 8 by simply swapping tree models globally. The biome classifier/data contract must exist first so asset selection has an explicit geographic owner.
+
+---
+
+## Block 9 — AI-assisted 3D asset authoring and selective GLB modernization
+
+**PLANNED / DEFERRED — pilot-first. GLB remains the runtime interchange format unless a separate future decision explicitly changes that contract.**
+
+Goal: evaluate whether modern AI-assisted 3D/CAD/Blender workflows can produce World Drive-specific assets that are visually superior and structurally cleaner than the heterogeneous third-party GLBs currently in use, while preserving or improving runtime performance. This is an **authoring-pipeline evolution**, not a plan to replace GLB loading/rendering itself.
+
+Primary opportunities:
+
+- create vehicle assets from curated multi-view references, dimensions and known geometry instead of accepting whatever topology/orientation/material layout exists in a downloaded model;
+- author moving/interactive parts intentionally: wheels, steering wheel, suspension-visible pieces where relevant, brake calipers, doors if ever needed, and other parts with explicit pivots/axes;
+- author lighting surfaces intentionally: low beam/high beam, tail/running lights, brake lights, reverse lights and turn signals as clean named regions/materials rather than reverse-engineering emissive surfaces after import;
+- create predictable windshield/window materials and interior geometry suitable for first-person camera use;
+- produce biome/scenery families for Block 8 with consistent style, scale, topology and LOD policy rather than mixing unrelated asset sources;
+- reduce recurring integration defects such as wrong forward axis, wheels rotating on the wrong axis, rotating calipers, hidden duplicate geometry, unusable material names or lighting regions that cannot be isolated cleanly.
+
+Authoring contract to target:
+
+```text
+reference images / dimensional data / authored requirements
+→ AI-assisted reconstruction or CAD/Blender generation
+→ human/automated geometry review
+→ topology cleanup + UV/PBR material pass
+→ explicit object naming/pivots/light ownership
+→ LOD + collision/proxy generation where required
+→ optimization/compression
+→ GLB export
+→ World Drive asset QA + runtime benchmark
+```
+
+The pipeline may use advanced multimodal/3D-capable models and tools (including Astra-class workflows when useful), but the canonical contract must remain **tool-agnostic**: generated assets are accepted based on measurable asset quality and runtime behavior, not because they were produced by a specific model/vendor.
+
+### Pilot before any fleet replacement
+
+Start with exactly one vehicle whose current behavior and visuals are well understood — preferred candidates are the ID.4 or WRX. The incumbent GLB remains the baseline and rollback asset.
+
+The pilot must preserve or improve:
+
+- exterior proportions and recognizable vehicle identity;
+- interior quality where the first-person camera can see it;
+- wheel position, radius, track and wheelbase alignment;
+- correct vehicle-forward axis and consistent local axes;
+- wheel/tire/mag rotation ownership;
+- fixed caliper/non-rotating brake component ownership;
+- steering-wheel pivot/column axis;
+- windshield/window transparency and night behavior;
+- headlights, running lights, brake lights, reverse lights and indicators;
+- existing vehicle physics contract — replacement art must not silently retune handling or collider/support behavior.
+
+### Runtime/asset acceptance gate
+
+Do not accept a generated replacement based on screenshots alone. Compare the pilot against the incumbent GLB using the same route/camera/settings and record at minimum:
+
+```text
+triangle / vertex count
+material count
+draw-call impact
+GLB size on disk
+decoded/estimated GPU memory
+load/decode time
+first-use hitch behavior
+steady-state FPS / frame time
+LOD behavior if present
+visual quality exterior
+visual quality first-person/interior
+night-light correctness
+animation/pivot correctness
+```
+
+A visually superior asset may still be rejected if its topology, memory, draw calls or frame-time cost are materially worse without enough visual benefit.
+
+### Topology/material quality requirements
+
+- avoid gratuitous hidden/interior geometry that never contributes to gameplay visuals;
+- avoid uncontrolled ultra-high-poly reconstruction;
+- use clean normals/tangents and no obvious shading seams on primary body panels;
+- keep material count intentionally bounded;
+- prefer PBR materials compatible with the existing rendering path;
+- ensure transparent materials do not recreate known white-window/reverse-light ordering artifacts;
+- keep authored mesh/object names stable enough for registry/controller binding and permanent QA;
+- where source reconstruction is imperfect, human cleanup in Blender/CAD is expected rather than accepting malformed generated geometry.
+
+### Provenance and licensing
+
+For every generated or reference-derived asset, record enough provenance to know:
+
+- which reference images/data were used;
+- whether those references are permitted for this use;
+- which generation/editing tools contributed;
+- whether any third-party geometry/textures were incorporated;
+- the final asset's intended project license/usage status.
+
+Do not treat AI generation as bypassing copyright, trademark, model-source or texture licensing concerns.
+
+### Integration strategy
+
+1. **Pilot specification** — define one known vehicle's dimensions, visual references, moving-part/light contract and incumbent benchmark.
+2. **Asset generation** — produce one candidate through the AI-assisted authoring pipeline.
+3. **Cleanup/optimization** — fix topology, pivots, materials, lights, UVs and LODs before runtime integration.
+4. **Side-by-side runtime integration** — add as a candidate asset without deleting/replacing the incumbent GLB.
+5. **Automated asset QA** — validate object contracts, finite transforms, axis/pivot ownership, material/light region presence, asset-size bounds and build/code-split behavior.
+6. **Performance benchmark** — compare load/hitch/FPS/frame-time/memory/draw-call impact against the incumbent.
+7. **Human visual checkpoint** — exterior, first-person, day/night, braking/reverse/indicator behavior.
+8. **Selective adoption only** — replace the incumbent only after explicit human PASS; otherwise retain the current GLB and use findings to improve the pipeline.
+
+If the pilot succeeds, expand selectively to other vehicles and then to Block 8 natural assets. Do not mass-regenerate the vehicle fleet in one change. Each replacement remains individually reviewable and rollback-safe.
+
+Protected rule: **Block 9 must not alter vehicle physics, wheel-ground support, multiplayer vehicle semantics, code-split/lazy-loading behavior or the GLB registry contract merely to accommodate a generated asset.** The asset should conform to World Drive's runtime contract; the runtime should not be weakened to fit a poor asset.
 
 ---
 
@@ -656,4 +769,5 @@ Preserve unless a future block has direct causal evidence and dedicated QA:
 - multiplayer gameplay/protocol semantics;
 - cache persistence;
 - diagnostic aliases used by permanent QA;
-- production code-split/lazy GLB behavior.
+- production code-split/lazy GLB behavior;
+- GLB remains the accepted runtime asset contract unless a separate explicitly approved architecture decision changes it; AI-assisted authoring alone is not permission to redesign the runtime asset pipeline.
