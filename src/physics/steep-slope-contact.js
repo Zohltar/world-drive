@@ -49,6 +49,36 @@ function fitGroundPlane(contacts){
   };
 }
 
+function restoreFalseContactsWithinArticulation({
+  plane,
+  suspensionTravel,
+  tolerance,
+  minimumFactor
+}={}){
+  let restored=0;
+  for(const point of plane?.points||[]){
+    const contact=point.contact;
+    if(contact?.contact!==false)continue;
+    const residual=Math.abs(Number(point.residual)||0);
+    if(residual>tolerance)continue;
+
+    // Residual from the best rigid wheel plane is suspension articulation, not
+    // tire slip. Keep meaningful normal support while the road warp remains
+    // inside the available wheel travel; spring/load-transfer logic may still
+    // redistribute that support afterwards.
+    const travel=Math.max(.001,Number(suspensionTravel)||.14);
+    const articulationRatio=clamp(residual/travel,0,1);
+    const supportFactor=clamp(1-articulationRatio*.72,minimumFactor,1);
+    contact.contact=true;
+    contact.contactFactor=Math.max(
+      clamp(Number(contact.contactFactor)||0,0,1),
+      supportFactor
+    );
+    restored++;
+  }
+  return restored;
+}
+
 // Issue #10 — the presentation root stays horizontally translated while the
 // sprung body is pitched to the wheel-support plane. On a steep but perfectly
 // planar road, the legacy contact-gap test therefore consumed road pitch as if
@@ -89,5 +119,52 @@ export function restoreSteepPlanarRoadContacts({
     );
     result.restored++;
   }
+  return result;
+}
+
+// Issue #13 — a corner exit can combine longitudinal grade with a changing
+// road bank/superelevation. Four wheel samples then form a shallow saddle rather
+// than one perfect plane. The legacy vertical-gap contact test can interpret
+// that bounded torsion as two diagonal wheels being airborne, which removes
+// normal load and lets chassis yaw outrun the momentum trajectory at very low
+// speed.
+//
+// This is deliberately narrower than a generic "keep wheels glued" rule:
+// - road support must already own the chassis;
+// - the vehicle must not be airborne;
+// - only false contacts are repaired;
+// - deviation from the best rigid support plane must fit inside a bounded
+//   fraction of real suspension travel.
+// Large discontinuities remain false contacts and crest/airborne behavior stays
+// under the existing launch solver.
+export function restoreBoundedRoadArticulationContacts({
+  contacts=[],
+  onRoad=false,
+  airborne=false,
+  suspensionTravel=.14,
+  articulationRatio=.56
+}={}){
+  const result={restored:0,eligible:false,gradeMagnitude:0,maxResidual:Infinity,tolerance:0};
+  if(!onRoad||airborne||!Array.isArray(contacts)||contacts.length<4)return result;
+  if(!contacts.some(contact=>contact?.contact===false))return result;
+
+  const plane=fitGroundPlane(contacts);
+  if(!plane)return result;
+  result.gradeMagnitude=plane.gradeMagnitude;
+  result.maxResidual=plane.maxResidual;
+
+  const travel=clamp(Number(suspensionTravel)||.14,.055,.40);
+  const ratio=clamp(Number(articulationRatio)||.56,.35,.70);
+  const tolerance=clamp(travel*ratio,.030,.120);
+  result.tolerance=tolerance;
+  if(plane.maxResidual>tolerance)return result;
+
+  result.eligible=true;
+  result.restored=restoreFalseContactsWithinArticulation({
+    plane,
+    suspensionTravel:travel,
+    tolerance,
+    minimumFactor:.55
+  });
   return result;
 }
