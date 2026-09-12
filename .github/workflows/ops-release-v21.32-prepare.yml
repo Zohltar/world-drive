@@ -36,7 +36,7 @@ jobs:
           git diff --check
           git config user.name "Zohltar"
           git config user.email "mathieu.plourde@gmail.com"
-          git add package.json package-lock.json qa/qa-version-branding-a6.mjs .github/workflows/qa-dev-integration.yml
+          git add package.json package-lock.json qa/qa-version-branding-a6.mjs
           git diff --cached --quiet && { echo "No release candidate changes produced"; exit 1; }
           git commit -m "Release: prepare V21.32 stable candidate"
           git push origin HEAD:release/v21.32
