@@ -1,0 +1,29 @@
+name: Issue 10 Steep Slope Reproduction QA
+
+on:
+  push:
+    branches:
+      - candidate/issue-10-steep-slope-grip-r1
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  qa:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install
+        run: npm ci
+      - name: Existing uphill load-transfer regression
+        run: node qa/qa-grip-uphill-r10.mjs
+      - name: Issue 10 steep-slope contact reproduction
+        run: node qa/qa-issue10-steep-slope-repro-r1.mjs
