@@ -12,6 +12,7 @@ import {
 } from '../src/physics/vehicle-dynamics.js';
 import {advanceYawAuthority} from '../src/physics/yaw-authority.js';
 import {advanceMomentumDirection,travelAxisSideslip} from '../src/physics/momentum-direction.js';
+import {restoreBoundedRoadArticulationContacts} from '../src/physics/steep-slope-contact.js';
 import {
   ROAD_WHEEL_CONTACT_HALF_WIDTH,WHEEL_RADIUS,TIRE_HALF_WIDTH,TIRE_VISUAL_CLEARANCE
 } from '../src/world-materials.js';
@@ -138,11 +139,41 @@ for(const vehicleId of IDS){
 assert.ok(rows.every(row=>Object.values(row).every(value=>Array.isArray(value)?value.every(Number.isFinite):(typeof value!=='number'||Number.isFinite(value)))),'non-finite Issue #13 trajectory state');
 const ranked=[...rows].sort((a,b)=>(b.peakSideslipDeg-b.flatPeak)-(a.peakSideslipDeg-a.flatPeak));
 const pathological=rows.filter(row=>row.speedKmh<=10.8&&row.peakSideslipDeg>=5&&row.peakSideslipDeg>=row.flatPeak+3);
+const boundedContactFailures=rows.filter(row=>row.touching<4);
+const maxExcessDeg=Math.max(0,...rows.map(row=>row.peakSideslipDeg-row.flatPeak));
+
+assert.equal(boundedContactFailures.length,0,'bounded pitch + bank-transition matrix must retain all four road contacts');
+assert.equal(pathological.length,0,'very-low-speed sloped corner-exit matrix must not create multi-degree trajectory breakaway');
+assert.ok(maxExcessDeg<=2,`bounded road articulation added ${maxExcessDeg.toFixed(3)}deg sideslip over flat control`);
+
+// Guard the other side of the correction: a large one-corner discontinuity is
+// not ordinary suspension articulation and must not fabricate contact.
+const strongDiscontinuity=[
+  {localX:-.75,localZ:-1.20,ground:0,contact:true,contactFactor:1},
+  {localX:.75,localZ:-1.20,ground:0,contact:true,contactFactor:1},
+  {localX:-.75,localZ:1.20,ground:0,contact:true,contactFactor:1},
+  {localX:.75,localZ:1.20,ground:.50,contact:false,contactFactor:0}
+];
+const discontinuityResult=restoreBoundedRoadArticulationContacts({
+  contacts:strongDiscontinuity,onRoad:true,airborne:false,suspensionTravel:.11
+});
+assert.equal(discontinuityResult.restored,0,'large road discontinuity must remain a real contact loss');
+assert.equal(strongDiscontinuity[3].contact,false,'large one-corner step must not be glued to the road');
+
+const airborneProbe=strongDiscontinuity.map(contact=>({...contact,ground:contact.localX*contact.localZ*.03,contact:false,contactFactor:0}));
+const airborneResult=restoreBoundedRoadArticulationContacts({
+  contacts:airborneProbe,onRoad:true,airborne:true,suspensionTravel:.14
+});
+assert.equal(airborneResult.restored,0,'airborne ownership must override road-articulation restoration');
+
 const bySpeed=SPEEDS.map(speed=>{
   const sample=rows.filter(row=>row.speedKmh===speed*3.6);
   return {speedKmh:speed*3.6,cases:sample.length,pathological:sample.filter(row=>row.peakSideslipDeg>=5&&row.peakSideslipDeg>=row.flatPeak+3).length,maxExcessDeg:Math.max(...sample.map(row=>row.peakSideslipDeg-row.flatPeak))};
 });
-console.log('ISSUE 13 LOW-SPEED TRAJECTORY RECOVERY DIAGNOSTIC',JSON.stringify({
-  cases:rows.length,pathologicalVeryLowCases:pathological.length,bySpeed,
-  worst:ranked[0]||null,top:ranked.slice(0,16)
+console.log('ISSUE 13 LOW-SPEED TRAJECTORY RECOVERY QA: PASS',JSON.stringify({
+  cases:rows.length,boundedContactFailures:boundedContactFailures.length,
+  pathologicalVeryLowCases:pathological.length,maxExcessDeg,bySpeed,
+  discontinuityRejected:discontinuityResult.restored===0,
+  airborneProtected:airborneResult.restored===0,
+  worst:ranked[0]||null
 },null,2));
