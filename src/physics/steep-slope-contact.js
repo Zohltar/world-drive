@@ -142,7 +142,7 @@ export function restoreBoundedRoadArticulationContacts({
   onRoad=false,
   airborne=false,
   suspensionTravel=.14,
-  articulationRatio=.56
+  articulationRatio=.66
 }={}){
   const result={restored:0,eligible:false,gradeMagnitude:0,maxResidual:Infinity,tolerance:0};
   if(!onRoad||airborne||!Array.isArray(contacts)||contacts.length<4)return result;
@@ -154,7 +154,11 @@ export function restoreBoundedRoadArticulationContacts({
   result.maxResidual=plane.maxResidual;
 
   const travel=clamp(Number(suspensionTravel)||.14,.055,.40);
-  const ratio=clamp(Number(articulationRatio)||.56,.35,.70);
+  // Two-thirds of total wheel travel is enough to absorb ordinary road-bank
+  // transitions on short-travel road cars while still rejecting larger steps,
+  // drops and crest/separation events. The latter are also protected by the
+  // explicit on-road / non-airborne gates above.
+  const ratio=clamp(Number(articulationRatio)||.66,.35,.70);
   const tolerance=clamp(travel*ratio,.030,.120);
   result.tolerance=tolerance;
   if(plane.maxResidual>tolerance)return result;
