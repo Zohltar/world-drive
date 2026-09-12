@@ -1,6 +1,9 @@
 import { createVehiclePresentation as createBaseVehiclePresentation } from './vehicle-presentation-v21.29.js';
 import { antiRollCalibration } from '../physics/vehicle-dynamics.js';
-import { restoreSteepPlanarRoadContacts } from '../physics/steep-slope-contact.js';
+import {
+  restoreBoundedRoadArticulationContacts,
+  restoreSteepPlanarRoadContacts
+} from '../physics/steep-slope-contact.js';
 
 function clamp(v,min,max){return Math.max(min,Math.min(max,Number(v)||0));}
 function smoothstep01(v){const t=clamp(v,0,1);return t*t*(3-2*t);}
@@ -15,8 +18,15 @@ export function createVehiclePresentation(args={}){
 
     const state=getDrivingState()||{};
     const vehicle=state.VEHICLE||{};
+    const contacts=Array.isArray(base.wheelContacts)?base.wheelContacts:[];
     restoreSteepPlanarRoadContacts({
-      contacts:Array.isArray(base.wheelContacts)?base.wheelContacts:[],
+      contacts,
+      onRoad,
+      airborne:base.airborne,
+      suspensionTravel:vehicle.suspensionTravel
+    });
+    restoreBoundedRoadArticulationContacts({
+      contacts,
       onRoad,
       airborne:base.airborne,
       suspensionTravel:vehicle.suspensionTravel
@@ -38,7 +48,6 @@ export function createVehiclePresentation(args={}){
     if(coupling<.002)return;
 
     const wheels=activeVehicleWheels();
-    const contacts=Array.isArray(base.wheelContacts)?base.wheelContacts:[];
     const byAxle=new Map();
     for(let i=0;i<wheels.length;i++){
       const w=wheels[i];
