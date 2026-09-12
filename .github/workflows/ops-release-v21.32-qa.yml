@@ -1,0 +1,85 @@
+name: Ops QA V21.32 Release Candidate
+
+on:
+  push:
+    branches:
+      - ops/release-v21.32-qa
+
+permissions:
+  contents: read
+
+jobs:
+  qa:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout exact release candidate
+        uses: actions/checkout@v4
+        with:
+          ref: b74e7377eaaf2b128eb893c547f4c2da3d14bbea
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install
+        run: npm ci
+      - name: Verify stable branding/version contract
+        env:
+          GITHUB_REF_NAME: release/v21.32
+        run: node qa/qa-version-branding-a6.mjs
+      - name: Runtime import and debt audit
+        run: node qa/DEV_INTEGRATION_AUDIT.mjs
+      - name: Root layout QA
+        run: node qa/QA_ROOT_LAYOUT_QA.mjs
+      - name: Full regression stress
+        run: npm run qa:stress
+      - name: Driving simulation matrix
+        run: node qa/DEV_DRIVING_SIM_QA.mjs
+      - name: Certified terrain and support regressions
+        run: |
+          node qa/qa-issue9-road-aware-grid-r2.mjs
+          node qa/qa-issue10-steep-slope-contact-r2.mjs
+          node qa/qa-issue13-low-speed-lateral-slide-repro-r1.mjs
+          node qa/qa-issue13-low-speed-lateral-runtime-r2.mjs
+      - name: Production build
+        run: npm run build
+      - name: Production code split QA
+        run: node qa/BUILD_V21_31_CODE_SPLIT_QA.mjs
+
+  windows-package:
+    needs: qa
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout exact release candidate
+        uses: actions/checkout@v4
+        with:
+          ref: b74e7377eaaf2b128eb893c547f4c2da3d14bbea
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install
+        run: npm ci
+      - name: Build Windows installer and portable ZIP
+        run: npm run make
+      - name: Verify release artifacts
+        shell: pwsh
+        run: |
+          $setup = Get-ChildItem -Path out/make -Recurse -File -Filter WorldDriveSetup.exe | Select-Object -First 1
+          $zip = Get-ChildItem -Path out/make -Recurse -File -Filter *.zip | Select-Object -First 1
+          if (-not $setup) { throw 'WorldDriveSetup.exe not produced' }
+          if (-not $zip) { throw 'Portable ZIP not produced' }
+          Write-Host "Setup: $($setup.FullName)"
+          Write-Host "ZIP:   $($zip.FullName)"
+      - name: Upload Windows release artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: world-drive-v21.32-windows
+          path: |
+            out/make/**/*.exe
+            out/make/**/*.zip
+          if-no-files-found: error
+          retention-days: 7
