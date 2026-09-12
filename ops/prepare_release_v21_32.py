@@ -23,14 +23,4 @@ if old not in qa:
     raise SystemExit('qa-version-branding-a6.mjs expected baseline assertions not found')
 qa_path.write_text(qa.replace(old, new, 1), encoding='utf-8')
 
-workflow_path = Path('.github/workflows/qa-dev-integration.yml')
-workflow = workflow_path.read_text(encoding='utf-8')
-needle = "    branches:\n      - dev\n"
-replacement = "    branches:\n      - dev\n      - 'release/**'\n"
-if "      - 'release/**'\n" not in workflow:
-    if needle not in workflow:
-        raise SystemExit('Dev Integration branch trigger anchor not found')
-    workflow = workflow.replace(needle, replacement, 1)
-workflow_path.write_text(workflow, encoding='utf-8')
-
 print('Prepared World Drive V21.32 stable candidate')
