@@ -1,0 +1,47 @@
+name: Ops Prepare V21.32 Release Candidate
+
+on:
+  push:
+    branches:
+      - ops/release-v21.32-prepare
+
+permissions:
+  contents: write
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout release candidate base
+        uses: actions/checkout@v4
+        with:
+          ref: release/v21.32
+          fetch-depth: 0
+
+      - name: Verify release base
+        shell: bash
+        run: |
+          test "$(git rev-parse HEAD)" = "6ae9a7e89a34e0987cfb3a998ed11e3deee0aee8"
+
+      - name: Load release preparation script
+        shell: bash
+        run: |
+          git fetch origin ops/release-v21.32-prepare
+          git show origin/ops/release-v21.32-prepare:ops/prepare_release_v21_32.py > /tmp/prepare_release_v21_32.py
+          python /tmp/prepare_release_v21_32.py
+
+      - name: Commit release candidate
+        shell: bash
+        run: |
+          git diff --check
+          git config user.name "Zohltar"
+          git config user.email "mathieu.plourde@gmail.com"
+          git add package.json package-lock.json qa/qa-version-branding-a6.mjs .github/workflows/qa-dev-integration.yml
+          git diff --cached --quiet && { echo "No release candidate changes produced"; exit 1; }
+          git commit -m "Release: prepare V21.32 stable candidate"
+          git push origin HEAD:release/v21.32
+          echo "RELEASE_CANDIDATE_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+
+      - name: Report candidate
+        shell: bash
+        run: echo "V21.32 release candidate ${RELEASE_CANDIDATE_SHA}"
