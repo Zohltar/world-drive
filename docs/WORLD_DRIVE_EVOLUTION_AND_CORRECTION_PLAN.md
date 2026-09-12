@@ -69,8 +69,8 @@ Before coding, be able to answer:
 **Issue #9:** **DONE/CERTIFIED — HUMAN YUNGAS VISUAL/PERFORMANCE PASS (2026-09-05)**  
 **Issue #10:** **OPEN / steep-slope tire grip and steering instability / deferred**  
 **Issue #11:** **OPEN / one civil-traffic model rotated ~90° / deferred**  
-**Issue #12:** **OPEN / forest streaming falls behind after ~5 km / deferred**  
-**Block 8 — Biome-aware natural scenery:** **PLANNED / DEFERRED — start only after Issue #12 forest streaming/readiness is certified**  
+**Issue #12:** **OPEN / PARKED — forest streaming falls behind after sustained driving; resume investigation inside Block 8 biome work**  
+**Block 8 — Biome-aware natural scenery:** **PLANNED / DEFERRED — includes the parked Issue #12 forest-readiness work when activated**  
 **Block 9 — AI-assisted 3D asset authoring and selective GLB modernization:** **PLANNED / DEFERRED — pilot-first, no wholesale asset replacement**  
 **Active correction block:** **NONE — await explicit user priority; do not auto-start deferred issues**  
 **Stable `main`:** `9055d5682afcf512c91b1ae7dc97dcb4b16d6d9e` — must remain untouched without explicit user approval.  
@@ -342,9 +342,9 @@ Current unresolved work is intentionally not auto-started:
 - Issue #2 remains **watch-only / not reproduced**; collect diagnostics only if it reappears;
 - Issue #10 remains **deferred**; if prioritized, reproduce steep-slope grip/steering behavior before any physics tuning;
 - Issue #11 remains **deferred**; if prioritized, identify the single affected civil-traffic model and audit its authored forward-axis/yaw contract before editing;
-- Issue #12 remains **deferred**; if prioritized, reproduce a long drive and capture forest queue/prefetch/frame-budget diagnostics before changing streaming policy;
+- Issue #12 is **PARKED**; do not resume it as a standalone correction. Carry the existing diagnostics and failed-candidate evidence into Block 8 when biome-aware natural scenery work begins;
 - Block 7 composition-root reduction remains **deferred / evidence-driven only**;
-- Block 8 biome-aware natural scenery remains **planned/deferred** and should begin only after Issue #12 forest streaming/readiness is certified, so biome asset selection cannot obscure streaming diagnosis;
+- Block 8 biome-aware natural scenery remains **planned/deferred**; when activated, begin by reopening and stabilizing forest readiness/streaming as its first runtime workstream, then add biome classification and palette selection;
 - Block 9 AI-assisted 3D asset authoring remains **planned/deferred**; begin with one controlled pilot asset and do not replace accepted GLBs wholesale without measured visual/runtime benefit.
 
 Do not modify `main` without explicit user approval. Do not begin a deferred block merely because Issue #9 is complete.
@@ -445,7 +445,9 @@ Do not automatically promote deferred issues into active work. Preserve the cert
 
 ## Block 8 — Biome-aware natural scenery generation
 
-**PLANNED / DEFERRED — start only after Issue #12 forest streaming/readiness is certified.**
+**PLANNED / DEFERRED — when activated, reopen Issue #12 as its first runtime/readiness workstream instead of requiring Issue #12 to be certified beforehand.**
+
+Issue #12 is intentionally parked until this block. The previous human-FAIL candidates and runtime snapshots remain diagnostic evidence, but none of those candidate runtime changes are accepted as a solution. When Block 8 begins, forest readiness must be re-established deliberately before biome-specific content increases scenery complexity.
 
 Goal: generate natural scenery that matches the biome/ecoregion of the driven route instead of using one globally uniform vegetation set. The primary acceptance example is explicit: a tropical route must not spawn boreal-style fir/conifer forest simply because the generic forest generator is active.
 
@@ -466,13 +468,14 @@ Planned behavior and ownership:
 
 Implementation order when Block 8 is activated:
 
-1. **Data-source audit / prototype** — compare practical global biome/ecoregion sources or deterministic classifiers for coordinate lookup, licensing, resolution, offline size and runtime cost.
-2. **Biome service contract** — expose a small coordinate/route query returning biome id + confidence/transition information, with caching and a conservative fallback.
-3. **Palette registry** — map biome ids to authored natural asset pools and density rules without changing forest streaming scheduling.
-4. **Chunk integration** — forest/scenery generation chooses deterministic biome-appropriate assets for each chunk while preserving existing blockers and route cache ownership.
-5. **Transition blending** — validate smooth biome boundaries and elevation-sensitive variants where applicable.
-6. **Performance/readiness QA** — prove biome lookup and multi-palette selection do not regress the Issue #12-certified forest readiness, frame budgets, cache limits or long-drive behavior.
-7. **Human visual matrix** — test representative routes in materially different environments before certification.
+1. **Issue #12 restart / forest-readiness diagnosis** — reproduce sustained high-speed/long-drive behavior from the current certified `dev`; carry forward the prior human-FAIL snapshots; instrument actual job/builder lifetime, abandonment/restart reasons and prefetch completion; certify a stable readiness baseline before adding biome palette complexity.
+2. **Data-source audit / prototype** — compare practical global biome/ecoregion sources or deterministic classifiers for coordinate lookup, licensing, resolution, offline size and runtime cost.
+3. **Biome service contract** — expose a small coordinate/route query returning biome id + confidence/transition information, with caching and a conservative fallback.
+4. **Palette registry** — map biome ids to authored natural asset pools and density rules without changing forest streaming scheduling.
+5. **Chunk integration** — forest/scenery generation chooses deterministic biome-appropriate assets for each chunk while preserving existing blockers and route cache ownership.
+6. **Transition blending** — validate smooth biome boundaries and elevation-sensitive variants where applicable.
+7. **Performance/readiness QA** — prove biome lookup and multi-palette selection do not regress the newly certified forest readiness, frame budgets, cache limits or long-drive behavior.
+8. **Human visual matrix** — test representative routes in materially different environments before certification.
 
 Minimum automated acceptance matrix should include representative coordinates/routes for at least:
 
@@ -491,11 +494,11 @@ Required assertions include:
 - identical coordinates + biome data yield deterministic asset selection;
 - biome transition logic remains bounded and deterministic;
 - blocker/hydro/road exclusions remain authoritative;
-- Issue #12 readiness/performance regression suite remains green after integration.
+- forest readiness/performance regression suite remains green after biome integration.
 
 Human certification should compare at least one clearly tropical route, one northern/boreal route and one arid/high-altitude route. Visual plausibility, absence of obviously wrong dominant vegetation, smooth transitions and sustained-driving performance are acceptance criteria.
 
-Do not start Block 8 by simply swapping tree models globally. The biome classifier/data contract must exist first so asset selection has an explicit geographic owner.
+Do not start Block 8 by simply swapping tree models globally. Re-establish forest readiness first, then establish the biome classifier/data contract so asset selection has an explicit geographic owner.
 
 ---
 
@@ -639,11 +642,15 @@ On very steep grades, uphill small steering corrections can trigger a spin/loss 
 
 One specific civil-traffic model follows the correct path but its body is visually rotated roughly 90° sideways. Correct only the affected authored/model-forward yaw contract while preserving traffic routing, speed, lane placement and all correctly aligned variants.
 
-## Issue #12 — forest streaming falls behind after ~5 km
+## Issue #12 — forest streaming falls behind after sustained driving
 
-**OPEN / USER-REPORTED / DEFERRED.**
+**OPEN / USER-REPORTED / PARKED — resume as part of Block 8 biome-aware natural scenery work.**
 
-After roughly 5 km of continuous driving, forward forest readiness can fall behind the vehicle. This is a streaming/readiness timing defect, not a density/style request. Capture long-drive queue/prefetch/commit/frame-budget diagnostics before changing policy and preserve accepted startup forest density/quality.
+After sustained continuous driving, especially at very high vehicle speed, forward forest readiness can fall behind the vehicle. This is a streaming/readiness timing defect, not a density/style request.
+
+Standalone correction work is intentionally paused. Multiple experimental candidates were human FAIL and were not integrated into `dev`. The accumulated runtime evidence remains useful: failure can occur while overall FPS stays high, with forest queues/backlog growing and forward prefetch remaining unready. Do not restart old candidate-cap, timeout, recenter-reset or observer-center theories as accepted fixes merely because they passed automation.
+
+When Block 8 is activated, reopen Issue #12 first and use a diagnostic-first approach: trace actual forest job/builder lifetime, completion, abandonment/restart reasons, wanted-set churn and prefetch readiness under sustained driving. Certify a stable forest-readiness baseline before biome-specific asset selection is layered on top. Until then, do not spend additional standalone correction cycles on Issue #12.
 
 ---
 
