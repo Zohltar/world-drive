@@ -72,6 +72,7 @@ Before coding, be able to answer:
 **Issue #12:** **OPEN / PARKED — forest streaming falls behind after sustained driving; resume investigation inside Block 8 biome work**  
 **Block 8 — Biome-aware natural scenery:** **PLANNED / DEFERRED — includes the parked Issue #12 forest-readiness work when activated**  
 **Block 9 — AI-assisted 3D asset authoring and selective GLB modernization:** **PLANNED / DEFERRED — pilot-first, no wholesale asset replacement**  
+**Block 10 — Mobile browser driving controls:** **PLANNED / DEFERRED — touch throttle/brake + calibrated device-tilt steering with a sensor-unavailable fallback**  
 **Active correction block:** **NONE — await explicit user priority; do not auto-start deferred issues**  
 **Stable `main`:** `9055d5682afcf512c91b1ae7dc97dcb4b16d6d9e` — must remain untouched without explicit user approval.  
 **Previous rollback/reference:** `111df5d84bf7fd700590abbd9c129b303ac92fad`.
@@ -345,7 +346,8 @@ Current unresolved work is intentionally not auto-started:
 - Issue #12 is **PARKED**; do not resume it as a standalone correction. Carry the existing diagnostics and failed-candidate evidence into Block 8 when biome-aware natural scenery work begins;
 - Block 7 composition-root reduction remains **deferred / evidence-driven only**;
 - Block 8 biome-aware natural scenery remains **planned/deferred**; when activated, begin by reopening and stabilizing forest readiness/streaming as its first runtime workstream, then add biome classification and palette selection;
-- Block 9 AI-assisted 3D asset authoring remains **planned/deferred**; begin with one controlled pilot asset and do not replace accepted GLBs wholesale without measured visual/runtime benefit.
+- Block 9 AI-assisted 3D asset authoring remains **planned/deferred**; begin with one controlled pilot asset and do not replace accepted GLBs wholesale without measured visual/runtime benefit;
+- Block 10 mobile browser driving controls remains **planned/deferred**; when activated, add a mobile input mode without changing accepted desktop keyboard/gamepad controls or vehicle physics.
 
 Do not modify `main` without explicit user approval. Do not begin a deferred block merely because Issue #9 is complete.
 
@@ -366,6 +368,7 @@ Do not modify `main` without explicit user approval. Do not begin a deferred blo
 | P2 | Coarse satellite imagery triangles could cross asphalt on steep road cuts | imagery road-aware geometry refinement | **DONE/CERTIFIED — Issue #9 — HUMAN YUNGAS PASS** |
 | P3 | Natural scenery is currently biome-agnostic, allowing ecologically wrong vegetation (for example conifers in tropical regions) | future biome classifier + forest/scenery asset selection | **PLANNED — Block 8** |
 | P3 | Current authored GLBs come from heterogeneous sources with inconsistent topology, axes, materials and movable-part/light ownership; newer AI-assisted 3D authoring may enable cleaner World Drive-specific assets | future AI/CAD/Blender authoring pipeline + vehicle/scenery asset QA | **PLANNED — Block 9** |
+| P3 | Browser build runs on phones but lacks a purpose-built mobile driving input scheme | future mobile input owner + touch controls + device-orientation steering + responsive HUD | **PLANNED — Block 10** |
 | P3 | `src/main.js` remains large composition root | `src/main.js` | **DEFERRED — no refactor without concrete benefit** |
 
 ---
@@ -612,6 +615,74 @@ Protected rule: **Block 9 must not alter vehicle physics, wheel-ground support, 
 
 ---
 
+## Block 10 — Mobile browser driving controls
+
+**PLANNED / DEFERRED — mobile web input mode. The accepted desktop keyboard/gamepad path remains authoritative and vehicle physics must not fork by platform.**
+
+Observed feasibility: the current browser build already runs well enough on a phone in Chrome to justify a dedicated mobile-control workstream rather than a separate mobile game/runtime.
+
+Goal: make World Drive comfortably drivable from a phone or tablet using a minimal driving interface: **touch accelerator + touch brake + device tilt as steering**. The phone should behave like a small steering wheel: tilting left/right produces the same normalized steering intent already consumed by the existing driving input path.
+
+Planned interaction contract:
+
+- recommend/optimize for **landscape orientation** while driving;
+- provide two large, thumb-friendly press-and-hold touch pedals: accelerator and brake;
+- expose pedal state through the same normalized throttle/brake input contract used by existing controls; the first implementation may use full-pressure hold, but the input boundary should permit future analog touch pressure/drag without physics changes;
+- use device orientation / motion sensors for steering by left/right phone tilt;
+- establish a neutral steering angle through an explicit calibration step when mobile driving begins;
+- provide a one-tap **recenter/calibrate steering** action while driving;
+- include configurable steering sensitivity and dead zone so small hand tremors do not cause constant steering corrections;
+- filter sensor noise with bounded smoothing while keeping response fast enough for corrective steering;
+- clamp tilt-to-steering mapping to the existing normalized steering range rather than adding mobile-only steering authority;
+- correctly remap sensor axes when the screen is in landscape orientation;
+- request motion/orientation permission only from an explicit user gesture on browsers/platforms that require it;
+- if orientation sensors are unavailable, denied or unreliable, provide a fallback on-screen steering control rather than making the game undrivable;
+- support simultaneous multi-touch so accelerator/brake interaction does not block menu/camera/recenter controls;
+- prevent browser scroll/zoom/text-selection gestures inside the active driving-control zones;
+- respect mobile safe-area insets/notches and avoid covering critical HUD/minimap information;
+- keep sensor data local to the client; steering sensor samples are input state and do not need to be transmitted beyond the normal gameplay/multiplayer state already owned by the runtime.
+
+Ownership / architecture:
+
+```text
+mobile browser detection / capability check
+→ mobile control UI
+→ touch pedal state + tilt steering state
+→ normalized World Drive input contract
+→ existing driving runtime / physics
+```
+
+Do **not** create a second vehicle-physics implementation for mobile. Mobile steering, throttle and brake must enter above the existing driving runtime just like keyboard/gamepad input. Accepted physics, traction, suspension, transmission and multiplayer behavior remain shared.
+
+Suggested implementation order when Block 10 is activated:
+
+1. **Capability audit** — verify current Android Chrome behavior and enumerate device-orientation permission/API behavior needed for Android/iOS browsers.
+2. **Input owner** — add a small mobile controller module that outputs normalized steering/throttle/brake state without DOM/physics coupling.
+3. **Tilt calibration** — neutral angle, landscape axis mapping, dead zone, sensitivity, smoothing and recenter behavior.
+4. **Touch pedals** — large accelerator/brake controls with robust pointer/touch lifecycle handling, including lost/cancelled touches.
+5. **Fallback steering** — on-screen steering slider/pad/buttons when motion/orientation input is unavailable or denied.
+6. **Responsive driving HUD** — safe-area-aware layout that keeps route/minimap/speed information readable and prevents browser gestures from stealing control input.
+7. **Automated input QA** — synthetic tilt/touch sequences, orientation changes, permission failure and touch-cancel cases; prove desktop keyboard/gamepad mappings are unchanged.
+8. **Human device matrix** — Android Chrome first, then at least one iOS browser/Safari-compatible path if available; validate steering feel, latency, accidental input, readability, thermals/frame pacing and battery impact.
+
+Minimum automated acceptance should verify:
+
+- neutral calibrated phone angle yields zero steering command;
+- equal left/right tilt produces symmetric bounded steering values;
+- dead-zone input stays centered;
+- landscape axis remapping does not reverse or rotate steering unexpectedly;
+- releasing/cancelling a touch always returns throttle/brake to zero;
+- simultaneous steering + throttle and steering + brake are supported;
+- denied/unavailable orientation sensors activate a usable fallback steering path;
+- desktop keyboard/gamepad inputs produce identical normalized control values before and after Block 10;
+- mobile controls do not alter vehicle physics parameters or multiplayer protocol semantics.
+
+Human certification should include sustained driving, tight turns, gentle highway corrections, braking while steering, browser tab/app interruption and return, and at least one route with non-trivial terrain. The desired feel is direct but not twitchy: the driver can rest the phone at a comfortable neutral angle, steer naturally by tilting it and keep both thumbs primarily on acceleration/braking.
+
+Do not start Block 10 by rewriting the HUD or physics globally. First isolate the mobile input owner and prove that it can feed the existing normalized controls cleanly.
+
+---
+
 # 5. Open issue protocols
 
 ## Issue #2 — delayed terrain adjustment after route startup
@@ -773,6 +844,7 @@ Preserve unless a future block has direct causal evidence and dedicated QA:
 - local-first Quebec hydro behavior;
 - water/scenery/sign semantics;
 - routing/settings UX;
+- existing keyboard/gamepad input semantics; mobile controls must feed the same normalized driving inputs rather than fork vehicle physics;
 - multiplayer gameplay/protocol semantics;
 - cache persistence;
 - diagnostic aliases used by permanent QA;
