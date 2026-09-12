@@ -1,0 +1,35 @@
+name: Issue 13 Low-Speed Lateral Slide Diagnostic
+
+on:
+  push:
+    branches:
+      - candidate/issue-13-low-speed-lateral-slide-r1
+    paths:
+      - 'qa/qa-issue13-low-speed-lateral-slide-repro-r1.mjs'
+      - 'src/physics/**'
+      - 'src/vehicles/**'
+      - '.github/workflows/qa-issue13-low-speed-lateral-slide-r1.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  diagnostic:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install
+        run: npm ci
+      - name: Issue 13 low-speed lateral slide stress probe
+        run: node qa/qa-issue13-low-speed-lateral-slide-repro-r1.mjs
+      - name: Existing low-speed traction regression
+        run: node qa/V21_21_15_LOW_SPEED_TRACTION_QA.mjs
+      - name: Issue 10 steep-slope contact regression
+        run: node qa/qa-issue10-steep-slope-contact-r2.mjs
