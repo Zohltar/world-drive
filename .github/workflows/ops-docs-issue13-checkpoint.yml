@@ -29,7 +29,8 @@ jobs:
 
       - name: Commit canonical checkpoint to dev
         run: |
-          git diff --check
+          test "$(git status --porcelain | wc -l)" -eq 1
+          git status --porcelain | grep -F "docs/WORLD_DRIVE_EVOLUTION_AND_CORRECTION_PLAN.md"
           git config user.name "Zohltar"
           git config user.email "mathieu.plourde@gmail.com"
           git add docs/WORLD_DRIVE_EVOLUTION_AND_CORRECTION_PLAN.md
