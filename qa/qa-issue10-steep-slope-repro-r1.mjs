@@ -16,6 +16,7 @@ assert.equal(validation.ok,true,validation.errors.join('\n'));
 
 const DEG=Math.PI/180;
 const DT=1/120;
+const PASSENGER_PROBE_IDS=['id4','wrx','civic','sonata','i3_2017','f1_2010','countach_80'];
 
 function copyContacts(contacts=[]){
   return contacts.map(contact=>({
@@ -151,15 +152,10 @@ function firstLoss(vehicleId,direction){
   return null;
 }
 
-const fleetSystem=createVehicleSystem({initialId:'wrx'});
-const vehicleIds=fleetSystem.list()
-  .map(info=>info.id)
-  .filter(id=>id!=='truck');
-
 const reports=[];
-for(const vehicleId of vehicleIds){
+for(const vehicleId of PASSENGER_PROBE_IDS){
   const flat=presentationProbe(vehicleId,0);
-  assert.ok(flat.contacts.length>=4,`${vehicleId}: expected wheel contacts in stress harness`);
+  assert.equal(flat.contacts.length,4,`${vehicleId}: expected four runtime wheel probes in stress harness`);
   assert.equal(flat.airborne,false,`${vehicleId}: flat plane became airborne`);
   assert.equal(flat.contacts.filter(contact=>contact.contact).length,flat.contacts.length,`${vehicleId}: flat baseline already has missing contacts`);
 
