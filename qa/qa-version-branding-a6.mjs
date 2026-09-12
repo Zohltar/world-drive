@@ -42,8 +42,10 @@ assert.ok(indexSource.includes('data-world-drive-title'),'static loading title p
 assert.ok(indexSource.includes('data-world-drive-version-label'),'static version-label placeholder missing');
 assert.ok(indexSource.includes('<script type="module" src="/src/version.js"></script>'),'static page must load branding module after DOM markup exists');
 
-assert.equal(pkg.version,'21.31.0','A6 must align the package build with the V21.31 baseline');
-assert.equal(pkg.worldDriveChannel,'dev','the development branch must identify itself as dev; stable is reserved for release promotion');
+const refName=process.env.GITHUB_REF_NAME||'';
+const expectedChannel=(refName==='main'||refName.startsWith('release/'))?'stable':'dev';
+assert.equal(pkg.version,'21.32.0','A6 must align the package build with the V21.32 baseline');
+assert.equal(pkg.worldDriveChannel,expectedChannel,'package channel must match branch role: release/main=stable, development=dev');
 
 console.log('CLEANUP A6 VERSION / BUILD BRANDING QA: PASS',{
   packageVersion:pkg.version,
