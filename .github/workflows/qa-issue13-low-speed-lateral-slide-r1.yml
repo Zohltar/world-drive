@@ -6,6 +6,7 @@ on:
       - candidate/issue-13-low-speed-lateral-slide-r1
     paths:
       - 'qa/qa-issue13-low-speed-lateral-slide-repro-r1.mjs'
+      - 'qa/qa-issue13-low-speed-lateral-runtime-r2.mjs'
       - 'src/physics/**'
       - 'src/vehicles/**'
       - '.github/workflows/qa-issue13-low-speed-lateral-slide-r1.yml'
@@ -27,8 +28,10 @@ jobs:
           cache: npm
       - name: Install
         run: npm ci
-      - name: Issue 13 low-speed lateral slide stress probe
+      - name: Issue 13 support/grip stress probe
         run: node qa/qa-issue13-low-speed-lateral-slide-repro-r1.mjs
+      - name: Issue 13 trajectory recovery diagnostic
+        run: node qa/qa-issue13-low-speed-lateral-runtime-r2.mjs
       - name: Current driving dynamics simulation matrix
         run: node qa/DEV_DRIVING_SIM_QA.mjs
       - name: Issue 10 steep-slope contact regression
