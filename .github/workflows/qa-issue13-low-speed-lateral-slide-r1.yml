@@ -1,4 +1,4 @@
-name: Issue 13 Low-Speed Lateral Slide Diagnostic
+name: Issue 13 Low-Speed Lateral Slide QA
 
 on:
   push:
@@ -7,6 +7,8 @@ on:
     paths:
       - 'qa/qa-issue13-low-speed-lateral-slide-repro-r1.mjs'
       - 'qa/qa-issue13-low-speed-lateral-runtime-r2.mjs'
+      - 'qa/qa-issue10-steep-slope-contact-r2.mjs'
+      - 'qa/DEV_INTEGRATION_AUDIT.mjs'
       - 'src/physics/**'
       - 'src/vehicles/**'
       - '.github/workflows/qa-issue13-low-speed-lateral-slide-r1.yml'
@@ -16,7 +18,7 @@ permissions:
   contents: read
 
 jobs:
-  diagnostic:
+  qa:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -30,9 +32,21 @@ jobs:
         run: npm ci
       - name: Issue 13 support/grip stress probe
         run: node qa/qa-issue13-low-speed-lateral-slide-repro-r1.mjs
-      - name: Issue 13 trajectory recovery diagnostic
+      - name: Issue 13 trajectory recovery regression
         run: node qa/qa-issue13-low-speed-lateral-runtime-r2.mjs
-      - name: Current driving dynamics simulation matrix
-        run: node qa/DEV_DRIVING_SIM_QA.mjs
       - name: Issue 10 steep-slope contact regression
         run: node qa/qa-issue10-steep-slope-contact-r2.mjs
+      - name: Airborne and crest regression
+        run: node qa/qa-grip-jump-r6.mjs
+      - name: Road reentry vertical support regression
+        run: node qa/qa-wheel-ground-reentry-r14.mjs
+      - name: Wheel-ground ownership regression
+        run: node qa/qa-source-tree-r5b-wheel-ground-support.mjs
+      - name: Driving dynamics simulation matrix
+        run: node qa/DEV_DRIVING_SIM_QA.mjs
+      - name: Permanent Dev Integration audit
+        run: node qa/DEV_INTEGRATION_AUDIT.mjs
+      - name: Production build
+        run: npm run build
+      - name: Production code split QA
+        run: node qa/BUILD_V21_31_CODE_SPLIT_QA.mjs
