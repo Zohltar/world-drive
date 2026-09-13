@@ -16,7 +16,11 @@ assert.doesNotMatch(source,/from ['"]\.\/road-geometry-base\.js['"]/,'canonical 
 assert.match(source,/function createRoadGeometryCore\s*\(/,'private road geometry core missing');
 assert.match(source,/export function createRoadGeometrySystem\s*\(/,'public road geometry factory missing');
 assert.match(source,/const base=createRoadGeometryCore\(args\);/,'public facade does not compose the private core');
-assert.match(source,/const profile=base\.buildProfile\(\);[\s\S]*smoothRoadProfileV21_31\(profile,args\)/,'V21.31 smoothing wrapper is no longer applied to built profiles');
+assert.match(
+  source,
+  /const profile=base\.buildProfile\(\);[\s\S]*const closedLoop=!!args\.getState\?\.\(\)\?\.routeClosedLoop;[\s\S]*smoothRoadProfileV21_31\(profile,\{\.\.\.args,closedLoop\}\)/,
+  'V21.31 smoothing wrapper is no longer applied to built profiles'
+);
 for(const marker of [
   'function roadLateralFrame(',
   'function buildLateralBand(',
