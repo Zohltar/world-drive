@@ -152,7 +152,11 @@ export function createRoutePlannerUi({
         [],
         {
           coordinates:LAGUNA_SECA_CIRCUIT.coordinates,
-          provider:LAGUNA_SECA_CIRCUIT.provider
+          provider:LAGUNA_SECA_CIRCUIT.provider,
+          routeKind:LAGUNA_SECA_CIRCUIT.routeKind,
+          closedLoop:LAGUNA_SECA_CIRCUIT.closedLoop,
+          civilTraffic:LAGUNA_SECA_CIRCUIT.civilTraffic,
+          roadSpec:LAGUNA_SECA_CIRCUIT.roadSpec
         }
       )
     );

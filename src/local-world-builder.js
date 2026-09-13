@@ -145,15 +145,26 @@ export function createLocalWorldBuilder(options={}){
     const started=now();
     const expectedOffset=prepared.offset;
     const stage={volume:[],lateral:[],ribbon:[],offset:[]};
-    const tasks=[
-      ()=>stage.volume.push(originalRoadVolume?.(prepared.profile)||null),
-      ()=>stage.lateral.push(originalLateralBand?.(prepared.profile,5.20,3.75,options.shoulderMat,.035)||null),
-      ()=>stage.lateral.push(originalLateralBand?.(prepared.profile,-3.75,-5.20,options.shoulderMat,.035)||null),
-      ()=>stage.ribbon.push(originalRibbon?.(prepared.profile,7.5,options.roadMat,options.ROAD_SURFACE_OFFSET)||null),
-      ()=>stage.offset.push(originalOffsetRibbon?.(prepared.profile,0,.13,options.lineYellow,.165)||null),
-      ()=>stage.offset.push(originalOffsetRibbon?.(prepared.profile,-3.45,.10,options.lineWhite,.16)||null),
-      ()=>stage.offset.push(originalOffsetRibbon?.(prepared.profile,3.45,.10,options.lineWhite,.16)||null)
-    ];
+    const rawSpec=options.getRouteRoadSpec?.()||null;
+    const asphaltWidth=Math.max(5.5,Math.min(20,Number(rawSpec?.asphaltWidthM)||7.5));
+    const asphaltHalf=asphaltWidth/2;
+    const shoulderWidth=Math.max(0,Math.min(4,Number(rawSpec?.shoulderWidthM)??1.45));
+    const shoulderOuter=asphaltHalf+shoulderWidth;
+    const edgeInset=Math.max(.08,Math.min(.8,Number(rawSpec?.edgeLineInsetM)||.30));
+    const edgeOffset=Math.max(.2,asphaltHalf-edgeInset);
+    const tasks=[()=>stage.volume.push(originalRoadVolume?.(prepared.profile,rawSpec)||null)];
+    if(shoulderWidth>.02){
+      tasks.push(
+        ()=>stage.lateral.push(originalLateralBand?.(prepared.profile,shoulderOuter,asphaltHalf,options.shoulderMat,.035)||null),
+        ()=>stage.lateral.push(originalLateralBand?.(prepared.profile,-asphaltHalf,-shoulderOuter,options.shoulderMat,.035)||null)
+      );
+    }
+    tasks.push(()=>stage.ribbon.push(originalRibbon?.(prepared.profile,asphaltWidth,options.roadMat,options.ROAD_SURFACE_OFFSET)||null));
+    if(rawSpec?.centerLine!==false)tasks.push(()=>stage.offset.push(originalOffsetRibbon?.(prepared.profile,0,.13,options.lineYellow,.165)||null));
+    tasks.push(
+      ()=>stage.offset.push(originalOffsetRibbon?.(prepared.profile,-edgeOffset,.10,options.lineWhite,.16)||null),
+      ()=>stage.offset.push(originalOffsetRibbon?.(prepared.profile,edgeOffset,.10,options.lineWhite,.16)||null)
+    );
 
     roadPerf.preparations++;
     for(const task of tasks){

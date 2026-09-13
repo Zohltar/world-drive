@@ -115,13 +115,22 @@ function terrainTransitionProfile(profile){
   return result;
 }
 
-function roadBedOptionsForProfile(profile){
+function resolveRoadSpec(spec){
+  const asphaltWidthM=Math.max(5.5,Math.min(20,Number(spec?.asphaltWidthM)||7.5));
+  const shoulderWidthM=Math.max(0,Math.min(4,Number(spec?.shoulderWidthM)??1.45));
+  const edgeLineInsetM=Math.max(.08,Math.min(.8,Number(spec?.edgeLineInsetM)||.30));
+  return {asphaltWidthM,shoulderWidthM,edgeLineInsetM,centerLine:spec?.centerLine!==false,closedLoop:!!spec?.closedLoop};
+}
+
+function roadBedOptionsForProfile(profile,roadSpec=null){
+  const spec=resolveRoadSpec(roadSpec);
+  const asphaltHalf=spec.asphaltWidthM/2;
   return {
-    roadHalfWidth:5.4,
-    terrainCutHalfWidth:16.5,
+    roadHalfWidth:Math.max(5.4,asphaltHalf+.4),
+    terrainCutHalfWidth:Math.max(16.5,asphaltHalf+11.1),
     blendWidth:14.0,
     surfaceOffset:0.20,
-    startPad:profile.length>1&&(profile[0].cum||0)<=1?{
+    startPad:!spec.closedLoop&&profile.length>1&&(profile[0].cum||0)<=1?{
       x:profile[0].x,
       z:profile[0].z,
       y:profile[0].y-0.20,
@@ -227,6 +236,7 @@ export function createLocalWorldBuilder({
   lineWhite,
   ROAD_SURFACE_OFFSET,
   getWorldOffset,
+  getRouteRoadSpec,
   rebuildLocalWater,
   scheduleVisualJob,
   rebuildLocalScenery,
@@ -493,17 +503,25 @@ export function createLocalWorldBuilder({
 
   function buildRoadMeshes(profile){
     if(profile.length<=1)return;
-    const roadVolume=buildRoadVolume(profile);
+    const spec=resolveRoadSpec(getRouteRoadSpec?.());
+    const asphaltHalf=spec.asphaltWidthM/2;
+    const shoulderOuter=asphaltHalf+spec.shoulderWidthM;
+    const roadVolume=buildRoadVolume(profile,spec);
     if(roadVolume)roadGroup.add(roadVolume);
-    const leftShoulder=buildLateralBand(profile,5.20,3.75,shoulderMat,.035);
-    if(leftShoulder)roadGroup.add(leftShoulder);
-    const rightShoulder=buildLateralBand(profile,-3.75,-5.20,shoulderMat,.035);
-    if(rightShoulder)roadGroup.add(rightShoulder);
-    const asphaltRoad=buildRibbon(profile,7.5,roadMat,ROAD_SURFACE_OFFSET);
+    if(spec.shoulderWidthM>.02){
+      const leftShoulder=buildLateralBand(profile,shoulderOuter,asphaltHalf,shoulderMat,.035);
+      if(leftShoulder)roadGroup.add(leftShoulder);
+      const rightShoulder=buildLateralBand(profile,-asphaltHalf,-shoulderOuter,shoulderMat,.035);
+      if(rightShoulder)roadGroup.add(rightShoulder);
+    }
+    const asphaltRoad=buildRibbon(profile,spec.asphaltWidthM,roadMat,ROAD_SURFACE_OFFSET);
     if(asphaltRoad)roadGroup.add(asphaltRoad);
-    const center=buildOffsetRibbon(profile,0,.13,lineYellow,.165);
-    if(center)roadGroup.add(center);
-    for(const off of [-3.45,3.45]){
+    if(spec.centerLine){
+      const center=buildOffsetRibbon(profile,0,.13,lineYellow,.165);
+      if(center)roadGroup.add(center);
+    }
+    const edgeOffset=Math.max(.2,asphaltHalf-spec.edgeLineInsetM);
+    for(const off of [-edgeOffset,edgeOffset]){
       const em=buildOffsetRibbon(profile,off,.10,lineWhite,.16);
       if(em)roadGroup.add(em);
     }
@@ -583,7 +601,7 @@ export function createLocalWorldBuilder({
     setActiveRoadProfile(profile);
     lap('roadProfile');
     const terrainProfile=terrainTransitionProfile(profile);
-    terrainService.setRoadBed(terrainProfile,roadBedOptionsForProfile(profile));
+    terrainService.setRoadBed(terrainProfile,roadBedOptionsForProfile(profile,getRouteRoadSpec?.()));
     lap('terrainRoadBed');
     buildRoadMeshes(profile);
     lap('roadMeshes');
@@ -623,7 +641,7 @@ export function createLocalWorldBuilder({
     const offset={...(getWorldOffset?.()||{x:0,z:0})};
     const install=installTerrainRoadStateFast(
       terrainProfile,
-      roadBedOptionsForProfile(profile)
+      roadBedOptionsForProfile(profile,getRouteRoadSpec?.())
     );
     p923Perf.maxRoadStateInstallMs=Math.max(
       p923Perf.maxRoadStateInstallMs,install.ms

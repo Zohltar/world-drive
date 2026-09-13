@@ -254,7 +254,8 @@ export function createDrivingRuntime(args={}){
     getWorldOffset:args.getWorldOffset,
     nearestRouteForVehicle:args.nearestRouteForVehicle,
     roadProfileFrameAtCum:args.roadProfileFrameAtCum,
-    getHeadlightLevel:()=>Number(originalVehicleVisuals?.headlightLevel)||0
+    getHeadlightLevel:()=>Number(originalVehicleVisuals?.headlightLevel)||0,
+    isEnabled:args.getCivilTrafficEnabled
   });
 
   return Object.freeze({

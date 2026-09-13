@@ -28,6 +28,7 @@ function createRoadGeometryCore({
   let routeLength=0;
   let segments=[];
   let worldOffset={x:0,z:0};
+  let routeClosedLoop=false;
 
   function syncState(){
     const state=getState()||{};
@@ -36,6 +37,7 @@ function createRoadGeometryCore({
     routeLength=Math.max(0,Number(state.routeLength)||0);
     segments=Array.isArray(state.segments)?state.segments:[];
     worldOffset=state.worldOffset||worldOffset;
+    routeClosedLoop=!!state.routeClosedLoop;
   }
 // ---------- continuous road ribbon ----------
 // V21.19 — robust lateral frames for extreme mountain roads.
@@ -56,8 +58,15 @@ function roadLateralFrame(points,i){
     return {x:x/len,z:z/len};
   }
 
+  const lastIndex=points.length-1;
+  const closed=points.length>3&&Math.hypot(
+    points[0].x-points[lastIndex].x,
+    points[0].z-points[lastIndex].z
+  )<.5;
   let incoming=i>0?unitSegment(points[i-1],p):null;
-  let outgoing=i<points.length-1?unitSegment(p,points[i+1]):null;
+  let outgoing=i<lastIndex?unitSegment(p,points[i+1]):null;
+  if(closed&&i===0)incoming=unitSegment(points[lastIndex-1],p);
+  if(closed&&i===lastIndex)outgoing=unitSegment(p,points[1]);
 
   if(!incoming){
     for(let k=i-1;k>=0&&!incoming;k--)incoming=unitSegment(points[k],p);
@@ -165,10 +174,14 @@ function buildOffsetRibbon(points,offset,width,material,yOffset=0){
   return buildLateralBand(points,offset+half,offset-half,material,yOffset);
 }
 
-function buildRoadVolume(profile){
+function buildRoadVolume(profile,roadSpec=null){
   if(profile.length<2)return null;
   const group=new THREE.Group();
-  const asphaltHalf=3.75,shoulderHalf=5.20,toeHalf=5.95;
+  const asphaltWidth=Math.max(5.5,Math.min(20,Number(roadSpec?.asphaltWidthM)||7.5));
+  const asphaltHalf=asphaltWidth/2;
+  const shoulderWidth=Math.max(0,Math.min(4,Number(roadSpec?.shoulderWidthM)??1.45));
+  const shoulderHalf=asphaltHalf+shoulderWidth;
+  const toeHalf=shoulderHalf+.75;
   const asphaltTop=.10,shoulderTop=.035,slabBottom=-.20,toeBottom=-.36;
   const edgePos=[],edgeIdx=[],underPos=[],underIdx=[];
 
@@ -211,8 +224,9 @@ function buildRoadVolume(profile){
 function buildRoadProfile(){
   const nr=nearestRoute(absX,absZ);
   const centerCum=nr?.cum||0;
-  const minCum=Math.max(0,centerCum-1800);
-  const maxCum=Math.min(routeLength,centerCum+3600);
+  const keepWholeClosedLoop=routeClosedLoop&&routeLength<=5000;
+  const minCum=keepWholeClosedLoop?0:Math.max(0,centerCum-1800);
+  const maxCum=keepWholeClosedLoop?routeLength:Math.min(routeLength,centerCum+3600);
   const raw=[];
   let lastIncluded=null;
 
@@ -250,7 +264,7 @@ function buildRoadProfile(){
   const finalH=heights.slice();
   for(let i=1;i<heights.length-1;i++)if(bridgeHeightAtCum(raw[i].cum)===null&&bridgeManager.isNearApproach(raw[i].cum,18))finalH[i]=(heights[i-1]+2*heights[i]+heights[i+1])/4;
 
-  const hasRouteStart=(raw[0]?.cum||0)<=1;
+  const hasRouteStart=!routeClosedLoop&&(raw[0]?.cum||0)<=1;
   const startPlatformY=finalH[0];
   const START_FLAT_LENGTH=28,START_BLEND_LENGTH=72,START_BLEND_END=START_FLAT_LENGTH+START_BLEND_LENGTH;
   function startProfileWeight(cum){
@@ -262,7 +276,10 @@ function buildRoadProfile(){
 
   const rollProbe=5.6,rawRoll=new Array(raw.length).fill(0);
   for(let i=0;i<raw.length;i++){
-    const p=raw[i],prev=raw[Math.max(0,i-1)],next=raw[Math.min(raw.length-1,i+1)];
+    const lastIndex=raw.length-1;
+    const p=raw[i];
+    const prev=routeClosedLoop&&raw.length>3&&i===0?raw[lastIndex-1]:raw[Math.max(0,i-1)];
+    const next=routeClosedLoop&&raw.length>3&&i===lastIndex?raw[1]:raw[Math.min(lastIndex,i+1)];
     let tx=next.x-prev.x,tz=next.z-prev.z;const tl=Math.hypot(tx,tz)||1;tx/=tl;tz/=tl;
     const nx=-tz,nz=tx,leftY=terrainAbs(p.x+nx*rollProbe,p.z+nz*rollProbe),rightY=terrainAbs(p.x-nx*rollProbe,p.z-nz*rollProbe);
     rawRoll[i]=Math.atan2(leftY-rightY,rollProbe*2);
@@ -274,7 +291,14 @@ function buildRoadProfile(){
     smoothedRoll=nextRoll;
   }
   const maxRoadRoll=12*Math.PI/180;
-  return raw.map((p,i)=>({x:p.x,z:p.z,y:startSafeH[i],cum:p.cum,roll:startProfileWeight(p.cum)*Math.max(-maxRoadRoll,Math.min(maxRoadRoll,smoothedRoll[i]))}));
+  const profile=raw.map((p,i)=>({x:p.x,z:p.z,y:startSafeH[i],cum:p.cum,roll:startProfileWeight(p.cum)*Math.max(-maxRoadRoll,Math.min(maxRoadRoll,smoothedRoll[i]))}));
+  if(routeClosedLoop&&profile.length>2&&Math.hypot(profile[0].x-profile.at(-1).x,profile[0].z-profile.at(-1).z)<.5){
+    profile[profile.length-1].x=profile[0].x;
+    profile[profile.length-1].z=profile[0].z;
+    profile[profile.length-1].y=profile[0].y;
+    profile[profile.length-1].roll=profile[0].roll;
+  }
+  return profile;
 }
 
 const activeRoadProfile=[];
@@ -384,7 +408,7 @@ function clampStraightCrossfall(roll){
 // higher than the inside edge. Derive that direction from plan curvature, use the
 // terrain-derived roll only as a tiny straight-road crossfall, then smooth the
 // transition over distance. This prevents long adverse-camber mountain curves.
-export function engineerRoadBankingV21_31(profile){
+export function engineerRoadBankingV21_31(profile,{closedLoop=false}={}){
   if(!Array.isArray(profile)||!profile.length)return [];
   if(profile.length<9)return profile.map(p=>({...p,roll:clampStraightCrossfall(p?.roll)}));
 
@@ -457,7 +481,7 @@ export function engineerRoadBankingV21_31(profile){
     bank=next;
   }
 
-  const routeStart=(out[0]?.cum||0)<=1;
+  const routeStart=!closedLoop&&(out[0]?.cum||0)<=1;
   for(let i=0;i<n;i++){
     const sign=curveSign[i];
     let roll=clampRoadBankV21_31(bank[i]);
@@ -479,11 +503,12 @@ export function engineerRoadBankingV21_31(profile){
     }
     out[i].roll=roll;
   }
+  if(closedLoop&&out.length>1)out[out.length-1].roll=out[0].roll;
   return out;
 }
 
-export function smoothRoadProfileV21_31(profile,{terrainAbs,bridgeHeightAtCum,bridgeManager}={}){
-  if(!Array.isArray(profile)||profile.length<5)return Array.isArray(profile)?engineerRoadBankingV21_31(profile):[];
+export function smoothRoadProfileV21_31(profile,{terrainAbs,bridgeHeightAtCum,bridgeManager,closedLoop=false}={}){
+  if(!Array.isArray(profile)||profile.length<5)return Array.isArray(profile)?engineerRoadBankingV21_31(profile,{closedLoop}):[];
   const source=profile.map(p=>({...p}));
   let xy=source.map(p=>({x:p.x,z:p.z}));
 
@@ -528,7 +553,7 @@ export function smoothRoadProfileV21_31(profile,{terrainAbs,bridgeHeightAtCum,br
     heights=next;
   }
 
-  const routeStart=(source[0]?.cum||0)<=1;
+  const routeStart=!closedLoop&&(source[0]?.cum||0)<=1;
   const startY=source[0]?.y||0;
   const rounded=source.map((p,i)=>{
     let y=heights[i];
@@ -542,7 +567,13 @@ export function smoothRoadProfileV21_31(profile,{terrainAbs,bridgeHeightAtCum,br
     }
     return {...p,x:xy[i].x,z:xy[i].z,y};
   });
-  return engineerRoadBankingV21_31(rounded);
+  if(closedLoop&&rounded.length>2&&Math.hypot(rounded[0].x-rounded.at(-1).x,rounded[0].z-rounded.at(-1).z)<.5){
+    rounded[rounded.length-1].x=rounded[0].x;
+    rounded[rounded.length-1].z=rounded[0].z;
+    rounded[rounded.length-1].y=rounded[0].y;
+    rounded[rounded.length-1].roll=rounded[0].roll;
+  }
+  return engineerRoadBankingV21_31(rounded,{closedLoop});
 }
 
 export function createRoadGeometrySystem(args={}){
@@ -551,7 +582,8 @@ export function createRoadGeometrySystem(args={}){
     ...base,
     buildProfile(){
       const profile=base.buildProfile();
-      return smoothRoadProfileV21_31(profile,args);
+      const closedLoop=!!args.getState?.()?.routeClosedLoop;
+      return smoothRoadProfileV21_31(profile,{...args,closedLoop});
     }
   });
 }

@@ -117,6 +117,10 @@ let ROUTE_END={...MANIC5};
 let ROUTE_WAYPOINTS=[];
 let ROUTE_AUTHORED_COORDINATES=null;
 let ROUTE_AUTHORED_PROVIDER=null;
+let ROUTE_KIND='road';
+let ROUTE_CLOSED_LOOP=false;
+let ROUTE_ROAD_SPEC=null;
+let ROUTE_CIVIL_TRAFFIC=true;
 const EARTH=6378137;
 let origin={lat:ROUTE_START.lat,lon:ROUTE_START.lon};
 const route=[];       // {x,z,lat,lon,cum}
@@ -1053,7 +1057,7 @@ const roadGeometry=createRoadGeometrySystem({
   nearestRoute,
   bridgeHeightAtCum,
   bridgeManager,
-  getState:()=>({absX,absZ,routeLength,segments,worldOffset})
+  getState:()=>({absX,absZ,routeLength,segments,worldOffset,routeClosedLoop:ROUTE_CLOSED_LOOP})
 });
 const activeRoadProfile=roadGeometry.profile;
 function buildRoadProfile(){return roadGeometry.buildProfile();}
@@ -1262,6 +1266,7 @@ localWorldBuilder=createLocalWorldBuilder({
   lineWhite,
   ROAD_SURFACE_OFFSET,
   getWorldOffset:()=>worldOffset,
+  getRouteRoadSpec:()=>ROUTE_ROAD_SPEC,
   nearestRoute,
   isWaterAt,
   terrainAbs,
@@ -1300,6 +1305,10 @@ routeLifecycle=createRouteLifecycle({
     routeWaypoints:ROUTE_WAYPOINTS,
     routeAuthoredCoordinates:ROUTE_AUTHORED_COORDINATES,
     routeAuthoredProvider:ROUTE_AUTHORED_PROVIDER,
+    routeKind:ROUTE_KIND,
+    routeClosedLoop:ROUTE_CLOSED_LOOP,
+    routeRoadSpec:ROUTE_ROAD_SPEC,
+    routeCivilTraffic:ROUTE_CIVIL_TRAFFIC,
     origin,
     routeLength,
     vehicleNearestHint,
@@ -1319,6 +1328,13 @@ routeLifecycle=createRouteLifecycle({
     if('routeWaypoints' in state)ROUTE_WAYPOINTS=state.routeWaypoints;
     if('routeAuthoredCoordinates' in state)ROUTE_AUTHORED_COORDINATES=state.routeAuthoredCoordinates;
     if('routeAuthoredProvider' in state)ROUTE_AUTHORED_PROVIDER=state.routeAuthoredProvider;
+    if('routeKind' in state)ROUTE_KIND=state.routeKind;
+    if('routeClosedLoop' in state)ROUTE_CLOSED_LOOP=!!state.routeClosedLoop;
+    if('routeRoadSpec' in state)ROUTE_ROAD_SPEC=state.routeRoadSpec;
+    if('routeCivilTraffic' in state){
+      ROUTE_CIVIL_TRAFFIC=state.routeCivilTraffic!==false;
+      if(!ROUTE_CIVIL_TRAFFIC)drivingRuntime?.traffic?.clear?.();
+    }
     if('origin' in state)origin=state.origin;
     if('routeLength' in state)routeLength=state.routeLength;
     if('vehicleNearestHint' in state)vehicleNearestHint=state.vehicleNearestHint;
@@ -2304,6 +2320,7 @@ drivingRuntime=createDrivingRuntime({
   }),
   getRouteLength:()=>routeLength,
   getWorldOffset:()=>worldOffset,
+  getCivilTrafficEnabled:()=>ROUTE_CIVIL_TRAFFIC,
   nearestRouteForVehicle,
   autopilotControl,
   keyboardActionDown,

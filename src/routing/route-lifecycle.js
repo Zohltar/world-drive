@@ -269,6 +269,12 @@ export function createRouteLifecycle({
     const routeEnd={...end,name:end.name||'Arrivée'};
     const routeWaypoints=Array.isArray(waypoints)?waypoints.slice(0,8):[];
     const routeAuthoredProvider=authoredCoordinates?String(options?.provider||'Circuit preset'):null;
+    const routeKind=authoredCoordinates&&options?.routeKind==='circuit'?'circuit':'road';
+    const routeClosedLoop=routeKind==='circuit'&&options?.closedLoop===true;
+    const routeRoadSpec=routeKind==='circuit'&&options?.roadSpec&&typeof options.roadSpec==='object'
+      ?Object.freeze({...options.roadSpec,closedLoop:routeClosedLoop})
+      :null;
+    const routeCivilTraffic=options?.civilTraffic!==false;
 
     setState({
       speed:0,
@@ -279,6 +285,10 @@ export function createRouteLifecycle({
       routeWaypoints,
       routeAuthoredCoordinates:authoredCoordinates,
       routeAuthoredProvider,
+      routeKind,
+      routeClosedLoop,
+      routeRoadSpec,
+      routeCivilTraffic,
       origin:{lat:routeStart.lat,lon:routeStart.lon}
     });
 

@@ -75,6 +75,16 @@ export const LAGUNA_SECA_CIRCUIT=Object.freeze({
   id:'laguna-seca-grand-prix',
   label:'Laguna Seca · Circuit',
   provider:'Circuit preset · OSM',
+  routeKind:'circuit',
+  closedLoop:true,
+  civilTraffic:false,
+  roadSpec:Object.freeze({
+    asphaltWidthM:15,
+    shoulderWidthM:0,
+    edgeLineInsetM:.22,
+    centerLine:false,
+    widthSource:'published MotoGP technical data · 15 m nominal width'
+  }),
   lengthM:LagunaSecaTrack.lengthM,
   sourceWayIds:Object.freeze([...LagunaSecaTrack.sourceWayIds]),
   coordinates:Object.freeze(LagunaSecaTrack.coordinates.map(point=>Object.freeze([...point])))

@@ -123,6 +123,8 @@ export function createCivilTrafficSystem(args={}){
   let mode='offline';
   let followerSignature='';
   let routeMismatch=false;
+  let enabledLast=true;
+  const routeTrafficEnabled=()=>typeof args.isEnabled!=='function'||args.isEnabled()!==false;
 
   // P1 already has the expensive parse/template work underway at startup. Calling
   // ensureTemplate here only attaches this local engine to the preloaded cache.
@@ -263,6 +265,12 @@ export function createCivilTrafficSystem(args={}){
   }
 
   function update(dt){
+    if(!routeTrafficEnabled()){
+      if(enabledLast)clear();
+      enabledLast=false;
+      return;
+    }
+    enabledLast=true;
     const network=readCivilTrafficMultiplayerBridge();
     const nextMode=desiredMode(network);
     if(nextMode!==mode){
@@ -280,6 +288,7 @@ export function createCivilTrafficSystem(args={}){
   }
 
   function forceSpawn(kind='oncoming',vehicleId=null){
+    if(!routeTrafficEnabled())return false;
     const network=readCivilTrafficMultiplayerBridge();
     if(network.connected&&!network.isAuthority)return false;
     return local.forceSpawn(kind,vehicleId);
@@ -308,6 +317,7 @@ export function createCivilTrafficSystem(args={}){
       mode:'traffic-mp1-shared-variety',
       active:mode==='follower'?followerAgents.length:base.active,
       agents:mode==='follower'?followerAgents:base.agents,
+      routeTrafficEnabled:routeTrafficEnabled(),
       multiplayerTraffic:{
         synchronized:true,
         mode,
