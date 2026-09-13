@@ -1,0 +1,34 @@
+name: Block 10 Mobile Controls QA
+
+on:
+  push:
+    branches:
+      - candidate/block10-mobile-controls-r1
+
+permissions:
+  contents: read
+
+jobs:
+  qa:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install
+        run: npm ci
+      - name: Mobile input contract QA
+        run: node qa/qa-mobile-controls-b10-r1.mjs
+      - name: Existing R7 input boundary QA
+        run: node qa/qa-source-tree-r7-input.mjs
+      - name: Runtime import and debt audit
+        run: node qa/DEV_INTEGRATION_AUDIT.mjs
+      - name: Production build
+        run: npm run build
+      - name: Production code split QA
+        run: node qa/BUILD_V21_31_CODE_SPLIT_QA.mjs
