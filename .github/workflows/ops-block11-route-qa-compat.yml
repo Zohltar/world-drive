@@ -23,21 +23,23 @@ jobs:
           python - <<'PY'
           from pathlib import Path
           path=Path('qa/V21_26_ROUTE_LIFECYCLE_REFACTOR_QA.mjs')
-          text=path.read_text(encoding='utf-8')
-          old_main = r"assert.match(main,/async function createRequestedRoute\(start,end,waypoints=\[\]\)\{\s*return routeLifecycle\.createRequestedRoute\(start,end,waypoints\);\s*\}/s,'main.js createRequestedRoute facade is not narrow');"
-          new_main = r"assert.match(main,/async function createRequestedRoute\(start,end,waypoints=\[\],options=\{\}\)\{\s*return routeLifecycle\.createRequestedRoute\(start,end,waypoints,options\);\s*\}/s,'main.js createRequestedRoute facade is not narrow');"
-          old_lifecycle = r"  /async function createRequestedRoute\(start,end,waypoints=\[\]\)\{/,”
-          new_lifecycle = r"  /async function createRequestedRoute\(start,end,waypoints=\[\],options=\{\}\)\{/,”
-          # The two raw literals above intentionally carry a sentinel smart quote
-          # so YAML never interprets a trailing ASCII quote strangely; strip it.
-          old_lifecycle = old_lifecycle.replace('”','')
-          new_lifecycle = new_lifecycle.replace('”','')
-          for old,new in [(old_main,new_main),(old_lifecycle,new_lifecycle)]:
-              count=text.count(old)
-              if count!=1:
-                  raise SystemExit(f'Expected one match, found {count}: {old!r}')
-              text=text.replace(old,new,1)
-          path.write_text(text,encoding='utf-8')
+          lines=path.read_text(encoding='utf-8').splitlines()
+          changed_main=0
+          changed_lifecycle=0
+          for i,line in enumerate(lines):
+              if "main.js createRequestedRoute facade is not narrow" in line:
+                  if "waypoints=\\[\\]" not in line or "routeLifecycle\\.createRequestedRoute\\(start,end,waypoints\\)" not in line:
+                      raise SystemExit(f'Unexpected main facade assertion: {line}')
+                  line=line.replace("waypoints=\\[\\]", "waypoints=\\[\\],options=\\{\\}")
+                  line=line.replace("routeLifecycle\\.createRequestedRoute\\(start,end,waypoints\\)", "routeLifecycle\\.createRequestedRoute\\(start,end,waypoints,options\\)")
+                  lines[i]=line
+                  changed_main+=1
+              elif line.strip()==r'/async function createRequestedRoute\(start,end,waypoints=\[\]\)\{/,' :
+                  lines[i]=line.replace(r'waypoints=\[\]',r'waypoints=\[\],options=\{\}')
+                  changed_lifecycle+=1
+          if changed_main!=1 or changed_lifecycle!=1:
+              raise SystemExit(f'Expected one update each, got main={changed_main}, lifecycle={changed_lifecycle}')
+          path.write_text('\n'.join(lines)+'\n',encoding='utf-8')
           PY
       - name: Commit QA compatibility update
         run: |
