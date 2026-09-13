@@ -14,13 +14,22 @@ jobs:
   patch:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout patch helper
+        uses: actions/checkout@v4
+        with:
+          ref: ops/block11-laguna-r2-fix
+          path: patch
+      - name: Checkout candidate
+        uses: actions/checkout@v4
         with:
           ref: candidate/block11-laguna-seca-r1
+          path: work
           fetch-depth: 0
       - name: Apply Laguna Seca R2 correction
-        run: python "$GITHUB_WORKSPACE/../block11-laguna-r2-fix/ops/block11-laguna-r2-fix.py"
+        working-directory: work
+        run: python ../patch/ops/block11-laguna-r2-fix.py
       - name: Commit candidate correction
+        working-directory: work
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
