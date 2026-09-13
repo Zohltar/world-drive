@@ -1,0 +1,88 @@
+name: Ops Laguna Seca OSM Audit
+
+on:
+  push:
+    branches:
+      - ops/laguna-seca-osm-audit
+    paths:
+      - .github/workflows/ops-laguna-seca-osm-audit.yml
+
+permissions:
+  contents: write
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ops/laguna-seca-osm-audit
+
+      - name: Fetch Laguna Seca raceway geometry
+        shell: bash
+        run: |
+          set -euo pipefail
+          QUERY='[out:json][timeout:60];(way["highway"="raceway"](around:6000,36.584282,-121.753385);relation["highway"="raceway"](around:6000,36.584282,-121.753385););out geom;'
+          for endpoint in \
+            'https://overpass-api.de/api/interpreter' \
+            'https://overpass.kumi.systems/api/interpreter'; do
+            echo "Trying $endpoint"
+            if curl --fail --silent --show-error --max-time 90 --retry 2 \
+              --data-urlencode "data=${QUERY}" "$endpoint" -o /tmp/laguna-osm.json; then
+              test -s /tmp/laguna-osm.json && break
+            fi
+          done
+          test -s /tmp/laguna-osm.json
+
+      - name: Summarize raceway ways
+        shell: python
+        run: |
+          import json, math
+          from pathlib import Path
+
+          raw=json.loads(Path('/tmp/laguna-osm.json').read_text())
+          R=6371000.0
+          def dist(a,b):
+              la1,lo1=map(math.radians,a); la2,lo2=map(math.radians,b)
+              dlat=la2-la1; dlon=lo2-lo1
+              h=math.sin(dlat/2)**2+math.cos(la1)*math.cos(la2)*math.sin(dlon/2)**2
+              return 2*R*math.asin(min(1,math.sqrt(h)))
+          def length(points):
+              return sum(dist(a,b) for a,b in zip(points,points[1:]))
+
+          items=[]
+          for el in raw.get('elements',[]):
+              geom=el.get('geometry') or []
+              points=[[float(p['lat']),float(p['lon'])] for p in geom if 'lat' in p and 'lon' in p]
+              if len(points)<2: continue
+              tags=el.get('tags') or {}
+              items.append({
+                  'type':el.get('type'), 'id':el.get('id'),
+                  'name':tags.get('name'), 'ref':tags.get('ref'),
+                  'highway':tags.get('highway'), 'raceway':tags.get('raceway'),
+                  'service':tags.get('service'), 'access':tags.get('access'),
+                  'oneway':tags.get('oneway'), 'surface':tags.get('surface'),
+                  'points':points,
+                  'pointCount':len(points),
+                  'lengthM':round(length(points),2),
+                  'endpointGapM':round(dist(points[0],points[-1]),2),
+                  'closed':dist(points[0],points[-1])<5,
+              })
+          items.sort(key=lambda x:x['lengthM'],reverse=True)
+          out={
+              'queryCenter':{'lat':36.584282,'lon':-121.753385},
+              'elementCount':len(raw.get('elements',[])),
+              'geometryCount':len(items),
+              'items':items,
+          }
+          Path('ops').mkdir(exist_ok=True)
+          Path('ops/laguna-seca-osm-audit.json').write_text(json.dumps(out,indent=2),encoding='utf-8')
+          print(json.dumps([{k:v for k,v in item.items() if k!='points'} for item in items],indent=2))
+
+      - name: Commit audit result
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add ops/laguna-seca-osm-audit.json
+          git commit -m "Ops: capture Laguna Seca raceway geometry audit"
+          git push origin HEAD:ops/laguna-seca-osm-audit
