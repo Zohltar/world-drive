@@ -29,9 +29,32 @@ export function createGamepadController({
     return pads.find(p=>/gulikit|controller xw/i.test(p.id||''))||pads.find(p=>p.mapping==='standard')||pads[0];
   }
   function clearState(){state.connected=false;state.activeIndex=null;state.steer=0;state.lookX=0;state.lookY=0;state.throttle=0;state.brake=0;state.hand=false;state.clutch=false;state.reverseView=false;state.prevButtons=[];}
+  function applyMobileState(){
+    const controller=globalThis.__worldDriveMobileControls;
+    controller?.update?.();
+    const mobile=controller?.state;
+    if(!mobile?.enabled||!mobile.active)return false;
+    state.connected=true;
+    state.id='World Drive Mobile';
+    state.activeIndex=null;
+    state.steer=Math.max(-1,Math.min(1,Number(mobile.steer)||0));
+    state.lookX=0;state.lookY=0;
+    state.throttle=Math.max(0,Math.min(1,Number(mobile.throttle)||0));
+    state.brake=Math.max(0,Math.min(1,Number(mobile.brake)||0));
+    state.hand=false;state.clutch=false;state.reverseView=false;
+    state.prevButtons=[];
+    if(Math.abs(state.steer)>.02||state.throttle>.02||state.brake>.02)state.lastInputAt=performance.now();
+    setStatus('Mobile');
+    return true;
+  }
   function update(){
-    if(!navigator.getGamepads){setStatus('Non supportée');clearState();return;}
-    const gp=choose();if(!gp){clearState();setStatus('—');return;}
+    const gp=choose();
+    if(!gp){
+      clearState();
+      if(applyMobileState())return;
+      setStatus(navigator.getGamepads?'—':'Non supportée');
+      return;
+    }
     const inputActivity=activity(gp);if(inputActivity>.08){state.activeIndex=gp.index;state.lastInputAt=performance.now();}
     state.connected=true;state.id=gp.id||'Gamepad';
     const shortId=/gulikit/i.test(state.id)?'GuliKit XW':(gp.mapping==='standard'?'Gamepad standard':'Gamepad');setStatus(shortId);
