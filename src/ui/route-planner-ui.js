@@ -13,6 +13,9 @@ export function createRoutePlannerUi({
   YUNGAS_START,
   YUNGAS_END,
   YUNGAS_WAYPOINTS,
+  LAGUNA_SECA_START,
+  LAGUNA_SECA_END,
+  LAGUNA_SECA_CIRCUIT,
 }){
   // ---------- human-friendly place search ----------
   let selectedStart={...MANIC2};
@@ -92,7 +95,7 @@ export function createRoutePlannerUi({
       console.error(e);toast('Impossible de préparer le trajet');
     }finally{btn.textContent=old;btn.disabled=false}
   });
-  function applyPreset(start,end,waypoints=[]){
+  function applyPreset(start,end,waypoints=[],options={}){
     const presetWaypoints=Array.isArray(waypoints)?waypoints:[];
   
     $('waypointsInput').value=
@@ -107,7 +110,8 @@ export function createRoutePlannerUi({
     createRequestedRoute(
       {...start},
       {...end},
-      presetWaypoints.map(point=>({...point}))
+      presetWaypoints.map(point=>({...point})),
+      options
     );
   }
   $('preset389Btn').addEventListener('click',()=>applyPreset(MANIC2,MANIC5));
@@ -129,6 +133,27 @@ export function createRoutePlannerUi({
         YUNGAS_START,
         YUNGAS_END,
         YUNGAS_WAYPOINTS
+      )
+    );
+    presetGrid.appendChild(button);
+  }
+
+  if(presetGrid&&!$('presetLagunaSecaBtn')){
+    const button=documentRef.createElement('button');
+    button.id='presetLagunaSecaBtn';
+    button.type='button';
+    button.textContent='🏁 Laguna Seca · Circuit';
+    button.title='WeatherTech Raceway Laguna Seca · Grand Prix · 3,6 km';
+    button.addEventListener(
+      'click',
+      ()=>applyPreset(
+        LAGUNA_SECA_START,
+        LAGUNA_SECA_END,
+        [],
+        {
+          coordinates:LAGUNA_SECA_CIRCUIT.coordinates,
+          provider:LAGUNA_SECA_CIRCUIT.provider
+        }
       )
     );
     presetGrid.appendChild(button);
