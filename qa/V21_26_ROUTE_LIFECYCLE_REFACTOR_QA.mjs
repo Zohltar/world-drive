@@ -30,7 +30,7 @@ assert.doesNotMatch(main,/from '\.\/routing\/route-lifecycle\.js'/,'main.js must
 assert.match(main,/routeLifecycle=createRouteLifecycle\(\{/,'main.js missing route lifecycle initialization');
 assert.match(main,/const WorldDrive=routeLifecycle\.worldDrive;/,'main.js missing WorldDrive compatibility facade');
 assert.match(main,/function resetWorldCaches\(\)\{return routeLifecycle\.resetWorldCaches\(\);\}/,'main.js resetWorldCaches facade is not narrow');
-assert.match(main,/async function createRequestedRoute\(start,end,waypoints=\[\]\)\{\s*return routeLifecycle\.createRequestedRoute\(start,end,waypoints\);\s*\}/s,'main.js createRequestedRoute facade is not narrow');
+assert.match(main,/async function createRequestedRoute\(start,end,waypoints=\[\],options=\{\}\)\{\s*return routeLifecycle\.createRequestedRoute\(start,end,waypoints,options\);\s*\}/s,'main.js createRequestedRoute facade is not narrow');
 assert.match(main,/async function loadRoute\(\)\{return routeLifecycle\.loadRoute\(\);\}/,'main.js loadRoute facade is not narrow');
 
 for(const pattern of [
@@ -51,7 +51,7 @@ for(const pattern of [
   /export function createRouteLifecycle\s*\(\{/,
   /function resetWorldCaches\(\)\{/,
   /async function loadRoute\(\)\{/,
-  /async function createRequestedRoute\(start,end,waypoints=\[\]\)\{/,
+  /async function createRequestedRoute\(start,end,waypoints=\[\],options=\{\}\)\{/,
   /worldDrive\.route\.generation\+\+;/,
   /worldDrive\.streaming\.generation\+\+;/,
   /loadWaterAround\(position\.absX,position\.absZ\)/,
