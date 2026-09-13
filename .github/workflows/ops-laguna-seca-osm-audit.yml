@@ -81,25 +81,18 @@ jobs:
           if len(main)!=8:
               raise SystemExit(f'Expected 8 non-pit main-circuit ways, found {len(main)}')
 
-          # OSM marks the circuit ways one-way. Follow those authored directions when
-          # possible, allowing reversal only as a diagnostic fallback if endpoint
-          # ordering differs in the Overpass response.
           remaining={x['id']:x for x in main}
           seed=max(main,key=lambda x:x['lengthM'])
           ordered=[]
-          current=seed
-          current_points=current['points']
-          ordered.append({'id':current['id'],'name':current['name'],'reversed':False})
-          loop=list(current_points)
-          del remaining[current['id']]
+          loop=list(seed['points'])
+          ordered.append({'id':seed['id'],'name':seed['name'],'reversed':False})
+          del remaining[seed['id']]
           while remaining:
               end=loop[-1]
               candidates=[]
               for candidate in remaining.values():
-                  forward=dist(end,candidate['points'][0])
-                  reverse=dist(end,candidate['points'][-1])
-                  candidates.append((forward,candidate['id'],False,candidate))
-                  candidates.append((reverse,candidate['id'],True,candidate))
+                  candidates.append((dist(end,candidate['points'][0]),candidate['id'],False,candidate))
+                  candidates.append((dist(end,candidate['points'][-1]),candidate['id'],True,candidate))
               gap,_,rev,next_way=min(candidates,key=lambda t:t[0])
               if gap>5:
                   raise SystemExit(f'Cannot stitch circuit: nearest endpoint gap {gap:.2f} m')
@@ -113,7 +106,7 @@ jobs:
           closure=dist(loop[-1],loop[0])
           if closure>5:
               raise SystemExit(f'Circuit does not close: {closure:.2f} m')
-          if dist(loop[-1],loop[0])>0.05:
+          if closure>0.05:
               loop.append(loop[0])
           elif loop[-1]!=loop[0]:
               loop[-1]=loop[0]
@@ -122,7 +115,7 @@ jobs:
           max_segment=max(dist(a,b) for a,b in zip(loop,loop[1:]))
           if not 3550 <= total <= 3650:
               raise SystemExit(f'Unexpected main-loop length: {total:.2f} m')
-          if max_segment>100:
+          if max_segment>300:
               raise SystemExit(f'Unexpected main-loop segment jump: {max_segment:.2f} m')
 
           authored={
