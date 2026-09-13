@@ -48,6 +48,13 @@ function parseJsonLines(text){
   return records;
 }
 
+function isHtmlFallbackResponse(response,text){
+  const contentType=String(response?.headers?.get?.('content-type')||'').toLowerCase();
+  if(contentType.includes('text/html'))return true;
+  const prefix=String(text||'').trimStart().slice(0,96).toLowerCase();
+  return prefix.startsWith('<!doctype html')||prefix.startsWith('<html');
+}
+
 async function decodeResponseText(response){
   if(typeof response.arrayBuffer!=='function'){
     if(typeof response.text==='function')return response.text();
@@ -168,9 +175,12 @@ export function createOfflineHydroSource({
       const response=await fetchImpl(`${root}/manifest.json`);
       if(response?.status===404)return null;
       if(!response?.ok)throw new Error(`Hydro manifest HTTP ${response?.status??'error'}`);
-      const manifest=typeof response.json==='function'
-        ?await response.json()
-        :JSON.parse(await response.text());
+      const text=typeof response.text==='function'?await response.text():'';
+      // Vite (and several SPA hosts) answer an unknown static asset with
+      // index.html and HTTP 200. That means the local pack is unavailable, not
+      // corrupt JSON, so let water-data continue through cache/online OSM.
+      if(isHtmlFallbackResponse(response,text))return null;
+      const manifest=JSON.parse(text);
       if(manifest?.format!==EXPECTED_FORMAT){
         throw new Error(`Unsupported hydro manifest format: ${manifest?.format||'missing'}`);
       }
@@ -199,9 +209,18 @@ export function createOfflineHydroSource({
         return {exists:false,records:[]};
       }
       if(!response?.ok)throw new Error(`Hydro tile ${key} HTTP ${response?.status??'error'}`);
+      const text=await decodeResponseText(response);
+      // Outside the committed geographic pack the static host can serve the
+      // app shell with a successful status. Treat that exact response like a
+      // 404 and keep the resolved promise in tilePromises as a negative cache,
+      // avoiding both JSON errors and repeated requests on world refreshes.
+      if(isHtmlFallbackResponse(response,text)){
+        stats.tileMisses++;
+        return {exists:false,records:[]};
+      }
       return {
         exists:true,
-        records:parseJsonLines(await decodeResponseText(response))
+        records:parseJsonLines(text)
       };
     })();
     tilePromises.set(key,promise);

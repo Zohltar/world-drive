@@ -188,6 +188,65 @@ assert.equal(fallback.ok,true,'missing local center tile must preserve Overpass 
 assert.equal(fallback.source,'osm');
 assert.equal(fallbackOverpassFetches,1,'Overpass fallback must run exactly once for a missing center tile');
 
+// A missing static asset is commonly rewritten to index.html with HTTP 200 by
+// Vite/SPA hosting. It is an expected out-of-pack miss, not corrupt hydro data.
+let htmlTileFetches=0;
+const htmlFallbackSource=createOfflineHydroSource({
+  baseUrl:'http://world-drive.test/spa-fallback-hydro',
+  fetchImpl:async url=>{
+    if(String(url).endsWith('/manifest.json')){
+      return new Response(JSON.stringify({...manifest,oversize:{file:null},files:{oversize:null}}),{
+        status:200,
+        headers:{'content-type':'application/json'}
+      });
+    }
+    htmlTileFetches++;
+    return new Response('<!doctype html><html><body>World Drive</body></html>',{
+      status:200,
+      headers:{'content-type':'text/html; charset=utf-8'}
+    });
+  }
+});
+const firstHtmlMiss=await htmlFallbackSource.loadAround(LAT,LON,7000);
+const secondHtmlMiss=await htmlFallbackSource.loadAround(LAT,LON,7000);
+assert.equal(firstHtmlMiss.available,false,'SPA HTML tile response must be an unavailable local tile');
+assert.equal(firstHtmlMiss.reason,'center-tile-missing');
+assert.equal(secondHtmlMiss.available,false,'negative local tile cache must stay unavailable');
+assert.equal(htmlTileFetches,1,'SPA HTML tile miss must be fetched only once');
+assert.ok(htmlFallbackSource.diagnostics().tileHits>=1,'SPA HTML tile miss must be negative-cached');
+
+let htmlFallbackOverpassFetches=0;
+const htmlFallbackService=createWaterDataService({
+  cache,
+  offline:htmlFallbackSource,
+  overpass:{
+    async fetchRaw(){
+      htmlFallbackOverpassFetches++;
+      return {elements:[
+        {type:'way',id:901,tags:{waterway:'stream'},geometry:[{lat:LAT,lon:LON},{lat:LAT+0.001,lon:LON+0.001}]}
+      ]};
+    },
+    async fetchCached(){return {data:null,cached:false};}
+  },
+  toLatLon:(x,z)=>({lat:z,lon:x}),
+  toWorld:(lat,lon)=>({x:lon,z:-lat})
+});
+const htmlFallback=await htmlFallbackService.loadAround(LON,LAT);
+assert.equal(htmlFallback.ok,true,'SPA HTML local miss must continue to online OSM');
+assert.equal(htmlFallback.source,'osm');
+assert.equal(htmlFallbackOverpassFetches,1,'SPA HTML local miss must call online OSM exactly once');
+
+const missingManifestSource=createOfflineHydroSource({
+  baseUrl:'http://world-drive.test/missing-pack',
+  fetchImpl:async()=>new Response('<!doctype html><html></html>',{
+    status:200,
+    headers:{'content-type':'text/html'}
+  })
+});
+const missingManifest=await missingManifestSource.loadAround(LAT,LON,7000);
+assert.equal(missingManifest.available,false,'SPA HTML manifest response must disable the local pack cleanly');
+assert.equal(missingManifest.reason,'manifest-missing');
+
 let corruptOverpassFetches=0;
 const corruptSource=createOfflineHydroSource({
   baseUrl:'http://world-drive.test/corrupt-hydro',
@@ -224,5 +283,7 @@ console.log('GEOFABRIK HYDRO RUNTIME QA: PASS',{
   bridgeCount:result.bridgeCount,
   coastlineCount:result.coastlineCount,
   fallbackVerified:true,
+  spaHtmlFallbackVerified:true,
+  htmlMissFetches:htmlTileFetches,
   corruptLocalVisible:true
 });
