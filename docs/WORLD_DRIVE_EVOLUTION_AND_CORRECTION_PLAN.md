@@ -2,8 +2,8 @@
 
 Canonical work branch: `dev`  
 Stable branch: `main`  
-Current stable `main`: `9055d5682afcf512c91b1ae7dc97dcb4b16d6d9e` — `Docs: open post-refactor development plan`  
-Previous rollback/reference: `111df5d84bf7fd700590abbd9c129b303ac92fad` — `Release V21.31 post-C6 stable`  
+Current stable `main`: `b74e7377eaaf2b128eb893c547f4c2da3d14bbea` — `Release: prepare V21.32 stable candidate` — tag `v21.32`  
+Previous rollback/reference: `9a69c39242eb0f3e2cf8d2fd68675c1cfad23dd8` — `Release V21.31 stable` — tag `v21.31`  
 Status: **ACTIVE — canonical restart source of truth**
 
 GitHub live state + this file override chat memory when they disagree.
@@ -57,6 +57,8 @@ Before coding, be able to answer:
 
 **Plan phase:** post-refactor hardening and correctness  
 **Architecture state:** **R1–R9 + Phase O DONE/CERTIFIED; R8 architecture FROZEN**  
+**Release V21.32:** **PUBLISHED/STABLE (2026-09-12) — tag `v21.32` @ `b74e7377eaaf2b128eb893c547f4c2da3d14bbea`; release QA `34716507570` PASS; Windows installer + portable ZIP published**  
+**Post-release `dev` baseline before this docs checkpoint:** `63f07a14be2c911f216ee3c56e8eca357d36b887` — `Merge release V21.32 back into dev`; package/channel `21.32.0 dev`; Dev Integration `34717736610` PASS  
 **Block 1 — DOM safety:** **DONE/CERTIFIED — HUMAN PASS**  
 **Block 2 — Route lifecycle stale-generation guard:** **DONE/CERTIFIED — HUMAN PASS**  
 **Block 3 — Retired road-terrain transition workload:** **DONE/CERTIFIED — HUMAN PASS**  
@@ -75,8 +77,8 @@ Before coding, be able to answer:
 **Block 9 — AI-assisted 3D asset authoring and selective GLB modernization:** **PLANNED / DEFERRED — pilot-first, no wholesale asset replacement**  
 **Block 10 — Mobile browser driving controls:** **PLANNED / DEFERRED — touch throttle/brake + calibrated device-tilt steering with a sensor-unavailable fallback**  
 **Active correction block:** **NONE — await explicit user priority; do not auto-start deferred issues**  
-**Stable `main`:** `9055d5682afcf512c91b1ae7dc97dcb4b16d6d9e` — must remain untouched without explicit user approval.  
-**Previous rollback/reference:** `111df5d84bf7fd700590abbd9c129b303ac92fad`.
+**Stable `main`:** `b74e7377eaaf2b128eb893c547f4c2da3d14bbea` — tag `v21.32`; must remain untouched without explicit user approval.  
+**Previous rollback/reference:** `9a69c39242eb0f3e2cf8d2fd68675c1cfad23dd8` — tag `v21.31`.
 
 ## Block 5A certified checkpoint
 
@@ -117,7 +119,6 @@ Protected semantics preserved:
 - 30 Hz maintained client contract;
 - Traffic MP1 forwarding;
 - packaged Electron LAN host/join UX.
-
 Focused candidate run `33920069528`: PASS.  
 Post-integration stale-QA discovery run `33973743821`: FAIL only because legacy M4.13 intentionally exceeded the new 120/s abuse ceiling.  
 QA-only correction `abd3d875623e935cdc36f98601f0837f0a610168`: M4.13 keeps all 320 packets but sends bounded bursts.  
@@ -138,7 +139,7 @@ candidate/post-refactor-electron-ipc-origin-r1
 Security/runtime commits:
 
 ```text
-58d6c8a517c6c93845c6929885b1062592cb6a8b
+58d6c8a517c6f869cab187316b392799ce78ba79
 Security: add Electron IPC caller-origin guard
 
 2a551c6240480d3923531a02935bec2d9fcdb674
@@ -318,7 +319,6 @@ qa/DEV_INTEGRATION_AUDIT.mjs
 ```
 
 Focused correction candidate run:
-
 ```text
 33989915911 — PASS
 head bbee7dc9c17d4b045dcc19699d2fb0652117fef5
