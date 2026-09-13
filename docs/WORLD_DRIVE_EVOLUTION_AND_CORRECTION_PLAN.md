@@ -75,8 +75,9 @@ Before coding, be able to answer:
 **Issue #13:** **DONE/CERTIFIED — HUMAN PASS (2026-09-12) — bounded road-articulation contact correction**  
 **Block 8 — Biome-aware natural scenery:** **PLANNED / DEFERRED — includes the parked Issue #12 forest-readiness work when activated**  
 **Block 9 — AI-assisted 3D asset authoring and selective GLB modernization:** **PLANNED / DEFERRED — pilot-first, no wholesale asset replacement**  
-**Block 10 — Mobile browser driving controls:** **PLANNED / DEFERRED — touch throttle/brake + calibrated device-tilt steering with a sensor-unavailable fallback**  
-**Active correction block:** **NONE — await explicit user priority; do not auto-start deferred issues**  
+**Block 10 — Mobile browser driving controls:** **ABANDONED / NOT PLANNED (2026-09-13) — experiment stopped by user; no mobile-control candidate runtime was integrated**  
+**Block 11 — Circuit presets / closed-loop authored track routes:** **ACTIVE — Laguna Seca first; Nürburgring Nordschleife planned second after Laguna human PASS**  
+**Active correction block:** **BLOCK 11A — Laguna Seca circuit preset**  
 **Stable `main`:** `b74e7377eaaf2b128eb893c547f4c2da3d14bbea` — tag `v21.32`; must remain untouched without explicit user approval.  
 **Previous rollback/reference:** `9a69c39242eb0f3e2cf8d2fd68675c1cfad23dd8` — tag `v21.31`.
 
@@ -400,7 +401,7 @@ GitHub Issue #13: **CLOSED / COMPLETED (2026-09-12)**.
 
 ## Exact next action
 
-**No active correction block. Await explicit user priority.**
+**Block 11A — deliver Laguna Seca as the first closed-loop circuit preset.**
 
 Current unresolved work is intentionally not auto-started:
 
@@ -410,7 +411,8 @@ Current unresolved work is intentionally not auto-started:
 - Block 7 composition-root reduction remains **deferred / evidence-driven only**;
 - Block 8 biome-aware natural scenery remains **planned/deferred**; when activated, begin by reopening and stabilizing forest readiness/streaming as its first runtime workstream, then add biome classification and palette selection;
 - Block 9 AI-assisted 3D asset authoring remains **planned/deferred**; begin with one controlled pilot asset and do not replace accepted GLBs wholesale without measured visual/runtime benefit;
-- Block 10 mobile browser driving controls remains **planned/deferred**; when activated, add a mobile input mode without changing accepted desktop keyboard/gamepad controls or vehicle physics.
+- Block 10 mobile browser driving controls is **ABANDONED / NOT PLANNED** by user decision; do not integrate the retired candidate branch.
+- Block 11 is **ACTIVE**: deliver Laguna Seca first as a closed-loop circuit preset with authored/verified track geometry; after human PASS, add Nürburgring Nordschleife as the second circuit preset.
 
 Do not modify `main` without explicit user approval. Do not begin a deferred block merely because the latest certified corrections are complete.
 
@@ -433,7 +435,8 @@ Do not modify `main` without explicit user approval. Do not begin a deferred blo
 | P2 | Bounded pitch/bank articulation could drop diagonal wheel contacts and trigger a low-speed lateral slide | `src/physics/steep-slope-contact.js`, `src/vehicles/vehicle-presentation.js` | **DONE/CERTIFIED — Issue #13 — HUMAN PASS** |
 | P3 | Natural scenery is currently biome-agnostic, allowing ecologically wrong vegetation (for example conifers in tropical regions) | future biome classifier + forest/scenery asset selection | **PLANNED — Block 8** |
 | P3 | Current authored GLBs come from heterogeneous sources with inconsistent topology, axes, materials and movable-part/light ownership; newer AI-assisted 3D authoring may enable cleaner World Drive-specific assets | future AI/CAD/Blender authoring pipeline + vehicle/scenery asset QA | **PLANNED — Block 9** |
-| P3 | Browser build runs on phones but lacks a purpose-built mobile driving input scheme | future mobile input owner + touch controls + device-orientation steering + responsive HUD | **PLANNED — Block 10** |
+| P3 | Browser build runs on phones but lacks a purpose-built mobile driving input scheme | retired Block 10 experiment | **NOT PLANNED — user decision 2026-09-13** |
+| P2 | Preset system has no first-class closed-loop circuit route support | route presets + route lifecycle/routing input boundary | **ACTIVE — Block 11; Laguna Seca first, Nordschleife second** |
 | P3 | `src/main.js` remains large composition root | `src/main.js` | **DEFERRED — no refactor without concrete benefit** |
 
 ---
@@ -505,9 +508,9 @@ Focused run `33915664612`: PASS. Post-integration Dev Integration `33915756142`:
 
 ## Current active correction block
 
-**NONE — await explicit user priority.**
+**BLOCK 11A — Laguna Seca circuit preset.**
 
-Do not automatically promote deferred issues into active work. Preserve the certified Issue #9 terrain correction, Issue #10 steep-planar contact correction, Issue #13 bounded-articulation correction and all prior certified behavior while waiting for a new priority.
+Add closed-loop circuit presets without changing accepted ordinary road-routing semantics, vehicle physics, terrain authority, multiplayer, keyboard/gamepad controls or existing presets. Laguna Seca is the first human checkpoint; Nürburgring Nordschleife follows only after Laguna Seca PASS.
 
 ---
 
@@ -690,7 +693,7 @@ Protected rule: **Block 9 must not alter vehicle physics, wheel-ground support, 
 
 ## Block 10 — Mobile browser driving controls
 
-**PLANNED / DEFERRED — mobile web input mode. The accepted desktop keyboard/gamepad path remains authoritative and vehicle physics must not fork by platform.**
+**ABANDONED / NOT PLANNED (2026-09-13) — user decision. No candidate runtime from this experiment is accepted or integrated.**
 
 Observed feasibility: the current browser build already runs well enough on a phone in Chrome to justify a dedicated mobile-control workstream rather than a separate mobile game/runtime.
 
@@ -753,6 +756,44 @@ Minimum automated acceptance should verify:
 Human certification should include sustained driving, tight turns, gentle highway corrections, braking while steering, browser tab/app interruption and return, and at least one route with non-trivial terrain. The desired feel is direct but not twitchy: the driver can rest the phone at a comfortable neutral angle, steer naturally by tilting it and keep both thumbs primarily on acceleration/braking.
 
 Do not start Block 10 by rewriting the HUD or physics globally. First isolate the mobile input owner and prove that it can feed the existing normalized controls cleanly.
+
+
+---
+
+## Block 11 — Circuit presets / closed-loop authored track routes
+
+**ACTIVE — Laguna Seca first; Nürburgring Nordschleife second after Laguna human PASS.**
+
+Goal: add famous closed-loop race circuits to the existing preset-route experience while keeping ordinary road routing unchanged. Circuit presets should be deterministic, offline-friendly after code delivery, and suitable as repeatable vehicle/terrain stress routes.
+
+### Block 11A — Laguna Seca
+
+Deliver the current Grand Prix layout of WeatherTech Raceway Laguna Seca as the first circuit preset. Use verified/authored track geometry rather than depending on a live road router accepting `highway=raceway` at runtime. The route must form one continuous closed loop, preserve the circuit's real-world shape and elevation context, and start at a sensible point on the main straight.
+
+Acceptance:
+
+- preset appears alongside existing routes under an unambiguous circuit label;
+- closed-loop geometry is deterministic and does not require OSRM/Overpass at play time;
+- total loop length is consistent with the ~3.602 km current layout within an explicitly tested tolerance;
+- no large coordinate/segment discontinuity or accidental shortcut exists;
+- ordinary Manic-2/Manic-5, Route 169, Route 132 and Yungas presets keep their existing routing behavior;
+- no vehicle-physics, tire, suspension, wheel-ground, terrain/DEM, imagery, multiplayer or desktop-input tuning is introduced;
+- permanent QA covers circuit geometry/closure, preset wiring, existing preset regression, production build and code split;
+- human checkpoint drives the full lap and specifically inspects the Corkscrew, route continuity, road/terrain ownership and spawn orientation.
+
+### Block 11B — Nürburgring Nordschleife
+
+**PLANNED / gated on Laguna Seca human PASS.** Reuse the certified closed-loop preset infrastructure, then add the Nordschleife as the longer/high-load circuit and streaming stress route. Do not begin Block 11B before Laguna Seca is accepted.
+
+Implementation order:
+
+1. audit the current preset/routing lifecycle and source verified Laguna Seca raceway geometry;
+2. add the smallest authored closed-loop route contract needed by circuit presets, without changing generic road routing;
+3. wire Laguna Seca into the preset UI;
+4. add focused permanent QA and exact-head candidate integration QA;
+5. human Laguna Seca lap test;
+6. integrate to `dev`, run exact-head Dev Integration, update this plan;
+7. only then open Nordschleife work.
 
 ---
 
