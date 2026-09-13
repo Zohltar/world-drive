@@ -41,6 +41,26 @@ jobs:
         run: node qa/qa-source-tree-r7-ui.mjs
       - name: Route-start final placement QA
         run: node qa/qa-route-start-final-placement-r8.mjs
+      - name: R6 road geometry boundary QA
+        run: node qa/qa-source-tree-r6-road-geometry.mjs
+      - name: Road geometry ownership QA
+        run: node qa/qa-road-geometry-c3.mjs
+      - name: Road banking limits QA
+        run: node qa/qa-road-banking-r1.mjs
+      - name: Terrain road imagery alignment QA
+        run: node qa/qa-terrain-r2-road-imagery.mjs
+      - name: Issue 9 road-terrain intrusion regression
+        run: node qa/qa-issue9-road-terrain-intrusion-r1.mjs
+      - name: Sparse civil traffic QA
+        run: node qa/qa-traffic-r1.mjs
+      - name: Civil traffic variety pool QA
+        run: node qa/qa-traffic-pool-r1.mjs
+      - name: Civil traffic startup preload QA
+        run: node qa/qa-traffic-preload-p1.mjs
+      - name: Shared multiplayer civil traffic QA
+        run: node qa/qa-traffic-mp1.mjs
+      - name: Live shared multiplayer traffic QA
+        run: node qa/qa-traffic-mp1-live.mjs
       - name: Runtime import and source-tree audit
         run: node qa/DEV_INTEGRATION_AUDIT.mjs
       - name: Production build
