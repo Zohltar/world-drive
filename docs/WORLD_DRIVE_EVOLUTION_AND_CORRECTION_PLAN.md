@@ -139,7 +139,7 @@ candidate/post-refactor-electron-ipc-origin-r1
 Security/runtime commits:
 
 ```text
-58d6c8a517c6f869cab187316b392799ce78ba79
+58d6c8a517c6c93845c6929885b1062592cb6a8b
 Security: add Electron IPC caller-origin guard
 
 2a551c6240480d3923531a02935bec2d9fcdb674
