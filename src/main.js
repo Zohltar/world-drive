@@ -1512,6 +1512,8 @@ transmissionController=createTransmissionController({
 const dynamicsScratch={
   drive:{axleLoads:[]},
   brake:{axleLoads:[]},
+  brakeLateral:{},
+  combinedBrake:{},
   handbrake:{axleLoads:[]},
   grade:{},
   steering:{},

@@ -24,5 +24,7 @@ They are retained as engineering history and rationale only. They must not be tr
 
 ## Other documentation
 
+- `WORLD_DRIVE_PHYSICS_TRAIL_BRAKING_R1.md` — active Laguna Seca physics diagnosis,
+  scientific basis, candidate measurements and human checkpoint.
 - `docs/images/` — documentation images/resources.
 - Root `README_PACKAGING.md` — current packaging instructions.

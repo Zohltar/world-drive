@@ -29,4 +29,5 @@ await import('./qa-phase-o-naming-boundary.mjs');
 await import('./qa-issue9-road-aware-grid-r2.mjs');
 await import('./qa-issue10-steep-slope-contact-r2.mjs');
 await import('./qa-issue13-low-speed-lateral-runtime-r2.mjs');
+await import('./qa-physics-combined-trail-braking-r1.mjs');
 await import('./DEV_INTEGRATION_AUDIT_BASE.mjs');

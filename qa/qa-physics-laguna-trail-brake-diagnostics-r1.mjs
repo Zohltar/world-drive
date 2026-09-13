@@ -3,8 +3,10 @@ import assert from 'node:assert/strict';
 import {createVehicleSystem} from '../src/vehicles/vehicle-system.js';
 import {
   estimateWheelGripUsage,
+  lateralDynamicsEnvelope,
   longitudinalTractionLimit
 } from '../src/physics/vehicle-dynamics.js';
+import {combinedBrakeForceAllocation} from '../src/physics/longitudinal-control.js';
 import {createPerWheelShadowSolver} from '../src/physics/per-wheel-shadow-solver.js';
 
 const G=9.80665;
@@ -200,8 +202,21 @@ function steadyCornerTrim({radius,speed,turnSign=1}){
   return {beta,steerAngle,yawRate,state,residual};
 }
 
-function runtimeAggregateProbe({speed,targetLatAccel,brakeG}){
+function runtimeAggregateProbe({speed,steerAngle,brakeG,allocateCombined=false}){
   const longitudinalMu=vehicle.longitudinalAccelLimit/G;
+  const lateral=lateralDynamicsEnvelope({
+    vehicle,
+    speed,
+    steerAngle,
+    steerInput:0,
+    driveThrottle:0,
+    onPavement:true,
+    surfaceGrip:1,
+    awdOffroadGripBonus:1,
+    rearSlipAmount:0,
+    airborne:false
+  },{});
+  const tireSolverLatAccel=Math.min(lateral.requestedLatAccel,lateral.latLimit);
   const brakeForce=longitudinalTractionLimit({
     vehicle,
     requestedAccel:-Math.abs(brakeG)*G,
@@ -210,13 +225,22 @@ function runtimeAggregateProbe({speed,targetLatAccel,brakeG}){
     airborne:false,
     speedAbs:speed
   },{});
-  const grip=estimateWheelGripUsage({
-    requestedLatAccel:targetLatAccel,
-    signedLatAccel:targetLatAccel,
-    latLimit:vehicle.lateralAccelLimit,
-    longitudinalAccel:brakeForce.acceleration,
-    propulsionAccel:0,
+  const allocation=combinedBrakeForceAllocation({
     serviceBrakeAccel:brakeForce.acceleration,
+    longitudinalLimit:brakeForce.limit,
+    requestedLateralAccel:tireSolverLatAccel,
+    lateralLimit:lateral.latLimit,
+    absEnabled:vehicle.absEnabled!==false,
+    airborne:false,
+    enabled:allocateCombined
+  },{});
+  const grip=estimateWheelGripUsage({
+    requestedLatAccel:tireSolverLatAccel,
+    signedLatAccel:tireSolverLatAccel,
+    latLimit:lateral.latLimit,
+    longitudinalAccel:allocation.acceleration,
+    propulsionAccel:0,
+    serviceBrakeAccel:allocation.acceleration,
     surfaceMu:longitudinalMu,
     throttle:-1,
     handbrake:false,
@@ -227,7 +251,7 @@ function runtimeAggregateProbe({speed,targetLatAccel,brakeG}){
     previousUsage:[0,0,0,0],
     dt:.05
   },{});
-  return {brakeForce,grip};
+  return {brakeForce,allocation,grip,lateral,tireSolverLatAccel};
 }
 
 const resampled=resampleClosed(toMeters(circuit.coordinates),5);
@@ -303,19 +327,46 @@ const loadTransfer=brakeLevels.map(brakeG=>{
   };
 });
 
-const runtimeFullBrake=trims.map(({corner,speed})=>{
-  const probe=runtimeAggregateProbe({speed,targetLatAccel,brakeG:vehicle.brake/G});
+const runtimeFullBrake=trims.map(({corner,trim,speed,turnSign})=>{
+  const legacy=runtimeAggregateProbe({speed,steerAngle:trim.steerAngle,brakeG:vehicle.brake/G,allocateCombined:false});
+  const allocated=runtimeAggregateProbe({speed,steerAngle:trim.steerAngle,brakeG:vehicle.brake/G,allocateCombined:true});
+  const physical=evaluateState({
+    radius:corner.radius,
+    speed,
+    beta:trim.beta,
+    steerAngle:trim.steerAngle,
+    yawRate:trim.yawRate,
+    brakeG:Math.abs(allocated.allocation.acceleration)/G,
+    turnSign,
+    settleSteps:72
+  });
+  assert.ok(allocated.grip.netLateralAccel>legacy.grip.netLateralAccel*3,
+    `combined allocation did not restore Laguna lateral force at R=${corner.radius.toFixed(1)} m`);
+  assert.ok(allocated.grip.frontLateral<.99,
+    `combined allocation retained front-axle saturation at R=${corner.radius.toFixed(1)} m`);
   return {
     sM:Math.round(corner.s),
     radiusM:Number(corner.radius.toFixed(1)),
     speedKmh:Number((speed*3.6).toFixed(1)),
-    appliedBrakeG:Number((Math.abs(probe.brakeForce.acceleration)/G).toFixed(3)),
-    netLatG:Number((probe.grip.netLateralAccel/G).toFixed(3)),
-    trajectoryCapacityG:Number((probe.grip.trajectoryLateralCapacityAccel/G).toFixed(3)),
-    frontForceScale:Number(probe.grip.frontLateralForceScale.toFixed(3)),
-    rearForceScale:Number(probe.grip.rearLateralForceScale.toFixed(3)),
-    frontSlip:Number(probe.grip.frontLateral.toFixed(3)),
-    rearSlip:Number(probe.grip.rearLateral.toFixed(3))
+    runtimeRequestedLatG:Number((allocated.tireSolverLatAccel/G).toFixed(3)),
+    unallocated:{
+      appliedBrakeG:Number((Math.abs(legacy.allocation.acceleration)/G).toFixed(3)),
+      netLatG:Number((legacy.grip.netLateralAccel/G).toFixed(3)),
+      trajectoryCapacityG:Number((legacy.grip.trajectoryLateralCapacityAccel/G).toFixed(3)),
+      frontSlip:Number(legacy.grip.frontLateral.toFixed(3)),
+      rearSlip:Number(legacy.grip.rearLateral.toFixed(3))
+    },
+    allocated:{
+      appliedBrakeG:Number((Math.abs(allocated.allocation.acceleration)/G).toFixed(3)),
+      forceScale:Number(allocated.allocation.forceScale.toFixed(3)),
+      netLatG:Number((allocated.grip.netLateralAccel/G).toFixed(3)),
+      trajectoryCapacityG:Number((allocated.grip.trajectoryLateralCapacityAccel/G).toFixed(3)),
+      frontForceScale:Number(allocated.grip.frontLateralForceScale.toFixed(3)),
+      rearForceScale:Number(allocated.grip.rearLateralForceScale.toFixed(3)),
+      frontSlip:Number(allocated.grip.frontLateral.toFixed(3)),
+      rearSlip:Number(allocated.grip.rearLateral.toFixed(3)),
+      physicalYawAccel:Number(physical.yawAccel.toFixed(3))
+    }
   };
 });
 
@@ -324,7 +375,7 @@ console.log(JSON.stringify({
   method:{
     steadyStateConstraints:['sum(Fy)/mass = speed^2/radius','sum(Mz)/yawInertia = 0'],
     brakeSweep:'fixed trimmed corner state; 120 Hz per-wheel tire/ABS solver',
-    note:'runtimeFullBrake records the current aggregate integration separately from the physical tire solver'
+    note:'runtimeFullBrake compares the superseded longitudinal-priority path with combined g-g allocation and the physical tire yaw result'
   },
   circuitLengthM:Number(resampled.length.toFixed(1)),
   vehicle:'wrx',

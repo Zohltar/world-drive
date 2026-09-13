@@ -1,7 +1,11 @@
 import { createPerWheelShadowSolver } from './physics/per-wheel-shadow-solver.js';
 import { effectiveTireFriction, tireProfileForVehicle } from './physics/tire-model.js';
 import { tireForceTrajectoryYawRate } from './physics/drift-force-coupling.js';
-import { serviceBrakeAcceleration, brakeWouldCrossZero } from './physics/longitudinal-control.js';
+import {
+  serviceBrakeAcceleration,
+  combinedBrakeForceAllocation,
+  brakeWouldCrossZero
+} from './physics/longitudinal-control.js';
 import {
   createManeuverState,
   jTurnTransientSteeringSpeed
@@ -265,6 +269,35 @@ export function createDrivingRuntime({
 
     const driveForce=longitudinalTractionLimit({vehicle:VEHICLE,requestedAccel:requestedBodyDriveAccel,surfaceMu:longitudinalMu,mode:'drive',airborne:airborneNow,speedAbs:longitudinalSpeedAbs},dynamicsScratch.drive);
     const brakeForce=longitudinalTractionLimit({vehicle:VEHICLE,requestedAccel:requestedBrakeAccel,surfaceMu:longitudinalMu,mode:'brake',airborne:airborneNow,speedAbs:longitudinalSpeedAbs},dynamicsScratch.brake);
+    const preBrakeSteeringSpeed=bodyRelativeSteeringSpeed({speed,heading,velocityHeading,handbrake:hand});
+    const preBrakeLateral=lateralDynamicsEnvelope({
+      vehicle:VEHICLE,
+      speed:preBrakeSteeringSpeed,
+      steerAngle:currentSteerAngle,
+      steerInput:steer,
+      driveThrottle,
+      onPavement,
+      surfaceGrip,
+      awdOffroadGripBonus,
+      offroadPeakMu:offroadFrictionModel?.peak,
+      rearSlipAmount:0,
+      airborne:airborneNow
+    },dynamicsScratch.brakeLateral);
+    const combinedBrake=combinedBrakeForceAllocation({
+      serviceBrakeAccel:brakeForce.acceleration,
+      longitudinalLimit:brakeForce.limit,
+      requestedLateralAccel:Math.min(preBrakeLateral.requestedLatAccel,preBrakeLateral.latLimit),
+      lateralLimit:preBrakeLateral.latLimit,
+      absEnabled:VEHICLE.absEnabled!==false,
+      airborne:airborneNow,
+      // Keep the articulated tractor/trailer brake path isolated: its
+      // combination-level service-brake scaling is not a passenger-car ABS
+      // controller and needs a dedicated coupled-tire model before opt-in.
+      enabled:onPavement&&!hand&&VEHICLE.vehicleClass!=='tractor'
+    },dynamicsScratch.combinedBrake);
+    brakeForce.unallocatedAcceleration=brakeForce.acceleration;
+    brakeForce.acceleration=combinedBrake.acceleration;
+    brakeForce.combinedGripScale=combinedBrake.forceScale;
     const appliedBodyDriveAccelRaw=driveForce.acceleration;
     const handbrakeDriveScale=handbrakeDriveRetentionScale({vehicle:VEHICLE,handbrake:hand});
     const appliedBodyDriveAccel=appliedBodyDriveAccelRaw*handbrakeDriveScale;
@@ -423,8 +456,8 @@ export function createDrivingRuntime({
     const physicalTireForces=physicsShadow.advance(dt,{
       vehicleId:getVehicleId?.()||'unknown',vehicle:VEHICLE,contacts:vehiclePresentation?.wheelContacts||[],speed,heading,velocityHeading,
       yawRate:dynamicYawRate,centerSteerAngle:steerAngle,longitudinalAccel,lateralAccel:physicalSignedLatAccel,
-      requestedDriveAccel:appliedBodyDriveAccelRaw,requestedBrakeAccel,
-      longitudinalLoadTransferAccel:appliedBodyDriveAccel+requestedBrakeAccel,
+      requestedDriveAccel:appliedBodyDriveAccelRaw,requestedBrakeAccel:brakeForce.acceleration,
+      longitudinalLoadTransferAccel:appliedBodyDriveAccel+brakeForce.acceleration,
       handbrake:hand,surfaceId:onPavement?'asphalt-dry':'dirt'
     });
 
