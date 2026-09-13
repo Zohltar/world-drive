@@ -5,6 +5,14 @@
 // World Drive V21.25 — road profile, surface queries and visible road mesh geometry.
 // Owns local road-profile/index state; main.js remains the world/physics orchestrator.
 
+function monotoneRoadSlope(incoming,outgoing){
+  if(!Number.isFinite(incoming)||!Number.isFinite(outgoing)||incoming*outgoing<=0)return 0;
+  return Math.sign(incoming)*Math.min(
+    (Math.abs(incoming)+Math.abs(outgoing))*.5,
+    3*Math.min(Math.abs(incoming),Math.abs(outgoing))
+  );
+}
+
 function createRoadGeometryCore({
   THREE,
   roadEdgeMat,
@@ -302,6 +310,7 @@ function buildRoadProfile(){
 }
 
 const activeRoadProfile=[];
+const activeRoadTangents=[];
 const ROAD_PROFILE_INDEX_CELL=48;
 let roadProfileSpatialIndex=new Map();
 let roadProfileVisitMarks=new Uint32Array(0);
@@ -326,8 +335,76 @@ function rebuildRoadProfileSpatialIndex(){
   }
 }
 
-function setActiveRoadProfile(profile){activeRoadProfile.length=0;if(Array.isArray(profile))activeRoadProfile.push(...profile);rebuildRoadProfileSpatialIndex();return activeRoadProfile;}
-function clearActiveRoadProfile(){activeRoadProfile.length=0;roadProfileSpatialIndex=new Map();}
+function rebuildRoadProfileTangents(){
+  activeRoadTangents.length=activeRoadProfile.length;
+  const count=activeRoadProfile.length;
+  if(count<2)return;
+  const closed=count>3&&Math.hypot(
+    activeRoadProfile[0].x-activeRoadProfile[count-1].x,
+    activeRoadProfile[0].z-activeRoadProfile[count-1].z
+  )<.5;
+  const uniqueCount=closed?count-1:count;
+
+  function segmentSlope(a,b){
+    const distance=Math.hypot(b.x-a.x,b.z-a.z);
+    if(distance<1e-6)return {x:0,z:1,grade:0};
+    return {
+      x:(b.x-a.x)/distance,
+      z:(b.z-a.z)/distance,
+      grade:(b.y-a.y)/distance
+    };
+  }
+
+  for(let i=0;i<uniqueCount;i++){
+    const point=activeRoadProfile[i];
+    let incoming=null,outgoing=null;
+    if(i>0)incoming=segmentSlope(activeRoadProfile[i-1],point);
+    else if(closed)incoming=segmentSlope(activeRoadProfile[uniqueCount-1],point);
+    if(i<uniqueCount-1)outgoing=segmentSlope(point,activeRoadProfile[i+1]);
+    else if(closed)outgoing=segmentSlope(point,activeRoadProfile[0]);
+
+    const base=outgoing||incoming||{x:0,z:1,grade:0};
+    let tx=base.x,tz=base.z;
+    if(incoming&&outgoing){
+      tx=incoming.x+outgoing.x;
+      tz=incoming.z+outgoing.z;
+      const length=Math.hypot(tx,tz);
+      if(length>.12){tx/=length;tz/=length;}else{tx=base.x;tz=base.z;}
+    }
+    activeRoadTangents[i]={
+      x:tx,
+      z:tz,
+      grade:incoming&&outgoing
+        ?monotoneRoadSlope(incoming.grade,outgoing.grade)
+        :base.grade
+    };
+  }
+  if(closed)activeRoadTangents[count-1]={...activeRoadTangents[0]};
+}
+
+function setRoadFrameOrientation(out,index,t,fallbackX,fallbackZ){
+  const a=activeRoadTangents[index];
+  const b=activeRoadTangents[Math.min(index+1,activeRoadTangents.length-1)];
+  let tx=(a?.x??fallbackX)+((b?.x??fallbackX)-(a?.x??fallbackX))*t;
+  let tz=(a?.z??fallbackZ)+((b?.z??fallbackZ)-(a?.z??fallbackZ))*t;
+  const length=Math.hypot(tx,tz);
+  if(length>.12){tx/=length;tz/=length;}else{tx=fallbackX;tz=fallbackZ;}
+  const grade=(a?.grade||0)+((b?.grade||0)-(a?.grade||0))*t;
+  out.angle=Math.atan2(tx,tz);
+  out.pitch=Math.atan(grade);
+  out.nx=-tz;
+  out.nz=tx;
+  return out;
+}
+
+function setActiveRoadProfile(profile){
+  activeRoadProfile.length=0;
+  if(Array.isArray(profile))activeRoadProfile.push(...profile);
+  rebuildRoadProfileTangents();
+  rebuildRoadProfileSpatialIndex();
+  return activeRoadProfile;
+}
+function clearActiveRoadProfile(){activeRoadProfile.length=0;activeRoadTangents.length=0;roadProfileSpatialIndex=new Map();}
 
 function roadProfileFrameAtCum(cum){
   if(activeRoadProfile.length<2)return null;
@@ -336,8 +413,9 @@ function roadProfileFrameAtCum(cum){
   while(lo+1<hi){const mid=(lo+hi)>>1;if(activeRoadProfile[mid].cum<=target)lo=mid;else hi=mid;}
   const a=activeRoadProfile[lo],b=activeRoadProfile[Math.min(lo+1,activeRoadProfile.length-1)];
   const span=Math.max(1e-6,b.cum-a.cum),t=Math.max(0,Math.min(1,(target-a.cum)/span));
-  const dx=b.x-a.x,dz=b.z-a.z,len=Math.hypot(dx,dz)||1,nx=-dz/len,nz=dx/len;
-  return {y:a.y+(b.y-a.y)*t,roll:(a.roll||0)+((b.roll||0)-(a.roll||0))*t,angle:Math.atan2(dx,dz),pitch:Math.atan2(b.y-a.y,len),px:a.x+dx*t,pz:a.z+dz*t,nx,nz,index:lo,t,cum:target};
+  const dx=b.x-a.x,dz=b.z-a.z,len=Math.hypot(dx,dz)||1;
+  const frame={y:a.y+(b.y-a.y)*t,roll:(a.roll||0)+((b.roll||0)-(a.roll||0))*t,angle:0,pitch:0,px:a.x+dx*t,pz:a.z+dz*t,nx:0,nz:0,index:lo,t,cum:target};
+  return setRoadFrameOrientation(frame,lo,t,dx/len,dz/len);
 }
 
 function roadFrameAt(x,z,maxDistance=26){
@@ -351,7 +429,7 @@ function roadFrameAt(x,z,maxDistance=26){
       if(roadProfileVisitMarks[i]===stamp)continue;roadProfileVisitMarks[i]=stamp;
       const a=activeRoadProfile[i],b=activeRoadProfile[i+1],vx=b.x-a.x,vz=b.z-a.z,vv=vx*vx+vz*vz||1;
       const t=Math.max(0,Math.min(1,((x-a.x)*vx+(z-a.z)*vz)/vv)),px=a.x+t*vx,pz=a.z+t*vz,dx=x-px,dz=z-pz,d2=dx*dx+dz*dz;
-      if(d2<out.bd){const len=Math.sqrt(vv);out.found=true;out.bd=d2;out.y=a.y+(b.y-a.y)*t;out.angle=Math.atan2(vx,vz);out.pitch=Math.atan2(b.y-a.y,len);out.roll=(a.roll||0)+((b.roll||0)-(a.roll||0))*t;out.px=px;out.pz=pz;out.nx=-vz/len;out.nz=vx/len;out.index=i;out.t=t;out.distance=Math.sqrt(d2);}
+      if(d2<out.bd){const len=Math.sqrt(vv);out.found=true;out.bd=d2;out.y=a.y+(b.y-a.y)*t;out.roll=(a.roll||0)+((b.roll||0)-(a.roll||0))*t;out.px=px;out.pz=pz;out.index=i;out.t=t;out.distance=Math.sqrt(d2);setRoadFrameOrientation(out,i,t,vx/len,vz/len);}
     }
   }
   return out.found&&out.distance<=maxDistance?out:null;
@@ -576,6 +654,146 @@ export function smoothRoadProfileV21_31(profile,{terrainAbs,bridgeHeightAtCum,br
   return engineerRoadBankingV21_31(rounded,{closedLoop});
 }
 
+const ROAD_SURFACE_BASE_STEP_M=1.5;
+const ROAD_SURFACE_MAX_HEADING_STEP_RAD=2*Math.PI/180;
+const ROAD_SURFACE_MAX_PITCH_STEP_RAD=.12*Math.PI/180;
+const ROAD_SURFACE_MAX_ROLL_STEP_RAD=.30*Math.PI/180;
+const ROAD_SURFACE_MAX_DETAIL_SUBDIVISIONS=10;
+const ROAD_SURFACE_MAX_CHORD_DRIFT_M=.35;
+
+function hermiteValue(a,b,ta,tb,span,t){
+  const t2=t*t,t3=t2*t;
+  return (2*t3-3*t2+1)*a+
+    (t3-2*t2+t)*span*ta+
+    (-2*t3+3*t2)*b+
+    (t3-t2)*span*tb;
+}
+
+// Road surface R3 — V21.31 rounded the source samples, but the rendered ribbon
+// and wheel support still joined those samples as coarse planar sections. On a
+// tight curve or a changing grade this left visible facets and an instantaneous
+// pitch/heading change at each join. Resample the engineered profile with a
+// bounded Hermite curve: ordinary sections stay light, while curvature, grade
+// and bank transitions receive enough sections to remain suspension-scale.
+export function refineRoadSurfaceProfileV21_32(profile,{
+  bridgeHeightAtCum,
+  closedLoop=false
+}={}){
+  if(!Array.isArray(profile)||profile.length<3)return Array.isArray(profile)?profile.map(p=>({...p})):[];
+
+  const source=profile.map(p=>({...p}));
+  const lastIndex=source.length-1;
+  const closes=!!closedLoop&&source.length>3&&Math.hypot(
+    source[0].x-source[lastIndex].x,
+    source[0].z-source[lastIndex].z
+  )<.5;
+  const uniqueCount=closes?source.length-1:source.length;
+  const totalSpan=Math.max(1e-6,source[lastIndex].cum-source[0].cum);
+
+  function wrappedPoint(rawIndex){
+    if(!closes)return source[Math.max(0,Math.min(uniqueCount-1,rawIndex))];
+    let index=rawIndex,cycle=0;
+    while(index<0){index+=uniqueCount;cycle--;}
+    while(index>=uniqueCount){index-=uniqueCount;cycle++;}
+    if(!cycle)return source[index];
+    return {...source[index],cum:source[index].cum+cycle*totalSpan};
+  }
+
+  function secant(a,b,key){
+    const span=Math.max(1e-6,b.cum-a.cum);
+    return ((Number(b[key])||0)-(Number(a[key])||0))/span;
+  }
+
+  function tangentAt(index){
+    const point=wrappedPoint(index);
+    if(!closes&&index===0){
+      const next=wrappedPoint(1);
+      return {
+        x:secant(point,next,'x'),z:secant(point,next,'z'),
+        y:secant(point,next,'y'),roll:secant(point,next,'roll')
+      };
+    }
+    if(!closes&&index===uniqueCount-1){
+      const previous=wrappedPoint(index-1);
+      return {
+        x:secant(previous,point,'x'),z:secant(previous,point,'z'),
+        y:secant(previous,point,'y'),roll:secant(previous,point,'roll')
+      };
+    }
+
+    const previous=wrappedPoint(index-1);
+    const next=wrappedPoint(index+1);
+    const incoming={
+      x:secant(previous,point,'x'),z:secant(previous,point,'z'),
+      y:secant(previous,point,'y'),roll:secant(previous,point,'roll')
+    };
+    const outgoing={
+      x:secant(point,next,'x'),z:secant(point,next,'z'),
+      y:secant(point,next,'y'),roll:secant(point,next,'roll')
+    };
+    return {
+      x:(incoming.x+outgoing.x)*.5,
+      z:(incoming.z+outgoing.z)*.5,
+      y:monotoneRoadSlope(incoming.y,outgoing.y),
+      roll:monotoneRoadSlope(incoming.roll,outgoing.roll)
+    };
+  }
+
+  const tangents=Array.from({length:uniqueCount},(_,index)=>tangentAt(index));
+  const refined=[];
+  const segmentCount=closes?uniqueCount:uniqueCount-1;
+
+  for(let i=0;i<segmentCount;i++){
+    const a=wrappedPoint(i),b=wrappedPoint(i+1);
+    const ta=tangents[i],tb=tangents[(i+1)%uniqueCount];
+    const span=Math.max(1e-6,b.cum-a.cum);
+    const chordLength=Math.hypot(b.x-a.x,b.z-a.z);
+    const headingA=Math.atan2(ta.x,ta.z),headingB=Math.atan2(tb.x,tb.z);
+    const pitchA=Math.atan2(ta.y,Math.hypot(ta.x,ta.z)||1);
+    const pitchB=Math.atan2(tb.y,Math.hypot(tb.x,tb.z)||1);
+    const baseSubdivisions=Math.max(1,Math.ceil(chordLength/ROAD_SURFACE_BASE_STEP_M));
+    const detailSubdivisions=Math.min(ROAD_SURFACE_MAX_DETAIL_SUBDIVISIONS,Math.max(
+      1,
+      Math.ceil(Math.abs(angleDelta(headingA,headingB))/ROAD_SURFACE_MAX_HEADING_STEP_RAD),
+      Math.ceil(Math.abs(pitchB-pitchA)/ROAD_SURFACE_MAX_PITCH_STEP_RAD),
+      Math.ceil(Math.abs((b.roll||0)-(a.roll||0))/ROAD_SURFACE_MAX_ROLL_STEP_RAD)
+    ));
+    const subdivisions=Math.max(baseSubdivisions,detailSubdivisions);
+
+    for(let step=0;step<subdivisions;step++){
+      const t=step/subdivisions;
+      const linearX=a.x+(b.x-a.x)*t;
+      const linearZ=a.z+(b.z-a.z)*t;
+      let x=hermiteValue(a.x,b.x,ta.x,tb.x,span,t);
+      let z=hermiteValue(a.z,b.z,ta.z,tb.z,span,t);
+      const driftX=x-linearX,driftZ=z-linearZ;
+      const drift=Math.hypot(driftX,driftZ);
+      if(drift>ROAD_SURFACE_MAX_CHORD_DRIFT_M){
+        const scale=ROAD_SURFACE_MAX_CHORD_DRIFT_M/drift;
+        x=linearX+driftX*scale;
+        z=linearZ+driftZ*scale;
+      }
+
+      const cum=a.cum+span*t;
+      const bridgeY=typeof bridgeHeightAtCum==='function'?bridgeHeightAtCum(cum):null;
+      const y=bridgeY!==null&&Number.isFinite(bridgeY)
+        ?bridgeY
+        :hermiteValue(a.y,b.y,ta.y,tb.y,span,t);
+      const roll=clampRoadBankV21_31(
+        hermiteValue(a.roll||0,b.roll||0,ta.roll,tb.roll,span,t)
+      );
+      refined.push({...a,x,z,y,roll,cum});
+    }
+  }
+
+  if(closes){
+    refined.push({...refined[0],cum:source[lastIndex].cum});
+  }else{
+    refined.push({...source[lastIndex]});
+  }
+  return refined;
+}
+
 export function createRoadGeometrySystem(args={}){
   const base=createRoadGeometryCore(args);
   return Object.freeze({
@@ -583,7 +801,8 @@ export function createRoadGeometrySystem(args={}){
     buildProfile(){
       const profile=base.buildProfile();
       const closedLoop=!!args.getState?.()?.routeClosedLoop;
-      return smoothRoadProfileV21_31(profile,{...args,closedLoop});
+      const smoothed=smoothRoadProfileV21_31(profile,{...args,closedLoop});
+      return refineRoadSurfaceProfileV21_32(smoothed,{...args,closedLoop});
     }
   });
 }
