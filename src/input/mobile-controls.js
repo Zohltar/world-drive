@@ -22,8 +22,7 @@ export function normalizeTiltSteering({angleDeg=0,neutralDeg=0,maxTiltDeg=28,dea
   const raw=clampSigned(((Number(angleDeg)||0)-(Number(neutralDeg)||0))/maxTilt);
   const dz=applyDeadzone(raw,deadzone);
   const gain=Math.max(.5,Math.min(2,Number(sensitivity)||1));
-  const scaled=clampSigned(dz*gain);
-  return scaled;
+  return clampSigned(dz*gain);
 }
 
 export function landscapeTiltAngle(event={},screenAngle=0){
@@ -77,7 +76,7 @@ export function createMobileControls({
     neutralDeg:0,
     rawTiltDeg:0
   };
-  if(!enabled)return Object.freeze({state,capability,requestPermission:async()=>false,recenter(){},dispose(){}});
+  if(!enabled)return Object.freeze({state,capability,update(){},requestPermission:async()=>false,recenter(){},dispose(){}});
 
   const overlay=document.createElement('div');
   overlay.id='worldDriveMobileControls';
@@ -86,9 +85,10 @@ export function createMobileControls({
   const accel=makeButton('Accélérateur','world-drive-mobile-pedal world-drive-mobile-accelerator');
   const brake=makeButton('Frein','world-drive-mobile-pedal world-drive-mobile-brake');
   const recenter=makeButton('Recentrer','world-drive-mobile-recenter');
+  const activate=makeButton('Activer volant','world-drive-mobile-activate-steering');
   const left=makeButton('◀','world-drive-mobile-steer world-drive-mobile-steer-left');
   const right=makeButton('▶','world-drive-mobile-steer world-drive-mobile-steer-right');
-  for(const el of [accel,brake,recenter,left,right]){
+  for(const el of [accel,brake,recenter,activate,left,right]){
     el.style.pointerEvents='auto';
     el.style.touchAction='none';
     overlay.appendChild(el);
@@ -96,12 +96,14 @@ export function createMobileControls({
   accel.style.cssText+='position:absolute;right:max(18px,env(safe-area-inset-right));bottom:max(18px,env(safe-area-inset-bottom));width:96px;height:96px;border-radius:48px;font:700 13px system-ui;';
   brake.style.cssText+='position:absolute;right:max(126px,calc(env(safe-area-inset-right) + 126px));bottom:max(18px,env(safe-area-inset-bottom));width:96px;height:96px;border-radius:48px;font:700 13px system-ui;';
   recenter.style.cssText+='position:absolute;left:50%;transform:translateX(-50%);bottom:max(18px,env(safe-area-inset-bottom));height:44px;padding:0 16px;border-radius:22px;font:700 12px system-ui;';
+  activate.style.cssText+='position:absolute;left:50%;transform:translateX(-50%);bottom:max(72px,calc(env(safe-area-inset-bottom) + 72px));height:44px;padding:0 16px;border-radius:22px;font:700 12px system-ui;';
   left.style.cssText+='position:absolute;left:max(18px,env(safe-area-inset-left));bottom:max(18px,env(safe-area-inset-bottom));width:70px;height:70px;border-radius:18px;font:700 24px system-ui;display:none;';
   right.style.cssText+='position:absolute;left:max(98px,calc(env(safe-area-inset-left) + 98px));bottom:max(18px,env(safe-area-inset-bottom));width:70px;height:70px;border-radius:18px;font:700 24px system-ui;display:none;';
   root?.appendChild(overlay);
 
   let targetSteer=0;
   let fallbackLeft=false,fallbackRight=false;
+  let orientationListening=false;
 
   function runtimeAllowsInput(){
     const runtime=getRuntimeState?.()||{};
@@ -194,6 +196,7 @@ export function createMobileControls({
       state.permission='unavailable';
       setFallbackVisible(true);
       state.steeringSource='touch';
+      activate.style.display='none';
       return false;
     }
     try{
@@ -203,19 +206,27 @@ export function createMobileControls({
         if(result!=='granted'){
           setFallbackVisible(true);
           state.steeringSource='touch';
+          activate.textContent='Direction tactile';
           return false;
         }
       }else state.permission='granted';
-      globalThis.addEventListener('deviceorientation',onOrientation,true);
+      if(!orientationListening){
+        globalThis.addEventListener('deviceorientation',onOrientation,true);
+        orientationListening=true;
+      }
       setFallbackVisible(false);
+      activate.style.display='none';
       return true;
     }catch{
       state.permission='denied';
       setFallbackVisible(true);
       state.steeringSource='touch';
+      activate.textContent='Direction tactile';
       return false;
     }
   }
+  const activateSteering=e=>{e.preventDefault();void requestPermission();};
+  activate.addEventListener('click',activateSteering);
 
   function update(){
     state.active=runtimeAllowsInput();
@@ -238,7 +249,9 @@ export function createMobileControls({
     recenter:recenterNow,
     dispose(){
       globalThis.removeEventListener?.('deviceorientation',onOrientation,true);
+      orientationListening=false;
       recenter.removeEventListener('click',recenterNow);
+      activate.removeEventListener('click',activateSteering);
       unbindAccel();unbindBrake();unbindLeft();unbindRight();
       overlay.remove();
       state.throttle=0;state.brake=0;state.steer=0;targetSteer=0;
