@@ -34,7 +34,7 @@ jobs:
           done
           test -s /tmp/laguna-osm.json
 
-      - name: Summarize raceway ways
+      - name: Summarize and stitch raceway ways
         shell: python
         run: |
           import json, math
@@ -69,20 +69,81 @@ jobs:
                   'closed':dist(points[0],points[-1])<5,
               })
           items.sort(key=lambda x:x['lengthM'],reverse=True)
-          out={
+          Path('ops').mkdir(exist_ok=True)
+          Path('ops/laguna-seca-osm-audit.json').write_text(json.dumps({
               'queryCenter':{'lat':36.584282,'lon':-121.753385},
               'elementCount':len(raw.get('elements',[])),
               'geometryCount':len(items),
               'items':items,
+          },indent=2),encoding='utf-8')
+
+          main=[x for x in items if x.get('name')!='Pit Lane']
+          if len(main)!=8:
+              raise SystemExit(f'Expected 8 non-pit main-circuit ways, found {len(main)}')
+
+          # OSM marks the circuit ways one-way. Follow those authored directions when
+          # possible, allowing reversal only as a diagnostic fallback if endpoint
+          # ordering differs in the Overpass response.
+          remaining={x['id']:x for x in main}
+          seed=max(main,key=lambda x:x['lengthM'])
+          ordered=[]
+          current=seed
+          current_points=current['points']
+          ordered.append({'id':current['id'],'name':current['name'],'reversed':False})
+          loop=list(current_points)
+          del remaining[current['id']]
+          while remaining:
+              end=loop[-1]
+              candidates=[]
+              for candidate in remaining.values():
+                  forward=dist(end,candidate['points'][0])
+                  reverse=dist(end,candidate['points'][-1])
+                  candidates.append((forward,candidate['id'],False,candidate))
+                  candidates.append((reverse,candidate['id'],True,candidate))
+              gap,_,rev,next_way=min(candidates,key=lambda t:t[0])
+              if gap>5:
+                  raise SystemExit(f'Cannot stitch circuit: nearest endpoint gap {gap:.2f} m')
+              pts=list(reversed(next_way['points'])) if rev else next_way['points']
+              if dist(loop[-1],pts[0])<0.5:
+                  pts=pts[1:]
+              loop.extend(pts)
+              ordered.append({'id':next_way['id'],'name':next_way['name'],'reversed':rev,'joinGapM':round(gap,3)})
+              del remaining[next_way['id']]
+
+          closure=dist(loop[-1],loop[0])
+          if closure>5:
+              raise SystemExit(f'Circuit does not close: {closure:.2f} m')
+          if dist(loop[-1],loop[0])>0.05:
+              loop.append(loop[0])
+          elif loop[-1]!=loop[0]:
+              loop[-1]=loop[0]
+
+          total=length(loop)
+          max_segment=max(dist(a,b) for a,b in zip(loop,loop[1:]))
+          if not 3550 <= total <= 3650:
+              raise SystemExit(f'Unexpected main-loop length: {total:.2f} m')
+          if max_segment>100:
+              raise SystemExit(f'Unexpected main-loop segment jump: {max_segment:.2f} m')
+
+          authored={
+              'name':'WeatherTech Raceway Laguna Seca',
+              'layout':'Grand Prix',
+              'source':'OpenStreetMap highway=raceway geometry captured 2026-09-13',
+              'sourceWayIds':[x['id'] for x in ordered],
+              'orderedWays':ordered,
+              'pointCount':len(loop),
+              'lengthM':round(total,2),
+              'closureGapBeforeSealM':round(closure,3),
+              'maxSegmentM':round(max_segment,2),
+              'coordinates':[[round(p[1],7),round(p[0],7)] for p in loop],
           }
-          Path('ops').mkdir(exist_ok=True)
-          Path('ops/laguna-seca-osm-audit.json').write_text(json.dumps(out,indent=2),encoding='utf-8')
-          print(json.dumps([{k:v for k,v in item.items() if k!='points'} for item in items],indent=2))
+          Path('ops/laguna-seca-track-loop.json').write_text(json.dumps(authored,indent=2),encoding='utf-8')
+          print(json.dumps({k:v for k,v in authored.items() if k!='coordinates'},indent=2))
 
       - name: Commit audit result
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add ops/laguna-seca-osm-audit.json
-          git commit -m "Ops: capture Laguna Seca raceway geometry audit"
+          git add ops/laguna-seca-osm-audit.json ops/laguna-seca-track-loop.json
+          git commit -m "Ops: stitch Laguna Seca main circuit geometry"
           git push origin HEAD:ops/laguna-seca-osm-audit
