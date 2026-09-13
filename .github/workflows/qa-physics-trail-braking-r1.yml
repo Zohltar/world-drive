@@ -23,7 +23,7 @@ jobs:
           cache: npm
       - name: Install
         run: npm ci
-      - name: Laguna trail-braking current-engine diagnostics
+      - name: Laguna force-and-yaw trim diagnostics
         run: node qa/qa-physics-laguna-trail-brake-diagnostics-r1.mjs
       - name: WRX tire stability baseline
         run: node qa/qa-grip-wrx-tire-stability-a2.mjs

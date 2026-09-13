@@ -1,6 +1,10 @@
 import fs from 'node:fs';
 import assert from 'node:assert/strict';
 import {createVehicleSystem} from '../src/vehicles/vehicle-system.js';
+import {
+  estimateWheelGripUsage,
+  longitudinalTractionLimit
+} from '../src/physics/vehicle-dynamics.js';
 import {createPerWheelShadowSolver} from '../src/physics/per-wheel-shadow-solver.js';
 
 const G=9.80665;
@@ -10,8 +14,8 @@ const vehicleSystem=createVehicleSystem({initialId:'wrx'});
 const vehicle=vehicleSystem.physics;
 
 function toMeters(coords){
-  const lat0=coords.reduce((s,p)=>s+p[1],0)/coords.length;
-  const lon0=coords.reduce((s,p)=>s+p[0],0)/coords.length;
+  const lat0=coords.reduce((sum,point)=>sum+point[1],0)/coords.length;
+  const lon0=coords.reduce((sum,point)=>sum+point[0],0)/coords.length;
   const cos=Math.cos(lat0*RAD);
   return coords.map(([lon,lat])=>({
     x:(lon-lon0)*111320*cos,
@@ -24,108 +28,105 @@ function distance(a,b){return Math.hypot(b.x-a.x,b.z-a.z);}
 function resampleClosed(points,step=5){
   const source=[...points];
   if(distance(source[0],source[source.length-1])>.01)source.push({...source[0]});
-  const seg=[];
+  const segments=[];
   let total=0;
-  for(let i=1;i<source.length;i++){
-    const len=distance(source[i-1],source[i]);
-    seg.push({a:source[i-1],b:source[i],start:total,len});
-    total+=len;
+  for(let index=1;index<source.length;index++){
+    const length=distance(source[index-1],source[index]);
+    segments.push({a:source[index-1],b:source[index],start:total,length});
+    total+=length;
   }
   const out=[];
-  for(let s=0;s<total;s+=step){
-    let k=seg.findIndex(v=>s<=v.start+v.len+1e-9);
-    if(k<0)k=seg.length-1;
-    const v=seg[k];
-    const t=v.len>1e-9?(s-v.start)/v.len:0;
+  for(let position=0;position<total;position+=step){
+    let index=segments.findIndex(segment=>position<=segment.start+segment.length+1e-9);
+    if(index<0)index=segments.length-1;
+    const segment=segments[index];
+    const t=segment.length>1e-9?(position-segment.start)/segment.length:0;
     out.push({
-      s,
-      x:v.a.x+(v.b.x-v.a.x)*t,
-      z:v.a.z+(v.b.z-v.a.z)*t
+      s:position,
+      x:segment.a.x+(segment.b.x-segment.a.x)*t,
+      z:segment.a.z+(segment.b.z-segment.a.z)*t
     });
   }
   return {points:out,length:total,step};
 }
 
-function wrapAngle(a){return Math.atan2(Math.sin(a),Math.cos(a));}
+function wrapAngle(angle){return Math.atan2(Math.sin(angle),Math.cos(angle));}
 
 function curvatureSamples(resampled,windowM=25){
-  const pts=resampled.points;
-  const n=pts.length;
+  const points=resampled.points;
+  const count=points.length;
   const offset=Math.max(2,Math.round(windowM/resampled.step));
   const result=[];
-  for(let i=0;i<n;i++){
-    const prev=pts[(i-offset+n)%n];
-    const cur=pts[i];
-    const next=pts[(i+offset)%n];
-    const h0=Math.atan2(cur.x-prev.x,cur.z-prev.z);
-    const h1=Math.atan2(next.x-cur.x,next.z-cur.z);
-    const ds=Math.max(1,distance(prev,cur)+distance(cur,next));
-    const dHeading=wrapAngle(h1-h0);
-    const kappa=2*dHeading/ds;
-    const radius=Math.abs(kappa)>1e-6?1/Math.abs(kappa):Infinity;
-    result.push({s:cur.s,kappa,radius,x:cur.x,z:cur.z});
+  for(let index=0;index<count;index++){
+    const previous=points[(index-offset+count)%count];
+    const current=points[index];
+    const next=points[(index+offset)%count];
+    const heading0=Math.atan2(current.x-previous.x,current.z-previous.z);
+    const heading1=Math.atan2(next.x-current.x,next.z-current.z);
+    const span=Math.max(1,distance(previous,current)+distance(current,next));
+    const curvature=2*wrapAngle(heading1-heading0)/span;
+    const radius=Math.abs(curvature)>1e-6?1/Math.abs(curvature):Infinity;
+    result.push({s:current.s,curvature,radius,x:current.x,z:current.z});
   }
   return result;
 }
 
 function selectCornerPeaks(samples,count=6,minSeparationM=180){
   const candidates=samples
-    .filter(v=>Number.isFinite(v.radius)&&v.radius>=18&&v.radius<=220)
-    .sort((a,b)=>Math.abs(b.kappa)-Math.abs(a.kappa));
+    .filter(sample=>Number.isFinite(sample.radius)&&sample.radius>=18&&sample.radius<=220)
+    .sort((a,b)=>Math.abs(b.curvature)-Math.abs(a.curvature));
   const picked=[];
-  const length=Math.max(...samples.map(v=>v.s));
-  for(const c of candidates){
-    const distinct=picked.every(p=>{
-      const raw=Math.abs(c.s-p.s);
+  const length=Math.max(...samples.map(sample=>sample.s));
+  for(const candidate of candidates){
+    const distinct=picked.every(previous=>{
+      const raw=Math.abs(candidate.s-previous.s);
       return Math.min(raw,Math.max(0,length-raw))>=minSeparationM;
     });
-    if(distinct)picked.push(c);
+    if(distinct)picked.push(candidate);
     if(picked.length>=count)break;
   }
   return picked.sort((a,b)=>a.s-b.s);
 }
 
-function contactsForVehicle(v){
-  const axles=v.axles;
+function contactsForVehicle(profile){
   const contacts=[];
-  for(let axleIndex=0;axleIndex<axles.length;axleIndex++){
-    const axle=axles[axleIndex];
-    const half=Math.max(.4,Number(axle.trackWidth||v.trackWidth||1.55))/2;
-    contacts.push({contact:true,contactFactor:1,axleIndex,front:axle.positionM>=0,side:'left',localX:-half,localZ:axle.positionM});
-    contacts.push({contact:true,contactFactor:1,axleIndex,front:axle.positionM>=0,side:'right',localX:half,localZ:axle.positionM});
+  for(let axleIndex=0;axleIndex<profile.axles.length;axleIndex++){
+    const axle=profile.axles[axleIndex];
+    const halfTrack=Math.max(.4,Number(axle.trackWidth||profile.trackWidth||1.55))/2;
+    contacts.push({contact:true,contactFactor:1,axleIndex,front:axle.positionM>=0,side:'left',localX:-halfTrack,localZ:axle.positionM});
+    contacts.push({contact:true,contactFactor:1,axleIndex,front:axle.positionM>=0,side:'right',localX:halfTrack,localZ:axle.positionM});
   }
   return contacts;
 }
 
 const contacts=contactsForVehicle(vehicle);
 
-function evaluateState({radius,speed,beta,yawRate,brakeG=0,turnSign=1}){
+function evaluateState({radius,speed,beta,steerAngle,yawRate,brakeG=0,turnSign=1,settleSteps=30}){
   const solver=createPerWheelShadowSolver({hz:120,maxSubSteps:8});
-  const steerAngle=turnSign*Math.atan(vehicle.wheelbase/radius);
-  const lateralAccel=turnSign*speed*speed/radius;
+  const targetLatAccel=speed*speed/radius;
   const brakeAccel=-Math.abs(brakeG)*G;
-  let result=null;
   const input={
-    vehicleId:'wrx',vehicle,contacts,
-    speed,heading:0,velocityHeading:turnSign*beta,
+    vehicleId:'wrx',vehicle,contacts,speed,
+    heading:0,
+    velocityHeading:turnSign*beta,
     yawRate:turnSign*yawRate,
-    centerSteerAngle:steerAngle,
+    centerSteerAngle:turnSign*steerAngle,
     longitudinalAccel:brakeAccel,
-    lateralAccel,
+    lateralAccel:turnSign*targetLatAccel,
     requestedDriveAccel:0,
     requestedBrakeAccel:brakeAccel,
     longitudinalLoadTransferAccel:brakeAccel,
-    handbrake:false,surfaceId:'asphalt-dry'
+    handbrake:false,
+    surfaceId:'asphalt-dry'
   };
-  // Hold chassis state fixed long enough for wheel angular speed / ABS state to settle.
-  for(let i=0;i<72;i++)result=solver.advance(1/120,input);
-  const front=result.wheels.filter(w=>w.front);
-  const rear=result.wheels.filter(w=>!w.front);
-  const sum=(arr,key)=>arr.reduce((s,w)=>s+(Number(w[key])||0),0);
-  const max=(arr,key)=>arr.reduce((m,w)=>Math.max(m,Number(w[key])||0),0);
+  let result=null;
+  for(let index=0;index<settleSteps;index++)result=solver.advance(1/120,input);
+  const front=result.wheels.filter(wheel=>wheel.front);
+  const rear=result.wheels.filter(wheel=>!wheel.front);
+  const sum=(wheels,key)=>wheels.reduce((total,wheel)=>total+(Number(wheel[key])||0),0);
+  const max=(wheels,key)=>wheels.reduce((value,wheel)=>Math.max(value,Number(wheel[key])||0),0);
   return {
-    beta,
-    brakeG,
+    beta,steerAngle,brakeG,
     yawAccel:turnSign*result.predictedYawAccel,
     yawMomentNm:turnSign*result.totalYawMomentNm,
     lateralAccelPred:turnSign*result.predictedAccelX,
@@ -136,36 +137,97 @@ function evaluateState({radius,speed,beta,yawRate,brakeG=0,turnSign=1}){
     rearFy:turnSign*sum(rear,'forceX'),
     frontUtil:max(front,'utilization'),
     rearUtil:max(rear,'utilization'),
-    frontSlipDeg:Math.max(...front.map(w=>Math.abs(w.slipAngle)/RAD)),
-    rearSlipDeg:Math.max(...rear.map(w=>Math.abs(w.slipAngle)/RAD)),
-    absWheels:result.wheels.filter(w=>w.absActive).length,
-    saturatedWheels:result.wheels.filter(w=>w.saturated).length,
+    frontSlipDeg:Math.max(...front.map(wheel=>Math.abs(wheel.slipAngle)/RAD)),
+    rearSlipDeg:Math.max(...rear.map(wheel=>Math.abs(wheel.slipAngle)/RAD)),
+    absWheels:result.wheels.filter(wheel=>wheel.absActive).length,
+    saturatedWheels:result.wheels.filter(wheel=>wheel.saturated).length,
     axleLoads:result.axleLoads
   };
 }
 
-function coastEquilibrium({radius,speed,turnSign=1}){
+// A steady corner is a two-equation trim problem. The tire forces must both
+// provide v^2/R at the CG and produce zero yaw acceleration. The superseded R1
+// diagnostic minimized only yaw acceleration, which admitted the trivial
+// near-zero-force state and made its brake sweep physically meaningless.
+function steadyCornerTrim({radius,speed,turnSign=1}){
+  const targetLatAccel=speed*speed/radius;
   const yawRate=speed/radius;
-  const probes=[];
-  for(let beta=-.16;beta<=.1601;beta+=.01){
-    const state=evaluateState({radius,speed,beta,yawRate,brakeG:0,turnSign});
-    probes.push(state);
-  }
-  probes.sort((a,b)=>Math.abs(a.yawAccel)-Math.abs(b.yawAccel));
-  let best=probes[0];
+  const rearDistance=Math.abs(Math.min(...vehicle.axles.map(axle=>Number(axle.positionM)||0)));
+  let beta=rearDistance/radius-.08;
+  let steerAngle=Math.atan(vehicle.wheelbase/radius)+.004;
+  let state=null;
+  let residual=Infinity;
 
-  // Refine around the best coarse state; minimizing |yaw acceleration| is robust
-  // even if the nonlinear tire model does not bracket an exact sign change.
-  for(let span=.01;span>=.000625;span/=2){
-    const candidates=[];
-    for(let j=-4;j<=4;j++){
-      const beta=best.beta+j*span/4;
-      candidates.push(evaluateState({radius,speed,beta,yawRate,brakeG:0,turnSign}));
-    }
-    candidates.sort((a,b)=>Math.abs(a.yawAccel)-Math.abs(b.yawAccel));
-    best=candidates[0];
+  for(let iteration=0;iteration<24;iteration++){
+    state=evaluateState({radius,speed,beta,steerAngle,yawRate,turnSign,settleSteps:30});
+    const forceError=state.lateralAccelPred-targetLatAccel;
+    const yawError=state.yawAccel;
+    residual=Math.hypot(
+      forceError/Math.max(.2,targetLatAccel),
+      yawError/Math.max(.2,targetLatAccel/vehicle.wheelbase)
+    );
+    if(residual<1e-5)break;
+
+    const step=1e-4;
+    const betaProbe=evaluateState({radius,speed,beta:beta+step,steerAngle,yawRate,turnSign,settleSteps:30});
+    const steerProbe=evaluateState({radius,speed,beta,steerAngle:steerAngle+step,yawRate,turnSign,settleSteps:30});
+    const j11=(betaProbe.lateralAccelPred-state.lateralAccelPred)/step;
+    const j21=(betaProbe.yawAccel-state.yawAccel)/step;
+    const j12=(steerProbe.lateralAccelPred-state.lateralAccelPred)/step;
+    const j22=(steerProbe.yawAccel-state.yawAccel)/step;
+    const determinant=j11*j22-j12*j21;
+    assert.ok(Math.abs(determinant)>1e-8,`singular Laguna trim Jacobian at R=${radius.toFixed(1)} m`);
+    const betaDelta=(-forceError*j22+j12*yawError)/determinant;
+    const steerDelta=(-j11*yawError+j21*forceError)/determinant;
+    const maxStep=.025;
+    const scale=Math.min(1,maxStep/Math.max(Math.abs(betaDelta),Math.abs(steerDelta),1e-12));
+    beta=Math.max(-.25,Math.min(.25,beta+betaDelta*scale));
+    steerAngle=Math.max(0,Math.min(.35,steerAngle+steerDelta*scale));
   }
-  return {best,yawRate};
+
+  state=evaluateState({radius,speed,beta,steerAngle,yawRate,turnSign,settleSteps:72});
+  residual=Math.hypot(
+    (state.lateralAccelPred-targetLatAccel)/Math.max(.2,targetLatAccel),
+    state.yawAccel/Math.max(.2,targetLatAccel/vehicle.wheelbase)
+  );
+  assert.ok(residual<.006,`Laguna steady-state trim did not converge at R=${radius.toFixed(1)} m: ${residual}`);
+  assert.ok(Math.abs(state.lateralAccelPred-targetLatAccel)<.02*G,
+    `Laguna trim lateral-force residual too large at R=${radius.toFixed(1)} m`);
+  assert.ok(Math.abs(state.yawAccel)<.02,
+    `Laguna trim yaw residual too large at R=${radius.toFixed(1)} m`);
+  assert.ok(Math.max(state.frontUtil,state.rearUtil)>.45,
+    `Laguna trim did not materially load the tires at R=${radius.toFixed(1)} m`);
+  return {beta,steerAngle,yawRate,state,residual};
+}
+
+function runtimeAggregateProbe({speed,targetLatAccel,brakeG}){
+  const longitudinalMu=vehicle.longitudinalAccelLimit/G;
+  const brakeForce=longitudinalTractionLimit({
+    vehicle,
+    requestedAccel:-Math.abs(brakeG)*G,
+    surfaceMu:longitudinalMu,
+    mode:'brake',
+    airborne:false,
+    speedAbs:speed
+  },{});
+  const grip=estimateWheelGripUsage({
+    requestedLatAccel:targetLatAccel,
+    signedLatAccel:targetLatAccel,
+    latLimit:vehicle.lateralAccelLimit,
+    longitudinalAccel:brakeForce.acceleration,
+    propulsionAccel:0,
+    serviceBrakeAccel:brakeForce.acceleration,
+    surfaceMu:longitudinalMu,
+    throttle:-1,
+    handbrake:false,
+    airborne:false,
+    vehicle,
+    speedAbs:speed,
+    contacts,
+    previousUsage:[0,0,0,0],
+    dt:.05
+  },{});
+  return {brakeForce,grip};
 }
 
 const resampled=resampleClosed(toMeters(circuit.coordinates),5);
@@ -176,21 +238,31 @@ assert.ok(Math.abs(resampled.length-circuit.lengthM)<120,'resampled circuit leng
 const targetLatAccel=Math.min(vehicle.lateralAccelLimit*.78,.78*G);
 const brakeLevels=[0,.10,.20,.35,.50,.70];
 const rows=[];
+const trims=[];
 
 for(const corner of corners){
   const radius=corner.radius;
   const speed=Math.max(11,Math.min(32,Math.sqrt(targetLatAccel*radius)));
-  const turnSign=Math.sign(corner.kappa)||1;
-  const eq=coastEquilibrium({radius,speed,turnSign});
+  const turnSign=Math.sign(corner.curvature)||1;
+  const trim=steadyCornerTrim({radius,speed,turnSign});
+  trims.push({corner,trim,speed,turnSign});
+  const states=[];
+
   for(const brakeG of brakeLevels){
-    const state=evaluateState({radius,speed,beta:eq.best.beta,yawRate:eq.yawRate,brakeG,turnSign});
+    const state=evaluateState({
+      radius,speed,beta:trim.beta,steerAngle:trim.steerAngle,yawRate:trim.yawRate,
+      brakeG,turnSign,settleSteps:72
+    });
+    states.push(state);
     rows.push({
       sM:Math.round(corner.s),
       radiusM:Number(radius.toFixed(1)),
       speedKmh:Number((speed*3.6).toFixed(1)),
       targetLatG:Number((speed*speed/radius/G).toFixed(3)),
-      coastBetaDeg:Number((eq.best.beta/RAD).toFixed(2)),
+      coastBetaDeg:Number((trim.beta/RAD).toFixed(2)),
+      roadWheelSteerDeg:Number((trim.steerAngle/RAD).toFixed(2)),
       brakeG,
+      actualLatG:Number((state.lateralAccelPred/G).toFixed(3)),
       frontLoadPct:Number((100*state.frontFz/(state.frontFz+state.rearFz)).toFixed(1)),
       yawAccel:Number(state.yawAccel.toFixed(3)),
       frontUtil:Number(state.frontUtil.toFixed(3)),
@@ -201,27 +273,59 @@ for(const corner of corners){
       saturatedWheels:state.saturatedWheels
     });
   }
+
+  const coast=states[0];
+  const brake20=states[2];
+  const brake50=states[4];
+  assert.ok(brake20.yawAccel>coast.yawAccel+.06,
+    `0.2 g trail braking did not add turn-in yaw at R=${radius.toFixed(1)} m`);
+  assert.ok(brake50.lateralAccelPred>coast.lateralAccelPred*.90,
+    `0.5 g trail braking lost excessive physical lateral force at R=${radius.toFixed(1)} m`);
+  assert.equal(brake50.saturatedWheels,0,
+    `0.5 g trail braking saturated a physical tire at R=${radius.toFixed(1)} m`);
 }
 
 // Analytic longitudinal load-transfer cross-check for the exact WRX profile.
-const transferChecks=brakeLevels.map(brakeG=>{
+const loadTransfer=brakeLevels.map(brakeG=>{
   const expectedFront=vehicle.frontWeightBias+(brakeG*vehicle.cgHeight/vehicle.wheelbase);
   const probe=evaluateState({
-    radius:80,
-    speed:20,
-    beta:0,
-    yawRate:20/80,
-    brakeG,
-    turnSign:1
+    radius:80,speed:20,beta:0,
+    steerAngle:Math.atan(vehicle.wheelbase/80),yawRate:20/80,
+    brakeG,turnSign:1,settleSteps:72
   });
   const measuredFront=probe.frontFz/(probe.frontFz+probe.rearFz);
   assert.ok(Math.abs(measuredFront-expectedFront)<.003,
     `longitudinal load transfer mismatch at ${brakeG}g: expected ${expectedFront}, got ${measuredFront}`);
-  return {brakeG,expectedFrontPct:Number((expectedFront*100).toFixed(2)),measuredFrontPct:Number((measuredFront*100).toFixed(2))};
+  return {
+    brakeG,
+    expectedFrontPct:Number((expectedFront*100).toFixed(2)),
+    measuredFrontPct:Number((measuredFront*100).toFixed(2))
+  };
 });
 
-console.log('LAGUNA TRAIL-BRAKING DIAGNOSTIC: CURRENT ENGINE');
+const runtimeFullBrake=trims.map(({corner,speed})=>{
+  const probe=runtimeAggregateProbe({speed,targetLatAccel,brakeG:vehicle.brake/G});
+  return {
+    sM:Math.round(corner.s),
+    radiusM:Number(corner.radius.toFixed(1)),
+    speedKmh:Number((speed*3.6).toFixed(1)),
+    appliedBrakeG:Number((Math.abs(probe.brakeForce.acceleration)/G).toFixed(3)),
+    netLatG:Number((probe.grip.netLateralAccel/G).toFixed(3)),
+    trajectoryCapacityG:Number((probe.grip.trajectoryLateralCapacityAccel/G).toFixed(3)),
+    frontForceScale:Number(probe.grip.frontLateralForceScale.toFixed(3)),
+    rearForceScale:Number(probe.grip.rearLateralForceScale.toFixed(3)),
+    frontSlip:Number(probe.grip.frontLateral.toFixed(3)),
+    rearSlip:Number(probe.grip.rearLateral.toFixed(3))
+  };
+});
+
+console.log('LAGUNA TRAIL-BRAKING DIAGNOSTIC: FORCE + YAW TRIM');
 console.log(JSON.stringify({
+  method:{
+    steadyStateConstraints:['sum(Fy)/mass = speed^2/radius','sum(Mz)/yawInertia = 0'],
+    brakeSweep:'fixed trimmed corner state; 120 Hz per-wheel tire/ABS solver',
+    note:'runtimeFullBrake records the current aggregate integration separately from the physical tire solver'
+  },
   circuitLengthM:Number(resampled.length.toFixed(1)),
   vehicle:'wrx',
   vehicleMassKg:vehicle.massKg,
@@ -230,7 +334,12 @@ console.log(JSON.stringify({
   staticFrontPct:vehicle.frontWeightBias*100,
   lateralAccelLimitG:Number((vehicle.lateralAccelLimit/G).toFixed(3)),
   targetLatAccelG:Number((targetLatAccel/G).toFixed(3)),
-  corners:corners.map(c=>({sM:Math.round(c.s),radiusM:Number(c.radius.toFixed(1)),turn:c.kappa>0?'right':'left'})),
-  loadTransfer:transferChecks,
-  rows
+  corners:corners.map(corner=>({
+    sM:Math.round(corner.s),
+    radiusM:Number(corner.radius.toFixed(1)),
+    turn:corner.curvature>0?'right':'left'
+  })),
+  loadTransfer,
+  physicalTireRows:rows,
+  runtimeFullBrake
 },null,2));
