@@ -41,7 +41,7 @@ assert.match(p926,/from ['"]\.\.\/local-world-builder-p925\.js['"]/,
 
 for(const marker of [
   'function roadBedOptionsForProfile',
-  'terrainService.setRoadBed(terrainProfile,roadBedOptionsForProfile(profile))',
+  'terrainService.setRoadBed(terrainProfile,roadBedOptionsForProfile(profile,getRouteRoadSpec?.()))',
   'function buildRoadMeshes(profile)',
   'rebuildLocalWater();',
   "scheduleVisualJob('scenery',rebuildLocalScenery,220)",
