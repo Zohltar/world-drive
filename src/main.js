@@ -10,7 +10,10 @@ import {
   R132_END,
   YUNGAS_START,
   YUNGAS_END,
-  YUNGAS_WAYPOINTS
+  YUNGAS_WAYPOINTS,
+  LAGUNA_SECA_START,
+  LAGUNA_SECA_END,
+  LAGUNA_SECA_CIRCUIT
 } from './route-presets.js';
 import { createRouteChallenge } from './route-challenge.js';
 import { createRoutePlannerUi } from './route-planner-ui.js';
@@ -112,6 +115,8 @@ import {
 let ROUTE_START={...MANIC2};
 let ROUTE_END={...MANIC5};
 let ROUTE_WAYPOINTS=[];
+let ROUTE_AUTHORED_COORDINATES=null;
+let ROUTE_AUTHORED_PROVIDER=null;
 const EARTH=6378137;
 let origin={lat:ROUTE_START.lat,lon:ROUTE_START.lon};
 const route=[];       // {x,z,lat,lon,cum}
@@ -1274,8 +1279,8 @@ localWorldBuilder=createLocalWorldBuilder({
 // ---------- route lifecycle facade ----------
 let routeLifecycle=null;
 function resetWorldCaches(){return routeLifecycle.resetWorldCaches();}
-async function createRequestedRoute(start,end,waypoints=[]){
-  return routeLifecycle.createRequestedRoute(start,end,waypoints);
+async function createRequestedRoute(start,end,waypoints=[],options={}){
+  return routeLifecycle.createRequestedRoute(start,end,waypoints,options);
 }
 function bumpRouteGeneration(){return routeLifecycle.bumpRouteGeneration();}
 async function loadRoute(){return routeLifecycle.loadRoute();}
@@ -1293,6 +1298,8 @@ routeLifecycle=createRouteLifecycle({
     routeStart:ROUTE_START,
     routeEnd:ROUTE_END,
     routeWaypoints:ROUTE_WAYPOINTS,
+    routeAuthoredCoordinates:ROUTE_AUTHORED_COORDINATES,
+    routeAuthoredProvider:ROUTE_AUTHORED_PROVIDER,
     origin,
     routeLength,
     vehicleNearestHint,
@@ -1310,6 +1317,8 @@ routeLifecycle=createRouteLifecycle({
     if('routeStart' in state)ROUTE_START=state.routeStart;
     if('routeEnd' in state)ROUTE_END=state.routeEnd;
     if('routeWaypoints' in state)ROUTE_WAYPOINTS=state.routeWaypoints;
+    if('routeAuthoredCoordinates' in state)ROUTE_AUTHORED_COORDINATES=state.routeAuthoredCoordinates;
+    if('routeAuthoredProvider' in state)ROUTE_AUTHORED_PROVIDER=state.routeAuthoredProvider;
     if('origin' in state)origin=state.origin;
     if('routeLength' in state)routeLength=state.routeLength;
     if('vehicleNearestHint' in state)vehicleNearestHint=state.vehicleNearestHint;
@@ -2111,7 +2120,10 @@ const routePlannerUi=createRoutePlannerUi({
   R132_END,
   YUNGAS_START,
   YUNGAS_END,
-  YUNGAS_WAYPOINTS
+  YUNGAS_WAYPOINTS,
+  LAGUNA_SECA_START,
+  LAGUNA_SECA_END,
+  LAGUNA_SECA_CIRCUIT
 });
 document.querySelectorAll('.sectionHead').forEach(btn=>{
   btn.addEventListener('click',()=>{
