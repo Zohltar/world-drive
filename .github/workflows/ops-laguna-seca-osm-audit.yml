@@ -62,6 +62,9 @@ jobs:
                   'highway':tags.get('highway'), 'raceway':tags.get('raceway'),
                   'service':tags.get('service'), 'access':tags.get('access'),
                   'oneway':tags.get('oneway'), 'surface':tags.get('surface'),
+                  'width':tags.get('width'), 'est_width':tags.get('est_width'),
+                  'lanes':tags.get('lanes'), 'shoulder':tags.get('shoulder'),
+                  'allTags':tags,
                   'points':points,
                   'pointCount':len(points),
                   'lengthM':round(length(points),2),
@@ -128,6 +131,10 @@ jobs:
               'lengthM':round(total,2),
               'closureGapBeforeSealM':round(closure,3),
               'maxSegmentM':round(max_segment,2),
+              'dimensionTags':[
+                  {'id':x['id'],'name':x['name'],'width':x.get('width'),'est_width':x.get('est_width'),'lanes':x.get('lanes'),'shoulder':x.get('shoulder')}
+                  for x in main
+              ],
               'coordinates':[[round(p[1],7),round(p[0],7)] for p in loop],
           }
           Path('ops/laguna-seca-track-loop.json').write_text(json.dumps(authored,indent=2),encoding='utf-8')
@@ -138,5 +145,5 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add ops/laguna-seca-osm-audit.json ops/laguna-seca-track-loop.json
-          git commit -m "Ops: stitch Laguna Seca main circuit geometry"
+          git commit -m "Ops: capture Laguna Seca dimension tags"
           git push origin HEAD:ops/laguna-seca-osm-audit
