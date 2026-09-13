@@ -20,8 +20,8 @@ jobs:
           fetch-depth: 0
 
       - name: Update canonical plan
-        shell: python
         run: |
+          python - <<'PY'
           from pathlib import Path
 
           path = Path('docs/WORLD_DRIVE_EVOLUTION_AND_CORRECTION_PLAN.md')
@@ -64,47 +64,36 @@ jobs:
           if text.count(marker) != 1:
               raise SystemExit('Could not find unique Block 11 insertion marker')
 
-          block11 = r'''
-
----
-
-## Block 11 — Circuit presets / closed-loop authored track routes
-
-**ACTIVE — Laguna Seca first; Nürburgring Nordschleife second after Laguna human PASS.**
-
-Goal: add famous closed-loop race circuits to the existing preset-route experience while keeping ordinary road routing unchanged. Circuit presets should be deterministic, offline-friendly after code delivery, and suitable as repeatable vehicle/terrain stress routes.
-
-### Block 11A — Laguna Seca
-
-Deliver the current Grand Prix layout of WeatherTech Raceway Laguna Seca as the first circuit preset. Use verified/authored track geometry rather than depending on a live road router accepting `highway=raceway` at runtime. The route must form one continuous closed loop, preserve the circuit's real-world shape and elevation context, and start at a sensible point on the main straight.
-
-Acceptance:
-
-- preset appears alongside existing routes under an unambiguous circuit label;
-- closed-loop geometry is deterministic and does not require OSRM/Overpass at play time;
-- total loop length is consistent with the ~3.602 km current layout within an explicitly tested tolerance;
-- no large coordinate/segment discontinuity or accidental shortcut exists;
-- ordinary Manic-2/Manic-5, Route 169, Route 132 and Yungas presets keep their existing routing behavior;
-- no vehicle-physics, tire, suspension, wheel-ground, terrain/DEM, imagery, multiplayer or desktop-input tuning is introduced;
-- permanent QA covers circuit geometry/closure, preset wiring, existing preset regression, production build and code split;
-- human checkpoint drives the full lap and specifically inspects the Corkscrew, route continuity, road/terrain ownership and spawn orientation.
-
-### Block 11B — Nürburgring Nordschleife
-
-**PLANNED / gated on Laguna Seca human PASS.** Reuse the certified closed-loop preset infrastructure, then add the Nordschleife as the longer/high-load circuit and streaming stress route. Do not begin Block 11B before Laguna Seca is accepted.
-
-Implementation order:
-
-1. audit the current preset/routing lifecycle and source verified Laguna Seca raceway geometry;
-2. add the smallest authored closed-loop route contract needed by circuit presets, without changing generic road routing;
-3. wire Laguna Seca into the preset UI;
-4. add focused permanent QA and exact-head candidate integration QA;
-5. human Laguna Seca lap test;
-6. integrate to `dev`, run exact-head Dev Integration, update this plan;
-7. only then open Nordschleife work.
-'''
+          block11 = (
+              '\n\n---\n\n'
+              '## Block 11 — Circuit presets / closed-loop authored track routes\n\n'
+              '**ACTIVE — Laguna Seca first; Nürburgring Nordschleife second after Laguna human PASS.**\n\n'
+              'Goal: add famous closed-loop race circuits to the existing preset-route experience while keeping ordinary road routing unchanged. Circuit presets should be deterministic, offline-friendly after code delivery, and suitable as repeatable vehicle/terrain stress routes.\n\n'
+              '### Block 11A — Laguna Seca\n\n'
+              'Deliver the current Grand Prix layout of WeatherTech Raceway Laguna Seca as the first circuit preset. Use verified/authored track geometry rather than depending on a live road router accepting `highway=raceway` at runtime. The route must form one continuous closed loop, preserve the circuit\'s real-world shape and elevation context, and start at a sensible point on the main straight.\n\n'
+              'Acceptance:\n\n'
+              '- preset appears alongside existing routes under an unambiguous circuit label;\n'
+              '- closed-loop geometry is deterministic and does not require OSRM/Overpass at play time;\n'
+              '- total loop length is consistent with the ~3.602 km current layout within an explicitly tested tolerance;\n'
+              '- no large coordinate/segment discontinuity or accidental shortcut exists;\n'
+              '- ordinary Manic-2/Manic-5, Route 169, Route 132 and Yungas presets keep their existing routing behavior;\n'
+              '- no vehicle-physics, tire, suspension, wheel-ground, terrain/DEM, imagery, multiplayer or desktop-input tuning is introduced;\n'
+              '- permanent QA covers circuit geometry/closure, preset wiring, existing preset regression, production build and code split;\n'
+              '- human checkpoint drives the full lap and specifically inspects the Corkscrew, route continuity, road/terrain ownership and spawn orientation.\n\n'
+              '### Block 11B — Nürburgring Nordschleife\n\n'
+              '**PLANNED / gated on Laguna Seca human PASS.** Reuse the certified closed-loop preset infrastructure, then add the Nordschleife as the longer/high-load circuit and streaming stress route. Do not begin Block 11B before Laguna Seca is accepted.\n\n'
+              'Implementation order:\n\n'
+              '1. audit the current preset/routing lifecycle and source verified Laguna Seca raceway geometry;\n'
+              '2. add the smallest authored closed-loop route contract needed by circuit presets, without changing generic road routing;\n'
+              '3. wire Laguna Seca into the preset UI;\n'
+              '4. add focused permanent QA and exact-head candidate integration QA;\n'
+              '5. human Laguna Seca lap test;\n'
+              '6. integrate to `dev`, run exact-head Dev Integration, update this plan;\n'
+              '7. only then open Nordschleife work.\n'
+          )
           text = text.replace(marker, block11 + marker, 1)
           path.write_text(text, encoding='utf-8')
+          PY
 
       - name: Commit plan update to dev
         run: |
