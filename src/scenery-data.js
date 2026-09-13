@@ -45,29 +45,27 @@ export function createSceneryDataService({
     );out geom;`;
   }
 
+  function finiteWorldPoint(latValue,lonValue){
+    if(latValue===null||latValue===undefined||lonValue===null||lonValue===undefined)return null;
+    const lat=Number(latValue),lon=Number(lonValue);
+    if(!Number.isFinite(lat)||!Number.isFinite(lon)||Math.abs(lat)>90||Math.abs(lon)>180)return null;
+    const world=toWorld(lat,lon);
+    const x=Number(world?.x),z=Number(world?.z);
+    return Number.isFinite(x)&&Number.isFinite(z)?{x,z}:null;
+  }
+
   function elementPoints(element){
     if(element?.geometry?.length){
-      return element.geometry.map(point=>{
-        const world=toWorld(point.lat,point.lon);
-        return {
-          x:world.x,
-          z:world.z
-        };
-      });
+      const points=[];
+      for(const point of element.geometry){
+        const world=finiteWorldPoint(point?.lat,point?.lon);
+        if(world)points.push(world);
+      }
+      return points;
     }
 
-    const lat=Number(element?.lat);
-    const lon=Number(element?.lon);
-
-    if(Number.isFinite(lat)&&Number.isFinite(lon)){
-      const world=toWorld(lat,lon);
-      return [{
-        x:world.x,
-        z:world.z
-      }];
-    }
-
-    return [];
+    const world=finiteWorldPoint(element?.lat,element?.lon);
+    return world?[world]:[];
   }
 
   function ingest(data){
