@@ -1,5 +1,7 @@
 // Built-in route presets used by startup and the route planner.
 
+import LagunaSecaTrack from './circuits/laguna-seca.json' with {type:'json'};
+
 export const MANIC2={
   lat:49.3213,
   lon:-68.3467,
@@ -57,3 +59,23 @@ export const YUNGAS_WAYPOINTS=[
     name:'Camino de la Muerte'
   }
 ];
+
+// California · WeatherTech Raceway Laguna Seca, current Grand Prix layout.
+// The geometry is a committed snapshot of the OSM highway=raceway main loop,
+// excluding pit lane. Circuit presets intentionally do not depend on a live
+// road router accepting raceway access at play time.
+const [LAGUNA_START_LON,LAGUNA_START_LAT]=LagunaSecaTrack.coordinates[0];
+export const LAGUNA_SECA_START={
+  lat:LAGUNA_START_LAT,
+  lon:LAGUNA_START_LON,
+  name:'Laguna Seca · circuit'
+};
+export const LAGUNA_SECA_END={...LAGUNA_SECA_START};
+export const LAGUNA_SECA_CIRCUIT=Object.freeze({
+  id:'laguna-seca-grand-prix',
+  label:'Laguna Seca · Circuit',
+  provider:'Circuit preset · OSM',
+  lengthM:LagunaSecaTrack.lengthM,
+  sourceWayIds:Object.freeze([...LagunaSecaTrack.sourceWayIds]),
+  coordinates:Object.freeze(LagunaSecaTrack.coordinates.map(point=>Object.freeze([...point])))
+});
