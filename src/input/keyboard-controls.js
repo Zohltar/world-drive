@@ -1,6 +1,8 @@
 // World Drive V21.29 — keyboard input controller.
 // Owns key state and rebinding events; gameplay actions remain callbacks into main.js.
 
+import {createMobileControls} from './mobile-controls.js';
+
 export function createKeyboardControls({
   appSettings,
   defaults,
@@ -21,6 +23,8 @@ export function createKeyboardControls({
   if(typeof getKeyboardRebindAction!=='function'||typeof setKeyboardRebindAction!=='function')throw new Error('keyboard controls require rebind accessors');
 
   const keys={};
+  const mobileControls=createMobileControls({getRuntimeState,onManualTakeover});
+  globalThis.__worldDriveMobileControls=mobileControls;
 
   function codes(action){
     const configured=appSettings?.controls?.keyboard?.[action];
@@ -77,6 +81,12 @@ export function createKeyboardControls({
 
   return Object.freeze({
     codes,actionDown,actionMatches,clearState,
-    dispose(){removeEventListener('keydown',keydown);removeEventListener('keyup',keyup);clearState();}
+    mobileState:mobileControls.state,
+    updateMobile:()=>mobileControls.update?.(),
+    dispose(){
+      removeEventListener('keydown',keydown);removeEventListener('keyup',keyup);clearState();
+      mobileControls.dispose?.();
+      if(globalThis.__worldDriveMobileControls===mobileControls)delete globalThis.__worldDriveMobileControls;
+    }
   });
 }
