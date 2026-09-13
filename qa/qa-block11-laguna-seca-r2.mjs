@@ -53,9 +53,16 @@ const ribbon=system.buildRibbon(profile,15,new THREE.MeshBasicMaterial(),.10);
 const pos=ribbon.geometry.getAttribute('position').array;
 const lastBase=(profile.length-1)*6;
 for(let j=0;j<6;j++)assert.ok(Math.abs(pos[j]-pos[lastBase+j])<1e-4,`road seam differs at component ${j}`);
-const volume=system.buildRoadVolume(profile,LAGUNA_SECA_CIRCUIT.roadSpec);
+
+// Measure the nominal asphalt dimension on a straight cross-section. Corner
+// miters intentionally widen locally so adjoining triangles cannot open a gap.
+const widthProfile=[
+  {x:0,z:0,y:0,roll:0,cum:0},
+  {x:0,z:20,y:0,roll:0,cum:20}
+];
+const volume=system.buildRoadVolume(widthProfile,LAGUNA_SECA_CIRCUIT.roadSpec);
 const edge=volume.children[0].geometry.getAttribute('position').array;
 const leftTop=3*3,rightTop=4*3;
 const width=Math.hypot(edge[leftTop]-edge[rightTop],edge[leftTop+2]-edge[rightTop+2]);
-assert.ok(width>14.8&&width<16.0,`expected ~15m asphalt width, got ${width}`);
+assert.ok(width>14.99&&width<15.01,`expected 15m asphalt width, got ${width}`);
 console.log('BLOCK 11 LAGUNA SECA R2 FIDELITY QA: PASS',{profilePoints:profile.length,seamClosed:true,asphaltWidthM:Number(width.toFixed(2)),civilTraffic:false});
