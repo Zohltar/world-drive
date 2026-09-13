@@ -85,6 +85,18 @@ export function createRouteLifecycle({
     return `${coordinates?.length||0}:${hash.toString(16)}`;
   }
 
+  function normalizeAuthoredCoordinates(coordinates){
+    if(!Array.isArray(coordinates)||coordinates.length<3)return null;
+    const normalized=[];
+    for(const coordinate of coordinates){
+      const lon=Number(coordinate?.[0]);
+      const lat=Number(coordinate?.[1]);
+      if(!Number.isFinite(lat)||!Number.isFinite(lon)||!validLatLon(lat,lon))return null;
+      normalized.push([lon,lat]);
+    }
+    return normalized;
+  }
+
   function managedForestSwitch(){
     const rendererSwitch=sceneryRenderer?.switchForestRouteCache;
     if(typeof rendererSwitch==='function')return routeKey=>rendererSwitch(routeKey);
@@ -182,10 +194,17 @@ export function createRouteLifecycle({
     const state=getState();
     const routeStart=state.routeStart;
     const routeEnd=state.routeEnd;
-    const routeWaypoints=state.routeWaypoints;
+    const routeWaypoints=Array.isArray(state.routeWaypoints)?state.routeWaypoints:[];
     const routePoints=[routeStart,...routeWaypoints,routeEnd];
+    const authoredCoordinates=normalizeAuthoredCoordinates(state.routeAuthoredCoordinates);
 
-    const {coordinates,provider}=await routingService.fetchRoute({points:routePoints,start:routeStart});
+    let coordinates,provider;
+    if(authoredCoordinates){
+      coordinates=authoredCoordinates;
+      provider=state.routeAuthoredProvider||'Circuit preset';
+    }else{
+      ({coordinates,provider}=await routingService.fetchRoute({points:routePoints,start:routeStart}));
+    }
     if(!ownsRouteGeneration(routeGeneration))return false;
 
     routingStatus.textContent=provider;
@@ -224,15 +243,20 @@ export function createRouteLifecycle({
     return (await loadRouteForGeneration(worldDrive.route.generation))!==false;
   }
 
-  async function createRequestedRoute(start,end,waypoints=[]){
+  async function createRequestedRoute(start,end,waypoints=[],options={}){
     bumpRouteGeneration();
     const routeGeneration=worldDrive.route.generation;
+    const authoredCoordinates=normalizeAuthoredCoordinates(options?.coordinates);
 
+    if(options?.coordinates&&!authoredCoordinates){
+      toast('Tracé de circuit invalide');
+      return false;
+    }
     if(!validLatLon(start.lat,start.lon)||!validLatLon(end.lat,end.lon)){
       toast('Coordonnées invalides');
       return false;
     }
-    if(geoDist(start,end)<100){
+    if(!authoredCoordinates&&geoDist(start,end)<100){
       toast('Départ et arrivée trop proches');
       return false;
     }
@@ -244,8 +268,19 @@ export function createRouteLifecycle({
     const routeStart={...start,name:start.name||'Départ'};
     const routeEnd={...end,name:end.name||'Arrivée'};
     const routeWaypoints=Array.isArray(waypoints)?waypoints.slice(0,8):[];
+    const routeAuthoredProvider=authoredCoordinates?String(options?.provider||'Circuit preset'):null;
 
-    setState({speed:0,steer:0,autopilotSteer:0,routeStart,routeEnd,routeWaypoints,origin:{lat:routeStart.lat,lon:routeStart.lon}});
+    setState({
+      speed:0,
+      steer:0,
+      autopilotSteer:0,
+      routeStart,
+      routeEnd,
+      routeWaypoints,
+      routeAuthoredCoordinates:authoredCoordinates,
+      routeAuthoredProvider,
+      origin:{lat:routeStart.lat,lon:routeStart.lon}
+    });
 
     resetWorldCachesForRequest({preserveForest:true});
     resetRunChallenge();
