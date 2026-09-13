@@ -24,12 +24,14 @@ jobs:
           from pathlib import Path
           path=Path('qa/V21_26_ROUTE_LIFECYCLE_REFACTOR_QA.mjs')
           text=path.read_text(encoding='utf-8')
-          old_main=r"assert.match(main,/async function createRequestedRoute\(start,end,waypoints=\[\]\)\{\s*return routeLifecycle\.createRequestedRoute\(start,end,waypoints\);\s*\}/s,'main.js createRequestedRoute facade is not narrow');"
-          new_main=r"assert.match(main,/async function createRequestedRoute\(start,end,waypoints=\[\],options=\{\}\)\{\s*return routeLifecycle\.createRequestedRoute\(start,end,waypoints,options\);\s*\}/s,'main.js createRequestedRoute facade is not narrow');"
-          old_lifecycle=r"  /async function createRequestedRoute\(start,end,waypoints=\[\]\)\{/,”
-          new_lifecycle=r"  /async function createRequestedRoute\(start,end,waypoints=\[\],options=\{\}\)\{/,”
-          old_lifecycle=old_lifecycle[:-1]
-          new_lifecycle=new_lifecycle[:-1]
+          old_main = r"assert.match(main,/async function createRequestedRoute\(start,end,waypoints=\[\]\)\{\s*return routeLifecycle\.createRequestedRoute\(start,end,waypoints\);\s*\}/s,'main.js createRequestedRoute facade is not narrow');"
+          new_main = r"assert.match(main,/async function createRequestedRoute\(start,end,waypoints=\[\],options=\{\}\)\{\s*return routeLifecycle\.createRequestedRoute\(start,end,waypoints,options\);\s*\}/s,'main.js createRequestedRoute facade is not narrow');"
+          old_lifecycle = r"  /async function createRequestedRoute\(start,end,waypoints=\[\]\)\{/,”
+          new_lifecycle = r"  /async function createRequestedRoute\(start,end,waypoints=\[\],options=\{\}\)\{/,”
+          # The two raw literals above intentionally carry a sentinel smart quote
+          # so YAML never interprets a trailing ASCII quote strangely; strip it.
+          old_lifecycle = old_lifecycle.replace('”','')
+          new_lifecycle = new_lifecycle.replace('”','')
           for old,new in [(old_main,new_main),(old_lifecycle,new_lifecycle)]:
               count=text.count(old)
               if count!=1:
