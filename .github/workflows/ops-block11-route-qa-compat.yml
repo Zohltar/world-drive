@@ -1,0 +1,53 @@
+name: Ops Block 11 Route QA Compatibility
+
+on:
+  push:
+    branches:
+      - ops/block11-route-qa-compat
+    paths:
+      - .github/workflows/ops-block11-route-qa-compat.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: candidate/block11-laguna-seca-r1
+          fetch-depth: 0
+      - name: Update legacy narrow-facade assertions
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path=Path('qa/V21_26_ROUTE_LIFECYCLE_REFACTOR_QA.mjs')
+          text=path.read_text(encoding='utf-8')
+          replacements=[
+            (
+              "assert.match(main,/async function createRequestedRoute\\(start,end,waypoints=\\[\\]\\)\\{\\s*return routeLifecycle\\.createRequestedRoute\\(start,end,waypoints\\);\\s*\\}/s,'main.js createRequestedRoute facade is not narrow');",
+              "assert.match(main,/async function createRequestedRoute\\(start,end,waypoints=\\[\\],options=\\{\\}\\)\\{\\s*return routeLifecycle\\.createRequestedRoute\\(start,end,waypoints,options\\);\\s*\\}/s,'main.js createRequestedRoute facade is not narrow');"
+            ),
+            (
+              "  /async function createRequestedRoute\\(start,end,waypoints=\\[\\]\\)\\{/,
+",
+              "  /async function createRequestedRoute\\(start,end,waypoints=\\[\\],options=\\{\\}\\)\\{/,
+"
+            )
+          ]
+          for old,new in replacements:
+              count=text.count(old)
+              if count!=1:
+                  raise SystemExit(f'Expected one match, found {count}: {old!r}')
+              text=text.replace(old,new,1)
+          path.write_text(text,encoding='utf-8')
+          PY
+      - name: Commit QA compatibility update
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add qa/V21_26_ROUTE_LIFECYCLE_REFACTOR_QA.mjs
+          git diff --cached --check
+          git commit -m "QA: allow authored route options through lifecycle facade"
+          git push origin HEAD:candidate/block11-laguna-seca-r1
