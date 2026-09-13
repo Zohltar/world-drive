@@ -6,6 +6,7 @@ import {
   applyDeadzone,
   normalizeTiltSteering,
   landscapeTiltAngle,
+  mobileSecureContext,
   mobileInputCapability
 } from '../src/input/mobile-controls.js';
 
@@ -33,6 +34,10 @@ assert.equal(landscapeTiltAngle({beta:12,gamma:3},90),12,'landscape-right must u
 assert.equal(landscapeTiltAngle({beta:12,gamma:3},270),-12,'landscape-left must invert beta');
 assert.equal(landscapeTiltAngle({beta:12,gamma:3},0),3,'portrait/default must use gamma');
 
+assert.equal(mobileSecureContext({isSecureContext:true}),true,'HTTPS/secure context must be accepted');
+assert.equal(mobileSecureContext({isSecureContext:false}),false,'insecure LAN HTTP must be rejected for tilt sensors');
+assert.equal(mobileSecureContext({}),false,'missing secure-context flag must be conservative');
+
 const touchEnv={navigator:{maxTouchPoints:5},DeviceOrientationEvent:function(){}};
 assert.deepEqual(mobileInputCapability(touchEnv),{
   hasTouch:true,
@@ -54,9 +59,17 @@ assert.deepEqual(mobileInputCapability(desktopEnv),{
   touchPoints:0
 });
 
+const mobileSource=await readFile(new URL('../src/input/mobile-controls.js',import.meta.url),'utf8');
 const keyboardSource=await readFile(new URL('../src/input/keyboard-controls.js',import.meta.url),'utf8');
 const gamepadSource=await readFile(new URL('../src/input/gamepad.js',import.meta.url),'utf8');
 const drivingSource=await readFile(new URL('../src/driving-runtime-base.js',import.meta.url),'utf8');
+
+assert.ok(!mobileSource.includes('world-drive-mobile-steer-left'),'touch left steering fallback must remain removed');
+assert.ok(!mobileSource.includes('world-drive-mobile-steer-right'),'touch right steering fallback must remain removed');
+assert.ok(!mobileSource.includes('Direction tactile'),'mobile steering must not silently fall back to touch arrows');
+assert.match(mobileSource,/state\.permission='insecure'/,'insecure LAN HTTP must be diagnosed explicitly');
+assert.match(mobileSource,/HTTPS requis pour volant/,'mobile UI must explain why tilt cannot start on HTTP');
+
 assert.match(keyboardSource,/createMobileControls\(\{getRuntimeState,onManualTakeover\}\)/,'keyboard owner must create the mobile controller with runtime visibility/takeover context');
 assert.match(keyboardSource,/globalThis\.__worldDriveMobileControls=mobileControls/,'mobile controller must be exposed only as the normalized-input bridge');
 assert.match(gamepadSource,/function applyMobileState\(\)/,'gamepad facade must own the virtual mobile bridge');
