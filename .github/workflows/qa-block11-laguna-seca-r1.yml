@@ -1,0 +1,43 @@
+name: Block 11 Laguna Seca Circuit QA
+
+on:
+  push:
+    branches:
+      - candidate/block11-laguna-seca-r1
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  qa:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install
+        run: npm ci
+      - name: Laguna Seca closed-loop preset QA
+        run: node qa/qa-block11-laguna-seca-r1.mjs
+      - name: Deterministic stale route race QA
+        run: node qa/qa-route-generation-race-r3.mjs
+      - name: Route lifecycle regression
+        run: node qa/V21_26_ROUTE_LIFECYCLE_REFACTOR_QA.mjs
+      - name: R7 routing boundary QA
+        run: node qa/qa-source-tree-r7-routing.mjs
+      - name: R7 UI boundary QA
+        run: node qa/qa-source-tree-r7-ui.mjs
+      - name: Route-start final placement QA
+        run: node qa/qa-route-start-final-placement-r8.mjs
+      - name: Runtime import and source-tree audit
+        run: node qa/DEV_INTEGRATION_AUDIT.mjs
+      - name: Production build
+        run: npm run build
+      - name: Production code split QA
+        run: node qa/BUILD_V21_31_CODE_SPLIT_QA.mjs
