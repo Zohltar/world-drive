@@ -2,17 +2,20 @@ export function createWheelGroundSupport({
   roadSurfaceAt,
   terrainAbs,
   roadHalfWidth,
+  getRoadCoreHalfWidth,
 }){
   const groundHeightRoadScratch={};
-  const supportOuterHalfWidth=Math.max(4,Number(roadHalfWidth)||8.5);
+  const defaultSupportOuterHalfWidth=Math.max(4,Number(roadHalfWidth)||8.5);
   // Grip R14 — the visible road/shoulder earthwork is much narrower than the
   // old 8.5 m wheel-support corridor. Keep a solid road core, then blend toward
   // terrain before the legacy outer threshold so crossing roadContact cannot
   // create a one-frame vertical step.
-  const supportCoreHalfWidth=Math.min(
+  const defaultSupportCoreHalfWidth=Math.min(
     5.4,
-    Math.max(3.75,supportOuterHalfWidth-2.8)
+    Math.max(3.75,defaultSupportOuterHalfWidth-2.8)
   );
+  let supportCoreHalfWidth=defaultSupportCoreHalfWidth;
+  let supportOuterHalfWidth=defaultSupportOuterHalfWidth;
   // Issue #8: a bridge/viaduct can be several metres above the DEM. Outside the
   // solid road core, blending that detached road plane toward terrain creates
   // an invisible support ramp beside and underneath the bridge. Keep ordinary
@@ -33,6 +36,19 @@ export function createWheelGroundSupport({
     halfWidth:supportOuterHalfWidth,
     coreHalfWidth:supportCoreHalfWidth
   };
+
+  function refreshSupportWidths(){
+    const requested=Number(getRoadCoreHalfWidth?.());
+    supportCoreHalfWidth=Number.isFinite(requested)&&requested>0
+      ?Math.max(defaultSupportCoreHalfWidth,requested)
+      :defaultSupportCoreHalfWidth;
+    supportOuterHalfWidth=Math.max(
+      defaultSupportOuterHalfWidth,
+      supportCoreHalfWidth+2.8
+    );
+    fastWheelRoadSupport.halfWidth=supportOuterHalfWidth;
+    fastWheelRoadSupport.coreHalfWidth=supportCoreHalfWidth;
+  }
 
   function smoothstep01(value){
     const t=Math.max(0,Math.min(1,Number(value)||0));
@@ -61,6 +77,7 @@ export function createWheelGroundSupport({
   }
 
   function setFastWheelRoadSupport(active,roadFrame,centerY,centerX,centerZ){
+    refreshSupportWidths();
     if(!active||!roadFrame||!Number.isFinite(centerY)){
       fastWheelRoadSupport.active=false;
       return;

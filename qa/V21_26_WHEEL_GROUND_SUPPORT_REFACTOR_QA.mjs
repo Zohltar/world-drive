@@ -24,6 +24,7 @@ for(const pattern of [
   /import \{ createWheelGroundSupport \} from '\.\/wheel-ground-support\.js';/,
   /const wheelGroundSupport=createWheelGroundSupport\(\{/,
   /roadHalfWidth:ROAD_WHEEL_CONTACT_HALF_WIDTH/,
+  /getRoadCoreHalfWidth:activeRoadCoreHalfWidth/,
   /function setFastWheelRoadSupport\(active,roadFrame,centerY,centerX=absX,centerZ=absZ\)\{/,
   /wheelGroundSupport\.setFastWheelRoadSupport\(active,roadFrame,centerY,centerX,centerZ\)/,
   /function groundHeightForWheel\(\.\.\.args\)\{/,
@@ -51,8 +52,10 @@ for(const pattern of [
 for(const pattern of [
   /export function createWheelGroundSupport\s*\(\{/,
   /const groundHeightRoadScratch=\{\};/,
-  /const supportOuterHalfWidth=Math\.max\(4,Number\(roadHalfWidth\)\|\|8\.5\);/,
-  /const supportCoreHalfWidth=Math\.min\(/,
+  /const defaultSupportOuterHalfWidth=Math\.max\(4,Number\(roadHalfWidth\)\|\|8\.5\);/,
+  /const defaultSupportCoreHalfWidth=Math\.min\(/,
+  /function refreshSupportWidths\(\)\{/,
+  /supportCoreHalfWidth\+2\.8/,
   /const fastWheelRoadSupport=\{/,
   /halfWidth:supportOuterHalfWidth/,
   /coreHalfWidth:supportCoreHalfWidth/,
@@ -129,10 +132,35 @@ assert.equal(terrainCalls,3,'terrain fallback lookup count changed');
 controller.setFastWheelRoadSupport(false,null,NaN,0,0);
 assert.equal(controller.support.active,false,'invalid/disabled support did not clear active state');
 
+let requestedRoadCoreHalfWidth=7.5;
+const wideController=createWheelGroundSupport({
+  roadHalfWidth:8.5,
+  getRoadCoreHalfWidth:()=>requestedRoadCoreHalfWidth,
+  roadSurfaceAt:(x)=>({lateral:x,y:12}),
+  terrainAbs:()=>10
+});
+wideController.setFastWheelRoadSupport(true,{
+  angle:0,pitch:0,roll:0,px:0,pz:0,y:12
+},12,0,0);
+assert.equal(wideController.support.coreHalfWidth,7.5,'wide-circuit solid support does not reach the asphalt edge');
+assert.equal(wideController.support.halfWidth,10.3,'wide-circuit terrain blend did not move outside the asphalt');
+for(const lateral of [-7.49,7.49]){
+  assert.ok(
+    Math.abs(wideController.groundHeightForWheel(lateral,0,true)-12)<1e-10,
+    `wide-circuit asphalt lost solid wheel support at ${lateral} m`
+  );
+}
+const outsideAsphalt=wideController.groundHeightForWheel(8.5,0,true);
+assert.ok(outsideAsphalt<12&&outsideAsphalt>10,'wide-circuit support does not blend beyond the asphalt edge');
+requestedRoadCoreHalfWidth=null;
+wideController.setFastWheelRoadSupport(false,null,NaN,0,0);
+assert.equal(wideController.support.coreHalfWidth,5.4,'ordinary-road support width was not restored after leaving a wide circuit');
+assert.equal(wideController.support.halfWidth,8.5,'ordinary-road blend width was not restored after leaving a wide circuit');
+
 const mainLines=main.split('\n').length;
 assert.ok(mainLines<3290,`main.js is still unexpectedly large after wheel ground support extraction: ${mainLines} lines`);
 
-const r14Regression=spawnSync(process.execPath,['qa-wheel-ground-reentry-r14.mjs'],{cwd:root,encoding:'utf8'});
+const r14Regression=spawnSync(process.execPath,['qa/qa-wheel-ground-reentry-r14.mjs'],{cwd:root,encoding:'utf8'});
 assert.equal(r14Regression.status,0,`Grip R14 road/terrain re-entry regressed:\n${r14Regression.stderr||r14Regression.stdout}`);
 
 const autopilotRegression=spawnSync(process.execPath,['qa/V21_26_AUTOPILOT_REFACTOR_QA.mjs'],{cwd:root,encoding:'utf8'});
@@ -143,4 +171,4 @@ assert.equal(transmissionRegression.status,0,`autopilot transmission fix regress
 
 console.log('V21.26 WHEEL GROUND SUPPORT REFACTOR QA: PASS');
 console.log(`main.js: ${mainLines} lines; wheel-ground-support.js: ${supportSource.split('\n').length} lines`);
-console.log('fast local road plane / R14 road-terrain blend / road fallback / terrain fallback / scratch reuse / pavement instrument state verified');
+console.log('fast local road plane / dynamic wide-road core / R14 road-terrain blend / road fallback / terrain fallback / scratch reuse / pavement instrument state verified');

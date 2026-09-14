@@ -1760,10 +1760,16 @@ autopilotController=createAutopilotController({
 });
 
 // ---------- wheel / road ground support facade ----------
+function activeRoadCoreHalfWidth(){
+  const asphaltWidth=Number(ROUTE_ROAD_SPEC?.asphaltWidthM);
+  if(!Number.isFinite(asphaltWidth))return null;
+  return Math.max(5.5,Math.min(20,asphaltWidth))/2;
+}
 const wheelGroundSupport=createWheelGroundSupport({
   roadSurfaceAt,
   terrainAbs,
-  roadHalfWidth:ROAD_WHEEL_CONTACT_HALF_WIDTH
+  roadHalfWidth:ROAD_WHEEL_CONTACT_HALF_WIDTH,
+  getRoadCoreHalfWidth:activeRoadCoreHalfWidth
 });
 function setFastWheelRoadSupport(active,roadFrame,centerY,centerX=absX,centerZ=absZ){
   return wheelGroundSupport.setFastWheelRoadSupport(active,roadFrame,centerY,centerX,centerZ);

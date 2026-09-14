@@ -43,6 +43,8 @@ jobs:
         run: |
           node qa/qa-road-surface-continuity-r1.mjs
           node qa/qa-p937-combined-frame-pacing.mjs
+          node qa/qa-block11-laguna-seca-r2.mjs
+          node qa/V21_26_WHEEL_GROUND_SUPPORT_REFACTOR_QA.mjs
       - name: Full driving matrix
         run: node qa/DEV_DRIVING_SIM_QA.mjs
       - name: Runtime import and source-tree audit

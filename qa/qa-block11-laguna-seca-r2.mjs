@@ -3,6 +3,7 @@ import {readFile} from 'node:fs/promises';
 import * as THREE from 'three';
 import {LAGUNA_SECA_CIRCUIT} from '../src/routing/route-presets.js';
 import {createRoadGeometrySystem} from '../src/road/road-geometry.js';
+import {createWheelGroundSupport} from '../src/physics/wheel-ground-support.js';
 
 assert.equal(LAGUNA_SECA_CIRCUIT.routeKind,'circuit');
 assert.equal(LAGUNA_SECA_CIRCUIT.closedLoop,true);
@@ -20,7 +21,7 @@ assert.match(main,/routeClosedLoop:ROUTE_CLOSED_LOOP/);
 assert.match(main,/getRouteRoadSpec:\(\)=>ROUTE_ROAD_SPEC/);
 assert.match(main,/getCivilTrafficEnabled:\(\)=>ROUTE_CIVIL_TRAFFIC/);
 assert.match(builder,/!spec\.closedLoop&&profile\.length>1/);
-assert.match(staged,/originalRoadVolume\?\.\(prepared\.profile,rawSpec\)/);
+assert.match(staged,/originalRoadVolume\?\.\(prepared\.profile,resolvedSpec,expectedOffset\)/);
 assert.match(traffic,/if\(!routeTrafficEnabled\(\)\)\{/);
 assert.match(traffic,/if\(!routeTrafficEnabled\(\)\)return false;/);
 
@@ -65,4 +66,29 @@ const edge=volume.children[0].geometry.getAttribute('position').array;
 const leftTop=3*3,rightTop=4*3;
 const width=Math.hypot(edge[leftTop]-edge[rightTop],edge[leftTop+2]-edge[rightTop+2]);
 assert.ok(width>14.99&&width<15.01,`expected 15m asphalt width, got ${width}`);
-console.log('BLOCK 11 LAGUNA SECA R2 FIDELITY QA: PASS',{profilePoints:profile.length,seamClosed:true,asphaltWidthM:Number(width.toFixed(2)),civilTraffic:false});
+
+const roadY=12,terrainY=-2;
+const wheelSupport=createWheelGroundSupport({
+  roadHalfWidth:8.5,
+  getRoadCoreHalfWidth:()=>LAGUNA_SECA_CIRCUIT.roadSpec.asphaltWidthM/2,
+  roadSurfaceAt:x=>({lateral:x,y:roadY}),
+  terrainAbs:()=>terrainY
+});
+wheelSupport.setFastWheelRoadSupport(true,{
+  angle:0,pitch:0,roll:0,px:0,pz:0,y:roadY
+},roadY,0,0);
+const asphaltHalf=LAGUNA_SECA_CIRCUIT.roadSpec.asphaltWidthM/2;
+for(const lateral of [-asphaltHalf+.01,asphaltHalf-.01]){
+  const supportY=wheelSupport.groundHeightForWheel(lateral,0,true);
+  assert.ok(Math.abs(supportY-roadY)<1e-10,`Laguna wheel support left asphalt early at ${lateral} m`);
+}
+assert.equal(wheelSupport.support.coreHalfWidth,asphaltHalf,'Laguna physical core does not match asphalt half-width');
+assert.ok(wheelSupport.groundHeightForWheel(asphaltHalf+1,0,true)<roadY,'Laguna road-to-terrain blend did not begin outside asphalt');
+
+console.log('BLOCK 11 LAGUNA SECA R2 FIDELITY QA: PASS',{
+  profilePoints:profile.length,
+  seamClosed:true,
+  asphaltWidthM:Number(width.toFixed(2)),
+  physicalCoreWidthM:Number((wheelSupport.support.coreHalfWidth*2).toFixed(2)),
+  civilTraffic:false
+});
