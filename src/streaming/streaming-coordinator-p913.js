@@ -9,6 +9,7 @@ export function createStreamingCoordinator({
   routePointAtCum,
   routePointAtFraction,
   getRouteLength,
+  getRouteClosedLoop,
   getRoutePointCount,
   elevationService,
   waterData,
@@ -111,6 +112,7 @@ export function createStreamingCoordinator({
     routePointAtCum,
     routePointAtFraction,
     getRouteLength,
+    getRouteClosedLoop,
 
     elevation:{
       get center(){return elevationService.center},
@@ -337,14 +339,25 @@ export function createStreamingCoordinator({
     return Math.cos((runtime().heading||0)-nr.angle)>=0?1:-1;
   }
 
+  function routePreloadCum(cum,routeLength=Math.max(0,Number(getRouteLength())||0)){
+    if(!routeLength)return 0;
+    const value=Number(cum)||0;
+    if(getRouteClosedLoop?.()===true){
+      const wrapped=value%routeLength;
+      return wrapped<0?wrapped+routeLength:wrapped;
+    }
+    return Math.max(0,Math.min(routeLength,value));
+  }
+
   function routeBufferProbe(cum,lateralOffset=0){
-    const p=routePointAtCum(cum);
+    const normalizedCum=routePreloadCum(cum);
+    const p=routePointAtCum(normalizedCum);
     if(!p)return null;
     const nx=Math.cos(p.angle),nz=-Math.sin(p.angle);
     return {
       x:p.x+nx*lateralOffset,
       z:p.z+nz*lateralOffset,
-      cum,
+      cum:normalizedCum,
       lateralOffset
     };
   }
@@ -383,7 +396,7 @@ export function createStreamingCoordinator({
       distance<=ahead;
       distance+=terrainPreloadPolicy.longitudinalStep
     ){
-      const cum=Math.max(0,Math.min(routeLength,nr.cum+dir*distance));
+      const cum=routePreloadCum(nr.cum+dir*distance,routeLength);
       for(const lateralOffset of terrainPreloadPolicy.lateralOffsets){
         if(enqueueTerrainPreloadProbe(dir,cum,lateralOffset))queued++;
       }
@@ -449,7 +462,7 @@ export function createStreamingCoordinator({
       distance<=terrainPreloadPolicy.bootstrapAheadDistance;
       distance+=terrainPreloadPolicy.bootstrapStep
     ){
-      const cum=Math.max(0,Math.min(routeLength,nr.cum+dir*distance));
+      const cum=routePreloadCum(nr.cum+dir*distance,routeLength);
       for(const lateralOffset of terrainPreloadPolicy.bootstrapLateralOffsets){
         const key=terrainPreloadKey(dir,cum,lateralOffset);
         if(aheadStreamingBuckets.has(key))continue;

@@ -8,11 +8,11 @@ const here=path.dirname(fileURLToPath(import.meta.url));
 const root=path.resolve(here,'..');
 const src=path.join(root,'src');
 const mainPath=path.join(src,'main.js');
-const modulePath=path.join(src,'streaming-coordinator.js');
-const routeLifecyclePath=path.join(src,'route-lifecycle.js');
+const modulePath=path.join(src,'streaming','streaming-coordinator-p913.js');
+const routeLifecyclePath=path.join(src,'routing','route-lifecycle.js');
 
 assert.equal(fs.existsSync(mainPath),true,'src/main.js missing');
-assert.equal(fs.existsSync(modulePath),true,'src/streaming-coordinator.js missing — run tools/refactor-main-streaming-v21-25.mjs first');
+assert.equal(fs.existsSync(modulePath),true,'nested P9.13 streaming coordinator implementation missing');
 
 const main=fs.readFileSync(mainPath,'utf8');
 const streaming=fs.readFileSync(modulePath,'utf8');
@@ -152,6 +152,7 @@ const fakeWorldStreaming={
 };
 const createWorldStreaming=options=>{
   assert.equal(typeof options.getRouteLength,'function','world streaming wiring lost getRouteLength');
+  assert.equal(typeof options.getRouteClosedLoop,'function','world streaming wiring lost closed-loop state');
   assert.equal(typeof options.elevation.prefetch,'function','world streaming elevation prefetch wiring missing');
   assert.equal(typeof options.signs.load,'function','world streaming sign loader wiring missing');
   return fakeWorldStreaming;
@@ -182,6 +183,7 @@ const coordinator=imported.createStreamingCoordinator({
   routePointAtCum:cum=>({x:0,z:cum,angle:0,cum}),
   routePointAtFraction:f=>({x:0,z:f*100,angle:0,cum:f*100}),
   getRouteLength:()=>100,
+  getRouteClosedLoop:()=>false,
   getRoutePointCount:()=>2,
   elevationService,
   waterData,
@@ -213,7 +215,7 @@ const coordinator=imported.createStreamingCoordinator({
 assert.equal(coordinator.worldStreaming,fakeWorldStreaming,'coordinator must expose worldStreaming instance');
 assert.equal(coordinator.policy.softRecenterDistance,520,'soft recenter policy changed');
 assert.equal(coordinator.policy.hardWorldRefreshDistance,1450,'hard refresh policy changed');
-assert.equal(coordinator.policy.urgentWorldRefreshDistance,2200,'urgent refresh policy changed');
+assert.equal(coordinator.policy.urgentWorldRefreshDistance,2350,'urgent refresh policy changed');
 assert.equal(coordinator.policy.calmSpeed,4.5,'calm-speed policy changed');
 
 const stateRef=coordinator.state;

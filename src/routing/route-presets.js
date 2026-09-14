@@ -1,6 +1,7 @@
 // Built-in route presets used by startup and the route planner.
 
 import LagunaSecaTrack from './circuits/laguna-seca.json' with {type:'json'};
+import NordschleifeTrack from './circuits/nordschleife.json' with {type:'json'};
 
 export const MANIC2={
   lat:49.3213,
@@ -88,4 +89,36 @@ export const LAGUNA_SECA_CIRCUIT=Object.freeze({
   lengthM:LagunaSecaTrack.lengthM,
   sourceWayIds:Object.freeze([...LagunaSecaTrack.sourceWayIds]),
   coordinates:Object.freeze(LagunaSecaTrack.coordinates.map(point=>Object.freeze([...point])))
+});
+
+// Germany · Nürburgring Nordschleife, current 20.832 km full-lap layout.
+// Relation 38566 is committed locally and rotated to the official T13 timing
+// section. The conservative 9 m nominal road keeps the circuit's characteristically
+// narrow asphalt while staying within the published "rarely exceeds 9 m" width.
+const [NORDSCHLEIFE_START_LON,NORDSCHLEIFE_START_LAT]=NordschleifeTrack.coordinates[0];
+export const NORDSCHLEIFE_START={
+  lat:NORDSCHLEIFE_START_LAT,
+  lon:NORDSCHLEIFE_START_LON,
+  name:'Nordschleife · T13'
+};
+export const NORDSCHLEIFE_END={...NORDSCHLEIFE_START};
+export const NORDSCHLEIFE_CIRCUIT=Object.freeze({
+  id:'nurburgring-nordschleife-full-lap',
+  label:'Nürburgring Nordschleife · Circuit',
+  provider:'Circuit preset · OSM relation 38566',
+  routeKind:'circuit',
+  closedLoop:true,
+  civilTraffic:false,
+  roadSpec:Object.freeze({
+    asphaltWidthM:9,
+    shoulderWidthM:0,
+    edgeLineInsetM:.22,
+    centerLine:false,
+    widthSource:'Genesis Track Taxi · Nordschleife width rarely exceeds 9 m'
+  }),
+  lengthM:NordschleifeTrack.lengthM,
+  officialLengthM:NordschleifeTrack.officialLengthM,
+  sourceRelationId:NordschleifeTrack.sourceRelationId,
+  sourceWayIds:Object.freeze([...NordschleifeTrack.sourceWayIds]),
+  coordinates:Object.freeze(NordschleifeTrack.coordinates.map(point=>Object.freeze([...point])))
 });

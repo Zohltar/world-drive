@@ -6,9 +6,11 @@ import { pathToFileURL, fileURLToPath } from 'node:url';
 
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
 const mainPath=path.join(root,'src','main.js');
-const plannerPath=path.join(root,'src','route-planner-ui.js');
+const plannerFacadePath=path.join(root,'src','route-planner-ui.js');
+const plannerPath=path.join(root,'src','ui','route-planner-ui.js');
 
-assert.ok(fs.existsSync(plannerPath),'src/route-planner-ui.js missing — run tools/refactor-main-route-planner-v21-26.mjs first');
+assert.ok(fs.existsSync(plannerFacadePath),'src/route-planner-ui.js public facade missing');
+assert.ok(fs.existsSync(plannerPath),'src/ui/route-planner-ui.js implementation missing');
 
 const main=fs.readFileSync(mainPath,'utf8').replace(/\r\n/g,'\n');
 const planner=fs.readFileSync(plannerPath,'utf8').replace(/\r\n/g,'\n');
@@ -19,7 +21,13 @@ function syntaxCheck(file){
 }
 
 syntaxCheck(mainPath);
+syntaxCheck(plannerFacadePath);
 syntaxCheck(plannerPath);
+assert.equal(
+  fs.readFileSync(plannerFacadePath,'utf8'),
+  "export * from './ui/route-planner-ui.js';\n",
+  'route planner public facade changed'
+);
 
 assert.match(main,/import \{ createRoutePlannerUi \} from '\.\/route-planner-ui\.js';/,'main.js missing route planner import');
 assert.match(main,/const routePlannerUi=createRoutePlannerUi\(\{[\s\S]*?documentRef:document,[\s\S]*?YUNGAS_WAYPOINTS[\s\S]*?\}\);/,'main.js missing route planner facade initialization');
@@ -29,7 +37,7 @@ for(const pattern of [
   /function setSelectedPlace\(which,p\)/,
   /async function searchPlaceField\(which\)/,
   /\$\('buildRouteBtn'\)\.addEventListener\('click',async\(\)=>\{/,
-  /function applyPreset\(start,end,waypoints=\[\]\)/,
+  /function applyPreset\(start,end,waypoints=\[\],options=\{\}\)/,
   /button\.id='presetYungasBtn'/
 ]){
   assert.doesNotMatch(main,pattern,`main.js still owns route planner behavior: ${pattern}`);
@@ -86,6 +94,10 @@ class FakeElement{
     if(child.id)elements.set(child.id,child);
     return child;
   }
+  replaceChildren(...children){
+    this.children=[...children];
+    for(const child of children)if(child?.id)elements.set(child.id,child);
+  }
   async dispatch(type,event={}){
     for(const handler of this.listeners.get(type)||[]){
       await handler(event);
@@ -124,6 +136,20 @@ const R132_END={lat:48.10,lon:-65.90,name:'R132 end'};
 const YUNGAS_START={lat:-16.29,lon:-67.83,name:'Chuspipata'};
 const YUNGAS_END={lat:-16.20,lon:-67.73,name:'Yolosa'};
 const YUNGAS_WAYPOINTS=[{lat:-16.25,lon:-67.79,name:'Yungas waypoint'}];
+const LAGUNA_SECA_START={lat:36.58,lon:-121.75,name:'Laguna Seca'};
+const LAGUNA_SECA_END={...LAGUNA_SECA_START};
+const LAGUNA_SECA_CIRCUIT={
+  coordinates:[[-121.75,36.58],[-121.751,36.581],[-121.75,36.58]],
+  provider:'Circuit preset · OSM',routeKind:'circuit',closedLoop:true,
+  civilTraffic:false,roadSpec:{asphaltWidthM:15}
+};
+const NORDSCHLEIFE_START={lat:50.337751,lon:6.951275,name:'Nordschleife · T13'};
+const NORDSCHLEIFE_END={...NORDSCHLEIFE_START};
+const NORDSCHLEIFE_CIRCUIT={
+  coordinates:[[6.951275,50.337751],[6.952,50.338],[6.951275,50.337751]],
+  provider:'Circuit preset · OSM relation 38566',routeKind:'circuit',closedLoop:true,
+  civilTraffic:false,roadSpec:{asphaltWidthM:9}
+};
 
 const routeCalls=[];
 const searchCalls=[];
@@ -139,8 +165,8 @@ const geocodingService={
       :[];
   }
 };
-const createRequestedRoute=(start,end,waypoints=[])=>{
-  routeCalls.push({start,end,waypoints});
+const createRequestedRoute=(start,end,waypoints=[],options={})=>{
+  routeCalls.push({start,end,waypoints,options});
   return Promise.resolve(true);
 };
 const toast=message=>toastCalls.push(message);
@@ -159,10 +185,18 @@ const ui=createRoutePlannerUi({
   R132_END,
   YUNGAS_START,
   YUNGAS_END,
-  YUNGAS_WAYPOINTS
+  YUNGAS_WAYPOINTS,
+  LAGUNA_SECA_START,
+  LAGUNA_SECA_END,
+  LAGUNA_SECA_CIRCUIT,
+  NORDSCHLEIFE_START,
+  NORDSCHLEIFE_END,
+  NORDSCHLEIFE_CIRCUIT
 });
 
 assert.ok(elements.has('presetYungasBtn'),'Yungas preset button was not created');
+assert.ok(elements.has('presetLagunaSecaBtn'),'Laguna Seca preset button was not created');
+assert.ok(elements.has('presetNordschleifeBtn'),'Nordschleife preset button was not created');
 assert.equal(typeof ui.applyPreset,'function','applyPreset facade missing');
 assert.deepEqual(ui.getSelection(),{start:MANIC2,end:MANIC5},'initial planner selection changed');
 
@@ -196,9 +230,21 @@ await elements.get('presetYungasBtn').dispatch('click');
 assert.equal(routeCalls.length,3,'Yungas preset did not create a route');
 assert.deepEqual(routeCalls[2].waypoints,YUNGAS_WAYPOINTS,'Yungas waypoint list changed');
 
+await elements.get('presetLagunaSecaBtn').dispatch('click');
+assert.equal(routeCalls.length,4,'Laguna Seca preset did not create a route');
+assert.equal(routeCalls[3].options.roadSpec.asphaltWidthM,15,'Laguna Seca authored width was not forwarded');
+assert.equal(routeCalls[3].options.civilTraffic,false,'Laguna Seca civil traffic was not disabled');
+
+await elements.get('presetNordschleifeBtn').dispatch('click');
+assert.equal(routeCalls.length,5,'Nordschleife preset did not create a route');
+assert.equal(routeCalls[4].options.provider,NORDSCHLEIFE_CIRCUIT.provider,'Nordschleife source provider was not forwarded');
+assert.equal(routeCalls[4].options.roadSpec.asphaltWidthM,9,'Nordschleife authored width was not forwarded');
+assert.equal(routeCalls[4].options.closedLoop,true,'Nordschleife closed-loop flag was not forwarded');
+assert.equal(routeCalls[4].options.civilTraffic,false,'Nordschleife civil traffic was not disabled');
+
 // Driving ownership has evolved independently since V21.26. Keep this historical
 // regression focused on its actual route-planner contract instead of chaining a
 // stale driving source-layout assertion into an unrelated UI/routing test.
 console.log('V21.26 ROUTE PLANNER REFACTOR QA: PASS');
 console.log(`main.js: ${mainLines} lines; route-planner-ui.js: ${planner.split('\n').length} lines`);
-console.log('place search, waypoint routing, presets and Yungas injection verified');
+console.log('place search, waypoint routing, public-road presets, Yungas, Laguna Seca and Nordschleife verified');

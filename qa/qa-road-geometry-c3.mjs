@@ -18,7 +18,7 @@ assert.match(source,/export function createRoadGeometrySystem\s*\(/,'public road
 assert.match(source,/const base=createRoadGeometryCore\(args\);/,'public facade does not compose the private core');
 assert.match(
   source,
-  /const profile=base\.buildProfile\(\);[\s\S]*const closedLoop=!!args\.getState\?\.\(\)\?\.routeClosedLoop;[\s\S]*smoothRoadProfileV21_31\(profile,\{\.\.\.args,closedLoop\}\)/,
+  /const profile=base\.buildProfile\(\);[\s\S]*const routeClosedLoop=!!state\.routeClosedLoop;[\s\S]*const closedLoop=routeClosedLoop&&profile\.length>2[\s\S]*smoothRoadProfileV21_31\(profile,wrappedArgs\)/,
   'V21.31 smoothing wrapper is no longer applied to built profiles'
 );
 for(const marker of [

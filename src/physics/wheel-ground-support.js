@@ -39,13 +39,13 @@ export function createWheelGroundSupport({
 
   function refreshSupportWidths(){
     const requested=Number(getRoadCoreHalfWidth?.());
-    supportCoreHalfWidth=Number.isFinite(requested)&&requested>0
-      ?Math.max(defaultSupportCoreHalfWidth,requested)
+    const explicitCircuitWidth=Number.isFinite(requested)&&requested>0;
+    supportCoreHalfWidth=explicitCircuitWidth
+      ?Math.max(2.75,requested)
       :defaultSupportCoreHalfWidth;
-    supportOuterHalfWidth=Math.max(
-      defaultSupportOuterHalfWidth,
-      supportCoreHalfWidth+2.8
-    );
+    supportOuterHalfWidth=explicitCircuitWidth
+      ?supportCoreHalfWidth+2.8
+      :defaultSupportOuterHalfWidth;
     fastWheelRoadSupport.halfWidth=supportOuterHalfWidth;
     fastWheelRoadSupport.coreHalfWidth=supportCoreHalfWidth;
   }

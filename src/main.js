@@ -13,7 +13,10 @@ import {
   YUNGAS_WAYPOINTS,
   LAGUNA_SECA_START,
   LAGUNA_SECA_END,
-  LAGUNA_SECA_CIRCUIT
+  LAGUNA_SECA_CIRCUIT,
+  NORDSCHLEIFE_START,
+  NORDSCHLEIFE_END,
+  NORDSCHLEIFE_CIRCUIT
 } from './route-presets.js';
 import { createRouteChallenge } from './route-challenge.js';
 import { createRoutePlannerUi } from './route-planner-ui.js';
@@ -2147,7 +2150,10 @@ const routePlannerUi=createRoutePlannerUi({
   YUNGAS_WAYPOINTS,
   LAGUNA_SECA_START,
   LAGUNA_SECA_END,
-  LAGUNA_SECA_CIRCUIT
+  LAGUNA_SECA_CIRCUIT,
+  NORDSCHLEIFE_START,
+  NORDSCHLEIFE_END,
+  NORDSCHLEIFE_CIRCUIT
 });
 document.querySelectorAll('.sectionHead').forEach(btn=>{
   btn.addEventListener('click',()=>{
@@ -2223,6 +2229,7 @@ streamingCoordinator=createStreamingCoordinator({
   routePointAtCum:cum=>routePointAtCum(cum),
   routePointAtFraction:f=>routePointAt(f),
   getRouteLength:()=>routeLength,
+  getRouteClosedLoop:()=>ROUTE_CLOSED_LOOP,
   getRoutePointCount:()=>route.length,
   elevationService,
   waterData,

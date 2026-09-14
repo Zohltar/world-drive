@@ -8,6 +8,7 @@ export function createWorldStreaming({
   routePointAtCum,
   routePointAtFraction,
   getRouteLength,
+  getRouteClosedLoop,
   elevation,
   water,
   scenery,
@@ -52,6 +53,21 @@ export function createWorldStreaming({
   let prefetchBusy=false;
   let routePreloadTimers=[];
   let distanceScale=1;
+
+  function routeIsClosed(){
+    return getRouteClosedLoop?.()===true;
+  }
+
+  function routeCumAtOffset(cum,offset,length=getRouteLength()){
+    const routeLength=Math.max(0,Number(length)||0);
+    if(!routeLength)return 0;
+    const value=(Number(cum)||0)+(Number(offset)||0);
+    if(routeIsClosed()){
+      const wrapped=value%routeLength;
+      return wrapped<0?wrapped+routeLength:wrapped;
+    }
+    return Math.max(0,Math.min(routeLength,value));
+  }
 
   function setDistanceScale(scale){
     const numeric=Number(scale);
@@ -180,25 +196,22 @@ export function createWorldStreaming({
     const nearest=nearestRoute(x,z);
     if(!nearest)return false;
 
-    if(
-      Number.isFinite(lastPrefetchCum) &&
-      nearest.cum-lastPrefetchCum<prefetch.step*distanceScale
-    ){
-      return false;
+    if(Number.isFinite(lastPrefetchCum)){
+      let travelled=nearest.cum-lastPrefetchCum;
+      if(routeIsClosed()&&travelled<0)travelled+=routeLength;
+      if(travelled<prefetch.step*distanceScale)return false;
     }
 
     lastPrefetchCum=nearest.cum;
     prefetchBusy=true;
 
     try{
-      const maxCum=Math.max(0,routeLength-1);
-
       const near=routePointAtCum(
-        Math.min(maxCum,nearest.cum+prefetch.near*distanceScale)
+        routeCumAtOffset(nearest.cum,prefetch.near*distanceScale,routeLength)
       );
 
       const far=routePointAtCum(
-        Math.min(maxCum,nearest.cum+prefetch.far*distanceScale)
+        routeCumAtOffset(nearest.cum,prefetch.far*distanceScale,routeLength)
       );
 
       await Promise.allSettled([

@@ -16,6 +16,9 @@ export function createRoutePlannerUi({
   LAGUNA_SECA_START,
   LAGUNA_SECA_END,
   LAGUNA_SECA_CIRCUIT,
+  NORDSCHLEIFE_START,
+  NORDSCHLEIFE_END,
+  NORDSCHLEIFE_CIRCUIT,
 }){
   // ---------- human-friendly place search ----------
   let selectedStart={...MANIC2};
@@ -157,6 +160,31 @@ export function createRoutePlannerUi({
           closedLoop:LAGUNA_SECA_CIRCUIT.closedLoop,
           civilTraffic:LAGUNA_SECA_CIRCUIT.civilTraffic,
           roadSpec:LAGUNA_SECA_CIRCUIT.roadSpec
+        }
+      )
+    );
+    presetGrid.appendChild(button);
+  }
+
+  if(presetGrid&&!$('presetNordschleifeBtn')){
+    const button=documentRef.createElement('button');
+    button.id='presetNordschleifeBtn';
+    button.type='button';
+    button.textContent='🏁 Nordschleife · Circuit';
+    button.title='Nürburgring Nordschleife · tour complet · 20,832 km';
+    button.addEventListener(
+      'click',
+      ()=>applyPreset(
+        NORDSCHLEIFE_START,
+        NORDSCHLEIFE_END,
+        [],
+        {
+          coordinates:NORDSCHLEIFE_CIRCUIT.coordinates,
+          provider:NORDSCHLEIFE_CIRCUIT.provider,
+          routeKind:NORDSCHLEIFE_CIRCUIT.routeKind,
+          closedLoop:NORDSCHLEIFE_CIRCUIT.closedLoop,
+          civilTraffic:NORDSCHLEIFE_CIRCUIT.civilTraffic,
+          roadSpec:NORDSCHLEIFE_CIRCUIT.roadSpec
         }
       )
     );

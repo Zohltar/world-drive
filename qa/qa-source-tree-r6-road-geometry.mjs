@@ -22,8 +22,8 @@ assert.match(main,/from '\.\/bridges\.js'/,'main.js must keep the bridge manager
 assert.match(main,/bridgeHeightAtCum,/,'main.js must still inject bridge height into road geometry');
 assert.match(implementation,/bridgeHeightAtCum,/,'road geometry implementation lost bridge height dependency');
 assert.match(implementation,/if\(typeof bridgeHeightAtCum!==['"]function['"]\)throw new Error\('road geometry requires bridgeHeightAtCum'\);/,'road geometry bridge-height contract changed');
-assert.match(implementation,/const by=bridgeHeightAtCum\(raw\[i\]\.cum\);if\(by!==null\)heights\[i\]=by;/,'bridge deck height override changed');
-assert.match(implementation,/bridgeManager\.isNearApproach\(raw\[i\]\.cum,18\)/,'bridge approach smoothing contract changed');
+assert.match(implementation,/const by=bridgeHeightAtCum\(canonicalRouteCum\(raw\[i\]\.cum\)\);if\(by!==null\)heights\[i\]=by;/,'bridge deck height override changed');
+assert.match(implementation,/bridgeManager\.isNearApproach\(canonicalRouteCum\(raw\[i\]\.cum\),18\)/,'bridge approach smoothing contract changed');
 
 const rootModule=await import('../src/road-geometry.js');
 const implementationModule=await import('../src/road/road-geometry.js');

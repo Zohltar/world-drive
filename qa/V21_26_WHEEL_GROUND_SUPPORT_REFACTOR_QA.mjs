@@ -152,6 +152,20 @@ for(const lateral of [-7.49,7.49]){
 }
 const outsideAsphalt=wideController.groundHeightForWheel(8.5,0,true);
 assert.ok(outsideAsphalt<12&&outsideAsphalt>10,'wide-circuit support does not blend beyond the asphalt edge');
+requestedRoadCoreHalfWidth=4.5;
+wideController.setFastWheelRoadSupport(true,{
+  angle:0,pitch:0,roll:0,px:0,pz:0,y:12
+},12,0,0);
+assert.equal(wideController.support.coreHalfWidth,4.5,'narrow-circuit physical core does not match its asphalt edge');
+assert.equal(wideController.support.halfWidth,7.3,'narrow-circuit terrain blend does not begin outside its own asphalt');
+for(const lateral of [-4.49,4.49]){
+  assert.ok(
+    Math.abs(wideController.groundHeightForWheel(lateral,0,true)-12)<1e-10,
+    `narrow-circuit asphalt lost solid wheel support at ${lateral} m`
+  );
+}
+const narrowOutsideAsphalt=wideController.groundHeightForWheel(5.5,0,true);
+assert.ok(narrowOutsideAsphalt<12&&narrowOutsideAsphalt>10,'narrow-circuit support does not blend beyond the asphalt edge');
 requestedRoadCoreHalfWidth=null;
 wideController.setFastWheelRoadSupport(false,null,NaN,0,0);
 assert.equal(wideController.support.coreHalfWidth,5.4,'ordinary-road support width was not restored after leaving a wide circuit');
@@ -171,4 +185,4 @@ assert.equal(transmissionRegression.status,0,`autopilot transmission fix regress
 
 console.log('V21.26 WHEEL GROUND SUPPORT REFACTOR QA: PASS');
 console.log(`main.js: ${mainLines} lines; wheel-ground-support.js: ${supportSource.split('\n').length} lines`);
-console.log('fast local road plane / dynamic wide-road core / R14 road-terrain blend / road fallback / terrain fallback / scratch reuse / pavement instrument state verified');
+console.log('fast local road plane / exact wide and narrow circuit cores / R14 road-terrain blend / road fallback / terrain fallback / scratch reuse / pavement instrument state verified');
