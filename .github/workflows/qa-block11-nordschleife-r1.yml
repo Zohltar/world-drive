@@ -1,0 +1,65 @@
+name: Block 11 Nordschleife R1
+
+on:
+  push:
+    branches:
+      - candidate/block11-nordschleife-r1
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  exact-head:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install
+        run: npm ci
+      - name: Nordschleife source and preset contract
+        run: node qa/qa-block11-nordschleife-r1.mjs
+      - name: Nordschleife road, contact and streaming continuity
+        run: node qa/qa-block11-nordschleife-r2.mjs
+      - name: Preserve Laguna Seca circuit contract
+        run: |
+          node qa/qa-block11-laguna-seca-r1.mjs
+          node qa/qa-block11-laguna-seca-r2.mjs
+      - name: Route lifecycle and planner regression
+        run: |
+          node qa/V21_26_ROUTE_LIFECYCLE_REFACTOR_QA.mjs
+          node qa/V21_26_ROUTE_PLANNER_REFACTOR_QA.mjs
+      - name: Road geometry and wheel support regression
+        run: |
+          node qa/qa-road-surface-continuity-r1.mjs
+          node qa/qa-road-geometry-c3.mjs
+          node qa/qa-source-tree-r6-road-geometry.mjs
+          node qa/V21_26_WHEEL_GROUND_SUPPORT_REFACTOR_QA.mjs
+      - name: Closed-loop streaming regression
+        run: |
+          node qa/V21_25_STREAMING_REFACTOR_QA.mjs
+          node qa/qa-streaming-p913-transitions.mjs
+          node qa/qa-streaming-p923-scheduler.mjs
+          node qa/qa-streaming-p924-frame-budget.mjs
+      - name: OSM fallback and finite geometry regression
+        run: |
+          node qa/qa-geofabrik-hydro-runtime-r1.mjs
+          node qa/qa-osm-geometry-finite-r1.mjs
+      - name: Laguna trail-braking regression
+        run: |
+          node qa/qa-physics-laguna-trail-brake-diagnostics-r1.mjs
+          node qa/qa-physics-combined-trail-braking-r1.mjs
+      - name: Full driving matrix
+        run: node qa/DEV_DRIVING_SIM_QA.mjs
+      - name: Runtime integration audit
+        run: node qa/DEV_INTEGRATION_AUDIT.mjs
+      - name: Production build
+        run: npm run build
+      - name: Code split
+        run: node qa/V21_31_CODE_SPLIT_QA.mjs
