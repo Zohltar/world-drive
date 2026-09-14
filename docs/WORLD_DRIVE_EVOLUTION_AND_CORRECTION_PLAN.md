@@ -76,8 +76,8 @@ Before coding, be able to answer:
 **Block 8 — Biome-aware natural scenery:** **PLANNED / DEFERRED — includes the parked Issue #12 forest-readiness work when activated**  
 **Block 9 — AI-assisted 3D asset authoring and selective GLB modernization:** **PLANNED / DEFERRED — pilot-first, no wholesale asset replacement**  
 **Block 10 — Mobile browser driving controls:** **ABANDONED / NOT PLANNED (2026-09-13) — experiment stopped by user; no mobile-control candidate runtime was integrated**  
-**Block 11 — Circuit presets / closed-loop authored track routes:** **ACTIVE — Laguna Seca first; Nürburgring Nordschleife planned second after Laguna human PASS**  
-**Active correction block:** **BLOCK 11A — Laguna Seca circuit preset**  
+**Block 11 — Circuit presets / closed-loop authored track routes:** **ACTIVE — Laguna Seca HUMAN PASS (2026-09-14); Nürburgring Nordschleife R1 candidate in validation**
+**Active correction block:** **BLOCK 11B — Nürburgring Nordschleife circuit preset**
 **Stable `main`:** `b74e7377eaaf2b128eb893c547f4c2da3d14bbea` — tag `v21.32`; must remain untouched without explicit user approval.  
 **Previous rollback/reference:** `9a69c39242eb0f3e2cf8d2fd68675c1cfad23dd8` — tag `v21.31`.
 
@@ -401,7 +401,7 @@ GitHub Issue #13: **CLOSED / COMPLETED (2026-09-12)**.
 
 ## Exact next action
 
-**Block 11A — deliver Laguna Seca as the first closed-loop circuit preset.**
+**Block 11B — validate Nürburgring Nordschleife R1 as the second closed-loop circuit preset.**
 
 Current unresolved work is intentionally not auto-started:
 
@@ -412,7 +412,7 @@ Current unresolved work is intentionally not auto-started:
 - Block 8 biome-aware natural scenery remains **planned/deferred**; when activated, begin by reopening and stabilizing forest readiness/streaming as its first runtime workstream, then add biome classification and palette selection;
 - Block 9 AI-assisted 3D asset authoring remains **planned/deferred**; begin with one controlled pilot asset and do not replace accepted GLBs wholesale without measured visual/runtime benefit;
 - Block 10 mobile browser driving controls is **ABANDONED / NOT PLANNED** by user decision; do not integrate the retired candidate branch.
-- Block 11 is **ACTIVE**: deliver Laguna Seca first as a closed-loop circuit preset with authored/verified track geometry; after human PASS, add Nürburgring Nordschleife as the second circuit preset.
+- Block 11 is **ACTIVE**: Laguna Seca has HUMAN PASS; validate Nürburgring Nordschleife R1 as the second circuit preset.
 
 Do not modify `main` without explicit user approval. Do not begin a deferred block merely because the latest certified corrections are complete.
 
@@ -508,9 +508,9 @@ Focused run `33915664612`: PASS. Post-integration Dev Integration `33915756142`:
 
 ## Current active correction block
 
-**BLOCK 11A — Laguna Seca circuit preset.**
+**BLOCK 11B — Nürburgring Nordschleife circuit preset.**
 
-Add closed-loop circuit presets without changing accepted ordinary road-routing semantics, vehicle physics, terrain authority, multiplayer, keyboard/gamepad controls or existing presets. Laguna Seca is the first human checkpoint; Nürburgring Nordschleife follows only after Laguna Seca PASS.
+Laguna Seca passed its human checkpoint on 2026-09-14. Validate the Nordschleife R1 candidate as the longer closed-loop/streaming stress route without changing accepted ordinary road-routing semantics, vehicle tuning, terrain authority, multiplayer, keyboard/gamepad controls or existing presets.
 
 ---
 
@@ -762,11 +762,13 @@ Do not start Block 10 by rewriting the HUD or physics globally. First isolate th
 
 ## Block 11 — Circuit presets / closed-loop authored track routes
 
-**ACTIVE — Laguna Seca first; Nürburgring Nordschleife second after Laguna human PASS.**
+**ACTIVE — Laguna Seca HUMAN PASS (2026-09-14); Nürburgring Nordschleife R1 candidate under validation.**
 
 Goal: add famous closed-loop race circuits to the existing preset-route experience while keeping ordinary road routing unchanged. Circuit presets should be deterministic, offline-friendly after code delivery, and suitable as repeatable vehicle/terrain stress routes.
 
 ### Block 11A — Laguna Seca
+
+**HUMAN PASS (2026-09-14).** The first-class closed-loop route, authored width and circuit traffic policy are accepted as the foundation for Block 11B.
 
 Deliver the current Grand Prix layout of WeatherTech Raceway Laguna Seca as the first circuit preset. Use verified/authored track geometry rather than depending on a live road router accepting `highway=raceway` at runtime. The route must form one continuous closed loop, preserve the circuit's real-world shape and elevation context, and start at a sensible point on the main straight.
 
@@ -783,7 +785,20 @@ Acceptance:
 
 ### Block 11B — Nürburgring Nordschleife
 
-**PLANNED / gated on Laguna Seca human PASS.** Reuse the certified closed-loop preset infrastructure, then add the Nordschleife as the longer/high-load circuit and streaming stress route. Do not begin Block 11B before Laguna Seca is accepted.
+**ACTIVE — R1 automated candidate; human full-lap checkpoint pending.** Reuse the accepted closed-loop preset infrastructure, then add the Nordschleife as the longer/high-load circuit and streaming stress route.
+
+R1 contract:
+
+- deterministic clockwise full-lap snapshot from OpenStreetMap relation `38566`, rotated to T13;
+- 1,068 committed coordinates across 52 continuously joined source ways;
+- 20,746.13 m measured source centreline, checked against the official 20,832 m full-lap definition;
+- 9 m nominal asphalt and exactly matching physical wheel-support core; no circuit centre line and no civil traffic;
+- long circuits retain a bounded 5.4 km local road profile that wraps through start/finish rather than building 20.8 km on every world refresh;
+- adaptive road sections are checked across seven points around the lap and may not exceed 1.501 m;
+- directional terrain/data preloading wraps through T13 instead of clamping to the route endpoint;
+- permanent QA covers source closure/direction/length, UI/lifecycle forwarding, seven local road windows, finite mesh bounds, T13 contact continuity, physical width, streaming wrap, Laguna regression, full driving matrix, integration and production build.
+
+Human acceptance must drive one full WRX lap and inspect T13, Hatzenbach, Flugplatz, Fuchsröhre, Karussell, Pflanzgarten and Döttinger Höhe for route continuity, visible/physical width agreement, suspension-scale facets, terrain ownership and streaming stalls. R1 uses real-world centreline and elevation context, but does not claim survey-grade surface detail or an exact authored concrete-bowl model for the Karussell; that special surface must not be approximated silently without a defensible geometry source.
 
 Implementation order:
 
@@ -793,7 +808,9 @@ Implementation order:
 4. add focused permanent QA and exact-head candidate integration QA;
 5. human Laguna Seca lap test;
 6. integrate to `dev`, run exact-head Dev Integration, update this plan;
-7. only then open Nordschleife work.
+7. only then open Nordschleife work — **DONE (Laguna HUMAN PASS 2026-09-14)**;
+8. validate and publish the isolated Nordschleife R1 candidate;
+9. perform the human full-lap checkpoint before any integration to `dev`.
 
 ---
 

@@ -25,6 +25,8 @@ They are retained as engineering history and rationale only. They must not be tr
 ## Other documentation
 
 - `WORLD_DRIVE_PHYSICS_TRAIL_BRAKING_R1.md` — active Laguna Seca physics diagnosis,
-  scientific basis, candidate measurements and human checkpoint.
+  scientific basis, candidate measurements and accepted human checkpoint.
+- `WORLD_DRIVE_BLOCK11_NORDSCHLEIFE_R1.md` — active Nordschleife source,
+  physical-width, long-loop continuity and human checkpoint contract.
 - `docs/images/` — documentation images/resources.
 - Root `README_PACKAGING.md` — current packaging instructions.

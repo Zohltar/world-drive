@@ -1,6 +1,6 @@
 # World Drive — Laguna Seca trail-braking R1
 
-Status: **candidate validated by deterministic simulation; human driving checkpoint pending**
+Status: **candidate validated by deterministic simulation; HUMAN PASS (2026-09-14)**
 
 Branch: `candidate/physics-trail-braking-r1`
 
@@ -106,5 +106,6 @@ only combined-force allocation and applied-force consistency.
 - production build and exact-head candidate workflow
 
 Automation can reject force, stability and integration regressions, but it
-cannot certify steering feel. The remaining checkpoint is an in-game Laguna
-drive before any integration into `dev`.
+cannot certify steering feel. The in-game Laguna checkpoint received HUMAN PASS
+on 2026-09-14; preserve these force-allocation regressions while Block 11B uses
+the accepted candidate as its baseline.
