@@ -144,6 +144,42 @@ for(const root of roadObjects){
   });
 }
 
+// Manic-2 -> Manic-5 browser repro: the reported failing road volume contained
+// 19,976 positions, i.e. exactly eight edge vertices for each of 2,497 profile
+// points. Ordinary routes intentionally have no circuit roadSpec, so this also
+// protects the default shoulder width from Number(undefined) becoming NaN.
+const manicReproOffset={x:412345,z:-553210};
+const manicReproProfile=Array.from({length:2497},(_,index)=>{
+  const cum=index*1.5;
+  return {
+    x:manicReproOffset.x+cum,
+    y:238+7*Math.sin(index/85),
+    z:manicReproOffset.z+30*Math.sin(index/130),
+    cum,
+    roll:.035*Math.sin(index/95)
+  };
+});
+const manicRoadVolume=system.buildRoadVolume(manicReproProfile,null,manicReproOffset);
+const manicEdges=manicRoadVolume.children.find(child=>
+  child.geometry?.userData?.worldDriveGeometry==='road-volume-edges'
+);
+assert.ok(manicEdges,'Manic repro road edge geometry is missing');
+const manicPositions=manicEdges.geometry.getAttribute('position');
+assert.equal(manicPositions.count,19976,'Manic repro no longer matches the reported geometry count');
+assert.equal(manicEdges.geometry.index.count,89856,'Manic repro road edge index count changed');
+assert.ok(manicPositions.array.every(Number.isFinite),'default road volume emitted a non-finite position');
+assert.ok(Math.abs(manicPositions.getX(0))<20,'prepared road volume ignored its explicit floating origin');
+manicEdges.geometry.computeBoundingSphere();
+assert.ok(Number.isFinite(manicEdges.geometry.boundingSphere?.radius),'Manic repro bounding sphere is non-finite');
+
+const contaminatedProfile=manicReproProfile.map(point=>({...point}));
+contaminatedProfile[1].x=NaN;
+const guardedVolume=system.buildRoadVolume(contaminatedProfile,null,manicReproOffset);
+guardedVolume.traverse(object=>{
+  const positions=object.geometry?.getAttribute?.('position');
+  if(positions)assert.ok(positions.array.every(Number.isFinite),'road-volume finite guard leaked a NaN');
+});
+
 console.log('ROAD SURFACE CONTINUITY R1 QA: PASS',{
   profilePoints:profile.length,
   maxSegmentM:Number(maxSegmentM.toFixed(3)),
@@ -153,5 +189,8 @@ console.log('ROAD SURFACE CONTINUITY R1 QA: PASS',{
   maxContactHeadingJoinDeg:Number(maxContactHeadingJoinDeg.toFixed(5)),
   maxContactPitchJoinDeg:Number(maxContactPitchJoinDeg.toFixed(5)),
   maxWheelPlaneJoinMm:Number((maxWheelPlaneJoinM*1000).toFixed(3)),
-  finiteBoundingSpheres:true
+  finiteBoundingSpheres:true,
+  manicReproVertices:manicPositions.count,
+  defaultRoadSpecFinite:true,
+  preparedOriginPinned:true
 });

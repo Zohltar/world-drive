@@ -40,7 +40,9 @@ jobs:
       - name: Online OSM geometry finite-boundary regression
         run: node qa/qa-osm-geometry-finite-r1.mjs
       - name: Road surface and wheel-contact continuity
-        run: node qa/qa-road-surface-continuity-r1.mjs
+        run: |
+          node qa/qa-road-surface-continuity-r1.mjs
+          node qa/qa-p937-combined-frame-pacing.mjs
       - name: Full driving matrix
         run: node qa/DEV_DRIVING_SIM_QA.mjs
       - name: Runtime import and source-tree audit

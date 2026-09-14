@@ -35,10 +35,14 @@ export function createLocalWorldBuilder(options={}){
     maxAlignedTrees:0
   };
 
-  const sameOffset=(a,b)=>!!a&&!!b&&Math.hypot(
-    (Number(a.x)||0)-(Number(b.x)||0),
-    (Number(a.z)||0)-(Number(b.z)||0)
-  )<.5;
+  const finiteOffset=value=>{
+    const x=Number(value?.x),z=Number(value?.z);
+    return Number.isFinite(x)&&Number.isFinite(z)?{x,z}:null;
+  };
+  const sameOffset=(a,b)=>{
+    const left=finiteOffset(a),right=finiteOffset(b);
+    return !!left&&!!right&&Math.hypot(left.x-right.x,left.z-right.z)<.5;
+  };
   const now=()=>globalThis.performance?.now?.()??Date.now();
 
   function disposePreparedObject(object){
@@ -143,27 +147,37 @@ export function createLocalWorldBuilder(options={}){
   async function prepareRoadStage(prepared){
     if(!prepared?.profile?.length||prepared.profile.length<=1)return null;
     const started=now();
-    const expectedOffset=prepared.offset;
+    const expectedOffset=finiteOffset(prepared.offset);
+    if(!expectedOffset){roadPerf.discarded++;return null;}
     const stage={volume:[],lateral:[],ribbon:[],offset:[]};
     const rawSpec=options.getRouteRoadSpec?.()||null;
-    const asphaltWidth=Math.max(5.5,Math.min(20,Number(rawSpec?.asphaltWidthM)||7.5));
+    const rawAsphaltWidth=Number(rawSpec?.asphaltWidthM);
+    const rawShoulderWidth=Number(rawSpec?.shoulderWidthM);
+    const asphaltWidth=Math.max(5.5,Math.min(20,Number.isFinite(rawAsphaltWidth)?rawAsphaltWidth:7.5));
     const asphaltHalf=asphaltWidth/2;
-    const shoulderWidth=Math.max(0,Math.min(4,Number(rawSpec?.shoulderWidthM)??1.45));
+    const shoulderWidth=Math.max(0,Math.min(4,Number.isFinite(rawShoulderWidth)?rawShoulderWidth:1.45));
     const shoulderOuter=asphaltHalf+shoulderWidth;
     const edgeInset=Math.max(.08,Math.min(.8,Number(rawSpec?.edgeLineInsetM)||.30));
     const edgeOffset=Math.max(.2,asphaltHalf-edgeInset);
-    const tasks=[()=>stage.volume.push(originalRoadVolume?.(prepared.profile,rawSpec)||null)];
+    const resolvedSpec={
+      asphaltWidthM:asphaltWidth,
+      shoulderWidthM:shoulderWidth,
+      edgeLineInsetM:edgeInset,
+      centerLine:rawSpec?.centerLine!==false,
+      closedLoop:!!rawSpec?.closedLoop
+    };
+    const tasks=[()=>stage.volume.push(originalRoadVolume?.(prepared.profile,resolvedSpec,expectedOffset)||null)];
     if(shoulderWidth>.02){
       tasks.push(
-        ()=>stage.lateral.push(originalLateralBand?.(prepared.profile,shoulderOuter,asphaltHalf,options.shoulderMat,.035)||null),
-        ()=>stage.lateral.push(originalLateralBand?.(prepared.profile,-asphaltHalf,-shoulderOuter,options.shoulderMat,.035)||null)
+        ()=>stage.lateral.push(originalLateralBand?.(prepared.profile,shoulderOuter,asphaltHalf,options.shoulderMat,.035,expectedOffset)||null),
+        ()=>stage.lateral.push(originalLateralBand?.(prepared.profile,-asphaltHalf,-shoulderOuter,options.shoulderMat,.035,expectedOffset)||null)
       );
     }
-    tasks.push(()=>stage.ribbon.push(originalRibbon?.(prepared.profile,asphaltWidth,options.roadMat,options.ROAD_SURFACE_OFFSET)||null));
-    if(rawSpec?.centerLine!==false)tasks.push(()=>stage.offset.push(originalOffsetRibbon?.(prepared.profile,0,.13,options.lineYellow,.165)||null));
+    tasks.push(()=>stage.ribbon.push(originalRibbon?.(prepared.profile,asphaltWidth,options.roadMat,options.ROAD_SURFACE_OFFSET,expectedOffset)||null));
+    if(resolvedSpec.centerLine)tasks.push(()=>stage.offset.push(originalOffsetRibbon?.(prepared.profile,0,.13,options.lineYellow,.165,expectedOffset)||null));
     tasks.push(
-      ()=>stage.offset.push(originalOffsetRibbon?.(prepared.profile,-edgeOffset,.10,options.lineWhite,.16)||null),
-      ()=>stage.offset.push(originalOffsetRibbon?.(prepared.profile,edgeOffset,.10,options.lineWhite,.16)||null)
+      ()=>stage.offset.push(originalOffsetRibbon?.(prepared.profile,-edgeOffset,.10,options.lineWhite,.16,expectedOffset)||null),
+      ()=>stage.offset.push(originalOffsetRibbon?.(prepared.profile,edgeOffset,.10,options.lineWhite,.16,expectedOffset)||null)
     );
 
     roadPerf.preparations++;

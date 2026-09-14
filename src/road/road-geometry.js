@@ -38,13 +38,39 @@ function createRoadGeometryCore({
   let worldOffset={x:0,z:0};
   let routeClosedLoop=false;
 
+  function finiteNumber(value,fallback){
+    const number=Number(value);
+    return Number.isFinite(number)?number:fallback;
+  }
+
+  function boundedNumber(value,fallback,min,max){
+    return Math.max(min,Math.min(max,finiteNumber(value,fallback)));
+  }
+
+  function finiteRoadMeshPoints(points){
+    if(!Array.isArray(points))return [];
+    const isFinitePoint=point=>
+      point&&Number.isFinite(point.x)&&Number.isFinite(point.y)&&Number.isFinite(point.z);
+    return points.every(isFinitePoint)?points:points.filter(isFinitePoint);
+  }
+
+  function roadMeshOffset(explicitOffset){
+    const candidates=[explicitOffset,worldOffset];
+    for(const candidate of candidates){
+      const x=Number(candidate?.x),z=Number(candidate?.z);
+      if(Number.isFinite(x)&&Number.isFinite(z))return {x,z};
+    }
+    return {x:0,z:0};
+  }
+
   function syncState(){
     const state=getState()||{};
     absX=Number(state.absX)||0;
     absZ=Number(state.absZ)||0;
     routeLength=Math.max(0,Number(state.routeLength)||0);
     segments=Array.isArray(state.segments)?state.segments:[];
-    worldOffset=state.worldOffset||worldOffset;
+    const nextOffset=roadMeshOffset(state.worldOffset);
+    worldOffset=nextOffset;
     routeClosedLoop=!!state.routeClosedLoop;
   }
 // ---------- continuous road ribbon ----------
@@ -62,7 +88,7 @@ function roadLateralFrame(points,i){
     let x=b.x-a.x;
     let z=b.z-a.z;
     const len=Math.hypot(x,z);
-    if(len<1e-5)return null;
+    if(!Number.isFinite(len)||len<1e-5)return null;
     return {x:x/len,z:z/len};
   }
 
@@ -124,19 +150,23 @@ function roadLateralFrame(points,i){
   return {x:mx*scale,z:mz*scale,scale};
 }
 
-function buildLateralBand(points,leftOffset,rightOffset,material,yOffset=0){
-  if(points.length<2)return null;
+function buildLateralBand(points,leftOffset,rightOffset,material,yOffset=0,explicitOffset=null){
+  const meshPoints=finiteRoadMeshPoints(points);
+  const left=Number(leftOffset),right=Number(rightOffset);
+  if(meshPoints.length<2||!Number.isFinite(left)||!Number.isFinite(right))return null;
+  const renderOffset=roadMeshOffset(explicitOffset);
+  const verticalOffset=finiteNumber(yOffset,0);
 
   const pos=[],uv=[],idx=[];
   let cumulative=0;
 
-  for(let i=0;i<points.length;i++){
-    const p=points[i];
-    const lat=roadLateralFrame(points,i);
+  for(let i=0;i<meshPoints.length;i++){
+    const p=meshPoints[i];
+    const lat=roadLateralFrame(meshPoints,i);
 
     if(i>0)cumulative+=Math.hypot(
-      p.x-points[i-1].x,
-      p.z-points[i-1].z
+      p.x-meshPoints[i-1].x,
+      p.z-meshPoints[i-1].z
     );
 
     const roll=Number.isFinite(p.roll)?p.roll:0;
@@ -145,23 +175,24 @@ function buildLateralBand(points,leftOffset,rightOffset,material,yOffset=0){
     const pushOffset=(off)=>{
       const effectiveOff=off*lat.scale;
       pos.push(
-        p.x-worldOffset.x+lat.x*off,
-        p.y+yOffset+rollSlope*effectiveOff,
-        p.z-worldOffset.z+lat.z*off
+        p.x-renderOffset.x+lat.x*off,
+        p.y+verticalOffset+rollSlope*effectiveOff,
+        p.z-renderOffset.z+lat.z*off
       );
     };
 
-    pushOffset(leftOffset);
-    pushOffset(rightOffset);
+    pushOffset(left);
+    pushOffset(right);
     uv.push(0,cumulative/8,1,cumulative/8);
 
-    if(i<points.length-1){
+    if(i<meshPoints.length-1){
       const a=i*2;
       idx.push(a,a+2,a+1,a+2,a+3,a+1);
     }
   }
 
   const g=new THREE.BufferGeometry();
+  g.userData.worldDriveGeometry='road-lateral-band';
   g.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));
   g.setAttribute('uv',new THREE.Float32BufferAttribute(uv,2));
   g.setIndex(idx);
@@ -172,48 +203,51 @@ function buildLateralBand(points,leftOffset,rightOffset,material,yOffset=0){
   return m;
 }
 
-function buildRibbon(points,width,material,yOffset=0){
+function buildRibbon(points,width,material,yOffset=0,explicitOffset=null){
   const half=width/2;
-  return buildLateralBand(points,half,-half,material,yOffset);
+  return buildLateralBand(points,half,-half,material,yOffset,explicitOffset);
 }
 
-function buildOffsetRibbon(points,offset,width,material,yOffset=0){
+function buildOffsetRibbon(points,offset,width,material,yOffset=0,explicitOffset=null){
   const half=width/2;
-  return buildLateralBand(points,offset+half,offset-half,material,yOffset);
+  return buildLateralBand(points,offset+half,offset-half,material,yOffset,explicitOffset);
 }
 
-function buildRoadVolume(profile,roadSpec=null){
-  if(profile.length<2)return null;
+function buildRoadVolume(profile,roadSpec=null,explicitOffset=null){
+  const meshProfile=finiteRoadMeshPoints(profile);
+  if(meshProfile.length<2)return null;
+  const renderOffset=roadMeshOffset(explicitOffset);
   const group=new THREE.Group();
-  const asphaltWidth=Math.max(5.5,Math.min(20,Number(roadSpec?.asphaltWidthM)||7.5));
+  group.userData.worldDriveGeometry='road-volume';
+  const asphaltWidth=boundedNumber(roadSpec?.asphaltWidthM,7.5,5.5,20);
   const asphaltHalf=asphaltWidth/2;
-  const shoulderWidth=Math.max(0,Math.min(4,Number(roadSpec?.shoulderWidthM)??1.45));
+  const shoulderWidth=boundedNumber(roadSpec?.shoulderWidthM,1.45,0,4);
   const shoulderHalf=asphaltHalf+shoulderWidth;
   const toeHalf=shoulderHalf+.75;
   const asphaltTop=.10,shoulderTop=.035,slabBottom=-.20,toeBottom=-.36;
   const edgePos=[],edgeIdx=[],underPos=[],underIdx=[];
 
   function basisAt(i){
-    const p=profile[i];
-    const lat=roadLateralFrame(profile,i);
+    const p=meshProfile[i];
+    const lat=roadLateralFrame(meshProfile,i);
     return {p,nx:lat.x,nz:lat.z,lateralScale:lat.scale};
   }
 
-  for(let i=0;i<profile.length;i++){
+  for(let i=0;i<meshProfile.length;i++){
     const {p,nx,nz,lateralScale}=basisAt(i);
     const roll=Number.isFinite(p.roll)?p.roll:0;
     const rollSlope=Math.tan(roll);
-    const push=(off,y)=>edgePos.push(p.x-worldOffset.x+nx*off,p.y+y+rollSlope*(off*lateralScale),p.z-worldOffset.z+nz*off);
+    const push=(off,y)=>edgePos.push(p.x-renderOffset.x+nx*off,p.y+y+rollSlope*(off*lateralScale),p.z-renderOffset.z+nz*off);
     push(toeHalf,toeBottom);push(shoulderHalf,shoulderTop);push(asphaltHalf,slabBottom);push(asphaltHalf,asphaltTop);
     push(-asphaltHalf,asphaltTop);push(-asphaltHalf,slabBottom);push(-shoulderHalf,shoulderTop);push(-toeHalf,toeBottom);
     underPos.push(
-      p.x-worldOffset.x+nx*asphaltHalf,p.y+slabBottom+rollSlope*(asphaltHalf*lateralScale),p.z-worldOffset.z+nz*asphaltHalf,
-      p.x-worldOffset.x-nx*asphaltHalf,p.y+slabBottom-rollSlope*(asphaltHalf*lateralScale),p.z-worldOffset.z-nz*asphaltHalf
+      p.x-renderOffset.x+nx*asphaltHalf,p.y+slabBottom+rollSlope*(asphaltHalf*lateralScale),p.z-renderOffset.z+nz*asphaltHalf,
+      p.x-renderOffset.x-nx*asphaltHalf,p.y+slabBottom-rollSlope*(asphaltHalf*lateralScale),p.z-renderOffset.z-nz*asphaltHalf
     );
   }
 
   const row=8;
-  for(let i=0;i<profile.length-1;i++){
+  for(let i=0;i<meshProfile.length-1;i++){
     const a=i*row,b=(i+1)*row;
     edgeIdx.push(a+0,b+0,a+1,a+1,b+0,b+1,a+1,b+1,a+2,a+2,b+1,b+2,a+2,b+2,a+3,a+3,b+2,b+3,
       a+4,b+4,a+5,a+5,b+4,b+5,a+5,b+5,a+6,a+6,b+5,b+6,a+6,b+6,a+7,a+7,b+6,b+7);
@@ -221,9 +255,11 @@ function buildRoadVolume(profile,roadSpec=null){
   }
 
   const edgeGeom=new THREE.BufferGeometry();
+  edgeGeom.userData.worldDriveGeometry='road-volume-edges';
   edgeGeom.setAttribute('position',new THREE.Float32BufferAttribute(edgePos,3));edgeGeom.setIndex(edgeIdx);edgeGeom.computeVertexNormals();
   const edges=new THREE.Mesh(edgeGeom,roadEdgeMat);edges.castShadow=true;edges.receiveShadow=true;edges.renderOrder=1;group.add(edges);
   const underGeom=new THREE.BufferGeometry();
+  underGeom.userData.worldDriveGeometry='road-volume-underside';
   underGeom.setAttribute('position',new THREE.Float32BufferAttribute(underPos,3));underGeom.setIndex(underIdx);underGeom.computeVertexNormals();
   const underside=new THREE.Mesh(underGeom,roadUnderMat);underside.castShadow=true;underside.receiveShadow=true;underside.renderOrder=0;group.add(underside);
   return group;

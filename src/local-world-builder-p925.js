@@ -117,7 +117,8 @@ function terrainTransitionProfile(profile){
 
 function resolveRoadSpec(spec){
   const asphaltWidthM=Math.max(5.5,Math.min(20,Number(spec?.asphaltWidthM)||7.5));
-  const shoulderWidthM=Math.max(0,Math.min(4,Number(spec?.shoulderWidthM)??1.45));
+  const rawShoulderWidth=Number(spec?.shoulderWidthM);
+  const shoulderWidthM=Math.max(0,Math.min(4,Number.isFinite(rawShoulderWidth)?rawShoulderWidth:1.45));
   const edgeLineInsetM=Math.max(.08,Math.min(.8,Number(spec?.edgeLineInsetM)||.30));
   return {asphaltWidthM,shoulderWidthM,edgeLineInsetM,centerLine:spec?.centerLine!==false,closedLoop:!!spec?.closedLoop};
 }

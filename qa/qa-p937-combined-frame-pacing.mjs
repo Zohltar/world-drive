@@ -27,6 +27,10 @@ for(const marker of [
   "takePrepared('lateral'",
   "takePrepared('ribbon'",
   "takePrepared('offset'",
+  'finiteOffset(prepared.offset)',
+  'prepared.profile,resolvedSpec,expectedOffset',
+  '.035,expectedOffset',
+  'options.ROAD_SURFACE_OFFSET,expectedOffset',
   'p937RoadPrebuild',
   'replayObjects'
 ])expect(local.includes(marker),`P9.37 staged-road marker missing: ${marker}`);
@@ -51,6 +55,7 @@ expect(wrapper.includes('pending:scheduled||baseDiag.pending===true'),'P9.37 mus
 
 console.log('PASS P9.37 combined frame-pacing QA');
 console.log('  - seven road meshes are prebuilt before atomic world commit');
+console.log('  - staged road meshes pin their finite prepared-world origin');
 console.log('  - prepared road meshes are replayed instead of regenerated');
 console.log('  - road-sign collection is coalesced and deferred to browser idle');
 console.log('  - P9.30 sign appearance/build path remains preserved');
