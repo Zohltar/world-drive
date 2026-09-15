@@ -1,10 +1,16 @@
 # World Drive — trail-braking transient R2
 
-Status: **candidate automated validation in progress; HUMAN retest pending**
+Status: **exact-head automated PASS; HUMAN retest pending**
 
 Branch: `candidate/physics-trail-braking-r2`
 
 Baseline: Nordschleife R4 performance candidate `af0079993109ccca4d65db90b78943f1a5c81e8a`
+
+Validated candidate: `a1be6d5da92512ad4cfd1dd1d8009b36db9ffb79`
+
+GitHub Actions:
+[Physics Trail Braking R2 run #1](https://github.com/Zohltar/world-drive/actions/runs/35022031593)
+— **PASS** on the exact candidate tree.
 
 Scope: ABS-equipped passenger cars on pavement; WRX human report on the
 Nordschleife; Laguna Seca remains the deterministic calibration circuit.
