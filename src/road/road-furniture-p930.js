@@ -2,6 +2,7 @@
 // Owns visible road signs and enhanced bridge furniture; route/physics state stays in main.js.
 // P9.30 keeps sign appearance unchanged but builds sign geometry/textures off-scene
 // one sign per idle slice, then atomically swaps the completed set into signGroup.
+import {createStaticBoxInstances} from '../rendering/static-box-instances.js';
 
 export function createRoadFurnitureSystem({
   THREE,
@@ -9,6 +10,7 @@ export function createRoadFurnitureSystem({
   infrastructureGroup,
   routePointAtCum,
   bridgeHeightAtCum,
+  bridgeSpanContainsCum,
   roadHeightAt,
   terrainAbs,
   nearestRoute,
@@ -29,6 +31,7 @@ export function createRoadFurnitureSystem({
   let activeRoadMeta={confidence:0,ref:null,name:null};
   let absX=0,absZ=0,routeLength=0;
   let currentRoadGuideSign=null;
+  let lastBridgeStats={spans:0,profileSections:0,instances:0,batches:0};
 
   function syncState(){
     const state=getState()||{};
@@ -303,20 +306,30 @@ export function createRoadFurnitureSystem({
     scheduleSignSlice(step);
   }
 
-  function addBridgeRailFromProfile(a,b,side){
+  function boxTransform(x,y,z,width,height,depth,yaw=0){
+    return {x,y,z,width,height,depth,yaw};
+  }
+
+  function bridgeRoutePointAtCum(cum,span){
+    let target=cum;
+    if(span?.closedLoop&&routeLength){
+      target=((target%routeLength)+routeLength)%routeLength;
+    }
+    return routePointAtCum(target);
+  }
+
+  function addBridgeRailFromProfile(a,b,side,batches){
     const dx=b.x-a.x,dz=b.z-a.z,len=Math.hypot(dx,dz);if(len<.4)return;
     const ang=Math.atan2(dx,dz);
     const nx=Math.cos(ang),nz=-Math.sin(ang);
     const off=side*4.15;
 
-    const rail=new THREE.Mesh(new THREE.BoxGeometry(.10,.18,len),bridgeRailMat);
-    rail.position.set(
+    batches.rail.push(boxTransform(
       (a.x+b.x)/2+nx*off-worldOffset.x,
       (a.y+b.y)/2+.48,
-      (a.z+b.z)/2+nz*off-worldOffset.z
-    );
-    rail.rotation.y=ang;
-    infrastructureGroup.add(rail);
+      (a.z+b.z)/2+nz*off-worldOffset.z,
+      .10,.18,len,ang
+    ));
 
     const posts=Math.max(1,Math.floor(len/3.2));
     for(let i=0;i<=posts;i++){
@@ -324,22 +337,39 @@ export function createRoadFurnitureSystem({
       const px=a.x+(b.x-a.x)*t+nx*off;
       const pz=a.z+(b.z-a.z)*t+nz*off;
       const py=a.y+(b.y-a.y)*t;
-      const post=new THREE.Mesh(new THREE.BoxGeometry(.09,.62,.09),bridgeRailMat);
-      post.position.set(px-worldOffset.x,py+.20,pz-worldOffset.z);
-      infrastructureGroup.add(post);
+      batches.rail.push(boxTransform(
+        px-worldOffset.x,py+.20,pz-worldOffset.z,.09,.62,.09
+      ));
     }
   }
 
   function addEnhancedBridgeFurniture(){
-    if(!activeRoadProfile?.length||!bridgeSpans?.length)return;
+    lastBridgeStats={spans:0,profileSections:0,instances:0,batches:0};
+    if(!activeRoadProfile?.length||!bridgeSpans?.length)return {...lastBridgeStats};
+    const batches={
+      rail:[],
+      underside:[],
+      fascia:[],
+      girder:[],
+      concreteStructure:[],
+      bearing:[],
+      concreteCap:[],
+      footing:[]
+    };
+    let spansBuilt=0;
+    let profileSections=0;
+    const spanContains=(span,cum)=>typeof bridgeSpanContainsCum==='function'
+      ?bridgeSpanContainsCum(span,cum)
+      :cum>=span.start&&cum<=span.end;
 
     for(const b of bridgeSpans){
-      const pts=activeRoadProfile.filter(p=>p.cum>=b.start&&p.cum<=b.end);
+      const pts=activeRoadProfile.filter(p=>spanContains(b,p.cum));
       if(pts.length<2)continue;
+      spansBuilt++;
 
       for(let i=0;i<pts.length-1;i++){
-        addBridgeRailFromProfile(pts[i],pts[i+1],-1);
-        addBridgeRailFromProfile(pts[i],pts[i+1],1);
+        addBridgeRailFromProfile(pts[i],pts[i+1],-1,batches);
+        addBridgeRailFromProfile(pts[i],pts[i+1],1,batches);
       }
 
       for(let i=0;i<pts.length-1;i++){
@@ -350,34 +380,28 @@ export function createRoadFurnitureSystem({
         const ang=Math.atan2(dx,dz);
         const nx=Math.cos(ang),nz=-Math.sin(ang);
         const my=(a.y+c.y)/2;
+        profileSections++;
 
-        const slab=new THREE.Mesh(new THREE.BoxGeometry(8.0,.62,len),bridgeUndersideMat);
-        slab.position.set((a.x+c.x)/2-worldOffset.x,my-.64,(a.z+c.z)/2-worldOffset.z);
-        slab.rotation.y=ang;
-        slab.castShadow=true;slab.receiveShadow=true;
-        infrastructureGroup.add(slab);
+        batches.underside.push(boxTransform(
+          (a.x+c.x)/2-worldOffset.x,my-.64,(a.z+c.z)/2-worldOffset.z,
+          8.0,.62,len,ang
+        ));
 
         for(const side of [-1,1]){
           const off=side*3.72;
-          const fascia=new THREE.Mesh(new THREE.BoxGeometry(.34,1.18,len),bridgeFasciaMat);
-          fascia.position.set(
+          batches.fascia.push(boxTransform(
             (a.x+c.x)/2+nx*off-worldOffset.x,
             my-.93,
-            (a.z+c.z)/2+nz*off-worldOffset.z
-          );
-          fascia.rotation.y=ang;
-          fascia.castShadow=true;
-          infrastructureGroup.add(fascia);
+            (a.z+c.z)/2+nz*off-worldOffset.z,
+            .34,1.18,len,ang
+          ));
 
-          const girder=new THREE.Mesh(new THREE.BoxGeometry(.38,.82,len),bridgeGirderMat);
-          girder.position.set(
+          batches.girder.push(boxTransform(
             (a.x+c.x)/2+nx*(side*2.35)-worldOffset.x,
             my-1.18,
-            (a.z+c.z)/2+nz*(side*2.35)-worldOffset.z
-          );
-          girder.rotation.y=ang;
-          girder.castShadow=true;
-          infrastructureGroup.add(girder);
+            (a.z+c.z)/2+nz*(side*2.35)-worldOffset.z,
+            .38,.82,len,ang
+          ));
         }
       }
 
@@ -386,12 +410,12 @@ export function createRoadFurnitureSystem({
       const crossCount=Math.max(2,Math.floor(total/10));
       for(let i=1;i<crossCount;i++){
         const cum=startCum+total*i/crossCount;
-        const p=routePointAtCum(cum);
+        const p=bridgeRoutePointAtCum(cum,b);
         const y=bridgeHeightAtCum(cum)??roadHeightAt(p.x,p.z);
-        const beam=new THREE.Mesh(new THREE.BoxGeometry(7.25,.32,.42),bridgeGirderMat);
-        beam.position.set(p.x-worldOffset.x,y-1.18,p.z-worldOffset.z);
-        beam.rotation.y=p.angle+Math.PI/2;
-        infrastructureGroup.add(beam);
+        batches.girder.push(boxTransform(
+          p.x-worldOffset.x,y-1.18,p.z-worldOffset.z,
+          7.25,.32,.42,p.angle+Math.PI/2
+        ));
       }
 
       for(const p of [pts[0],pts[pts.length-1]]){
@@ -400,22 +424,19 @@ export function createRoadFurnitureSystem({
         const p1=activeRoadProfile[Math.min(activeRoadProfile.length-1,idx+1)];
         const ang=Math.atan2(p1.x-p0.x,p1.z-p0.z);
 
-        const ab=new THREE.Mesh(new THREE.BoxGeometry(8.9,1.15,.92),bridgeConcreteMat);
-        ab.position.set(p.x-worldOffset.x,p.y-.78,p.z-worldOffset.z);
-        ab.rotation.y=ang;
-        ab.castShadow=true;ab.receiveShadow=true;
-        infrastructureGroup.add(ab);
+        batches.concreteStructure.push(boxTransform(
+          p.x-worldOffset.x,p.y-.78,p.z-worldOffset.z,
+          8.9,1.15,.92,ang
+        ));
 
         for(const side of [-1,1]){
           const nx=Math.cos(ang),nz=-Math.sin(ang);
-          const bearing=new THREE.Mesh(new THREE.BoxGeometry(.68,.18,.54),bridgeBearingMat);
-          bearing.position.set(
+          batches.bearing.push(boxTransform(
             p.x+nx*(side*2.35)-worldOffset.x,
             p.y-1.03,
-            p.z+nz*(side*2.35)-worldOffset.z
-          );
-          bearing.rotation.y=ang;
-          infrastructureGroup.add(bearing);
+            p.z+nz*(side*2.35)-worldOffset.z,
+            .68,.18,.54,ang
+          ));
         }
       }
 
@@ -423,31 +444,53 @@ export function createRoadFurnitureSystem({
         const pierCount=Math.max(1,Math.min(4,Math.floor(total/38)));
         for(let i=1;i<=pierCount;i++){
           const cum=startCum+total*i/(pierCount+1);
-          const p=routePointAtCum(cum);
+          const p=bridgeRoutePointAtCum(cum,b);
           const deckY=bridgeHeightAtCum(cum)??roadHeightAt(p.x,p.z);
           const groundY=terrainAbs(p.x,p.z);
           const h=Math.max(1.8,deckY-groundY-1.1);
 
-          const pier=new THREE.Mesh(new THREE.BoxGeometry(1.35,h,.88),bridgeConcreteMat);
-          pier.position.set(p.x-worldOffset.x,groundY+h/2,p.z-worldOffset.z);
-          pier.rotation.y=p.angle;
-          pier.castShadow=true;pier.receiveShadow=true;
-          infrastructureGroup.add(pier);
-
-          const cap=new THREE.Mesh(new THREE.BoxGeometry(6.8,.62,1.25),bridgeConcreteMat);
-          cap.position.set(p.x-worldOffset.x,deckY-1.52,p.z-worldOffset.z);
-          cap.rotation.y=p.angle+Math.PI/2;
-          cap.castShadow=true;
-          infrastructureGroup.add(cap);
-
-          const footing=new THREE.Mesh(new THREE.BoxGeometry(2.2,.55,1.7),bridgeConcreteMat);
-          footing.position.set(p.x-worldOffset.x,groundY+.18,p.z-worldOffset.z);
-          footing.rotation.y=p.angle;
-          footing.receiveShadow=true;
-          infrastructureGroup.add(footing);
+          batches.concreteStructure.push(boxTransform(
+            p.x-worldOffset.x,groundY+h/2,p.z-worldOffset.z,
+            1.35,h,.88,p.angle
+          ));
+          batches.concreteCap.push(boxTransform(
+            p.x-worldOffset.x,deckY-1.52,p.z-worldOffset.z,
+            6.8,.62,1.25,p.angle+Math.PI/2
+          ));
+          batches.footing.push(boxTransform(
+            p.x-worldOffset.x,groundY+.18,p.z-worldOffset.z,
+            2.2,.55,1.7,p.angle
+          ));
         }
       }
     }
+
+    const specs=[
+      ['rail',bridgeRailMat,'bridge-rails',false,false],
+      ['underside',bridgeUndersideMat,'bridge-undersides',true,true],
+      ['fascia',bridgeFasciaMat,'bridge-fascias',true,false],
+      ['girder',bridgeGirderMat,'bridge-girders',true,false],
+      ['concreteStructure',bridgeConcreteMat,'bridge-concrete-structures',true,true],
+      ['bearing',bridgeBearingMat,'bridge-bearings',false,false],
+      ['concreteCap',bridgeConcreteMat,'bridge-concrete-caps',true,false],
+      ['footing',bridgeConcreteMat,'bridge-footings',false,true]
+    ];
+    let drawableBatches=0;
+    for(const [key,material,name,castShadow,receiveShadow] of specs){
+      const mesh=createStaticBoxInstances({
+        THREE,
+        material,
+        transforms:batches[key],
+        name,
+        kind:name,
+        castShadow,
+        receiveShadow
+      });
+      if(mesh){infrastructureGroup.add(mesh);drawableBatches++;}
+    }
+    const instances=Object.values(batches).reduce((total,list)=>total+list.length,0);
+    lastBridgeStats={spans:spansBuilt,profileSections,instances,batches:drawableBatches};
+    return {...lastBridgeStats};
   }
 
   function addCurrentRoadSigns(){
@@ -510,7 +553,8 @@ export function createRoadFurnitureSystem({
         limit:SIGN_FACE_CACHE_LIMIT,
         hits:signPerf.cacheHits,
         misses:signPerf.cacheMisses
-      }
+      },
+      bridge:{...lastBridgeStats}
     };
   }
 

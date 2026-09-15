@@ -610,6 +610,7 @@ const bridgeManager=createBridgeManager({
   statusEl:bridgeStatus,
   getBridgeFeatures:()=>bridgeFeatures,
   getRouteLength:()=>routeLength,
+  getRouteClosedLoop:()=>ROUTE_CLOSED_LOOP,
   nearestRoute:(x,z)=>nearestRoute(x,z),
   routePointAtCum:cum=>routePointAtCum(cum),
   terrainHeight:(x,z)=>terrainAbs(x,z)
@@ -1204,6 +1205,7 @@ const roadFurniture=createRoadFurnitureSystem({
   infrastructureGroup,
   routePointAtCum,
   bridgeHeightAtCum,
+  bridgeSpanContainsCum:(span,cum)=>bridgeManager.containsCum(span,cum),
   roadHeightAt,
   terrainAbs,
   nearestRoute,
@@ -2506,6 +2508,18 @@ setTimeOfDay(12);
 // cause a periodic console/devtools hitch. C6.1 keeps the historical callable
 // alias, but the stable WorldDriveDiagnostics root is now authoritative.
 const worldDriveDiagnostics=ensureWorldDriveDiagnostics();
+function renderGroupSnapshot(group){
+  let objects=0,meshes=0,instancedMeshes=0,instances=0;
+  group?.traverse?.(object=>{
+    objects++;
+    if(object?.isMesh)meshes++;
+    if(object?.isInstancedMesh){
+      instancedMeshes++;
+      instances+=Math.max(0,Number(object.count)||0);
+    }
+  });
+  return {objects,meshes,instancedMeshes,instances};
+}
 function renderWorkloadSnapshot(){
   let objects=0,meshes=0,instancedMeshes=0,instances=0;
   scene.traverse(object=>{
@@ -2532,7 +2546,19 @@ function renderWorkloadSnapshot(){
     roadProfilePoints:activeRoadProfile.length,
     routePoints:route.length,
     routeKind:ROUTE_KIND,
-    scenery:sceneryRenderer.renderStats?.()||null
+    groups:{
+      road:renderGroupSnapshot(roadGroup),
+      infrastructure:renderGroupSnapshot(infrastructureGroup),
+      sceneryInfrastructure:renderGroupSnapshot(sceneryInfrastructureGroup),
+      buildings:renderGroupSnapshot(buildingGroup),
+      forest:renderGroupSnapshot(forestGroup),
+      sceneryForest:renderGroupSnapshot(sceneryForestGroup),
+      water:renderGroupSnapshot(waterGroup),
+      signs:renderGroupSnapshot(signGroup)
+    },
+    scenery:sceneryRenderer.renderStats?.()||null,
+    bridges:bridgeManager.diagnostics?.()||null,
+    roadFurniture:roadFurniture.diagnostics?.()||null
   };
 }
 worldDriveDiagnostics.framePacing.snapshot=()=>({

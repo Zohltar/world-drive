@@ -6,6 +6,7 @@ export function createBridgeManager({
   statusEl,
   getBridgeFeatures,
   getRouteLength,
+  getRouteClosedLoop=()=>false,
   nearestRoute,
   routePointAtCum,
   terrainHeight
@@ -29,6 +30,55 @@ export function createBridgeManager({
   const spans=[];
   let rebuildCount=0;
 
+  function normalizeCum(cum,routeLength){
+    if(!routeLength)return Number(cum)||0;
+    return ((Number(cum)||0)%routeLength+routeLength)%routeLength;
+  }
+
+  function minimalProjectionInterval(points,routeLength,closedLoop){
+    const cums=points.map(point=>Number(point.cum)).filter(Number.isFinite);
+    if(!cums.length)return null;
+    if(!closedLoop||routeLength<=0){
+      const start=Math.min(...cums),end=Math.max(...cums);
+      return {start,end,length:end-start,wrapped:false};
+    }
+
+    const sorted=cums.map(cum=>normalizeCum(cum,routeLength)).sort((a,b)=>a-b);
+    let largestGap=-Infinity;
+    let gapIndex=0;
+    for(let i=0;i<sorted.length;i++){
+      const next=i===sorted.length-1?sorted[0]+routeLength:sorted[i+1];
+      const gap=next-sorted[i];
+      if(gap>largestGap){largestGap=gap;gapIndex=i;}
+    }
+    const start=sorted[(gapIndex+1)%sorted.length];
+    let end=sorted[gapIndex];
+    if(end<start)end+=routeLength;
+    return {start,end,length:end-start,wrapped:end>routeLength};
+  }
+
+  function equivalentCumInRange(cum,start,end,routeLength,closedLoop){
+    const value=Number(cum);
+    if(!Number.isFinite(value))return null;
+    if(!closedLoop||routeLength<=0)return value>=start&&value<=end?value:null;
+    const canonical=normalizeCum(value,routeLength);
+    const minTurn=Math.ceil((start-canonical)/routeLength);
+    const maxTurn=Math.floor((end-canonical)/routeLength);
+    if(minTurn>maxTurn)return null;
+    const preferred=Math.round((value-canonical)/routeLength);
+    const turn=Math.max(minTurn,Math.min(maxTurn,preferred));
+    return canonical+turn*routeLength;
+  }
+
+  function containsCum(span,cum,{approach=false}={}){
+    if(!span)return false;
+    const start=approach?span.rampStart:span.start;
+    const end=approach?span.rampEnd:span.end;
+    return equivalentCumInRange(
+      cum,start,end,span.routeLength||0,span.closedLoop===true
+    )!==null;
+  }
+
   function updateStatus(){
     if(statusEl){
       statusEl.textContent=`${spans.length} · r${rebuildCount}`;
@@ -51,6 +101,7 @@ export function createBridgeManager({
     const next=[];
     const bridgeFeatures=getBridgeFeatures()||[];
     const routeLength=Number(getRouteLength())||0;
+    const closedLoop=getRouteClosedLoop?.()===true;
 
     for(const bridge of bridgeFeatures){
       if(!bridge.points||bridge.points.length<2)continue;
@@ -65,18 +116,19 @@ export function createBridgeManager({
       const close=projections.filter(point=>point.d<22);
       if(close.length<2)continue;
 
-      const start=Math.min(...close.map(point=>point.cum));
-      const end=Math.max(...close.map(point=>point.cum));
-      if(end-start<3)continue;
+      const interval=minimalProjectionInterval(close,routeLength,closedLoop);
+      if(!interval||interval.length<3)continue;
+      const {start,end}=interval;
 
       // Sample far enough onto each approach so the bridge deck does not inherit
       // the river-bed/valley elevation under the structure.
       const approach=45;
-      const rampStart=Math.max(0,start-approach);
-      const rampEnd=Math.min(routeLength,end+approach);
+      const rampStart=closedLoop?start-approach:Math.max(0,start-approach);
+      const rampEnd=closedLoop?end+approach:Math.min(routeLength,end+approach);
 
-      const startPoint=routePointAtCum(rampStart);
-      const endPoint=routePointAtCum(rampEnd);
+      const routeCum=value=>closedLoop?normalizeCum(value,routeLength):value;
+      const startPoint=routePointAtCum(routeCum(rampStart));
+      const endPoint=routePointAtCum(routeCum(rampEnd));
       if(!startPoint||!endPoint)continue;
 
       const y0=terrainHeight(startPoint.x,startPoint.z);
@@ -90,7 +142,10 @@ export function createBridgeManager({
         rampEnd,
         y0,
         y1,
-        length:end-start
+        length:interval.length,
+        wrapped:interval.wrapped,
+        closedLoop,
+        routeLength
       });
     }
 
@@ -107,10 +162,17 @@ export function createBridgeManager({
 
   function heightAtCum(cum){
     for(const bridge of spans){
-      if(cum<bridge.rampStart||cum>bridge.rampEnd)continue;
+      const equivalent=equivalentCumInRange(
+        cum,
+        bridge.rampStart,
+        bridge.rampEnd,
+        bridge.routeLength||0,
+        bridge.closedLoop===true
+      );
+      if(equivalent===null)continue;
 
       const t=
-        (cum-bridge.rampStart)/
+        (equivalent-bridge.rampStart)/
         Math.max(.001,bridge.rampEnd-bridge.rampStart);
 
       // Smoothstep grade transition between both bridge approaches.
@@ -122,10 +184,26 @@ export function createBridgeManager({
   }
 
   function isNearApproach(cum,distance=18){
-    return spans.some(bridge=>
-      Math.abs(cum-bridge.rampStart)<distance ||
-      Math.abs(cum-bridge.rampEnd)<distance
-    );
+    return spans.some(bridge=>{
+      if(!bridge.closedLoop||!bridge.routeLength){
+        return Math.abs(cum-bridge.rampStart)<distance||Math.abs(cum-bridge.rampEnd)<distance;
+      }
+      const circularDistance=target=>{
+        const length=bridge.routeLength;
+        const delta=normalizeCum(cum-target+length/2,length)-length/2;
+        return Math.abs(delta);
+      };
+      return circularDistance(bridge.rampStart)<distance||circularDistance(bridge.rampEnd)<distance;
+    });
+  }
+
+  function diagnostics(){
+    return {
+      rebuildCount,
+      spans:spans.length,
+      wrappedSpans:spans.filter(span=>span.wrapped).length,
+      maxSpanM:spans.reduce((max,span)=>Math.max(max,span.length||0),0)
+    };
   }
 
   function reset(){
@@ -149,10 +227,12 @@ export function createBridgeManager({
     spans,
     rebuild,
     heightAtCum,
+    containsCum,
     isNearApproach,
     reset,
     resetCounter,
     getRebuildCount,
-    updateStatus
+    updateStatus,
+    diagnostics
   };
 }
