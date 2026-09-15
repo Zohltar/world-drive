@@ -1,6 +1,6 @@
 # World Drive — player ABS toggle R1
 
-Status: **local automated PASS; exact-head CI and HUMAN comparison pending**
+Status: **exact-head automated PASS; HUMAN comparison pending**
 
 Branch: `candidate/physics-abs-toggle-r1`
 
@@ -47,6 +47,11 @@ cannot be forced into ABS mode.
 - all R2/R3 trail-braking, hard-braking, tire, yaw, drift and full-fleet checks
 - Laguna Seca, Nordschleife, road/contact, streaming, hydro/OSM, build and
   code-split gates
+
+GitHub Actions run
+[`35030137277`](https://github.com/Zohltar/world-drive/actions/runs/35030137277)
+passed on the exact published implementation checkpoint
+`6ab85c244af4e65eafb0e2356b6a100e7b01f384`.
 
 ## Human comparison
 
