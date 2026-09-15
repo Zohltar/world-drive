@@ -1,0 +1,83 @@
+name: Physics ABS Toggle R1
+
+on:
+  push:
+    branches:
+      - candidate/physics-abs-toggle-r1
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  exact-head:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install
+        run: npm ci
+      - name: ABS option and settings
+        run: |
+          node qa/qa-physics-abs-toggle-r1.mjs
+          node qa/qa-main-c5-loaded-settings.mjs
+          node qa/V21_25_UI_REFACTOR_QA.mjs
+      - name: Trail-braking regressions
+        run: |
+          node qa/qa-physics-trail-braking-turn-in-r3.mjs
+          node qa/qa-physics-trail-braking-transient-r2.mjs
+          node qa/qa-physics-laguna-trail-brake-diagnostics-r1.mjs
+          node qa/qa-physics-combined-trail-braking-r1.mjs
+      - name: Brake, tire and yaw regressions
+        run: |
+          node qa/qa-grip-wrx-tire-stability-a2.mjs
+          node qa/qa-grip-braking-r8.mjs
+          node qa/qa-grip-braking-r9.mjs
+          node qa/V21_27_WRX_BRAKE_IN_CORNER_QA.mjs
+          node qa/V21_27_WRX_TRAIL_BRAKE_QA.mjs
+          node qa/qa-yaw-fallback-b7.mjs
+          node qa/qa-grip-uphill-r10.mjs
+          node qa/qa-issue13-low-speed-lateral-runtime-r2.mjs
+      - name: Handbrake and drift regressions
+        run: |
+          node qa/qa-grip-handbrake-r1.mjs
+          node qa/qa-grip-drift-r4.mjs
+          node qa/qa-grip-countersteer-r7.mjs
+      - name: Nordschleife R1-R4 contracts
+        run: |
+          node qa/qa-block11-nordschleife-r1.mjs
+          node qa/qa-block11-nordschleife-r2.mjs
+          node qa/qa-block11-nordschleife-perf-r3.mjs
+          node qa/qa-block11-nordschleife-bridge-perf-r4.mjs
+      - name: Laguna, route, road and wheel support
+        run: |
+          node qa/qa-block11-laguna-seca-r1.mjs
+          node qa/qa-block11-laguna-seca-r2.mjs
+          node qa/V21_26_ROUTE_LIFECYCLE_REFACTOR_QA.mjs
+          node qa/V21_26_ROUTE_PLANNER_REFACTOR_QA.mjs
+          node qa/qa-road-surface-continuity-r1.mjs
+          node qa/qa-road-geometry-c3.mjs
+          node qa/qa-source-tree-r6-road-geometry.mjs
+          node qa/V21_26_WHEEL_GROUND_SUPPORT_REFACTOR_QA.mjs
+      - name: Streaming, hydro and OSM regressions
+        run: |
+          node qa/V21_25_STREAMING_REFACTOR_QA.mjs
+          node qa/qa-streaming-p913-transitions.mjs
+          node qa/qa-streaming-p923-scheduler.mjs
+          node qa/qa-streaming-p924-frame-budget.mjs
+          node qa/qa-geofabrik-hydro-runtime-r1.mjs
+          node qa/qa-osm-geometry-finite-r1.mjs
+      - name: Full driving matrix
+        run: node qa/DEV_DRIVING_SIM_QA.mjs
+      - name: Runtime integration audit
+        run: node qa/DEV_INTEGRATION_AUDIT.mjs
+      - name: Production build
+        run: npm run build
+      - name: Code split
+        run: node qa/V21_31_CODE_SPLIT_QA.mjs
