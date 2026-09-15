@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
 import * as THREE from 'three';
-import {createStaticBoxInstances} from '../src/scenery/scenery-renderer-p9.js';
+import {createStaticBoxInstances} from '../src/rendering/static-box-instances.js';
 
 const scenerySource=await readFile(
   new URL('../src/scenery/scenery-renderer-p9.js',import.meta.url),

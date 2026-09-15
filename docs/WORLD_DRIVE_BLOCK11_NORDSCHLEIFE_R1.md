@@ -1,6 +1,6 @@
 # World Drive — Block 11B Nordschleife R1
 
-Status: **R3 performance correction exact-head CI PASS; human performance/full-lap retest pending**
+Status: **R4 bridge-seam performance correction validated locally; exact-head CI and human retest pending**
 
 Branch: `candidate/block11-nordschleife-r1`
 
@@ -65,6 +65,22 @@ reduction for that feature set. Runtime diagnostics now expose renderer and
 scene load under `WorldDriveFramePacing().rendering` so the human retest can
 distinguish draw-call load from background streaming if a slowdown remains.
 
+The R3 human diagnostic then measured 8.195 FPS, 30,534 draw calls, 31,882
+meshes and 30,955 geometries. It also proved the OSM batching was active: 368
+guard-rail and 142 distant-building instances occupied only three static
+batches, while the forest had zero active trees. The remaining synchronous
+`furniture` phase alone took 244.5 ms.
+
+R4 fixes the matching closed-loop bridge failure. A bridge feature with points
+on both sides of T13 was previously reduced with a linear minimum/maximum
+cumulative distance; a short seam crossing could therefore become an
+almost-20.8 km bridge. Enhanced rails, posts, deck, fascia and girders were then
+created as separate geometry for every 1.5 m road section. Bridge projection
+now selects the minimum circular interval, preserves wrapped height/contact
+queries, and emits homogeneous bridge parts through at most eight finite static
+instance batches. Route geometry, surface width and vehicle physics are
+unchanged.
+
 ## Automated result
 
 - all seven sampled 5.4 km windows around the lap are finite and strictly
@@ -78,6 +94,9 @@ distinguish draw-call load from background streaming if a slowdown remains.
   the following pass, while a 1 m backwards correction does not retrigger it;
 - 1,800 synthetic static guard-rail sections collapse to one finite
   instanced drawable;
+- a 60 m bridge crossing a 10 km synthetic route seam remains 60 m on a
+  4,001-point local profile; its 674 furniture pieces collapse to eight finite
+  drawables rather than expanding across the loop;
 - circuit civil traffic remains disabled;
 - Laguna Seca, ordinary-road finite geometry, hydro fallback, WRX trail
   braking, the 8-vehicle/288-case driving matrix, production build and code
@@ -93,8 +112,9 @@ that environment-dependent gate.
 
 ## Human checkpoint
 
-The first human run failed this checkpoint at approximately 10 FPS. After
-pulling the R3 correction, use the WRX, select `Nordschleife · Circuit`, and
+The first human run failed this checkpoint at approximately 10 FPS and the R3
+diagnostic retest measured 8.195 FPS. After pulling the R4 correction, use the
+WRX, select `Nordschleife · Circuit`, and
 drive one full clockwise lap. Record `WorldDriveFramePacing()` once after the
 scene has settled if frame rate still falls below the target. Inspect T13,
 Hatzenbach, Flugplatz, Fuchsröhre, Karussell, Pflanzgarten and Döttinger Höhe

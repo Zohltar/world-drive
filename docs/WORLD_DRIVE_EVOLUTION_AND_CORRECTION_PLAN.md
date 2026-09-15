@@ -76,7 +76,7 @@ Before coding, be able to answer:
 **Block 8 — Biome-aware natural scenery:** **PLANNED / DEFERRED — includes the parked Issue #12 forest-readiness work when activated**  
 **Block 9 — AI-assisted 3D asset authoring and selective GLB modernization:** **PLANNED / DEFERRED — pilot-first, no wholesale asset replacement**  
 **Block 10 — Mobile browser driving controls:** **ABANDONED / NOT PLANNED (2026-09-13) — experiment stopped by user; no mobile-control candidate runtime was integrated**  
-**Block 11 — Circuit presets / closed-loop authored track routes:** **ACTIVE — Laguna Seca HUMAN PASS (2026-09-14); Nürburgring Nordschleife R3 exact-head CI PASS after ~10 FPS human failure; human retest pending (2026-09-15)**
+**Block 11 — Circuit presets / closed-loop authored track routes:** **ACTIVE — Laguna Seca HUMAN PASS (2026-09-14); Nordschleife R4 bridge-seam performance correction validated locally after 8.195 FPS R3 diagnostic; exact-head CI pending (2026-09-15)**
 **Active correction block:** **BLOCK 11B — Nürburgring Nordschleife circuit preset**
 **Stable `main`:** `b74e7377eaaf2b128eb893c547f4c2da3d14bbea` — tag `v21.32`; must remain untouched without explicit user approval.  
 **Previous rollback/reference:** `9a69c39242eb0f3e2cf8d2fd68675c1cfad23dd8` — tag `v21.31`.
@@ -401,7 +401,7 @@ GitHub Issue #13: **CLOSED / COMPLETED (2026-09-12)**.
 
 ## Exact next action
 
-**Block 11B — human-test the exact-head-green Nürburgring Nordschleife R3 performance correction.**
+**Block 11B — publish and exact-head validate the Nürburgring Nordschleife R4 bridge-seam performance correction, then repeat the human test.**
 
 Current unresolved work is intentionally not auto-started:
 
@@ -412,7 +412,7 @@ Current unresolved work is intentionally not auto-started:
 - Block 8 biome-aware natural scenery remains **planned/deferred**; when activated, begin by reopening and stabilizing forest readiness/streaming as its first runtime workstream, then add biome classification and palette selection;
 - Block 9 AI-assisted 3D asset authoring remains **planned/deferred**; begin with one controlled pilot asset and do not replace accepted GLBs wholesale without measured visual/runtime benefit;
 - Block 10 mobile browser driving controls is **ABANDONED / NOT PLANNED** by user decision; do not integrate the retired candidate branch.
-- Block 11 is **ACTIVE**: Laguna Seca has HUMAN PASS; the first Nordschleife human run failed at approximately 10 FPS. R3 code/QA checkpoint `6304d67c3ec37b4fe16ce036b35c36ac0745c891` passed exact-head run `34915719869`; repeat the human performance/full-lap checkpoint before any integration.
+- Block 11 is **ACTIVE**: Laguna Seca has HUMAN PASS. R3 passed exact-head run `34915719869`, but its human diagnostic still measured 8.195 FPS, 30,534 draw calls and 31,882 meshes. R4 corrects the T13 bridge span that expanded bridge furniture across most of the loop and batches the remaining bridge parts; exact-head CI and human retest are pending before any integration.
 
 Do not modify `main` without explicit user approval. Do not begin a deferred block merely because the latest certified corrections are complete.
 
@@ -510,7 +510,7 @@ Focused run `33915664612`: PASS. Post-integration Dev Integration `33915756142`:
 
 **BLOCK 11B — Nürburgring Nordschleife circuit preset.**
 
-Laguna Seca passed its human checkpoint on 2026-09-14. The Nordschleife R1 exact-head automation passed, but the first human run on 2026-09-15 fell to approximately 10 FPS. Validate the R3 rendering/streaming correction on the longer closed-loop stress route without changing accepted ordinary road-routing semantics, road geometry, vehicle tuning, terrain authority, multiplayer, keyboard/gamepad controls or existing presets.
+Laguna Seca passed its human checkpoint on 2026-09-14. The Nordschleife R1 exact-head automation passed, but the first human run on 2026-09-15 fell to approximately 10 FPS. R3 batched dense OSM scenery, yet its diagnostic retest still measured 8.195 FPS because a T13 seam bridge expanded the enhanced bridge furniture to roughly 31,000 scene meshes. Validate the isolated R4 circular bridge-span and bridge-instancing correction without changing accepted ordinary road-routing semantics, road geometry, vehicle tuning, terrain authority, multiplayer, keyboard/gamepad controls or existing presets.
 
 ---
 
@@ -762,7 +762,7 @@ Do not start Block 10 by rewriting the HUD or physics globally. First isolate th
 
 ## Block 11 — Circuit presets / closed-loop authored track routes
 
-**ACTIVE — Laguna Seca HUMAN PASS (2026-09-14); Nürburgring Nordschleife R3 exact-head CI PASS; human retest pending.**
+**ACTIVE — Laguna Seca HUMAN PASS (2026-09-14); Nürburgring Nordschleife R4 bridge-seam performance correction pending exact-head CI and human retest.**
 
 Goal: add famous closed-loop race circuits to the existing preset-route experience while keeping ordinary road routing unchanged. Circuit presets should be deterministic, offline-friendly after code delivery, and suitable as repeatable vehicle/terrain stress routes.
 
@@ -785,7 +785,7 @@ Acceptance:
 
 ### Block 11B — Nürburgring Nordschleife
 
-**ACTIVE — R1 exact-head automation passed; human performance checkpoint failed at ~10 FPS (2026-09-15); R3 checkpoint `6304d67` and exact-head run `34915719869` passed; human retest pending.** Reuse the accepted closed-loop preset infrastructure, then add the Nordschleife as the longer/high-load circuit and streaming stress route.
+**ACTIVE — R1 exact-head automation passed; human performance checkpoint failed at ~10 FPS (2026-09-15); R3 checkpoint `6304d67` passed exact-head run `34915719869` but its diagnostic retest remained at 8.195 FPS; R4 bridge-seam correction is locally green and pending exact-head CI/human retest.** Reuse the accepted closed-loop preset infrastructure, then add the Nordschleife as the longer/high-load circuit and streaming stress route.
 
 R1 contract:
 
@@ -798,6 +798,7 @@ R1 contract:
 - directional terrain/data preloading wraps through T13 instead of clamping to the route endpoint;
 - static OSM guard rails, distant building boxes and dam sections are instanced by homogeneous material instead of creating one draw call per section;
 - forest exclusion polygons use a local spatial index, and small backwards corrections on the closed loop do not retrigger a full-lap directional prefetch;
+- bridge features crossing T13 use their minimum circular span rather than a linear almost-full-lap span, and enhanced bridge parts are emitted through at most eight static instance batches;
 - `WorldDriveFramePacing().rendering` exposes draw calls, triangle/object/instance counts and scenery batch statistics for the human performance checkpoint;
 - permanent QA covers source closure/direction/length, UI/lifecycle forwarding, seven local road windows, finite mesh bounds, T13 contact continuity, physical width, streaming wrap, Laguna regression, full driving matrix, integration and production build.
 
