@@ -1,6 +1,6 @@
 # World Drive — Laguna Seca trail-braking R1
 
-Status: **candidate validated by deterministic simulation; HUMAN PASS (2026-09-14)**
+Status: **superseded — initial Laguna HUMAN PASS (2026-09-14), then reopened by follow-up Nordschleife HUMAN FAIL (2026-09-15)**
 
 Branch: `candidate/physics-trail-braking-r1`
 
@@ -109,3 +109,13 @@ Automation can reject force, stability and integration regressions, but it
 cannot certify steering feel. The in-game Laguna checkpoint received HUMAN PASS
 on 2026-09-14; preserve these force-allocation regressions while Block 11B uses
 the accepted candidate as its baseline.
+
+## Follow-up result
+
+The longer Nordschleife human run on 2026-09-15 confirmed normal performance
+after the R4 bridge correction but reproduced easy rear breakaway followed by
+excessive understeer during braking in a turn. R1's own one-second regression
+allowed rear slip to reach `0.999`, so its automated acceptance bound did not
+cover the reported transient. Physics Trail-Braking R2 supersedes that bound;
+R1 remains historical evidence and must not be treated as final handling
+certification.

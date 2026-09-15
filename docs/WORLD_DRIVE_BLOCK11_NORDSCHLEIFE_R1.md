@@ -1,6 +1,6 @@
 # World Drive — Block 11B Nordschleife R1
 
-Status: **R4 bridge-seam performance correction exact-head CI PASS; human retest pending**
+Status: **R4 bridge-seam performance correction HUMAN PASS (2026-09-15); overall full-lap checkpoint held by follow-up WRX trail-braking HUMAN FAIL**
 
 Branch: `candidate/block11-nordschleife-r1`
 
@@ -84,6 +84,11 @@ unchanged.
 R4 code/QA checkpoint `36a1adecfdcbbaa59e3994423d8ff62cefd9e067`
 passed exact-head workflow run `34918367074`, including the new T13 bridge and
 furniture performance contract, runtime integration audit and production build.
+The following human retest reported normal Nordschleife performance, accepting
+the R4 performance correction. The same drive still exposed easy rear
+breakaway followed by excessive understeer while braking in a corner; that
+separate physics defect is isolated on `candidate/physics-trail-braking-r2` and
+prevents overall full-lap promotion.
 
 ## Automated result
 
@@ -117,20 +122,21 @@ that environment-dependent gate for both R3 and R4.
 ## Human checkpoint
 
 The first human run failed this checkpoint at approximately 10 FPS and the R3
-diagnostic retest measured 8.195 FPS. After pulling the R4 correction, use the
-WRX, select `Nordschleife · Circuit`, and
-drive one full clockwise lap. Record `WorldDriveFramePacing()` once after the
-scene has settled if frame rate still falls below the target. Inspect T13,
+diagnostic retest measured 8.195 FPS. R4 then received HUMAN PERFORMANCE PASS
+on 2026-09-15. The remaining checkpoint uses the WRX on
+`Nordschleife · Circuit` for one full clockwise lap. Record
+`WorldDriveFramePacing()` only if performance regresses. Inspect T13,
 Hatzenbach, Flugplatz, Fuchsröhre, Karussell, Pflanzgarten and Döttinger Höhe
 for:
 
-- stable frame rate without a sustained return to approximately 10 FPS;
+- stable frame rate without a sustained return to approximately 10 FPS — **PASS**;
 - no gap, snap or streaming stall when crossing T13;
 - visible asphalt and physical road contact ending at the same width;
 - no staircase impacts in tight curves, crests or steep grade changes;
 - no invisible road support outside the 9 m asphalt;
 - no civil vehicles on the circuit;
-- stable WRX trail braking without four-wheel skating.
+- stable WRX trail braking without rear breakaway followed by excessive
+  understeer — **FAIL on R1 baseline; retest Physics Trail-Braking R2**.
 
 R1 does not claim a survey-grade surface mesh. In particular,
 [Porsche describes](https://newsroom.porsche.com/en/2020/motorsports/porsche-nuerburgring-nordschleife-caracciola-karussell-22455.html)
