@@ -230,6 +230,7 @@ function runtimeAggregateProbe({speed,steerAngle,brakeG,allocateCombined=false})
     longitudinalLimit:brakeForce.limit,
     requestedLateralAccel:tireSolverLatAccel,
     lateralLimit:lateral.latLimit,
+    vehicle,
     absEnabled:vehicle.absEnabled!==false,
     airborne:false,
     enabled:allocateCombined
