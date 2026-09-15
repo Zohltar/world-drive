@@ -1,6 +1,6 @@
 # World Drive — trail-braking turn-in R3
 
-Status: **local automated PASS; exact-head CI and HUMAN retest pending**
+Status: **exact-head automated PASS; HUMAN retest pending**
 
 Branch: `candidate/physics-trail-braking-r3`
 
@@ -85,6 +85,11 @@ below one degree of chassis sideslip.
 - eight-vehicle/288-case driving matrix
 - Nordschleife R1–R4, Laguna Seca, road/contact, streaming, hydro/OSM,
   integration, production-build and code-split gates
+
+GitHub Actions run
+[`35026732737`](https://github.com/Zohltar/world-drive/actions/runs/35026732737)
+passed on the exact published implementation checkpoint
+`c5f2c60ec44bb8628b3e68c331fdc3b788332c14`.
 
 ## Human checkpoint
 
