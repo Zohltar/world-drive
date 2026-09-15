@@ -1,6 +1,6 @@
 # World Drive — Block 11B Nordschleife R1
 
-Status: **automated candidate validated locally; exact-head CI and human full-lap checkpoint pending**
+Status: **R3 performance correction validated locally; exact-head CI and human performance/full-lap retest pending**
 
 Branch: `candidate/block11-nordschleife-r1`
 
@@ -43,6 +43,28 @@ The road refinement now measures each bounded Hermite curve before accepting
 its tessellation. This closes a case around 11.2 km where a nominal 1.5 m
 section was actually 1.533 m, a plausible source of suspension-scale faceting.
 
+## Dense-scenery performance correction
+
+The first R1 exact-head workflow passed, but the human checkpoint on 2026-09-15
+reported a sustained fall to approximately 10 FPS on the Nordschleife. Static
+inspection identified two Nordschleife-amplified costs; the R3 correction keeps
+the route, road surface and vehicle physics unchanged:
+
+- homogeneous OSM guard-rail sections, distant building boxes and dam sections
+  are submitted as a few static `InstancedMesh` batches instead of one WebGL
+  drawable per section;
+- forest exclusion polygons use a 240 m spatial grid instead of testing every
+  loaded blocker for every candidate tree;
+- closed-loop directional prefetch measures the shortest signed progress
+  change, so a small backwards correction near T13 cannot be interpreted as an
+  almost-complete forward lap and retrigger background data work.
+
+The permanent performance contract materializes 1,800 finite guard-rail
+sections and verifies that they produce one drawable, a 1,800:1 object-count
+reduction for that feature set. Runtime diagnostics now expose renderer and
+scene load under `WorldDriveFramePacing().rendering` so the human retest can
+distinguish draw-call load from background streaming if a slowdown remains.
+
 ## Automated result
 
 - all seven sampled 5.4 km windows around the lap are finite and strictly
@@ -53,22 +75,30 @@ section was actually 1.533 m, a plausible source of suspension-scale faceting.
 - T13 pitch difference: 0.00009°;
 - rendered asphalt: 9.00 m; physical solid support: 9.00 m;
 - directional prefetch wraps to 1.3/3.1 km before continuing to 2.3/4.1 km on
-  the following pass;
+  the following pass, while a 1 m backwards correction does not retrigger it;
+- 1,800 synthetic static guard-rail sections collapse to one finite
+  instanced drawable;
 - circuit civil traffic remains disabled;
 - Laguna Seca, ordinary-road finite geometry, hydro fallback, WRX trail
   braking, the 8-vehicle/288-case driving matrix, production build and code
   split remain green locally.
 
-The local container cannot complete the LAN portion of Dev Integration because
-its operating-system sandbox rejects `os.networkInterfaces()`. The exact-head
-GitHub workflow owns that environment-dependent gate.
+The original R1 exact-head workflow run `34905695059` passed before the human
+performance failure. The local container cannot complete the LAN portion of
+Dev Integration because its operating-system sandbox rejects
+`os.networkInterfaces()`. The new exact-head workflow owns that
+environment-dependent gate and the R3 performance contract.
 
 ## Human checkpoint
 
-Use the WRX, select `Nordschleife · Circuit`, and drive one full clockwise lap.
-Inspect T13, Hatzenbach, Flugplatz, Fuchsröhre, Karussell, Pflanzgarten and
-Döttinger Höhe for:
+The first human run failed this checkpoint at approximately 10 FPS. After
+pulling the R3 correction, use the WRX, select `Nordschleife · Circuit`, and
+drive one full clockwise lap. Record `WorldDriveFramePacing()` once after the
+scene has settled if frame rate still falls below the target. Inspect T13,
+Hatzenbach, Flugplatz, Fuchsröhre, Karussell, Pflanzgarten and Döttinger Höhe
+for:
 
+- stable frame rate without a sustained return to approximately 10 FPS;
 - no gap, snap or streaming stall when crossing T13;
 - visible asphalt and physical road contact ending at the same width;
 - no staircase impacts in tight curves, crests or steep grade changes;

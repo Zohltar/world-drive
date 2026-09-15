@@ -27,6 +27,8 @@ jobs:
         run: node qa/qa-block11-nordschleife-r1.mjs
       - name: Nordschleife road, contact and streaming continuity
         run: node qa/qa-block11-nordschleife-r2.mjs
+      - name: Nordschleife dense-scenery performance contract
+        run: node qa/qa-block11-nordschleife-perf-r3.mjs
       - name: Preserve Laguna Seca circuit contract
         run: |
           node qa/qa-block11-laguna-seca-r1.mjs

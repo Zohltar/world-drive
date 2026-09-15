@@ -188,6 +188,10 @@ await new Promise(resolve=>setTimeout(resolve,0));
 assert.equal(requestedCums.length,4,'prefetch progress gate stalled across T13');
 assert.ok(Math.abs(requestedCums[2]-2300)<.01);
 assert.ok(Math.abs(requestedCums[3]-4100)<.01);
+nearestCum=499;
+streaming.prefetchDirectional(0,0);
+await new Promise(resolve=>setTimeout(resolve,0));
+assert.equal(requestedCums.length,4,'a 1 m backwards correction was misread as a complete circuit lap');
 
 assert.match(mainSource,/getRouteClosedLoop:\(\)=>ROUTE_CLOSED_LOOP/);
 assert.match(streamingSource,/function routePreloadCum\(cum,routeLength=/);
