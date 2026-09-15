@@ -76,7 +76,7 @@ Before coding, be able to answer:
 **Block 8 — Biome-aware natural scenery:** **PLANNED / DEFERRED — includes the parked Issue #12 forest-readiness work when activated**  
 **Block 9 — AI-assisted 3D asset authoring and selective GLB modernization:** **PLANNED / DEFERRED — pilot-first, no wholesale asset replacement**  
 **Block 10 — Mobile browser driving controls:** **ABANDONED / NOT PLANNED (2026-09-13) — experiment stopped by user; no mobile-control candidate runtime was integrated**  
-**Block 11 — Circuit presets / closed-loop authored track routes:** **ACTIVE — Laguna Seca HUMAN PASS (2026-09-14); Nürburgring Nordschleife R3 performance correction in validation after ~10 FPS human failure (2026-09-15)**
+**Block 11 — Circuit presets / closed-loop authored track routes:** **ACTIVE — Laguna Seca HUMAN PASS (2026-09-14); Nürburgring Nordschleife R3 exact-head CI PASS after ~10 FPS human failure; human retest pending (2026-09-15)**
 **Active correction block:** **BLOCK 11B — Nürburgring Nordschleife circuit preset**
 **Stable `main`:** `b74e7377eaaf2b128eb893c547f4c2da3d14bbea` — tag `v21.32`; must remain untouched without explicit user approval.  
 **Previous rollback/reference:** `9a69c39242eb0f3e2cf8d2fd68675c1cfad23dd8` — tag `v21.31`.
@@ -401,7 +401,7 @@ GitHub Issue #13: **CLOSED / COMPLETED (2026-09-12)**.
 
 ## Exact next action
 
-**Block 11B — validate the Nürburgring Nordschleife R3 performance correction as the second closed-loop circuit preset.**
+**Block 11B — human-test the exact-head-green Nürburgring Nordschleife R3 performance correction.**
 
 Current unresolved work is intentionally not auto-started:
 
@@ -412,7 +412,7 @@ Current unresolved work is intentionally not auto-started:
 - Block 8 biome-aware natural scenery remains **planned/deferred**; when activated, begin by reopening and stabilizing forest readiness/streaming as its first runtime workstream, then add biome classification and palette selection;
 - Block 9 AI-assisted 3D asset authoring remains **planned/deferred**; begin with one controlled pilot asset and do not replace accepted GLBs wholesale without measured visual/runtime benefit;
 - Block 10 mobile browser driving controls is **ABANDONED / NOT PLANNED** by user decision; do not integrate the retired candidate branch.
-- Block 11 is **ACTIVE**: Laguna Seca has HUMAN PASS; the first Nordschleife human run failed at approximately 10 FPS, so validate the isolated R3 dense-scenery/prefetch correction before repeating the full-lap checkpoint.
+- Block 11 is **ACTIVE**: Laguna Seca has HUMAN PASS; the first Nordschleife human run failed at approximately 10 FPS. R3 code/QA checkpoint `6304d67c3ec37b4fe16ce036b35c36ac0745c891` passed exact-head run `34915719869`; repeat the human performance/full-lap checkpoint before any integration.
 
 Do not modify `main` without explicit user approval. Do not begin a deferred block merely because the latest certified corrections are complete.
 
@@ -762,7 +762,7 @@ Do not start Block 10 by rewriting the HUD or physics globally. First isolate th
 
 ## Block 11 — Circuit presets / closed-loop authored track routes
 
-**ACTIVE — Laguna Seca HUMAN PASS (2026-09-14); Nürburgring Nordschleife R3 performance correction under validation.**
+**ACTIVE — Laguna Seca HUMAN PASS (2026-09-14); Nürburgring Nordschleife R3 exact-head CI PASS; human retest pending.**
 
 Goal: add famous closed-loop race circuits to the existing preset-route experience while keeping ordinary road routing unchanged. Circuit presets should be deterministic, offline-friendly after code delivery, and suitable as repeatable vehicle/terrain stress routes.
 
@@ -785,7 +785,7 @@ Acceptance:
 
 ### Block 11B — Nürburgring Nordschleife
 
-**ACTIVE — R1 exact-head automation passed; human performance checkpoint failed at ~10 FPS (2026-09-15); R3 correction pending exact-head CI and human retest.** Reuse the accepted closed-loop preset infrastructure, then add the Nordschleife as the longer/high-load circuit and streaming stress route.
+**ACTIVE — R1 exact-head automation passed; human performance checkpoint failed at ~10 FPS (2026-09-15); R3 checkpoint `6304d67` and exact-head run `34915719869` passed; human retest pending.** Reuse the accepted closed-loop preset infrastructure, then add the Nordschleife as the longer/high-load circuit and streaming stress route.
 
 R1 contract:
 

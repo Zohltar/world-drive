@@ -1,6 +1,6 @@
 # World Drive — Block 11B Nordschleife R1
 
-Status: **R3 performance correction validated locally; exact-head CI and human performance/full-lap retest pending**
+Status: **R3 performance correction exact-head CI PASS; human performance/full-lap retest pending**
 
 Branch: `candidate/block11-nordschleife-r1`
 
@@ -84,10 +84,12 @@ distinguish draw-call load from background streaming if a slowdown remains.
   split remain green locally.
 
 The original R1 exact-head workflow run `34905695059` passed before the human
-performance failure. The local container cannot complete the LAN portion of
-Dev Integration because its operating-system sandbox rejects
-`os.networkInterfaces()`. The new exact-head workflow owns that
-environment-dependent gate and the R3 performance contract.
+performance failure. R3 code/QA checkpoint `6304d67c3ec37b4fe16ce036b35c36ac0745c891`
+then passed exact-head workflow run `34915719869`, including the dense-scenery
+performance contract, runtime integration audit and production build. The
+local container cannot complete the LAN portion of Dev Integration because its
+operating-system sandbox rejects `os.networkInterfaces()`; GitHub CI passed
+that environment-dependent gate.
 
 ## Human checkpoint
 
