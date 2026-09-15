@@ -43,6 +43,43 @@ function smoothstep01(value){
   return t*t*(3-2*t);
 }
 
+export function physicalCombinedAxleSlip({
+  wheels=[],front=false,peakSlipAngleRad=.12,speedAbs=20
+}={}){
+  let weighted=0;
+  let load=0;
+  const peakAngle=Math.max(.02,Math.abs(Number(peakSlipAngleRad)||.12));
+  for(const wheel of wheels){
+    if(!!wheel?.front!==front)continue;
+    const normal=Math.max(0,Number(wheel?.normalLoadN)||0);
+    const combinedSlip=smoothstep01(((Number(wheel?.utilization)||0)-.98)/.24);
+    // Peak longitudinal ABS demand alone is not handling slip. Weight the
+    // combined saturation by the tire's actual lateral slip-angle demand so a
+    // straight stop stays neutral while a saturated corner loses authority.
+    const lateralDemand=Math.min(1,Math.abs(Number(wheel?.slipAngle)||0)/peakAngle);
+    // Below normal road speed the wheel solver deliberately approaches a
+    // kinematic stop and its normalized utilization ceases to be a reliable
+    // breakaway measure. Fade into the established low-speed no-slip region.
+    const speedAuthority=smoothstep01((Math.abs(Number(speedAbs)||0)-2.5)/6);
+    const slip=combinedSlip*lateralDemand*speedAuthority;
+    weighted+=slip*normal;
+    load+=normal;
+  }
+  return load>1?weighted/load:0;
+}
+
+export function physicalAxleCombinedUtilization({wheels=[],front=false}={}){
+  let weighted=0;
+  let load=0;
+  for(const wheel of wheels){
+    if(!!wheel?.front!==front)continue;
+    const normal=Math.max(0,Number(wheel?.normalLoadN)||0);
+    weighted+=Math.max(0,Number(wheel?.utilization)||0)*normal;
+    load+=normal;
+  }
+  return load>1?weighted/load:0;
+}
+
 const GRAVITY=9.80665;
 
 // Grip R5 — physical off-road sideslip friction. The V21.27 tire/surface model
@@ -153,6 +190,7 @@ export function createDrivingRuntime({
 }){
   const physicsShadow=createPerWheelShadowSolver({hz:120,maxSubSteps:8});
   let wasAirborne=false;
+  let serviceBrakeGripScale=1;
   const maneuverState=createManeuverState();
 
   function update(dt){
@@ -283,21 +321,29 @@ export function createDrivingRuntime({
       rearSlipAmount:0,
       airborne:airborneNow
     },dynamicsScratch.brakeLateral);
+    const combinedBrakeEnabled=
+      onPavement&&!hand&&!airborneNow&&VEHICLE.absEnabled!==false&&
+      VEHICLE.vehicleClass!=='tractor';
+    const combinedBrakeFeedbackActive=
+      combinedBrakeEnabled&&Math.abs(preBrakeLateral.requestedLatAccel)>.08*GRAVITY;
     const combinedBrake=combinedBrakeForceAllocation({
       serviceBrakeAccel:brakeForce.acceleration,
       longitudinalLimit:brakeForce.limit,
       requestedLateralAccel:Math.min(preBrakeLateral.requestedLatAccel,preBrakeLateral.latLimit),
       lateralLimit:preBrakeLateral.latLimit,
+      vehicle:VEHICLE,
       absEnabled:VEHICLE.absEnabled!==false,
       airborne:airborneNow,
       // Keep the articulated tractor/trailer brake path isolated: its
       // combination-level service-brake scaling is not a passenger-car ABS
       // controller and needs a dedicated coupled-tire model before opt-in.
-      enabled:onPavement&&!hand&&VEHICLE.vehicleClass!=='tractor'
+      enabled:combinedBrakeEnabled
     },dynamicsScratch.combinedBrake);
     brakeForce.unallocatedAcceleration=brakeForce.acceleration;
-    brakeForce.acceleration=combinedBrake.acceleration;
-    brakeForce.combinedGripScale=combinedBrake.forceScale;
+    const appliedServiceBrakeGripScale=combinedBrakeFeedbackActive?serviceBrakeGripScale:1;
+    brakeForce.acceleration=combinedBrake.acceleration*appliedServiceBrakeGripScale;
+    brakeForce.combinedEnvelopeScale=combinedBrake.forceScale;
+    brakeForce.combinedGripScale=combinedBrake.forceScale*appliedServiceBrakeGripScale;
     const appliedBodyDriveAccelRaw=driveForce.acceleration;
     const handbrakeDriveScale=handbrakeDriveRetentionScale({vehicle:VEHICLE,handbrake:hand});
     const appliedBodyDriveAccel=appliedBodyDriveAccelRaw*handbrakeDriveScale;
@@ -458,8 +504,38 @@ export function createDrivingRuntime({
       yawRate:dynamicYawRate,centerSteerAngle:steerAngle,longitudinalAccel,lateralAccel:physicalSignedLatAccel,
       requestedDriveAccel:appliedBodyDriveAccelRaw,requestedBrakeAccel:brakeForce.acceleration,
       longitudinalLoadTransferAccel:appliedBodyDriveAccel+brakeForce.acceleration,
-      handbrake:hand,surfaceId:onPavement?'asphalt-dry':'dirt'
+      handbrake:hand,surfaceId:onPavement?'asphalt-dry':'dirt',
+      combinedServiceBrakeControl:combinedBrakeEnabled
     });
+
+    // The scalar chassis path cannot see individual wheel saturation before
+    // the per-wheel solve. Feed the measured combined utilization back into
+    // the next ABS frame, mirroring hydraulic pressure release/reapply instead
+    // of letting a saturated front axle create sustained brake understeer.
+    const serviceBrakeCombinedControl=
+      combinedBrakeEnabled&&serviceBrakeInput>.04&&
+      Math.abs(requestedLatAccel)>.08*GRAVITY;
+    if(serviceBrakeCombinedControl){
+      const frontPhysicalUtil=physicalAxleCombinedUtilization({
+        wheels:physicalTireForces?.wheels,
+        front:true
+      });
+      const rearPhysicalUtil=physicalAxleCombinedUtilization({
+        wheels:physicalTireForces?.wheels,
+        front:false
+      });
+      const peakPhysicalUtil=Math.max(frontPhysicalUtil,rearPhysicalUtil);
+      let targetGripScale=serviceBrakeGripScale;
+      if(peakPhysicalUtil>1.01){
+        targetGripScale=Math.max(.20,serviceBrakeGripScale/peakPhysicalUtil);
+      }else if(peakPhysicalUtil<.94){
+        targetGripScale=1;
+      }
+      const response=targetGripScale<serviceBrakeGripScale?22:5;
+      serviceBrakeGripScale+=(targetGripScale-serviceBrakeGripScale)*(1-Math.exp(-Math.min(.05,dt)*response));
+    }else{
+      serviceBrakeGripScale+=(1-serviceBrakeGripScale)*(1-Math.exp(-Math.min(.05,dt)*10));
+    }
 
     wheelGripUsage=perWheelGrip.smoothed;
     wheelSlipLevels=perWheelGrip.slip;
@@ -467,9 +543,28 @@ export function createDrivingRuntime({
     wheelLongitudinalUsage=perWheelGrip.longitudinalUsage;
 
     // Grip R1: lateral force recovery follows residual rear tire slip.
-    const targetFrontSlip=perWheelGrip.frontLateral;
+    const serviceBrakePhysicalSlip=combinedBrakeEnabled&&serviceBrakeInput>.04;
+    const serviceBrakeTire=serviceBrakePhysicalSlip
+      ?tireProfileForVehicle(getVehicleId?.()||'unknown',VEHICLE)
+      :null;
+    const targetFrontSlip=serviceBrakePhysicalSlip
+      ?physicalCombinedAxleSlip({
+        wheels:physicalTireForces?.wheels,
+        front:true,
+        peakSlipAngleRad:serviceBrakeTire?.peakSlipAngleRad,
+        speedAbs
+      })
+      :perWheelGrip.frontLateral;
     const sideslipDrivenRearSlip=rearHandbrakeSlipState*smoothstep01((currentSideslip-.025)/.42)*.90;
-    const targetRearSlip=Math.max(perWheelGrip.rearLateral,sideslipDrivenRearSlip);
+    const targetRearSlip=Math.max(
+      serviceBrakePhysicalSlip?physicalCombinedAxleSlip({
+        wheels:physicalTireForces?.wheels,
+        front:false,
+        peakSlipAngleRad:serviceBrakeTire?.peakSlipAngleRad,
+        speedAbs
+      }):perWheelGrip.rearLateral,
+      sideslipDrivenRearSlip
+    );
     let frictionYawAccel=Number.isFinite(perWheelGrip.frictionYawAccel)?perWheelGrip.frictionYawAccel:0;
     // Grip R6 — no tire contact means no residual tire yaw impulse.
     if(airborneNow)frictionYawAccel=0;
@@ -599,5 +694,11 @@ export function createDrivingRuntime({
     syncState();
   }
 
-  return {update,physicsShadowDiagnostics:()=>physicsShadow.diagnostics()};
+  return {
+    update,
+    physicsShadowDiagnostics:()=>({
+      ...physicsShadow.diagnostics(),
+      serviceBrakeGripScale
+    })
+  };
 }

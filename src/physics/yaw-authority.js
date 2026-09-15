@@ -112,6 +112,7 @@ export function advanceYawAuthority({
   });
   const physicalYaw=Number.isFinite(Number(physicalTireYawAccel))?Number(physicalTireYawAccel):friction;
   const currentDynamic=Number(dynamicYawRate)||0;
+  const step=Math.max(0,Number(dt)||0);
   const yawReleaseBoost=
     driftKinematicScale>.82&&Math.abs(targetYawRate)<Math.abs(currentDynamic)
       ?1.35
@@ -119,7 +120,7 @@ export function advanceYawAuthority({
   const yawGripResponseScale=airborne
     ?0
     :driftKinematicScale*(1-.85*driftPhysicalAuthority);
-  const fallbackYawAccel=useLegacyDriftAssist
+  let fallbackYawAccel=useLegacyDriftAssist
     ?gripLossFallbackYawAcceleration({
       frictionYawAccel:friction,
       yawRate:targetYawRate,
@@ -129,12 +130,27 @@ export function advanceYawAuthority({
       rearForceScale:rearLateralForceScale
     })
     :0;
+  // The aggregate force-loss moment is only a low-slip handoff correction to
+  // the bicycle target. It has no yaw-rate feedback of its own, so allowing it
+  // to keep accelerating after that target is reached double-counts the same
+  // cornering imbalance and creates a self-sustaining brake-oversteer loop.
+  // Genuine high-sideslip rotation remains owned by physicalYaw below.
+  const targetDirection=Math.sign(targetYawRate);
+  if(Math.abs(targetYawRate)<=.01&&driftPhysicalAuthority<.05){
+    fallbackYawAccel=0;
+  }else if(fallbackYawAccel*targetDirection>0&&step>0){
+    const remainingYawRate=Math.max(
+      0,
+      Math.abs(targetYawRate)-currentDynamic*targetDirection
+    );
+    fallbackYawAccel=
+      targetDirection*Math.min(Math.abs(fallbackYawAccel),remainingYawRate/step);
+  }
   const authoritativeYawAccel=blendDriftForce(
     fallbackYawAccel,
     physicalYaw,
     driftPhysicalAuthority
   );
-  const step=Number(dt)||0;
   let nextDynamicYawRate=currentDynamic+authoritativeYawAccel*step;
   nextDynamicYawRate+=(targetYawRate-nextDynamicYawRate)*(1-Math.exp(-step*(Number(yawResponse)||0)*yawReleaseBoost*yawGripResponseScale));
 

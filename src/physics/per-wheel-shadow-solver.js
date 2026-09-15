@@ -118,11 +118,12 @@ function axleLoadFractions(vehicle,axles,longitudinalAccel=0){
 
 // V21.27 P2 — road-car service braking gets a lightweight EBD layer. The
 // configured brakeShare remains the low-deceleration mechanical bias, then the
-// distribution progressively follows the actual axle normal loads as braking
-// grows. This prevents a dynamically unloaded rear axle from being asked to
-// carry a fixed 38% of braking force in a hard corner. Vehicles that explicitly
-// set absEnabled:false (for example the F1 profile) retain fixed brake bias.
-function effectiveServiceBrakeShares(vehicle,axles,axleLoads,requestedBrakeAccel=0){
+// distribution progressively follows the combined-force reserve of each axle
+// as braking grows. This prevents a dynamically unloaded rear axle from being
+// asked to carry braking force that its cornering load has already consumed.
+// Vehicles that explicitly set absEnabled:false (for example the F1 profile)
+// retain fixed brake bias.
+function effectiveServiceBrakeShares(vehicle,axles,axleLoads,requestedBrakeAccel=0,lateralAccel=0){
   const base=axles.map(axle=>Math.max(0,finite(axle?.brakeShare,0)));
   const baseTotal=base.reduce((sum,value)=>sum+value,0)||1;
   for(let i=0;i<base.length;i++)base[i]/=baseTotal;
@@ -137,10 +138,28 @@ function effectiveServiceBrakeShares(vehicle,axles,axleLoads,requestedBrakeAccel
   const loadTotal=load.reduce((sum,value)=>sum+value,0)||1;
   for(let i=0;i<load.length;i++)load[i]/=loadTotal;
 
+  const rawStatic=axles.map(axle=>Math.max(.001,finite(axle?.staticLoadFraction,0)));
+  const staticTotal=rawStatic.reduce((sum,value)=>sum+value,0)||1;
+  const lateralLimit=Math.max(.1,finite(vehicle?.lateralAccelLimit,G));
+  const lateralUtilization=clamp(Math.abs(finite(lateralAccel,0))/lateralLimit,0,1);
+  const combinedReserve=load.map((normalShare,index)=>{
+    const staticShare=rawStatic[index]/staticTotal;
+    const axleLateralUtilization=clamp(
+      lateralUtilization*staticShare/Math.max(.001,normalShare),
+      0,
+      1
+    );
+    return normalShare*Math.sqrt(Math.max(0,1-axleLateralUtilization*axleLateralUtilization));
+  });
+  const reserveTotal=combinedReserve.reduce((sum,value)=>sum+value,0);
+  const target=reserveTotal>1e-8
+    ?combinedReserve.map(value=>value/reserveTotal)
+    :load;
+
   const result=new Array(axles.length);
   let total=0;
   for(let i=0;i<result.length;i++){
-    result[i]=base[i]+(load[i]-base[i])*ebdBlend;
+    result[i]=base[i]+(target[i]-base[i])*ebdBlend;
     total+=result[i];
   }
   total=total||1;
@@ -450,9 +469,19 @@ export function createPerWheelShadowSolver({hz=120,maxSubSteps=8}={}){
 
     const driveForceN=finite(input?.requestedDriveAccel)*massKg;
     const brakeForceN=finite(input?.requestedBrakeAccel)*massKg;
-    const effectiveBrakeShares=effectiveServiceBrakeShares(vehicle,axles,axleLoads,input?.requestedBrakeAccel);
     const surfaceId=input?.surfaceId||'asphalt-dry';
     const handbrake=!!input?.handbrake;
+    const combinedServiceBrakeControl=
+      input?.combinedServiceBrakeControl===undefined
+        ?(!handbrake&&surfaceId.startsWith('asphalt'))
+        :!!input.combinedServiceBrakeControl;
+    const effectiveBrakeShares=effectiveServiceBrakeShares(
+      vehicle,
+      axles,
+      axleLoads,
+      input?.requestedBrakeAccel,
+      combinedServiceBrakeControl?input?.lateralAccel:0
+    );
     const wheels=[];
     let totalForceX=0,totalForceZ=0,totalYawMomentNm=0;
 
