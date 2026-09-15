@@ -21,6 +21,7 @@ export function createV21MenuSystem({
   multiplayer,
   cameraController,
   toggleAssist,
+  toggleAbs,
   toggleRoadSpeedLimits,
   toggleAutopilot,
   resetToRoad,
@@ -40,6 +41,8 @@ export function createV21MenuSystem({
   let v21MenuEl=null;
   let v21MenuButton=null;
   let assist=false;
+  let absEnabled=true;
+  let absAvailable=true;
   let obeyRoadSpeedLimits=true;
   let transmissionMode='automatic';
   let autopilot=false;
@@ -47,6 +50,8 @@ export function createV21MenuSystem({
   function syncLiveState(){
     const state=getRuntimeState()||{};
     assist=!!state.assist;
+    absEnabled=state.absEnabled!==false;
+    absAvailable=state.absAvailable!==false;
     obeyRoadSpeedLimits=state.obeyRoadSpeedLimits!==false;
     transmissionMode=state.transmissionMode==='manual'?'manual':'automatic';
     autopilot=!!state.autopilot;
@@ -272,6 +277,19 @@ function syncV21RuntimeControls(){
   v21SetToggle(
     'v21AssistToggle',
     !!assist
+  );
+
+  const absToggle=$('v21AbsToggle');
+  if(absToggle){
+    absToggle.disabled=!absAvailable;
+    absToggle.title=absAvailable
+      ?'Activer ou désactiver la régulation antiblocage'
+      :'Ce véhicule ne possède pas d’ABS';
+  }
+  v21SetToggle(
+    'v21AbsToggle',
+    absAvailable&&absEnabled,
+    {off:absAvailable?'OFF':'N/D'}
   );
 
   v21SetToggle(
@@ -1531,6 +1549,20 @@ function installV21Menu(){
     createV21Row(
       'Assistance voie',
       assistToggle
+    )
+  );
+
+  const absToggle=
+    createV21ToggleButton(
+      'v21AbsToggle',
+      ()=>toggleAbs()
+    );
+
+  drivingControls.appendChild(
+    createV21Row(
+      'ABS',
+      absToggle,
+      'Désactiver pour permettre le blocage réel des roues au freinage.'
     )
   );
 

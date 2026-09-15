@@ -11,6 +11,7 @@ export const DEFAULT_WORLD_SETTINGS={
   displayDistance:'high',
   transmissionMode:'automatic',
   assist:true,
+  absEnabled:true,
   obeyRoadSpeedLimits:true,
   imageryEnabled:true,
 
@@ -610,4 +611,3 @@ export async function clearWorldDriveCache(){
     console.warn('Legacy settings cleanup skipped',error);
   }
 }
-

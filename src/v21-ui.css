@@ -330,6 +330,11 @@
     color:#a8ffd5;
   }
 
+  .v21Toggle:disabled{
+    cursor:not-allowed;
+    opacity:.45;
+  }
+
   .v21InfoGrid{
     display:grid;
     grid-template-columns:repeat(2,minmax(0,1fr));

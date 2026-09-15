@@ -82,6 +82,10 @@ export function physicalAxleCombinedUtilization({wheels=[],front=false}={}){
 
 const GRAVITY=9.80665;
 
+export function effectiveRuntimeAbsEnabled({vehicle=null,userEnabled=true}={}){
+  return vehicle?.absEnabled!==false&&userEnabled!==false;
+}
+
 // Grip R5 — physical off-road sideslip friction. The V21.27 tire/surface model
 // already knows the tire compound and dirt peak/sliding friction; use that same
 // model for the authoritative terrain path instead of a steering-demand proxy.
@@ -175,7 +179,7 @@ export function landingSideslipGripSeed({sideslipRad=0,speedAbs=0}={}){
 
 export function createDrivingRuntime({
   getState,setState,getFlags,getRouteLength,getWorldOffset,nearestRouteForVehicle,
-  autopilotControl,keyboardActionDown,gamepadState,updateTransmission,getServiceBrakeInput,
+  autopilotControl,keyboardActionDown,gamepadState,updateTransmission,getServiceBrakeInput,getAbsEnabled,
   vehiclePresentation,vehicleVisuals,truckTrailerSystem,roadSurfaceGrip,getVehicleId,
   VEHICLE,vehicleTopSpeedKmh,activeTransmissionProfile,effectiveEngineRedlineRpm,
   transmissionRedlineSpeedKmh,vehicleReverseLimitMps,physicsClamp,
@@ -191,9 +195,21 @@ export function createDrivingRuntime({
   const physicsShadow=createPerWheelShadowSolver({hz:120,maxSubSteps:8});
   let wasAirborne=false;
   let serviceBrakeGripScale=1;
+  let serviceBrakeAbsEnabled=effectiveRuntimeAbsEnabled({vehicle:VEHICLE});
+  const runtimeVehicle=Object.create(
+    VEHICLE&&typeof VEHICLE==='object'?VEHICLE:Object.prototype
+  );
+  Object.defineProperty(runtimeVehicle,'absEnabled',{
+    enumerable:true,
+    get:()=>serviceBrakeAbsEnabled
+  });
   const maneuverState=createManeuverState();
 
   function update(dt){
+    serviceBrakeAbsEnabled=effectiveRuntimeAbsEnabled({
+      vehicle:VEHICLE,
+      userEnabled:typeof getAbsEnabled==='function'?getAbsEnabled():true
+    });
     const initialState=getState();
     const nr=nearestRouteForVehicle(initialState.absX,initialState.absZ);
     const ap=autopilotControl(dt,nr);
@@ -322,15 +338,15 @@ export function createDrivingRuntime({
       airborne:airborneNow
     },dynamicsScratch.brakeLateral);
     const combinedBrakeEnabled=
-      onPavement&&!hand&&!airborneNow&&VEHICLE.absEnabled!==false&&
+      onPavement&&!hand&&!airborneNow&&serviceBrakeAbsEnabled&&
       VEHICLE.vehicleClass!=='tractor';
     const combinedBrake=combinedBrakeForceAllocation({
       serviceBrakeAccel:brakeForce.acceleration,
       longitudinalLimit:brakeForce.limit,
       requestedLateralAccel:Math.min(preBrakeLateral.requestedLatAccel,preBrakeLateral.latLimit),
       lateralLimit:preBrakeLateral.latLimit,
-      vehicle:VEHICLE,
-      absEnabled:VEHICLE.absEnabled!==false,
+      vehicle:runtimeVehicle,
+      absEnabled:serviceBrakeAbsEnabled,
       airborne:airborneNow,
       // Keep the articulated tractor/trailer brake path isolated: its
       // combination-level service-brake scaling is not a passenger-car ABS
@@ -504,13 +520,13 @@ export function createDrivingRuntime({
         propulsionAccel:appliedBodyDriveAccel,serviceBrakeAccel:brakeForce.acceleration,
         surfaceMu:longitudinalMu,throttle:driveThrottle,handbrake:hand,
         handbrakeSlipState:rearHandbrakeSlipState,sideslipRad:rearTireSideslip,
-        airborne:airborneNow,vehicle:VEHICLE,speedAbs,
+        airborne:airborneNow,vehicle:runtimeVehicle,speedAbs,
         contacts:vehiclePresentation?.wheelContacts||[],previousUsage:wheelGripUsage,dt:gripDt
       },dynamicsScratch.grip);
     }
 
     const physicalTireForces=physicsShadow.advance(dt,{
-      vehicleId:getVehicleId?.()||'unknown',vehicle:VEHICLE,contacts:vehiclePresentation?.wheelContacts||[],speed,heading,velocityHeading,
+      vehicleId:getVehicleId?.()||'unknown',vehicle:runtimeVehicle,contacts:vehiclePresentation?.wheelContacts||[],speed,heading,velocityHeading,
       yawRate:dynamicYawRate,centerSteerAngle:steerAngle,longitudinalAccel,lateralAccel:physicalSignedLatAccel,
       requestedDriveAccel:appliedBodyDriveAccelRaw,requestedBrakeAccel:brakeForce.acceleration,
       longitudinalLoadTransferAccel:appliedBodyDriveAccel+brakeForce.acceleration,
@@ -706,7 +722,9 @@ export function createDrivingRuntime({
     update,
     physicsShadowDiagnostics:()=>({
       ...physicsShadow.diagnostics(),
-      serviceBrakeGripScale
+      serviceBrakeGripScale,
+      absAvailable:VEHICLE?.absEnabled!==false,
+      absEnabled:serviceBrakeAbsEnabled
     })
   };
 }
