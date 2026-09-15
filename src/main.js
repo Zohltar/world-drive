@@ -2506,8 +2506,38 @@ setTimeOfDay(12);
 // cause a periodic console/devtools hitch. C6.1 keeps the historical callable
 // alias, but the stable WorldDriveDiagnostics root is now authoritative.
 const worldDriveDiagnostics=ensureWorldDriveDiagnostics();
+function renderWorkloadSnapshot(){
+  let objects=0,meshes=0,instancedMeshes=0,instances=0;
+  scene.traverse(object=>{
+    objects++;
+    if(object?.isMesh)meshes++;
+    if(object?.isInstancedMesh){
+      instancedMeshes++;
+      instances+=Math.max(0,Number(object.count)||0);
+    }
+  });
+  const render=renderer.info?.render||{};
+  const memory=renderer.info?.memory||{};
+  return {
+    drawCalls:Number(render.calls)||0,
+    triangles:Number(render.triangles)||0,
+    lines:Number(render.lines)||0,
+    points:Number(render.points)||0,
+    geometries:Number(memory.geometries)||0,
+    textures:Number(memory.textures)||0,
+    sceneObjects:objects,
+    meshes,
+    instancedMeshes,
+    instances,
+    roadProfilePoints:activeRoadProfile.length,
+    routePoints:route.length,
+    routeKind:ROUTE_KIND,
+    scenery:sceneryRenderer.renderStats?.()||null
+  };
+}
 worldDriveDiagnostics.framePacing.snapshot=()=>({
   fps:perfGovernor.fps,
+  rendering:renderWorkloadSnapshot(),
   ...(streamingCoordinator?.diagnostics?.()||{})
 });
 installDiagnosticAlias(

@@ -69,6 +69,17 @@ export function createWorldStreaming({
     return Math.max(0,Math.min(routeLength,value));
   }
 
+  function routeProgressDelta(current,previous,length=getRouteLength()){
+    const routeLength=Math.max(0,Number(length)||0);
+    let delta=(Number(current)||0)-(Number(previous)||0);
+    if(!routeIsClosed()||!routeLength)return delta;
+    // Use the shortest signed displacement around the loop. A tiny backwards
+    // correction near T13 must stay negative instead of looking like an almost
+    // complete 20.8 km lap and retriggering the OSM/DEM prefetch pipeline.
+    delta=((delta+routeLength/2)%routeLength+routeLength)%routeLength-routeLength/2;
+    return delta;
+  }
+
   function setDistanceScale(scale){
     const numeric=Number(scale);
 
@@ -197,8 +208,7 @@ export function createWorldStreaming({
     if(!nearest)return false;
 
     if(Number.isFinite(lastPrefetchCum)){
-      let travelled=nearest.cum-lastPrefetchCum;
-      if(routeIsClosed()&&travelled<0)travelled+=routeLength;
+      const travelled=routeProgressDelta(nearest.cum,lastPrefetchCum,routeLength);
       if(travelled<prefetch.step*distanceScale)return false;
     }
 

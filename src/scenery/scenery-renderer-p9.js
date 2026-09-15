@@ -1,6 +1,52 @@
 import {loadForestWaterAssets,getForestWaterAssets} from '../forest-water-assets.js';
 import {createForestChunkStreamer} from '../forest-chunk-streamer.js';
 
+// Dense OSM areas can contain hundreds of simple buildings and thousands of
+// guard-rail sections. One Mesh per box turns those features into thousands of
+// WebGL draw calls even though they all share one material. Keep their exact
+// transforms while submitting each homogeneous set as one InstancedMesh.
+export function createStaticBoxInstances({
+  THREE,
+  material,
+  transforms,
+  name='osm-static-boxes',
+  kind='static-box',
+  castShadow=false,
+  receiveShadow=false
+}){
+  if(!THREE||!material||!Array.isArray(transforms)||!transforms.length)return null;
+  const valid=transforms.filter(item=>
+    item&&
+    [item.x,item.y,item.z,item.width,item.height,item.depth,item.yaw??0].every(Number.isFinite)&&
+    item.width>0&&item.height>0&&item.depth>0
+  );
+  if(!valid.length)return null;
+
+  const geometry=new THREE.BoxGeometry(1,1,1);
+  const mesh=new THREE.InstancedMesh(geometry,material,valid.length);
+  const transform=new THREE.Object3D();
+  for(let i=0;i<valid.length;i++){
+    const item=valid[i];
+    transform.position.set(item.x,item.y,item.z);
+    transform.rotation.set(0,item.yaw||0,0);
+    transform.scale.set(item.width,item.height,item.depth);
+    transform.updateMatrix();
+    mesh.setMatrixAt(i,transform.matrix);
+  }
+  mesh.name=name;
+  mesh.userData.worldDriveInstanceKind=kind;
+  mesh.count=valid.length;
+  mesh.instanceMatrix.setUsage(THREE.StaticDrawUsage);
+  mesh.instanceMatrix.needsUpdate=true;
+  mesh.castShadow=!!castShadow;
+  mesh.receiveShadow=!!receiveShadow;
+  mesh.frustumCulled=true;
+  mesh.computeBoundingSphere?.();
+  mesh.matrixAutoUpdate=false;
+  mesh.updateMatrix();
+  return mesh;
+}
+
 export function createSceneryRenderer({
   THREE,statusEl,features,terrainDetailGroup,infrastructureGroup,buildingGroup,
   forestGroup,materials,featureCentroid,terrainHeight,nearestRoute,isWaterAt,
@@ -17,9 +63,49 @@ export function createSceneryRenderer({
   let sceneryReadyForForest=false;
   let forestRouteCacheSuspended=false;
   let forestBlockers=[];
+  let forestBlockerIndex=new Map();
+  let forestGlobalBlockers=[];
   let blockerSignature='';
   let lastShown=0;
   let lastForestStats={trees:0,near:0,mid:0,far:0,edge:0,chunks:0,cached:0,queued:0};
+  let lastRenderStats={
+    shown:0,
+    nearBuildingMeshes:0,
+    farBuildingInstances:0,
+    guardRailInstances:0,
+    damInstances:0,
+    staticBatches:0
+  };
+
+  const FOREST_BLOCKER_CELL_M=240;
+  const FOREST_BLOCKER_MAX_INDEX_CELLS=900;
+
+  function forestBlockerKey(cx,cz){return `${cx},${cz}`;}
+
+  function rebuildForestBlockerIndex(blockers){
+    forestBlockerIndex=new Map();
+    forestGlobalBlockers=[];
+    for(const blocker of blockers){
+      const b=blocker.bbox;
+      const minCx=Math.floor(b.minx/FOREST_BLOCKER_CELL_M);
+      const maxCx=Math.floor(b.maxx/FOREST_BLOCKER_CELL_M);
+      const minCz=Math.floor(b.minz/FOREST_BLOCKER_CELL_M);
+      const maxCz=Math.floor(b.maxz/FOREST_BLOCKER_CELL_M);
+      const cells=(maxCx-minCx+1)*(maxCz-minCz+1);
+      if(!Number.isFinite(cells)||cells>FOREST_BLOCKER_MAX_INDEX_CELLS){
+        forestGlobalBlockers.push(blocker);
+        continue;
+      }
+      for(let cx=minCx;cx<=maxCx;cx++){
+        for(let cz=minCz;cz<=maxCz;cz++){
+          const key=forestBlockerKey(cx,cz);
+          let bucket=forestBlockerIndex.get(key);
+          if(!bucket){bucket=[];forestBlockerIndex.set(key,bucket);}
+          bucket.push(blocker);
+        }
+      }
+    }
+  }
 
   function disposeObject(object){
     object.traverse?.(child=>{
@@ -71,44 +157,48 @@ export function createSceneryRenderer({
     return group;
   }
 
-  function addDam(points){
-    if(points.length<2)return null;
+  function damBoxTransforms(points){
+    if(points.length<2)return [];
     const offset=getWorldOffset();
-    const group=new THREE.Group();
+    const transforms=[];
     for(let i=0;i<points.length-1;i++){
       const a=points[i],b=points[i+1];
       const dx=b.x-a.x,dz=b.z-a.z,len=Math.hypot(dx,dz);
       if(len<1)continue;
       const h=14;
-      const mesh=new THREE.Mesh(new THREE.BoxGeometry(6,h,len),damMat);
       const mx=(a.x+b.x)/2,mz=(a.z+b.z)/2;
-      mesh.position.set(
-        mx-offset.x,
-        Math.min(terrainHeight(a.x,a.z),terrainHeight(b.x,b.z))+h/2,
-        mz-offset.z
-      );
-      mesh.rotation.y=Math.atan2(dx,dz);
-      mesh.castShadow=true;
-      mesh.receiveShadow=true;
-      group.add(mesh);
+      transforms.push({
+        x:mx-offset.x,
+        y:Math.min(terrainHeight(a.x,a.z),terrainHeight(b.x,b.z))+h/2,
+        z:mz-offset.z,
+        width:6,
+        height:h,
+        depth:len,
+        yaw:Math.atan2(dx,dz)
+      });
     }
-    return group;
+    return transforms;
   }
 
-  function addGuardRail(points){
+  function guardRailBoxTransforms(points){
     const offset=getWorldOffset();
-    const group=new THREE.Group();
+    const transforms=[];
     for(let i=0;i<points.length-1;i++){
       const a=points[i],b=points[i+1];
       const dx=b.x-a.x,dz=b.z-a.z,len=Math.hypot(dx,dz);
       if(len<.5)continue;
-      const mesh=new THREE.Mesh(new THREE.BoxGeometry(.10,.18,len),railMat);
       const mx=(a.x+b.x)/2,mz=(a.z+b.z)/2;
-      mesh.position.set(mx-offset.x,terrainHeight(mx,mz)+.72,mz-offset.z);
-      mesh.rotation.y=Math.atan2(dx,dz);
-      group.add(mesh);
+      transforms.push({
+        x:mx-offset.x,
+        y:terrainHeight(mx,mz)+.72,
+        z:mz-offset.z,
+        width:.10,
+        height:.18,
+        depth:len,
+        yaw:Math.atan2(dx,dz)
+      });
     }
-    return group;
+    return transforms;
   }
 
   function addPowerLine(points){
@@ -166,17 +256,27 @@ export function createSceneryRenderer({
     }).join('|');
     const changed=signature!==blockerSignature;
     forestBlockers=next;
+    rebuildForestBlockerIndex(next);
     blockerSignature=signature;
     return changed;
   }
 
-  function blocksForest(x,z){
-    for(const blocker of forestBlockers){
+  function blockedByForestList(list,x,z){
+    for(const blocker of list){
       const b=blocker.bbox;
       if(x<b.minx||x>b.maxx||z<b.minz||z>b.maxz)continue;
       if(pointInPolygon(x,z,blocker.points))return true;
     }
     return false;
+  }
+
+  function blocksForest(x,z){
+    const key=forestBlockerKey(
+      Math.floor(x/FOREST_BLOCKER_CELL_M),
+      Math.floor(z/FOREST_BLOCKER_CELL_M)
+    );
+    const candidates=forestBlockerIndex.get(key)||[];
+    return blockedByForestList(candidates,x,z)||blockedByForestList(forestGlobalBlockers,x,z);
   }
 
   function updateForestStatus(stats){
@@ -263,20 +363,28 @@ export function createSceneryRenderer({
     forestAssetsActivated=false;
     sceneryReadyForForest=false;
     forestBlockers=[];
+    forestBlockerIndex=new Map();
+    forestGlobalBlockers=[];
     blockerSignature='';
     lastForestStats={trees:0,near:0,mid:0,far:0,edge:0,chunks:0,cached:0,queued:0};
+    lastRenderStats={shown:0,nearBuildingMeshes:0,farBuildingInstances:0,guardRailInstances:0,damInstances:0,staticBatches:0};
     return true;
   }
 
-  function makeBuildingLOD(points,tags,dist){
-    if(dist<520){
-      let height=parseFloat(tags.height||'');
-      if(!Number.isFinite(height)){
-        const levels=parseFloat(tags['building:levels']||'');
-        height=Number.isFinite(levels)?Math.max(3,levels*3.1):6.5;
-      }
-      return makeFootprintMesh(points,Math.min(45,height));
+  function buildingHeight(tags,{near=false}={}){
+    let height=parseFloat(tags.height||'');
+    if(!Number.isFinite(height)){
+      const levels=parseFloat(tags['building:levels']||'');
+      height=Number.isFinite(levels)?Math.max(3,levels*3.1):(near?6.5:7);
     }
+    return near?Math.min(45,height):Math.max(4,Math.min(18,height));
+  }
+
+  function makeNearBuilding(points,tags){
+    return makeFootprintMesh(points,buildingHeight(tags,{near:true}));
+  }
+
+  function farBuildingBoxTransform(points,tags){
     const c=featureCentroid(points);
     let minx=Infinity,maxx=-Infinity,minz=Infinity,maxz=-Infinity;
     for(const p of points){
@@ -285,13 +393,17 @@ export function createSceneryRenderer({
     }
     const width=Math.max(3,Math.min(35,maxx-minx));
     const depth=Math.max(3,Math.min(35,maxz-minz));
-    const height=Math.max(4,Math.min(18,parseFloat(tags.height||'')||7));
-    const mesh=new THREE.Mesh(new THREE.BoxGeometry(width,height,depth),buildingWallMat);
+    const height=buildingHeight(tags);
     const offset=getWorldOffset();
-    mesh.position.set(c.x-offset.x,terrainHeight(c.x,c.z)+height/2,c.z-offset.z);
-    mesh.castShadow=dist<750;
-    mesh.receiveShadow=true;
-    return mesh;
+    return {
+      x:c.x-offset.x,
+      y:terrainHeight(c.x,c.z)+height/2,
+      z:c.z-offset.z,
+      width,
+      height,
+      depth,
+      yaw:0
+    };
   }
 
   function rebuild(){
@@ -303,6 +415,11 @@ export function createSceneryRenderer({
     const offset=getWorldOffset();
     const radius2=1500*1500;
     let shown=0;
+    let nearBuildingMeshes=0;
+    const farBuildingShadowInstances=[];
+    const farBuildingInstances=[];
+    const guardRailInstances=[];
+    const damInstances=[];
 
     for(const feature of features){
       const center=featureCentroid(feature.points);
@@ -314,17 +431,21 @@ export function createSceneryRenderer({
       let object=null;
 
       if(tags.building&&dist<1150){
-        object=makeBuildingLOD(feature.points,tags,dist);
-        if(object)buildingGroup.add(object);
+        if(dist<520){
+          object=makeNearBuilding(feature.points,tags);
+          if(object){buildingGroup.add(object);nearBuildingMeshes++;}
+        }else{
+          const box=farBuildingBoxTransform(feature.points,tags);
+          (dist<750?farBuildingShadowInstances:farBuildingInstances).push(box);
+        }
       }else if((tags.power==='tower'||tags.power==='pole')&&dist<1400){
         infrastructureGroup.add(addUtilityTower(center.x,center.z,tags.power==='pole'?.6:1));
       }else if(tags.power==='line'||tags.power==='minor_line'){
         infrastructureGroup.add(addPowerLine(feature.points));
       }else if(tags.man_made==='dam'||tags.waterway==='dam'){
-        object=addDam(feature.points);
-        if(object)infrastructureGroup.add(object);
+        damInstances.push(...damBoxTransforms(feature.points));
       }else if(tags.barrier==='guard_rail'){
-        infrastructureGroup.add(addGuardRail(feature.points));
+        guardRailInstances.push(...guardRailBoxTransforms(feature.points));
       }else if(tags.natural==='bare_rock'||tags.natural==='scree'||tags.natural==='cliff'){
         object=addLandPatch(feature.points,rockMat,.04);
         if(object)terrainDetailGroup.add(object);
@@ -335,7 +456,53 @@ export function createSceneryRenderer({
       shown++;
     }
 
+    let staticBatches=0;
+    const addBatch=(group,options)=>{
+      const mesh=createStaticBoxInstances({THREE,...options});
+      if(!mesh)return false;
+      group.add(mesh);
+      staticBatches++;
+      return true;
+    };
+    addBatch(buildingGroup,{
+      material:buildingWallMat,
+      transforms:farBuildingShadowInstances,
+      name:'osm-buildings-mid',
+      kind:'building-mid',
+      castShadow:true,
+      receiveShadow:true
+    });
+    addBatch(buildingGroup,{
+      material:buildingWallMat,
+      transforms:farBuildingInstances,
+      name:'osm-buildings-far',
+      kind:'building-far',
+      receiveShadow:true
+    });
+    addBatch(infrastructureGroup,{
+      material:railMat,
+      transforms:guardRailInstances,
+      name:'osm-guard-rails',
+      kind:'guard-rail'
+    });
+    addBatch(infrastructureGroup,{
+      material:damMat,
+      transforms:damInstances,
+      name:'osm-dams',
+      kind:'dam',
+      castShadow:true,
+      receiveShadow:true
+    });
+
     lastShown=shown;
+    lastRenderStats={
+      shown,
+      nearBuildingMeshes,
+      farBuildingInstances:farBuildingShadowInstances.length+farBuildingInstances.length,
+      guardRailInstances:guardRailInstances.length,
+      damInstances:damInstances.length,
+      staticBatches
+    };
 
     // The first forest build must happen only after local-world-builder has
     // installed the final road profile and synchronously rebuilt the near terrain.
@@ -382,6 +549,7 @@ export function createSceneryRenderer({
     requestForestRefresh,
     whenInitialForestReady:()=>forestStreamer.whenInitialReady(),
     forestStats:()=>forestStreamer.stats(),
+    renderStats:()=>({...lastRenderStats}),
     forestRouteCacheStatus:()=>({suspended:forestRouteCacheSuspended})
   };
 }
