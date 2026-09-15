@@ -77,7 +77,7 @@ Before coding, be able to answer:
 **Block 9 — AI-assisted 3D asset authoring and selective GLB modernization:** **PLANNED / DEFERRED — pilot-first, no wholesale asset replacement**  
 **Block 10 — Mobile browser driving controls:** **ABANDONED / NOT PLANNED (2026-09-13) — experiment stopped by user; no mobile-control candidate runtime was integrated**  
 **Block 11 — Circuit presets / closed-loop authored track routes:** **ACTIVE — Laguna Seca HUMAN PASS (2026-09-14); Nordschleife R4 performance HUMAN PASS (2026-09-15); full-lap promotion held by follow-up WRX trail-braking HUMAN FAIL**
-**Active correction block:** **PHYSICS TRAIL-BRAKING R2 — combined-force and transient-yaw correction stacked on the accepted Nordschleife performance candidate**
+**Active correction block:** **PHYSICS TRAIL-BRAKING R3 — applied-force-gated turn-in correction stacked on R2 after its excessive-understeer HUMAN FAIL**
 **Stable `main`:** `b74e7377eaaf2b128eb893c547f4c2da3d14bbea` — tag `v21.32`; must remain untouched without explicit user approval.  
 **Previous rollback/reference:** `9a69c39242eb0f3e2cf8d2fd68675c1cfad23dd8` — tag `v21.31`.
 
@@ -401,7 +401,7 @@ GitHub Issue #13: **CLOSED / COMPLETED (2026-09-12)**.
 
 ## Exact next action
 
-**Validate and publish the isolated Physics Trail-Braking R2 candidate, then human-test WRX braking in medium/tight corners on Laguna Seca and the Nordschleife.**
+**Validate and publish the isolated Physics Trail-Braking R3 candidate, then human-test WRX brake-first and corner-first turn-in on Laguna Seca and the Nordschleife.**
 
 Current unresolved work is intentionally not auto-started:
 
@@ -412,7 +412,7 @@ Current unresolved work is intentionally not auto-started:
 - Block 8 biome-aware natural scenery remains **planned/deferred**; when activated, begin by reopening and stabilizing forest readiness/streaming as its first runtime workstream, then add biome classification and palette selection;
 - Block 9 AI-assisted 3D asset authoring remains **planned/deferred**; begin with one controlled pilot asset and do not replace accepted GLBs wholesale without measured visual/runtime benefit;
 - Block 10 mobile browser driving controls is **ABANDONED / NOT PLANNED** by user decision; do not integrate the retired candidate branch.
-- Block 11 is **ACTIVE**: Laguna Seca has HUMAN PASS. R3 passed exact-head run `34915719869`, but its human diagnostic still measured 8.195 FPS, 30,534 draw calls and 31,882 meshes. R4 checkpoint `36a1adecfdcbbaa59e3994423d8ff62cefd9e067` passed exact-head run `34918367074`, and the user confirmed normal Nordschleife performance on 2026-09-15. That performance sub-checkpoint is accepted; the overall full-lap checkpoint remains open because the same test still exposed easy rear breakaway followed by excessive understeer under combined braking/steering.
+- Block 11 is **ACTIVE**: Laguna Seca has HUMAN PASS. R3 passed exact-head run `34915719869`, but its human diagnostic still measured 8.195 FPS, 30,534 draw calls and 31,882 meshes. R4 checkpoint `36a1adecfdcbbaa59e3994423d8ff62cefd9e067` passed exact-head run `34918367074`, and the user confirmed normal Nordschleife performance on 2026-09-15. That performance sub-checkpoint is accepted. Physics Trail-Braking R2 then passed exact-head run `35022259552` but received HUMAN FAIL because the WRX remained very understeered. R3 is the active isolated correction; overall full-lap promotion remains held pending its human retest.
 
 Do not modify `main` without explicit user approval. Do not begin a deferred block merely because the latest certified corrections are complete.
 

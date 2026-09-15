@@ -1,6 +1,6 @@
 # World Drive — trail-braking transient R2
 
-Status: **exact-head automated PASS; HUMAN retest pending**
+Status: **exact-head automated PASS; HUMAN FAIL (2026-09-15) — excessive understeer persisted; superseded by R3**
 
 Branch: `candidate/physics-trail-braking-r2`
 
@@ -109,3 +109,10 @@ service braking, release the brake while holding steering, then straighten the
 wheel. Accept only if rear rotation builds progressively without a snap, the
 front push under maximum combined demand is bounded and predictable, and full
 straight-line braking returns immediately as steering load comes off.
+
+## Human result
+
+The follow-up test reported that the WRX was **still very understeered**. R2's
+steady-corner-first regression did not exercise turn-in while braking was
+already active. Physics Trail-Braking R3 supersedes this checkpoint and adds
+that missing transient contract. R2 must not be integrated into `dev`.

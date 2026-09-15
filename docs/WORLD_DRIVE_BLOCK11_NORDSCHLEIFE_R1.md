@@ -87,8 +87,8 @@ furniture performance contract, runtime integration audit and production build.
 The following human retest reported normal Nordschleife performance, accepting
 the R4 performance correction. The same drive still exposed easy rear
 breakaway followed by excessive understeer while braking in a corner; that
-separate physics defect is isolated on `candidate/physics-trail-braking-r2` and
-prevents overall full-lap promotion.
+separate physics defect was not fully resolved by R2 and is now isolated on
+`candidate/physics-trail-braking-r3`; it prevents overall full-lap promotion.
 
 ## Automated result
 
@@ -136,7 +136,7 @@ for:
 - no invisible road support outside the 9 m asphalt;
 - no civil vehicles on the circuit;
 - stable WRX trail braking without rear breakaway followed by excessive
-  understeer — **FAIL on R1 baseline; retest Physics Trail-Braking R2**.
+  understeer — **R2 HUMAN FAIL; retest Physics Trail-Braking R3**.
 
 R1 does not claim a survey-grade surface mesh. In particular,
 [Porsche describes](https://newsroom.porsche.com/en/2020/motorsports/porsche-nuerburgring-nordschleife-caracciola-karussell-22455.html)
