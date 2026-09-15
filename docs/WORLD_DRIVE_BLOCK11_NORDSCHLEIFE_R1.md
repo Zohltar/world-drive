@@ -1,6 +1,6 @@
 # World Drive — Block 11B Nordschleife R1
 
-Status: **R4 bridge-seam performance correction validated locally; exact-head CI and human retest pending**
+Status: **R4 bridge-seam performance correction exact-head CI PASS; human retest pending**
 
 Branch: `candidate/block11-nordschleife-r1`
 
@@ -81,6 +81,10 @@ queries, and emits homogeneous bridge parts through at most eight finite static
 instance batches. Route geometry, surface width and vehicle physics are
 unchanged.
 
+R4 code/QA checkpoint `36a1adecfdcbbaa59e3994423d8ff62cefd9e067`
+passed exact-head workflow run `34918367074`, including the new T13 bridge and
+furniture performance contract, runtime integration audit and production build.
+
 ## Automated result
 
 - all seven sampled 5.4 km windows around the lap are finite and strictly
@@ -108,7 +112,7 @@ then passed exact-head workflow run `34915719869`, including the dense-scenery
 performance contract, runtime integration audit and production build. The
 local container cannot complete the LAN portion of Dev Integration because its
 operating-system sandbox rejects `os.networkInterfaces()`; GitHub CI passed
-that environment-dependent gate.
+that environment-dependent gate for both R3 and R4.
 
 ## Human checkpoint
 
