@@ -76,8 +76,8 @@ Before coding, be able to answer:
 **Block 8 — Biome-aware natural scenery:** **PLANNED / DEFERRED — includes the parked Issue #12 forest-readiness work when activated**  
 **Block 9 — AI-assisted 3D asset authoring and selective GLB modernization:** **PLANNED / DEFERRED — pilot-first, no wholesale asset replacement**  
 **Block 10 — Mobile browser driving controls:** **ABANDONED / NOT PLANNED (2026-09-13) — experiment stopped by user; no mobile-control candidate runtime was integrated**  
-**Block 11 — Circuit presets / closed-loop authored track routes:** **ACTIVE — Laguna Seca HUMAN PASS (2026-09-14); Nordschleife R4 performance HUMAN PASS (2026-09-15); full-lap promotion held by follow-up WRX trail-braking HUMAN FAIL**
-**Active correction block:** **PHYSICS TRAIL-BRAKING R3 — applied-force-gated turn-in correction stacked on R2 after its excessive-understeer HUMAN FAIL**
+**Block 11 — Circuit presets / closed-loop authored track routes:** **ACTIVE — Laguna Seca HUMAN PASS (2026-09-14); Nordschleife R4 performance HUMAN PASS (2026-09-15); full-lap promotion held by follow-up WRX trail-braking validation**
+**Active correction block:** **PHYSICS ABS TOGGLE R1 — player-selectable physical ABS/no-ABS comparison stacked on exact-head-green Trail-Braking R3; HUMAN comparison pending**
 **Stable `main`:** `b74e7377eaaf2b128eb893c547f4c2da3d14bbea` — tag `v21.32`; must remain untouched without explicit user approval.  
 **Previous rollback/reference:** `9a69c39242eb0f3e2cf8d2fd68675c1cfad23dd8` — tag `v21.31`.
 
@@ -401,7 +401,7 @@ GitHub Issue #13: **CLOSED / COMPLETED (2026-09-12)**.
 
 ## Exact next action
 
-**Validate and publish the isolated Physics Trail-Braking R3 candidate, then human-test WRX brake-first and corner-first turn-in on Laguna Seca and the Nordschleife.**
+**Validate and publish the isolated Physics ABS Toggle R1 candidate, then compare the WRX with ABS ON and OFF using identical brake-first and corner-first entries on Laguna Seca or the Nordschleife.**
 
 Current unresolved work is intentionally not auto-started:
 
@@ -412,7 +412,7 @@ Current unresolved work is intentionally not auto-started:
 - Block 8 biome-aware natural scenery remains **planned/deferred**; when activated, begin by reopening and stabilizing forest readiness/streaming as its first runtime workstream, then add biome classification and palette selection;
 - Block 9 AI-assisted 3D asset authoring remains **planned/deferred**; begin with one controlled pilot asset and do not replace accepted GLBs wholesale without measured visual/runtime benefit;
 - Block 10 mobile browser driving controls is **ABANDONED / NOT PLANNED** by user decision; do not integrate the retired candidate branch.
-- Block 11 is **ACTIVE**: Laguna Seca has HUMAN PASS. R3 passed exact-head run `34915719869`, but its human diagnostic still measured 8.195 FPS, 30,534 draw calls and 31,882 meshes. R4 checkpoint `36a1adecfdcbbaa59e3994423d8ff62cefd9e067` passed exact-head run `34918367074`, and the user confirmed normal Nordschleife performance on 2026-09-15. That performance sub-checkpoint is accepted. Physics Trail-Braking R2 then passed exact-head run `35022259552` but received HUMAN FAIL because the WRX remained very understeered. R3 is the active isolated correction; overall full-lap promotion remains held pending its human retest.
+- Block 11 is **ACTIVE**: Laguna Seca has HUMAN PASS. Nordschleife R4 checkpoint `36a1adecfdcbbaa59e3994423d8ff62cefd9e067` passed exact-head run `34918367074`, and the user confirmed normal performance on 2026-09-15. Physics Trail-Braking R2 then passed exact-head run `35022259552` but received HUMAN FAIL because the WRX remained very understeered. R3 implementation checkpoint `c5f2c60ec44bb8628b3e68c331fdc3b788332c14` passed run `35026732737`; final docs checkpoint `bb23e201645b61e2cb4c18bdfc7906fea0a4c30c` passed run `35026882948`. The player requested a real ABS ON/OFF comparison before judging the remaining behavior, so Physics ABS Toggle R1 is active and overall promotion remains held pending that human result.
 
 Do not modify `main` without explicit user approval. Do not begin a deferred block merely because the latest certified corrections are complete.
 
@@ -762,7 +762,7 @@ Do not start Block 10 by rewriting the HUD or physics globally. First isolate th
 
 ## Block 11 — Circuit presets / closed-loop authored track routes
 
-**ACTIVE — Laguna Seca HUMAN PASS (2026-09-14); Nürburgring Nordschleife R4 performance HUMAN PASS (2026-09-15); full-lap promotion held by Physics Trail-Braking R2.**
+**ACTIVE — Laguna Seca HUMAN PASS (2026-09-14); Nürburgring Nordschleife R4 performance HUMAN PASS (2026-09-15); full-lap promotion held by the WRX ABS ON/OFF trail-braking comparison.**
 
 Goal: add famous closed-loop race circuits to the existing preset-route experience while keeping ordinary road routing unchanged. Circuit presets should be deterministic, offline-friendly after code delivery, and suitable as repeatable vehicle/terrain stress routes.
 
@@ -785,7 +785,7 @@ Acceptance:
 
 ### Block 11B — Nürburgring Nordschleife
 
-**ACTIVE — R1 exact-head automation passed; human performance checkpoint failed at ~10 FPS (2026-09-15); R3 checkpoint `6304d67` passed exact-head run `34915719869` but its diagnostic retest remained at 8.195 FPS; R4 checkpoint `36a1ade` passed exact-head run `34918367074` and subsequently received HUMAN PERFORMANCE PASS. Full-lap promotion remains pending while Physics Trail-Braking R2 addresses the follow-up handling failure.** Reuse the accepted closed-loop preset infrastructure, then add the Nordschleife as the longer/high-load circuit and streaming stress route.
+**ACTIVE — R1 exact-head automation passed; human performance checkpoint failed at ~10 FPS (2026-09-15); R3 checkpoint `6304d67` passed exact-head run `34915719869` but its diagnostic retest remained at 8.195 FPS; R4 checkpoint `36a1ade` passed exact-head run `34918367074` and subsequently received HUMAN PERFORMANCE PASS. Full-lap promotion remains pending while Physics ABS Toggle R1 isolates the follow-up WRX trail-braking behavior.** Reuse the accepted closed-loop preset infrastructure, then add the Nordschleife as the longer/high-load circuit and streaming stress route.
 
 R1 contract:
 
