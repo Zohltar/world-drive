@@ -324,8 +324,6 @@ export function createDrivingRuntime({
     const combinedBrakeEnabled=
       onPavement&&!hand&&!airborneNow&&VEHICLE.absEnabled!==false&&
       VEHICLE.vehicleClass!=='tractor';
-    const combinedBrakeFeedbackActive=
-      combinedBrakeEnabled&&Math.abs(preBrakeLateral.requestedLatAccel)>.08*GRAVITY;
     const combinedBrake=combinedBrakeForceAllocation({
       serviceBrakeAccel:brakeForce.acceleration,
       longitudinalLimit:brakeForce.limit,
@@ -339,11 +337,23 @@ export function createDrivingRuntime({
       // controller and needs a dedicated coupled-tire model before opt-in.
       enabled:combinedBrakeEnabled
     },dynamicsScratch.combinedBrake);
+    // A held pedal is only a request. Once the combined-force allocator has
+    // released essentially all hydraulic pressure to preserve cornering, it
+    // must not keep the chassis in a brake-specific handling mode. Otherwise
+    // steering-only front saturation is misread as brake understeer even though
+    // the tires receive no longitudinal brake force.
+    const combinedBrakeFeedbackActive=
+      combinedBrakeEnabled&&
+      Math.abs(preBrakeLateral.requestedLatAccel)>.08*GRAVITY&&
+      Math.abs(combinedBrake.acceleration)>.04*GRAVITY;
     brakeForce.unallocatedAcceleration=brakeForce.acceleration;
     const appliedServiceBrakeGripScale=combinedBrakeFeedbackActive?serviceBrakeGripScale:1;
     brakeForce.acceleration=combinedBrake.acceleration*appliedServiceBrakeGripScale;
     brakeForce.combinedEnvelopeScale=combinedBrake.forceScale;
     brakeForce.combinedGripScale=combinedBrake.forceScale*appliedServiceBrakeGripScale;
+    const serviceBrakeAppliedCombinedControl=
+      combinedBrakeFeedbackActive&&serviceBrakeInput>.04&&
+      Math.abs(brakeForce.acceleration)>.04*GRAVITY;
     const appliedBodyDriveAccelRaw=driveForce.acceleration;
     const handbrakeDriveScale=handbrakeDriveRetentionScale({vehicle:VEHICLE,handbrake:hand});
     const appliedBodyDriveAccel=appliedBodyDriveAccelRaw*handbrakeDriveScale;
@@ -512,9 +522,7 @@ export function createDrivingRuntime({
     // the per-wheel solve. Feed the measured combined utilization back into
     // the next ABS frame, mirroring hydraulic pressure release/reapply instead
     // of letting a saturated front axle create sustained brake understeer.
-    const serviceBrakeCombinedControl=
-      combinedBrakeEnabled&&serviceBrakeInput>.04&&
-      Math.abs(requestedLatAccel)>.08*GRAVITY;
+    const serviceBrakeCombinedControl=serviceBrakeAppliedCombinedControl;
     if(serviceBrakeCombinedControl){
       const frontPhysicalUtil=physicalAxleCombinedUtilization({
         wheels:physicalTireForces?.wheels,
@@ -543,7 +551,7 @@ export function createDrivingRuntime({
     wheelLongitudinalUsage=perWheelGrip.longitudinalUsage;
 
     // Grip R1: lateral force recovery follows residual rear tire slip.
-    const serviceBrakePhysicalSlip=combinedBrakeEnabled&&serviceBrakeInput>.04;
+    const serviceBrakePhysicalSlip=serviceBrakeAppliedCombinedControl;
     const serviceBrakeTire=serviceBrakePhysicalSlip
       ?tireProfileForVehicle(getVehicleId?.()||'unknown',VEHICLE)
       :null;
