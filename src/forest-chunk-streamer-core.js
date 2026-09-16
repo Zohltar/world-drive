@@ -127,6 +127,14 @@ export function createForestChunkStreamer({
     jobsStarted:0,
     jobsCompleted:0,
     jobsAbandoned:0,
+    coverageJobsQueued:0,
+    coverageJobsStarted:0,
+    coverageJobsCompleted:0,
+    coverageJobsAbandoned:0,
+    replacementJobsQueued:0,
+    replacementJobsStarted:0,
+    replacementJobsCompleted:0,
+    replacementJobsAbandoned:0,
     buildersAbandoned:0,
     jobsRestarted:0,
     candidatesProcessed:0,
@@ -234,9 +242,15 @@ export function createForestChunkStreamer({
   function queuePriority(chunk,center){
     const nearDistance=chunkPriorityDistance(chunk,center);
     const forward=signedForwardDistance(chunk,center);
+    // Block 8 R3: a replacement already has an old visible chunk covering the
+    // area. Missing coverage must finish first; otherwise terrain refreshes can
+    // consume almost half of the available build throughput while holes remain.
+    if(chunk.replace){
+      return {band:2,score:nearDistance,nearDistance,forward};
+    }
     if(!visibleKeys.has(chunk.key)){
       const pc=prefetchPriorityCenter(center);
-      return {band:2,score:chunkPriorityDistance(chunk,pc)+Math.max(0,prefetchMinForwardM-forward)*2,nearDistance,forward};
+      return {band:3,score:chunkPriorityDistance(chunk,pc)+Math.max(0,prefetchMinForwardM-forward)*2,nearDistance,forward};
     }
     if(nearDistance<=nearPriorityDistance){
       let score=nearDistance;
@@ -623,6 +637,7 @@ export function createForestChunkStreamer({
       queuedBand:visibleKeys.has(desc.key)?'visible':(prefetchKeys.has(desc.key)?'prefetch':'other')
     };
     perf.jobsQueued++;
+    if(job.replace)perf.replacementJobsQueued++;else perf.coverageJobsQueued++;
     queued.set(job.key,job);queue.push(job);queuePriorityDirty=true;return job;
   }
 
@@ -641,6 +656,7 @@ export function createForestChunkStreamer({
     job.slices=0;
     job.candidatesProcessed=0;
     perf.jobsStarted++;
+    if(job.replace)perf.replacementJobsStarted++;else perf.coverageJobsStarted++;
     if(job.startedBand==='visible')perf.visibleJobsStarted++;
     else if(job.startedBand==='prefetch')perf.prefetchJobsStarted++;
     return job.builder;
@@ -659,6 +675,7 @@ export function createForestChunkStreamer({
     }
     if(abandonJob){
       perf.jobsAbandoned++;
+      if(job.replace)perf.replacementJobsAbandoned++;else perf.coverageJobsAbandoned++;
       if(band==='visible')perf.visibleJobsAbandoned++;
       else if(band==='prefetch')perf.prefetchJobsAbandoned++;
     }else perf.jobsRestarted++;
@@ -675,11 +692,16 @@ export function createForestChunkStreamer({
     queued.delete(job.key);
   }
 
-  function restartQueuedBuilders(reason){
+  function resetQueuedBuilder(job,reason){
+    if(job.builder)recordBuilderLoss(job,reason,{abandonJob:false});
+    job.builder=null;job.readyToCommit=false;job.startedAt=0;job.lastWorkedAt=0;
+    job.slices=0;job.candidatesProcessed=0;job.startedBand=null;
+  }
+
+  function restartQueuedBuilders(reason,predicate=null){
     for(const job of queue){
-      if(job.builder)recordBuilderLoss(job,reason,{abandonJob:false});
-      job.builder=null;job.readyToCommit=false;job.startedAt=0;job.lastWorkedAt=0;
-      job.slices=0;job.candidatesProcessed=0;job.startedBand=null;
+      if(predicate&&!predicate(job))continue;
+      resetQueuedBuilder(job,reason);
     }
   }
 
@@ -688,12 +710,13 @@ export function createForestChunkStreamer({
     const ageMs=Math.max(0,now-(job.queuedAt||now));
     const builderAgeMs=job.startedAt?Math.max(0,now-job.startedAt):0;
     perf.jobsCompleted++;
+    if(job.replace)perf.replacementJobsCompleted++;else perf.coverageJobsCompleted++;
     if(band==='visible')perf.visibleJobsCompleted++;
     else if(band==='prefetch')perf.prefetchJobsCompleted++;
     perf.maxJobAgeMs=Math.max(perf.maxJobAgeMs,ageMs);
     perf.maxBuilderAgeMs=Math.max(perf.maxBuilderAgeMs,builderAgeMs);
     perf.lastCompletedJob={
-      id:job.id,key:job.key,band,candidates:job.candidatesProcessed||0,
+      id:job.id,key:job.key,band,replace:!!job.replace,candidates:job.candidatesProcessed||0,
       slices:job.slices||0,ageMs,builderAgeMs,at:now
     };
   }
@@ -835,11 +858,16 @@ export function createForestChunkStreamer({
   }
 
   function refreshVisibleHeights(){
-    serial++;
-    restartQueuedBuilders('height-refresh');
     forestTerrain.invalidate?.();slopeCache.clear();
     const center=Number.isFinite(lastCenter.x)?lastCenter:(getWorldOffset()||{x:0,z:0});
     const refreshDistance=FOREST.heightRefreshDistance||520;
+    const affectedDistance=refreshDistance+halfChunkDiagonal;
+    // Only builders whose terrain can actually have changed are restarted.
+    // Far/ahead coverage keeps its accumulated candidate work.
+    restartQueuedBuilders(
+      'height-refresh',
+      job=>chunkCenterDistance(job,center)<=affectedDistance
+    );
     let replacements=0;
     for(const data of active.values()){
       const d=chunkCenterDistance(data,center);
@@ -870,6 +898,8 @@ export function createForestChunkStreamer({
     whenInitialReady:()=>initialReady,
     stats:()=>({
       activeChunks:active.size,cachedChunks:cache.size,queuedChunks:queue.length,
+      queuedCoverageChunks:queue.reduce((count,job)=>count+(job.replace?0:1),0),
+      queuedReplacementChunks:queue.reduce((count,job)=>count+(job.replace?1:0),0),
       visibleWantedChunks:visibleKeys.size,prefetchWantedChunks:prefetchKeys.size,
       prefetchedReadyChunks:prefetchReadyCount(),prefetchQueuedChunks:prefetchQueuedCount(),
       inProgressJobs:queue.reduce((count,job)=>count+(job.builder?1:0),0),

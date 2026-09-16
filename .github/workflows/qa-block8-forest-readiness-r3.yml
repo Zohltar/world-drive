@@ -1,0 +1,63 @@
+name: Block 8 Forest Readiness R3 QA
+
+on:
+  push:
+    branches:
+      - candidate/block8-forest-readiness-r3
+    paths:
+      - 'src/geography/spatial-proximity-index.js'
+      - 'src/routing/routing.js'
+      - 'src/main.js'
+      - 'src/scenery/scenery-renderer-p9.js'
+      - 'src/forest-chunk-streamer.js'
+      - 'src/forest-chunk-streamer-core.js'
+      - 'src/forest-streaming-policy.js'
+      - 'qa/qa-block8-forest-geographic-index-r2.mjs'
+      - 'qa/qa-block8-forest-lifecycle-diagnostics-r1.mjs'
+      - 'qa/qa-block8-forest-coverage-priority-r3.mjs'
+      - 'qa/qa-forest-p929-frame-budget.mjs'
+      - 'qa/qa-forest-p936-rolling-prefetch.mjs'
+      - 'qa/qa-forest-p940-maintenance.mjs'
+      - 'qa/qa-forest-active-runtime.mjs'
+      - 'qa/qa-forest-active-stress.mjs'
+      - 'qa/qa-water-hydro-runtime.mjs'
+      - 'qa/DEV_INTEGRATION_AUDIT.mjs'
+      - 'docs/WORLD_DRIVE_EVOLUTION_AND_CORRECTION_PLAN.md'
+      - '.github/workflows/qa-block8-forest-readiness-r3.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  qa:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Exact route and hydro spatial parity
+        run: node qa/qa-block8-forest-geographic-index-r2.mjs
+      - name: Coverage before terrain replacement
+        run: node qa/qa-block8-forest-coverage-priority-r3.mjs
+      - name: Long-drive lifecycle diagnostics
+        run: node qa/qa-block8-forest-lifecycle-diagnostics-r1.mjs
+      - name: Forest frame budget
+        run: node qa/qa-forest-p929-frame-budget.mjs
+      - name: Forest rolling prefetch baseline
+        run: node qa/qa-forest-p936-rolling-prefetch.mjs
+      - name: Forest dirty-queue maintenance
+        run: node qa/qa-forest-p940-maintenance.mjs
+      - name: Forest runtime and stress
+        run: |
+          node qa/qa-forest-active-runtime.mjs
+          node qa/qa-forest-active-stress.mjs
+      - name: Hydro runtime
+        run: node qa/qa-water-hydro-runtime.mjs
+      - name: Dev integration audit
+        run: node qa/DEV_INTEGRATION_AUDIT.mjs
+      - name: Production build
+        run: npm run build

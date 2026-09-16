@@ -263,16 +263,19 @@ export function createForestChunkStreamer(options){
     const raw=activeBase().stats?.()||{},seed=activeEntry;
     return {
       enabled:true,observerMode:'p931-ahead-priority',startupMode:'p934-startup-route-seed',streamingMode:'p940-dirty-priority-queue',
-      hitchMode:'p941-frame-window-runtime',readinessMode:'block8-r2-spatial-proximity',legacyObserverMode:'p929-direct-last-slice',
+      hitchMode:'p941-frame-window-runtime',readinessMode:'block8-r3-coverage-before-replacement',legacyObserverMode:'p929-direct-last-slice',
       routeCache:{key:activeEntry.key,slots:entries.length,maxSlots:ROUTE_CACHE_SLOTS,lastRebase:lastRouteCacheRebase?{...lastRouteCacheRebase}:null},
       trees:visible.trees,near:visible.near,mid:visible.mid,far:visible.far,edge:visible.edge,
       activeChunks:finite(raw.activeChunks),cachedChunks:finite(raw.cachedChunks),queuedChunks:finite(raw.queuedChunks),
+      queueMix:{coverage:finite(raw.queuedCoverageChunks),replacement:finite(raw.queuedReplacementChunks)},
       chunksBuilt:finite(raw.chunksBuilt),chunksReplaced:finite(raw.chunksReplaced),matrixUploads:finite(raw.matrixUploads),densityCountUpdates:finite(raw.densityCountUpdates),
       startupDirection:{seeded:seed.startupDirectionSeeded,seedDistanceM:STARTUP_DIRECTION_SEED_M,angle:Number.isFinite(seed.startupSeedAngle)?round3(seed.startupSeedAngle):null,dirX:round3(seed.startupSeedDir.x),dirZ:round3(seed.startupSeedDir.z)},
       aheadPriority:{enabled:raw.aheadPriority===true,nearPriorityDistance:round3(raw.nearPriorityDistance),leadM:round3(raw.priorityLeadM),confidence:round3(raw.travelConfidence),dirX:round3(raw.travelDirX),dirZ:round3(raw.travelDirZ)},
       prefetch:{enabled:raw.rollingPrefetch===true,leadM:round3(raw.prefetchLeadM),radiusM:round3(raw.prefetchRadiusM),minForwardM:round3(raw.prefetchMinForwardM),wanted:finite(raw.prefetchWantedChunks),ready:finite(raw.prefetchedReadyChunks),queued:finite(raw.prefetchQueuedChunks),meshPrepares:finite(raw.prefetchMeshPrepares),hits:finite(raw.prefetchHits)},
       lifecycle:{
         queued:finite(raw.jobsQueued),started:finite(raw.jobsStarted),completed:finite(raw.jobsCompleted),abandoned:finite(raw.jobsAbandoned),
+        coverage:{queued:finite(raw.coverageJobsQueued),started:finite(raw.coverageJobsStarted),completed:finite(raw.coverageJobsCompleted),abandoned:finite(raw.coverageJobsAbandoned)},
+        replacement:{queued:finite(raw.replacementJobsQueued),started:finite(raw.replacementJobsStarted),completed:finite(raw.replacementJobsCompleted),abandoned:finite(raw.replacementJobsAbandoned)},
         buildersAbandoned:finite(raw.buildersAbandoned),restarted:finite(raw.jobsRestarted),inProgress:finite(raw.inProgressJobs),prefetchInProgress:finite(raw.prefetchInProgressJobs),
         candidatesProcessed:finite(raw.candidatesProcessed),candidatesAbandoned:finite(raw.candidatesAbandoned),
         visible:{started:finite(raw.visibleJobsStarted),completed:finite(raw.visibleJobsCompleted),abandoned:finite(raw.visibleJobsAbandoned)},
