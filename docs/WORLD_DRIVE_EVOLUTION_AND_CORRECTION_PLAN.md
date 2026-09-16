@@ -70,14 +70,14 @@ Before coding, be able to answer:
 **Issue #2:** **OPEN / watch-only / not reproduced**  
 **Issue #9:** **DONE/CERTIFIED — HUMAN YUNGAS VISUAL/PERFORMANCE PASS (2026-09-05)**  
 **Issue #10:** **DONE/CERTIFIED — HUMAN PASS (2026-09-12) — steep planar road-contact correction**  
-**Issue #11:** **HUMAN PASS (2026-09-16) — measured-axis R2 candidate `7328f1401de8d5309a1b0f0a8a62f37eeeb014d7`, exact-head run `35100860270` PASS; integration pending**
+**Issue #11:** **DONE/CERTIFIED — HUMAN PASS (2026-09-16); integrated `dev` checkpoint `4ad64194d53849c0c344872b59ffab2c1b3ba2a2`, exact-head Dev Integration `35104245846` PASS**
 **Issue #12:** **OPEN / PARKED — forest streaming falls behind after sustained driving; resume investigation inside Block 8 biome work**  
 **Issue #13:** **DONE/CERTIFIED — HUMAN PASS (2026-09-12) — bounded road-articulation contact correction**  
 **Block 8 — Biome-aware natural scenery:** **PLANNED / DEFERRED — includes the parked Issue #12 forest-readiness work when activated**  
 **Block 9 — AI-assisted 3D asset authoring and selective GLB modernization:** **PLANNED / DEFERRED — pilot-first, no wholesale asset replacement**  
 **Block 10 — Mobile browser driving controls:** **ABANDONED / NOT PLANNED (2026-09-13) — experiment stopped by user; no mobile-control candidate runtime was integrated**  
 **Block 11 — Circuit presets / closed-loop authored track routes:** **DONE/CERTIFIED — Laguna Seca HUMAN PASS (2026-09-14); Nordschleife performance HUMAN PASS (2026-09-15); no-ABS runtime and continuous guard rails HUMAN PASS (2026-09-16); integrated `dev` checkpoint `568f557a051832559fa1f3166350cc338a399ee1`, exact-head Dev Integration `35054930198` PASS**
-**Active correction block:** **ISSUE #11 — generic-pack `coupe` authored-forward axis corrected; exact-head automation and HUMAN PASS complete; integrate to `dev` and validate exact integrated HEAD**
+**Active correction block:** **NONE — latest accepted civil-traffic correction is integrated and certified; wait for an explicit next priority**
 **Stable `main`:** `b74e7377eaaf2b128eb893c547f4c2da3d14bbea` — tag `v21.32`; must remain untouched without explicit user approval.  
 **Previous rollback/reference:** `9a69c39242eb0f3e2cf8d2fd68675c1cfad23dd8` — tag `v21.31`.
 
@@ -401,7 +401,7 @@ GitHub Issue #13: **CLOSED / COMPLETED (2026-09-12)**.
 
 ## Exact next action
 
-**Integrate the accepted Issue #11 measured-axis R2 candidate to `dev`, validate the exact integrated HEAD, then record the certified checkpoint.**
+**No correction is currently active. Preserve the certified Issue #11 checkpoint and wait for an explicit next priority.**
 
 Current unresolved work is intentionally not auto-started:
 
@@ -844,9 +844,9 @@ The defect was reproduced as false axle contact loss on steep but planar road su
 
 ## Issue #11 — one civil-traffic vehicle rotated ~90° from route heading
 
-**HUMAN PASS (2026-09-16) — integration pending.**
+**DONE/CERTIFIED — HUMAN PASS (2026-09-16).**
 
-The blue generic-pack `coupe` follows the correct path but its body was visually rotated roughly 90° sideways. The supplied asset confirms why: this is the only pack body with its longitudinal geometry authored near X rather than Y. Candidate `5ffff22d39fd1b3aced3111b3bf9189872a8b10b` applied an initial `-90°` correction and passed exact-head workflow `35100053764`, but received HUMAN FAIL because a smaller diagonal yaw remained. Direct principal-axis measurement of all 4,671 authored body/glass/optics vertices found an additional `17.66783°` source rotation; R2 candidate `7328f1401de8d5309a1b0f0a8a62f37eeeb014d7` therefore uses the complete `-107.66783°` correction before length normalization and passed exact-head workflow `35100860270`. The forced-spawn retest received HUMAN PASS on 2026-09-16. Preserve traffic routing, speed, lane placement and all correctly aligned variants during integration.
+The blue generic-pack `coupe` followed the correct path but its body was visually rotated roughly 90° sideways. The supplied asset confirmed why: this is the only pack body with its longitudinal geometry authored near X rather than Y. Candidate `5ffff22d39fd1b3aced3111b3bf9189872a8b10b` applied an initial `-90°` correction and passed exact-head workflow `35100053764`, but received HUMAN FAIL because a smaller diagonal yaw remained. Direct principal-axis measurement of all 4,671 authored body/glass/optics vertices found an additional `17.66783°` source rotation; R2 candidate `7328f1401de8d5309a1b0f0a8a62f37eeeb014d7` therefore uses the complete `-107.66783°` correction before length normalization and passed exact-head workflow `35100860270`. The forced-spawn retest received HUMAN PASS on 2026-09-16. The accepted candidate was integrated to `dev` at `4ad64194d53849c0c344872b59ffab2c1b3ba2a2`; Dev Integration run `35104245846` passed, with traffic routing, speed, lane placement and all correctly aligned variants preserved.
 
 ## Issue #12 — forest streaming falls behind after sustained driving
 
