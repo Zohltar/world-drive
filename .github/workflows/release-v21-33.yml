@@ -1,0 +1,60 @@
+name: World Drive V21.33 Release
+
+on:
+  push:
+    branches:
+      - release/v21.33
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  validate-build-release:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install exact dependencies
+        run: npm ci
+      - name: Stable branding QA
+        run: node qa/qa-version-branding-a6.mjs
+      - name: Full integration QA
+        run: node qa/DEV_INTEGRATION_AUDIT.mjs
+      - name: Build Windows installer and portable package
+        run: npm run make
+      - name: Stage deterministic release assets
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force release-assets | Out-Null
+          $setup = Get-ChildItem out/make -Recurse -File -Filter WorldDriveSetup.exe | Select-Object -First 1
+          $portable = Get-ChildItem out/make -Recurse -File -Filter *.zip | Select-Object -First 1
+          if (-not $setup) { throw 'WorldDriveSetup.exe was not produced' }
+          if (-not $portable) { throw 'Portable ZIP was not produced' }
+          Copy-Item $setup.FullName release-assets/WorldDriveSetup.exe
+          Copy-Item $portable.FullName release-assets/World-Drive-win32-x64-21.33.0.zip
+          Get-FileHash release-assets/* -Algorithm SHA256 | Format-Table -AutoSize
+      - name: Upload validated Windows artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: world-drive-v21.33-windows
+          path: release-assets/*
+          if-no-files-found: error
+          retention-days: 30
+      - name: Publish GitHub release from exact main HEAD
+        if: github.ref == 'refs/heads/main'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create v21.33 release-assets/* `
+            --target $env:GITHUB_SHA `
+            --title 'World Drive V21.33 stable' `
+            --notes-file docs/WORLD_DRIVE_RELEASE_V21_33.md
