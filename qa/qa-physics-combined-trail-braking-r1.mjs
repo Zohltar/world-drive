@@ -152,7 +152,8 @@ function runtimeIntegrationProbe({
   frameRate=120,
   scenario='Laguna R43.5',
   radius=43.5,
-  steerDeg=3.70
+  steerDeg=3.70,
+  brakePedal=.25
 }={}){
   const frameDt=1/frameRate;
   const speed=Math.sqrt(targetLateral*radius);
@@ -221,7 +222,7 @@ function runtimeIntegrationProbe({
     keyboardActionDown:action=>action==='brake'&&braking,
     gamepadState:{connected:false,throttle:0,brake:0,steer:0,hand:false},
     updateTransmission:()=>0,
-    getServiceBrakeInput:()=>braking?1:0,
+    getServiceBrakeInput:()=>braking?brakePedal:0,
     vehiclePresentation:{airborne:false,wheelContacts:contacts,updateSuspensionVisuals(){},updateWheels(){}},
     vehicleVisuals:{updateBrakeLights(){}},
     truckTrailerSystem:{
@@ -279,12 +280,8 @@ function runtimeIntegrationProbe({
     tireSolverBrakeAccel:capturedGripArgs.serviceBrakeAccel,
     loadTransferAccel:runtime.physicsShadowDiagnostics().longitudinalLoadTransferAccel
   };
-  assert.ok(firstFrame.forceScale<1&&firstFrame.forceScale>0,
-    `driving runtime did not apply combined braking: ${capturedBrake?.combinedGripScale}`);
-  assert.ok(Math.hypot(
-    Math.abs(firstFrame.brakeAccel)/Math.max(.1,capturedBrake.limit),
-    Math.min(1,Math.abs(capturedGripArgs.requestedLatAccel)/lateralLimit)
-  )<=1+1e-9,'driving runtime left the first trail-brake frame outside the g-g envelope');
+  assert.equal(firstFrame.forceScale,1,
+    `removed ABS still rescaled direct service braking: ${capturedBrake?.combinedGripScale}`);
   assert.ok(Math.abs(firstFrame.tireSolverBrakeAccel-firstFrame.brakeAccel)<1e-10,
     'aggregate tire solver did not receive allocated brake acceleration');
   assert.ok(Math.abs(firstFrame.loadTransferAccel-firstFrame.brakeAccel)<1e-10,
@@ -346,23 +343,20 @@ function runtimeIntegrationProbe({
     minTrajectoryCapacity=Math.min(minTrajectoryCapacity,capturedGripResult.trajectoryLateralCapacityAccel);
     if(captureFrames.has(frame))captureFrame(frame);
   }
-  assert.ok(maxFourWheelSlide<.15,
-    `one-second Laguna trail braking reverted to four-wheel sliding: ${maxFourWheelSlide}`);
-  assert.ok(maxRearSlip<.15,
-    `one-second Laguna trail braking still breaks the rear axle away: ${maxRearSlip}`);
-  assert.ok(maxFrontSlip<.15,
-    `one-second Laguna trail braking still produces excessive front push: ${maxFrontSlip}`);
-  assert.ok(maxSideslipRad*180/Math.PI<3,
-    `one-second Laguna trail braking produced excessive chassis sideslip: ${maxSideslipRad*180/Math.PI} deg`);
+  assert.ok(maxFourWheelSlide<.05,
+    `partial no-ABS trail braking produced four-wheel slide: ${maxFourWheelSlide}`);
+  assert.ok(maxRearSlip<.12,
+    `partial no-ABS trail braking broke the rear axle away: ${maxRearSlip}`);
+  assert.ok(maxFrontSlip<.05,
+    `partial no-ABS trail braking produced excessive front push: ${maxFrontSlip}`);
+  assert.ok(maxSideslipRad*180/Math.PI<2.5,
+    `partial no-ABS trail braking produced excessive chassis sideslip: ${maxSideslipRad*180/Math.PI} deg`);
   const configuredFrontShare=vehicle.axles.find(axle=>axle.positionM>=0)?.brakeShare||0;
   const initialFrontShare=timeline[0]?.frontBrakeShare||0;
-  if(radius>=40){
-    assert.ok(Math.abs(initialFrontShare-configuredFrontShare)<.015,
-      `feasible Laguna trail braking replaced mechanical brake bias: ${initialFrontShare}`);
-  }else{
-    assert.ok(initialFrontShare>configuredFrontShare+.08&&initialFrontShare<.85,
-      `tight Laguna entry did not constrain EBD from measured tire reserve: ${initialFrontShare}`);
-  }
+  assert.ok(Math.abs(initialFrontShare-configuredFrontShare)<1e-9,
+    `no-ABS runtime replaced mechanical brake bias: ${initialFrontShare}`);
+  assert.ok(timeline.every(point=>point.absActiveWheels===0),
+    'removed ABS still regulated a wheel during the runtime probe');
   const finalTargetYaw=Math.abs(lateralDynamicsEnvelope({
     vehicle,
     speed:state.speed,
@@ -384,6 +378,7 @@ function runtimeIntegrationProbe({
   const report={
     scenario,
     frameRate,
+    brakePedal,
     firstBrakeG:Number((Math.abs(firstFrame.brakeAccel)/G).toFixed(3)),
     firstForceScale:Number(firstFrame.forceScale.toFixed(3)),
     tireSolverBrakeG:Number((Math.abs(firstFrame.tireSolverBrakeAccel)/G).toFixed(3)),
