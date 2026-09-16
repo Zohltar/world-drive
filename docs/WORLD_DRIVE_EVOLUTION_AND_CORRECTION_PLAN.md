@@ -70,7 +70,7 @@ Before coding, be able to answer:
 **Issue #2:** **OPEN / watch-only / not reproduced**  
 **Issue #9:** **DONE/CERTIFIED — HUMAN YUNGAS VISUAL/PERFORMANCE PASS (2026-09-05)**  
 **Issue #10:** **DONE/CERTIFIED — HUMAN PASS (2026-09-12) — steep planar road-contact correction**  
-**Issue #11:** **ACTIVE — `coupe` forward-axis candidate `9e57b289ee91c9a572efd0674572613a84ba95c1` exact-head run `35099893909` PASS; awaiting HUMAN PASS**
+**Issue #11:** **ACTIVE — initial `-90°` coupe candidate automated PASS but HUMAN FAIL (residual diagonal yaw); measured-axis R2 validation in progress**
 **Issue #12:** **OPEN / PARKED — forest streaming falls behind after sustained driving; resume investigation inside Block 8 biome work**  
 **Issue #13:** **DONE/CERTIFIED — HUMAN PASS (2026-09-12) — bounded road-articulation contact correction**  
 **Block 8 — Biome-aware natural scenery:** **PLANNED / DEFERRED — includes the parked Issue #12 forest-readiness work when activated**  
@@ -846,7 +846,7 @@ The defect was reproduced as false axle contact loss on steep but planar road su
 
 **ACTIVE — exact-head candidate automation PASS / awaiting HUMAN PASS.**
 
-The blue generic-pack `coupe` follows the correct path but its body is visually rotated roughly 90° sideways. The supplied asset confirms why: this is the only pack body with its longitudinal geometry authored on X rather than Y. Candidate `9e57b289ee91c9a572efd0674572613a84ba95c1` applies an explicit `-90°` per-model forward-yaw correction before length normalization while preserving traffic routing, speed, lane placement and all correctly aligned variants. Exact-head workflow `35099893909` is PASS. Require a forced `coupe` human comparison before integration.
+The blue generic-pack `coupe` follows the correct path but its body was visually rotated roughly 90° sideways. The supplied asset confirms why: this is the only pack body with its longitudinal geometry authored near X rather than Y. Candidate `5ffff22d39fd1b3aced3111b3bf9189872a8b10b` applied an initial `-90°` correction and passed exact-head workflow `35100053764`, but received HUMAN FAIL because a smaller diagonal yaw remained. Direct principal-axis measurement of all 4,671 authored body/glass/optics vertices found an additional `17.66783°` source rotation; R2 therefore uses the complete `-107.66783°` correction before length normalization. Preserve traffic routing, speed, lane placement and all correctly aligned variants, and require a new forced `coupe` HUMAN PASS before integration.
 
 ## Issue #12 — forest streaming falls behind after sustained driving
 

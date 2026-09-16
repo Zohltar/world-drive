@@ -6,11 +6,11 @@ export const GENERIC_PASSENGER_PACK_FALLBACK_URL='./assets/traffic/generic_passe
 export const CIVIL_TRAFFIC_VEHICLE_POOL=Object.freeze([
   Object.freeze({id:'sonata',label:'Hyundai Sonata',source:'sonata',weight:1.0,targetLength:4.85}),
   Object.freeze({id:'compact',label:'Compact',source:'generic-pack',bodyName:'Compact Body',weight:1.15,targetLength:4.05}),
-  // This authored body is the only pack variant whose longitudinal axis is +X
-  // instead of -Y. Rotate it into the common pack-forward contract before the
-  // template is measured; otherwise it drives sideways and its width is scaled
-  // to targetLength as though it were the vehicle length.
-  Object.freeze({id:'coupe',label:'Coupe',source:'generic-pack',bodyName:'Coupe Body',weight:.55,targetLength:4.55,forwardYaw:-Math.PI/2}),
+  // This authored body is the only pack variant whose longitudinal axis is near
+  // +X instead of -Y, and its geometry is itself 17.66783° off X. Rotate the
+  // measured axis into the common pack-forward contract before normalization;
+  // otherwise it drives diagonally and its width is scaled as vehicle length.
+  Object.freeze({id:'coupe',label:'Coupe',source:'generic-pack',bodyName:'Coupe Body',weight:.55,targetLength:4.55,forwardYaw:-107.6678296368*Math.PI/180}),
   Object.freeze({id:'hatchback',label:'Hatchback',source:'generic-pack',bodyName:'Hatchback Body',weight:1.15,targetLength:4.30}),
   Object.freeze({id:'minivan',label:'Minivan',source:'generic-pack',bodyName:'minivan body',weight:.65,targetLength:5.05}),
   Object.freeze({id:'offroad',label:'Off-road',source:'generic-pack',bodyName:'Offroad Body',weight:.45,targetLength:4.55}),

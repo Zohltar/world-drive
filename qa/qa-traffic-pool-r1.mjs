@@ -16,7 +16,8 @@ const expected=['sonata','compact','coupe','hatchback','minivan','offroad','pick
 assert.deepEqual(ids,expected,'traffic variety pool must contain Sonata plus all ten supplied pack silhouettes');
 assert.equal(new Set(ids).size,ids.length,'traffic pool ids must be unique');
 assert.equal(genericPassengerPackIds().length,10,'generic passenger pack must expose ten civilian variants');
-assert.equal(CIVIL_TRAFFIC_VEHICLE_POOL.find(entry=>entry.id==='coupe')?.forwardYaw,-Math.PI/2,'sideways authored coupe must declare its +X forward-axis correction');
+const coupeForwardYaw=CIVIL_TRAFFIC_VEHICLE_POOL.find(entry=>entry.id==='coupe')?.forwardYaw;
+assert.ok(Math.abs(coupeForwardYaw-(-107.6678296368*Math.PI/180))<1e-12,'diagonal authored coupe must declare its measured forward-axis correction');
 assert.ok(CIVIL_TRAFFIC_VEHICLE_POOL.filter(entry=>entry.id!=='coupe').every(entry=>entry.forwardYaw===undefined),'correctly aligned traffic variants must not receive a yaw correction');
 assert.ok(CIVIL_TRAFFIC_VEHICLE_POOL.every(entry=>entry.weight>0),'every traffic pool entry needs positive spawn weight');
 assert.ok(CIVIL_TRAFFIC_VEHICLE_POOL.every(entry=>entry.targetLength>=4&&entry.targetLength<=5.6),'traffic vehicle dimensions must stay plausible');
@@ -82,10 +83,9 @@ for(const entry of CIVIL_TRAFFIC_VEHICLE_POOL.filter(item=>item.source==='generi
   body.position.set(baseX,0,0);
   // Mirror the real pack's axis exception: the coupe is authored lengthwise on
   // +X, while every other supplied body is lengthwise on Y.
-  body.add(new THREE.Mesh(
-    entry.id==='coupe'?new THREE.BoxGeometry(4.6,2,1.5):new THREE.BoxGeometry(2,4,1.5),
-    bodyMaterial
-  ));
+  const bodyGeometry=entry.id==='coupe'?new THREE.BoxGeometry(4.6,2,1.5):new THREE.BoxGeometry(2,4,1.5);
+  if(entry.id==='coupe')bodyGeometry.rotateZ(17.6678296368*Math.PI/180);
+  body.add(new THREE.Mesh(bodyGeometry,bodyMaterial));
   syntheticRoot.add(body);
   const wheelOffsets=[[-.82,-1.45],[.82,-1.45],[-.82,1.45],[.82,1.45]];
   wheelOffsets.forEach(([dx,dz],index)=>{
