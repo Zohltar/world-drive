@@ -76,8 +76,8 @@ Before coding, be able to answer:
 **Block 8 — Biome-aware natural scenery:** **PLANNED / DEFERRED — includes the parked Issue #12 forest-readiness work when activated**  
 **Block 9 — AI-assisted 3D asset authoring and selective GLB modernization:** **PLANNED / DEFERRED — pilot-first, no wholesale asset replacement**  
 **Block 10 — Mobile browser driving controls:** **ABANDONED / NOT PLANNED (2026-09-13) — experiment stopped by user; no mobile-control candidate runtime was integrated**  
-**Block 11 — Circuit presets / closed-loop authored track routes:** **ACTIVE — Laguna Seca HUMAN PASS (2026-09-14); Nordschleife performance HUMAN PASS (2026-09-15); no-ABS runtime and continuous guard rails HUMAN PASS (2026-09-16), integration pending**
-**Active correction block:** **NO-ABS + NORDSCHLEIFE GUARD RAILS R1 — exact-head run `35053235510` PASS and HUMAN PASS (2026-09-16); integrate to `dev` and validate the exact integrated HEAD**
+**Block 11 — Circuit presets / closed-loop authored track routes:** **DONE/CERTIFIED — Laguna Seca HUMAN PASS (2026-09-14); Nordschleife performance HUMAN PASS (2026-09-15); no-ABS runtime and continuous guard rails HUMAN PASS (2026-09-16); integrated `dev` checkpoint `568f557a051832559fa1f3166350cc338a399ee1`, exact-head Dev Integration `35054930198` PASS**
+**Active correction block:** **NONE — latest accepted World Drive circuit/physics checkpoint is integrated and certified; wait for an explicit next priority**
 **Stable `main`:** `b74e7377eaaf2b128eb893c547f4c2da3d14bbea` — tag `v21.32`; must remain untouched without explicit user approval.  
 **Previous rollback/reference:** `9a69c39242eb0f3e2cf8d2fd68675c1cfad23dd8` — tag `v21.31`.
 
@@ -401,7 +401,7 @@ GitHub Issue #13: **CLOSED / COMPLETED (2026-09-12)**.
 
 ## Exact next action
 
-**Integrate No-ABS + Nordschleife Guard Rails R1 to `dev` by fast-forward, run exact-head Dev Integration QA, then record the certified checkpoint.**
+**No correction is currently active. Preserve the certified Block 11 checkpoint and wait for an explicit next priority.**
 
 Current unresolved work is intentionally not auto-started:
 
@@ -412,7 +412,7 @@ Current unresolved work is intentionally not auto-started:
 - Block 8 biome-aware natural scenery remains **planned/deferred**; when activated, begin by reopening and stabilizing forest readiness/streaming as its first runtime workstream, then add biome classification and palette selection;
 - Block 9 AI-assisted 3D asset authoring remains **planned/deferred**; begin with one controlled pilot asset and do not replace accepted GLBs wholesale without measured visual/runtime benefit;
 - Block 10 mobile browser driving controls is **ABANDONED / NOT PLANNED** by user decision; do not integrate the retired candidate branch.
-- Block 11 is **ACTIVE**: Laguna Seca has HUMAN PASS. Nordschleife R4 checkpoint `36a1adecfdcbbaa59e3994423d8ff62cefd9e067` passed exact-head run `34918367074`, and the user confirmed normal performance on 2026-09-15. Physics Trail-Braking R2 then passed exact-head run `35022259552` but received HUMAN FAIL because the WRX remained very understeered. R3 implementation checkpoint `c5f2c60ec44bb8628b3e68c331fdc3b788332c14` passed run `35026732737`; final docs checkpoint `bb23e201645b61e2cb4c18bdfc7906fea0a4c30c` passed run `35026882948`. Physics ABS Toggle R1 implementation checkpoint `6ab85c244af4e65eafb0e2356b6a100e7b01f384` passed exact-head run `35030137277`, and final checkpoint `8eacda43baab8c4341fcb00da887c789bc60f969` passed run `35030318769`. The human comparison confirmed correct trail braking with ABS OFF; the subsequent R4 correction was still rejected as problematic. By user decision ABS is now removed from gameplay. The same candidate corrects the reported repeated Nordschleife guard-rail gaps with 5 m pitched, overlapping spans while preserving single-batch instancing.
+- Block 11 is **DONE/CERTIFIED**: Laguna Seca has HUMAN PASS. Nordschleife R4 checkpoint `36a1adecfdcbbaa59e3994423d8ff62cefd9e067` passed exact-head run `34918367074`, and the user confirmed normal performance on 2026-09-15. Physics Trail-Braking R2 then passed exact-head run `35022259552` but received HUMAN FAIL because the WRX remained very understeered. R3 implementation checkpoint `c5f2c60ec44bb8628b3e68c331fdc3b788332c14` passed run `35026732737`; final docs checkpoint `bb23e201645b61e2cb4c18bdfc7906fea0a4c30c` passed run `35026882948`. Physics ABS Toggle R1 implementation checkpoint `6ab85c244af4e65eafb0e2356b6a100e7b01f384` passed exact-head run `35030137277`, and final checkpoint `8eacda43baab8c4341fcb00da887c789bc60f969` passed run `35030318769`. The human comparison confirmed correct trail braking with ABS OFF; the subsequent R4 correction was still rejected as problematic. By user decision ABS was removed from gameplay. The final candidate also corrected the reported repeated Nordschleife guard-rail gaps with 5 m pitched, overlapping spans while preserving single-batch instancing. Human PASS was recorded on 2026-09-16, final candidate checkpoint `e5d14b2351ed3958a0171add4f3bca3862675d26` passed run `35054421284`, and integrated `dev` checkpoint `568f557a051832559fa1f3166350cc338a399ee1` passed exact-head Dev Integration `35054930198`.
 
 Do not modify `main` without explicit user approval. Do not begin a deferred block merely because the latest certified corrections are complete.
 
@@ -508,9 +508,9 @@ Focused run `33915664612`: PASS. Post-integration Dev Integration `33915756142`:
 
 ## Current active correction block
 
-**BLOCK 11B — Nürburgring Nordschleife circuit preset.**
+**NONE — Block 11 is integrated and certified.**
 
-Laguna Seca passed its human checkpoint on 2026-09-14. The Nordschleife R1 exact-head automation passed, but the first human run on 2026-09-15 fell to approximately 10 FPS. R3 batched dense OSM scenery, yet its diagnostic retest still measured 8.195 FPS because a T13 seam bridge expanded the enhanced bridge furniture to roughly 31,000 scene meshes. Validate the isolated R4 circular bridge-span and bridge-instancing correction without changing accepted ordinary road-routing semantics, road geometry, vehicle tuning, terrain authority, multiplayer, keyboard/gamepad controls or existing presets.
+The accepted Laguna Seca and Nordschleife circuit work, Nordschleife performance correction, fixed-bias no-ABS driving behavior and continuous relief-following guard rails are all present in the certified `dev` checkpoint. Do not begin a deferred roadmap block without a new explicit priority.
 
 ---
 
@@ -762,7 +762,7 @@ Do not start Block 10 by rewriting the HUD or physics globally. First isolate th
 
 ## Block 11 — Circuit presets / closed-loop authored track routes
 
-**ACTIVE — Laguna Seca HUMAN PASS (2026-09-14); Nürburgring Nordschleife R4 performance HUMAN PASS (2026-09-15); full-lap promotion held by the WRX Physics Trail-Braking R4 retest.**
+**DONE/CERTIFIED — Laguna Seca HUMAN PASS (2026-09-14); Nürburgring Nordschleife performance HUMAN PASS (2026-09-15); fixed-bias no-ABS behavior and continuous guard rails HUMAN PASS (2026-09-16); integrated exact-head Dev Integration `35054930198` PASS.**
 
 Goal: add famous closed-loop race circuits to the existing preset-route experience while keeping ordinary road routing unchanged. Circuit presets should be deterministic, offline-friendly after code delivery, and suitable as repeatable vehicle/terrain stress routes.
 
@@ -785,7 +785,7 @@ Acceptance:
 
 ### Block 11B — Nürburgring Nordschleife
 
-**ACTIVE — R1 exact-head automation passed; human performance checkpoint failed at ~10 FPS (2026-09-15); R3 checkpoint `6304d67` passed exact-head run `34915719869` but its diagnostic retest remained at 8.195 FPS; R4 checkpoint `36a1ade` passed exact-head run `34918367074` and subsequently received HUMAN PERFORMANCE PASS. ABS is now removed by user decision. Full-lap promotion waits for the fixed-bias driving retest and visual confirmation that relief-following guard-rail spans eliminate the photographed repeated gaps.** Reuse the accepted closed-loop preset infrastructure, then add the Nordschleife as the longer/high-load circuit and streaming stress route.
+**DONE/CERTIFIED — R1 exact-head automation passed; the first human performance checkpoint failed at ~10 FPS (2026-09-15); R3 checkpoint `6304d67` passed exact-head run `34915719869` but its diagnostic retest remained at 8.195 FPS; R4 checkpoint `36a1ade` passed exact-head run `34918367074` and subsequently received HUMAN PERFORMANCE PASS. ABS was removed by user decision. The fixed-bias driving behavior and relief-following continuous guard rails received HUMAN PASS on 2026-09-16, then integrated `dev` checkpoint `568f557a051832559fa1f3166350cc338a399ee1` passed Dev Integration run `35054930198`.** The accepted closed-loop preset infrastructure now provides the Nordschleife as the longer/high-load circuit and streaming stress route.
 
 R1 contract:
 
@@ -802,7 +802,7 @@ R1 contract:
 - `WorldDriveFramePacing().rendering` exposes draw calls, triangle/object/instance counts and scenery batch statistics for the human performance checkpoint;
 - permanent QA covers source closure/direction/length, UI/lifecycle forwarding, seven local road windows, finite mesh bounds, T13 contact continuity, physical width, streaming wrap, Laguna regression, full driving matrix, integration and production build.
 
-Human acceptance must drive one full WRX lap and inspect T13, Hatzenbach, Flugplatz, Fuchsröhre, Karussell, Pflanzgarten and Döttinger Höhe for route continuity, visible/physical width agreement, suspension-scale facets, terrain ownership, streaming stalls and stable braking while steering. Performance is accepted; promotion still requires predictable trail braking without an easy rear snap or an excessive front push. R1 uses real-world centreline and elevation context, but does not claim survey-grade surface detail or an exact authored concrete-bowl model for the Karussell; that special surface must not be approximated silently without a defensible geometry source.
+Human acceptance covered the WRX driving behavior, performance and the reported guard-rail visual defect. The accepted result provides predictable fixed-bias trail braking without the problematic ABS intervention, while keeping the previously accepted Nordschleife performance. R1 uses real-world centreline and elevation context, but does not claim survey-grade surface detail or an exact authored concrete-bowl model for the Karussell; that special surface must not be approximated silently without a defensible geometry source.
 
 Implementation order:
 
