@@ -71,13 +71,13 @@ Before coding, be able to answer:
 **Issue #9:** **DONE/CERTIFIED — HUMAN YUNGAS VISUAL/PERFORMANCE PASS (2026-09-05)**  
 **Issue #10:** **DONE/CERTIFIED — HUMAN PASS (2026-09-12) — steep planar road-contact correction**  
 **Issue #11:** **DONE/CERTIFIED — HUMAN PASS (2026-09-16); integrated `dev` checkpoint `4ad64194d53849c0c344872b59ffab2c1b3ba2a2`, exact-head Dev Integration `35104245846` PASS**
-**Issue #12:** **OPEN / PARKED — forest streaming falls behind after sustained driving; resume investigation inside Block 8 biome work**  
+**Issue #12:** **ACTIVE — Block 8 R1 job-lifecycle diagnosis; forest streaming falls behind after sustained driving**
 **Issue #13:** **DONE/CERTIFIED — HUMAN PASS (2026-09-12) — bounded road-articulation contact correction**  
-**Block 8 — Biome-aware natural scenery:** **PLANNED / DEFERRED — includes the parked Issue #12 forest-readiness work when activated**  
+**Block 8 — Biome-aware natural scenery:** **ACTIVE (2026-09-16) — R1 forest-readiness diagnosis before biome classification**
 **Block 9 — AI-assisted 3D asset authoring and selective GLB modernization:** **PLANNED / DEFERRED — pilot-first, no wholesale asset replacement**  
 **Block 10 — Mobile browser driving controls:** **ABANDONED / NOT PLANNED (2026-09-13) — experiment stopped by user; no mobile-control candidate runtime was integrated**  
 **Block 11 — Circuit presets / closed-loop authored track routes:** **DONE/CERTIFIED — Laguna Seca HUMAN PASS (2026-09-14); Nordschleife performance HUMAN PASS (2026-09-15); no-ABS runtime and continuous guard rails HUMAN PASS (2026-09-16); integrated `dev` checkpoint `568f557a051832559fa1f3166350cc338a399ee1`, exact-head Dev Integration `35054930198` PASS**
-**Active correction block:** **NONE — latest accepted civil-traffic correction is integrated and certified; wait for an explicit next priority**
+**Active correction block:** **Block 8 / Issue #12 — `candidate/block8-forest-readiness-r1`; diagnostic-only checkpoint before any scheduler or biome-palette behavior change**
 **Stable `main`:** `ad893a9d078df4a3d24d81b929bb2905a8bc57e1` — tag `v21.33`; must remain untouched without explicit user approval.
 **Previous rollback/reference:** `b74e7377eaaf2b128eb893c547f4c2da3d14bbea` — tag `v21.32`.
 
@@ -401,15 +401,15 @@ GitHub Issue #13: **CLOSED / COMPLETED (2026-09-12)**.
 
 ## Exact next action
 
-**No correction is currently active. Preserve the certified Issue #11 checkpoint and wait for an explicit next priority.**
+**Block 8 is active by explicit user decision. Preserve the certified V21.33 baseline and complete the Issue #12 forest-readiness diagnosis on `candidate/block8-forest-readiness-r1` before adding biome classification or palettes.**
 
 Current unresolved work is intentionally not auto-started:
 
 - Issue #2 remains **watch-only / not reproduced**; collect diagnostics only if it reappears;
 - Issue #11 is **DONE/CERTIFIED**: the measured-axis R2 correction received HUMAN PASS and is included in V21.33;
-- Issue #12 is **PARKED**; do not resume it as a standalone correction. Carry the existing diagnostics and failed-candidate evidence into Block 8 when biome-aware natural scenery work begins;
+- Issue #12 is **ACTIVE inside Block 8**; R1 adds job/builder lifetime, abandonment, wanted-set churn and prefetch-completion evidence without changing the certified scheduler yet;
 - Block 7 composition-root reduction remains **deferred / evidence-driven only**;
-- Block 8 biome-aware natural scenery remains **planned/deferred**; when activated, begin by reopening and stabilizing forest readiness/streaming as its first runtime workstream, then add biome classification and palette selection;
+- Block 8 biome-aware natural scenery is **ACTIVE**; stabilize forest readiness/streaming first, then add biome classification and palette selection;
 - Block 9 AI-assisted 3D asset authoring remains **planned/deferred**; begin with one controlled pilot asset and do not replace accepted GLBs wholesale without measured visual/runtime benefit;
 - Block 10 mobile browser driving controls is **ABANDONED / NOT PLANNED** by user decision; do not integrate the retired candidate branch.
 - Block 11 is **DONE/CERTIFIED**: Laguna Seca has HUMAN PASS. Nordschleife R4 checkpoint `36a1adecfdcbbaa59e3994423d8ff62cefd9e067` passed exact-head run `34918367074`, and the user confirmed normal performance on 2026-09-15. Physics Trail-Braking R2 then passed exact-head run `35022259552` but received HUMAN FAIL because the WRX remained very understeered. R3 implementation checkpoint `c5f2c60ec44bb8628b3e68c331fdc3b788332c14` passed run `35026732737`; final docs checkpoint `bb23e201645b61e2cb4c18bdfc7906fea0a4c30c` passed run `35026882948`. Physics ABS Toggle R1 implementation checkpoint `6ab85c244af4e65eafb0e2356b6a100e7b01f384` passed exact-head run `35030137277`, and final checkpoint `8eacda43baab8c4341fcb00da887c789bc60f969` passed run `35030318769`. The human comparison confirmed correct trail braking with ABS OFF; the subsequent R4 correction was still rejected as problematic. By user decision ABS was removed from gameplay. The final candidate also corrected the reported repeated Nordschleife guard-rail gaps with 5 m pitched, overlapping spans while preserving single-batch instancing. Human PASS was recorded on 2026-09-16, final candidate checkpoint `e5d14b2351ed3958a0171add4f3bca3862675d26` passed run `35054421284`, and integrated `dev` checkpoint `568f557a051832559fa1f3166350cc338a399ee1` passed exact-head Dev Integration `35054930198`.
@@ -524,9 +524,9 @@ The accepted Laguna Seca and Nordschleife circuit work, Nordschleife performance
 
 ## Block 8 — Biome-aware natural scenery generation
 
-**PLANNED / DEFERRED — when activated, reopen Issue #12 as its first runtime/readiness workstream instead of requiring Issue #12 to be certified beforehand.**
+**ACTIVE (2026-09-16) — Issue #12 R1 job-lifecycle diagnosis is the first runtime/readiness workstream.**
 
-Issue #12 is intentionally parked until this block. The previous human-FAIL candidates and runtime snapshots remain diagnostic evidence, but none of those candidate runtime changes are accepted as a solution. When Block 8 begins, forest readiness must be re-established deliberately before biome-specific content increases scenery complexity.
+Issue #12 was reopened when the user explicitly activated this block. The previous human-FAIL candidates and runtime snapshots remain diagnostic evidence, but none of those candidate runtime changes are accepted as a solution. Candidate `candidate/block8-forest-readiness-r1` therefore starts with observation only: it records job/builder lifetime, completion, abandonment reasons, discarded candidate work, wanted-set churn and visible/prefetch completion separately before changing scheduling behavior.
 
 Goal: generate natural scenery that matches the biome/ecoregion of the driven route instead of using one globally uniform vegetation set. The primary acceptance example is explicit: a tropical route must not spawn boreal-style fir/conifer forest simply because the generic forest generator is active.
 
@@ -850,13 +850,15 @@ The blue generic-pack `coupe` followed the correct path but its body was visuall
 
 ## Issue #12 — forest streaming falls behind after sustained driving
 
-**OPEN / USER-REPORTED / PARKED — resume as part of Block 8 biome-aware natural scenery work.**
+**ACTIVE / USER-REPORTED — Block 8 R1 diagnostic checkpoint.**
 
 After sustained continuous driving, especially at very high vehicle speed, forward forest readiness can fall behind the vehicle. This is a streaming/readiness timing defect, not a density/style request.
 
-Standalone correction work is intentionally paused. Multiple experimental candidates were human FAIL and were not integrated into `dev`. The accumulated runtime evidence remains useful: failure can occur while overall FPS stays high, with forest queues/backlog growing and forward prefetch remaining unready. Do not restart old candidate-cap, timeout, recenter-reset or observer-center theories as accepted fixes merely because they passed automation.
+Multiple experimental candidates were HUMAN FAIL and were not integrated into `dev`. R1 `7b51e34e464f37681cfd613646a7dd23fc922982` fell behind by roughly 2.3 km despite about 142 FPS. R2 `295f4f33c2e9f5acf86780f063b168517e618230` showed no human improvement after raising the 12/20 candidate caps to 96/192 and shortening the backlogged idle timeout. R3 `7c73ae092aa9bd32210d128d0366b5245e19c48a` was only slightly better after interleaving prefetch with far-visible work; the human snapshot still showed 24 wanted / 0 ready / 0 hit after 11,011 slices. R4 `76484b1d202420efe863664086c44c3b6003b1b9` was also HUMAN FAIL after preserving distant builders across local terrain refresh: 24 wanted / 0 ready / 0 hit, 83 queued chunks and 17,935 slices. Do not reintroduce those cap, timeout, prefetch-band or local-reset theories as accepted fixes merely because their automation passed.
 
-When Block 8 is activated, reopen Issue #12 first and use a diagnostic-first approach: trace actual forest job/builder lifetime, completion, abandonment/restart reasons, wanted-set churn and prefetch readiness under sustained driving. Certify a stable forest-readiness baseline before biome-specific asset selection is layered on top. Until then, do not spend additional standalone correction cycles on Issue #12.
+Block 8 R1 adds the missing evidence without altering scheduler behavior. Its deterministic 8.4 km low-headroom reproduction reaches the same failure shape: 24 prefetch chunks wanted, 0 ready, 0 prefetch completion, 28,640 candidates processed and 7,840 candidates discarded from partial builders while no post-startup chunk completes. This establishes work fragmentation/expiry as a measured mechanism in the reproduction, but the browser checkpoint must still confirm the actual job-lifecycle distribution before a behavioral correction is selected. The console entrypoint is `__WORLD_DRIVE_BLOCK8_FOREST__()`.
+
+Current exact next action: validate the R1 diagnostic candidate in automation, then drive continuously for at least 8 km at sustained high speed and capture `__WORLD_DRIVE_BLOCK8_FOREST__()` after the forest first falls behind (or after 8 km if it does not). Use that evidence to choose the R2 scheduling correction. Certify a stable forest-readiness baseline before biome-specific asset selection is layered on top.
 
 ## Issue #13 — low-speed four-wheel lateral slide on sloped corner exits
 

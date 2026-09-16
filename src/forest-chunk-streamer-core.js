@@ -71,6 +71,7 @@ export function createForestChunkStreamer({
   let travelConfidence=0;
   let lastRecenterDistance=0;
   let priorityLeadM=0;
+  let nextJobId=1;
   const initialReady=new Promise(resolve=>{resolveInitialReady=resolve;});
 
   const perf={
@@ -118,7 +119,33 @@ export function createForestChunkStreamer({
     catchupQueueThreshold,
     catchupSliceBudgetMs,
     catchupCandidateBatchSize,
-    catchupSlices:0
+    catchupSlices:0,
+    jobsQueued:0,
+    jobsStarted:0,
+    jobsCompleted:0,
+    jobsAbandoned:0,
+    buildersAbandoned:0,
+    jobsRestarted:0,
+    candidatesProcessed:0,
+    candidatesAbandoned:0,
+    visibleJobsStarted:0,
+    visibleJobsCompleted:0,
+    visibleJobsAbandoned:0,
+    prefetchJobsStarted:0,
+    prefetchJobsCompleted:0,
+    prefetchJobsAbandoned:0,
+    wantedSetUpdates:0,
+    wantedAdded:0,
+    wantedRemoved:0,
+    maxWantedChanges:0,
+    lastWantedAdded:0,
+    lastWantedRemoved:0,
+    lastWantedAt:0,
+    maxJobAgeMs:0,
+    maxBuilderAgeMs:0,
+    abandonReasons:{},
+    lastAbandonedJob:null,
+    lastCompletedJob:null
   };
 
   const forestTerrain=createForestTerrainSampler({
@@ -583,8 +610,86 @@ export function createForestChunkStreamer({
   function queueJob(desc,{replace=false}={}){
     const existing=queued.get(desc.key);
     if(existing){if(replace)existing.replace=true;return existing;}
-    const job={...desc,replace,builder:null,readyToCommit:false};
+    const job={
+      ...desc,replace,builder:null,readyToCommit:false,
+      id:nextJobId++,queuedAt:performance.now(),startedAt:0,lastWorkedAt:0,
+      slices:0,candidatesProcessed:0,startedBand:null,
+      queuedBand:visibleKeys.has(desc.key)?'visible':(prefetchKeys.has(desc.key)?'prefetch':'other')
+    };
+    perf.jobsQueued++;
     queued.set(job.key,job);queue.push(job);queuePriorityDirty=true;return job;
+  }
+
+  function jobBand(job){
+    if(visibleKeys.has(job.key))return 'visible';
+    if(prefetchKeys.has(job.key))return 'prefetch';
+    return job.startedBand||job.queuedBand||'other';
+  }
+
+  function startBuilder(job){
+    const now=performance.now();
+    job.builder=createBuilder(job,serial);
+    job.startedAt=now;
+    job.lastWorkedAt=now;
+    job.startedBand=jobBand(job);
+    job.slices=0;
+    job.candidatesProcessed=0;
+    perf.jobsStarted++;
+    if(job.startedBand==='visible')perf.visibleJobsStarted++;
+    else if(job.startedBand==='prefetch')perf.prefetchJobsStarted++;
+    return job.builder;
+  }
+
+  function recordBuilderLoss(job,reason,{abandonJob=false}={}){
+    const now=performance.now();
+    const band=jobBand(job);
+    const candidates=Math.max(0,job.candidatesProcessed||0);
+    const ageMs=Math.max(0,now-(job.queuedAt||now));
+    const builderAgeMs=job.startedAt?Math.max(0,now-job.startedAt):0;
+    if(job.builder){
+      perf.buildersAbandoned++;
+      perf.candidatesAbandoned+=candidates;
+      perf.maxBuilderAgeMs=Math.max(perf.maxBuilderAgeMs,builderAgeMs);
+    }
+    if(abandonJob){
+      perf.jobsAbandoned++;
+      if(band==='visible')perf.visibleJobsAbandoned++;
+      else if(band==='prefetch')perf.prefetchJobsAbandoned++;
+    }else perf.jobsRestarted++;
+    perf.abandonReasons[reason]=(perf.abandonReasons[reason]||0)+1;
+    perf.maxJobAgeMs=Math.max(perf.maxJobAgeMs,ageMs);
+    perf.lastAbandonedJob={
+      id:job.id,key:job.key,reason,band,hadBuilder:!!job.builder,
+      candidates,slices:job.slices||0,ageMs,builderAgeMs,at:now
+    };
+  }
+
+  function abandonJob(job,reason){
+    recordBuilderLoss(job,reason,{abandonJob:true});
+    queued.delete(job.key);
+  }
+
+  function restartQueuedBuilders(reason){
+    for(const job of queue){
+      if(job.builder)recordBuilderLoss(job,reason,{abandonJob:false});
+      job.builder=null;job.readyToCommit=false;job.startedAt=0;job.lastWorkedAt=0;
+      job.slices=0;job.candidatesProcessed=0;job.startedBand=null;
+    }
+  }
+
+  function recordJobCompletion(job){
+    const now=performance.now(),band=jobBand(job);
+    const ageMs=Math.max(0,now-(job.queuedAt||now));
+    const builderAgeMs=job.startedAt?Math.max(0,now-job.startedAt):0;
+    perf.jobsCompleted++;
+    if(band==='visible')perf.visibleJobsCompleted++;
+    else if(band==='prefetch')perf.prefetchJobsCompleted++;
+    perf.maxJobAgeMs=Math.max(perf.maxJobAgeMs,ageMs);
+    perf.maxBuilderAgeMs=Math.max(perf.maxBuilderAgeMs,builderAgeMs);
+    perf.lastCompletedJob={
+      id:job.id,key:job.key,band,candidates:job.candidatesProcessed||0,
+      slices:job.slices||0,ageMs,builderAgeMs,at:now
+    };
   }
 
   function finishJob(job,data){
@@ -622,22 +727,23 @@ export function createForestChunkStreamer({
       const catchup=queue.length>=catchupQueueThreshold&&idleRemaining>=catchupMinIdleMs;
       const activeBudgetMs=catchup?catchupSliceBudgetMs:sliceBudgetMs;
       const activeCandidateCap=catchup?catchupCandidateBatchSize:candidateBatchSize;
-      if(!wantedKeys.has(job.key)&&!job.replace){queue.shift();queued.delete(job.key);}
-      else if(!job.replace&&active.has(job.key)){queue.shift();queued.delete(job.key);}
+      if(!wantedKeys.has(job.key)&&!job.replace){queue.shift();abandonJob(job,'no-longer-wanted');}
+      else if(!job.replace&&active.has(job.key)){queue.shift();abandonJob(job,'already-active');}
       else if(!job.replace&&cache.has(job.key)){
-        queue.shift();queued.delete(job.key);if(visibleKeys.has(job.key))attach(cache.get(job.key),lastCenter);
+        queue.shift();abandonJob(job,'already-cached');if(visibleKeys.has(job.key))attach(cache.get(job.key),lastCenter);
       }else if(job.readyToCommit){
         const commitStarted=performance.now();
-        const data=finalizeBuilder(job.builder);queue.shift();queued.delete(job.key);finishJob(job,data);trimCache();
+        const data=finalizeBuilder(job.builder);queue.shift();queued.delete(job.key);recordJobCompletion(job);finishJob(job,data);trimCache();
         const commitEnded=performance.now();perf.lastCommitMs=commitEnded-commitStarted;perf.lastCommitAt=commitEnded;perf.maxCommitMs=Math.max(perf.maxCommitMs,perf.lastCommitMs);
       }else{
-        if(!job.builder)job.builder=createBuilder(job,serial);
-        if(job.builder.buildSerial!==serial){job.builder=createBuilder(job,serial);job.readyToCommit=false;}
+        if(!job.builder)startBuilder(job);
+        if(job.builder.buildSerial!==serial){recordBuilderLoss(job,'serial-restart',{abandonJob:false});startBuilder(job);job.readyToCommit=false;}
         const stopAt=sliceStart+activeBudgetMs;
         while(job.builder.cellIndex<totalCells&&candidates<activeCandidateCap){
           if(candidates>0){if(performance.now()>=stopAt)break;if(!deadline.didTimeout&&deadline.timeRemaining()<.35)break;}
-          processBuilderCandidate(job.builder);candidates++;
+          processBuilderCandidate(job.builder);candidates++;job.candidatesProcessed++;perf.candidatesProcessed++;
         }
+        job.slices++;job.lastWorkedAt=performance.now();
         if(job.builder.cellIndex>=totalCells)job.readyToCommit=true;
       }
       report(false);maybeResolveInitial(lastCenter);recordSlice(sliceStart,candidates,catchup);
@@ -662,9 +768,17 @@ export function createForestChunkStreamer({
     const wantedMap=new Map();
     for(const desc of visible)wantedMap.set(desc.key,desc);
     for(const desc of prefetched)if(!wantedMap.has(desc.key))wantedMap.set(desc.key,desc);
-    const wanted=[...wantedMap.values()];wantedKeys=new Set(wantedMap.keys());
+    const wanted=[...wantedMap.values()];
+    const nextWantedKeys=new Set(wantedMap.keys());
+    let wantedAdded=0,wantedRemoved=0;
+    for(const key of nextWantedKeys)if(!wantedKeys.has(key))wantedAdded++;
+    for(const key of wantedKeys)if(!nextWantedKeys.has(key))wantedRemoved++;
+    wantedKeys=nextWantedKeys;
+    perf.wantedSetUpdates++;perf.wantedAdded+=wantedAdded;perf.wantedRemoved+=wantedRemoved;
+    perf.lastWantedAdded=wantedAdded;perf.lastWantedRemoved=wantedRemoved;perf.lastWantedAt=performance.now();
+    perf.maxWantedChanges=Math.max(perf.maxWantedChanges,wantedAdded+wantedRemoved);
     for(const [key,data] of active){if(visibleKeys.has(key))continue;detach(data);active.delete(key);data.lastUsed=performance.now();}
-    queue=queue.filter(job=>{if(wantedKeys.has(job.key))return true;queued.delete(job.key);return false;});queuePriorityDirty=true;
+    queue=queue.filter(job=>{if(wantedKeys.has(job.key))return true;abandonJob(job,'no-longer-wanted');return false;});queuePriorityDirty=true;
     for(const desc of wanted){
       const isVisible=visibleKeys.has(desc.key),existing=active.get(desc.key);
       if(existing){if(isVisible){positionChunkGroup(existing);updateChunkDensity(existing,center,false);}continue;}
@@ -702,7 +816,7 @@ export function createForestChunkStreamer({
   function rebaseCachedTerrainHeights(){
     serial++;
     cacheTerrainRevision++;
-    for(const job of queue){job.builder=null;job.readyToCommit=false;}
+    restartQueuedBuilders('terrain-rebase');
     forestTerrain.invalidate?.();slopeCache.clear();
     const started=performance.now();
     let chunks=0,trees=0;
@@ -716,7 +830,7 @@ export function createForestChunkStreamer({
 
   function refreshVisibleHeights(){
     serial++;
-    for(const job of queue){job.builder=null;job.readyToCommit=false;}
+    restartQueuedBuilders('height-refresh');
     forestTerrain.invalidate?.();slopeCache.clear();
     const center=Number.isFinite(lastCenter.x)?lastCenter:(getWorldOffset()||{x:0,z:0});
     const refreshDistance=FOREST.heightRefreshDistance||520;
@@ -731,6 +845,7 @@ export function createForestChunkStreamer({
 
   function clearAll(){
     serial++;
+    for(const job of queue)abandonJob(job,'clear-all');
     queue=[];queued.clear();queueRunning=false;queuePriorityDirty=true;
     visibleKeys.clear();prefetchKeys.clear();wantedKeys.clear();
     for(const data of cache.values())disposeChunk(data);
@@ -751,9 +866,16 @@ export function createForestChunkStreamer({
       activeChunks:active.size,cachedChunks:cache.size,queuedChunks:queue.length,
       visibleWantedChunks:visibleKeys.size,prefetchWantedChunks:prefetchKeys.size,
       prefetchedReadyChunks:prefetchReadyCount(),prefetchQueuedChunks:prefetchQueuedCount(),
+      inProgressJobs:queue.reduce((count,job)=>count+(job.builder?1:0),0),
+      prefetchInProgressJobs:queue.reduce((count,job)=>count+(job.builder&&prefetchKeys.has(job.key)?1:0),0),
+      oldestQueuedAgeMs:queue.reduce((max,job)=>Math.max(max,performance.now()-(job.queuedAt||performance.now())),0),
+      oldestBuilderAgeMs:queue.reduce((max,job)=>Math.max(max,job.startedAt?performance.now()-job.startedAt:0),0),
       pollingActive:!!pollTimer,
       cacheTerrainRevision,
-      ...perf
+      ...perf,
+      abandonReasons:{...perf.abandonReasons},
+      lastAbandonedJob:perf.lastAbandonedJob?{...perf.lastAbandonedJob}:null,
+      lastCompletedJob:perf.lastCompletedJob?{...perf.lastCompletedJob}:null
     })
   });
 }

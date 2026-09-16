@@ -263,7 +263,7 @@ export function createForestChunkStreamer(options){
     const raw=activeBase().stats?.()||{},seed=activeEntry;
     return {
       enabled:true,observerMode:'p931-ahead-priority',startupMode:'p934-startup-route-seed',streamingMode:'p940-dirty-priority-queue',
-      hitchMode:'p941-frame-window-runtime',legacyObserverMode:'p929-direct-last-slice',
+      hitchMode:'p941-frame-window-runtime',readinessMode:'block8-r1-job-lifecycle',legacyObserverMode:'p929-direct-last-slice',
       routeCache:{key:activeEntry.key,slots:entries.length,maxSlots:ROUTE_CACHE_SLOTS,lastRebase:lastRouteCacheRebase?{...lastRouteCacheRebase}:null},
       trees:visible.trees,near:visible.near,mid:visible.mid,far:visible.far,edge:visible.edge,
       activeChunks:finite(raw.activeChunks),cachedChunks:finite(raw.cachedChunks),queuedChunks:finite(raw.queuedChunks),
@@ -271,6 +271,18 @@ export function createForestChunkStreamer(options){
       startupDirection:{seeded:seed.startupDirectionSeeded,seedDistanceM:STARTUP_DIRECTION_SEED_M,angle:Number.isFinite(seed.startupSeedAngle)?round3(seed.startupSeedAngle):null,dirX:round3(seed.startupSeedDir.x),dirZ:round3(seed.startupSeedDir.z)},
       aheadPriority:{enabled:raw.aheadPriority===true,nearPriorityDistance:round3(raw.nearPriorityDistance),leadM:round3(raw.priorityLeadM),confidence:round3(raw.travelConfidence),dirX:round3(raw.travelDirX),dirZ:round3(raw.travelDirZ)},
       prefetch:{enabled:raw.rollingPrefetch===true,leadM:round3(raw.prefetchLeadM),radiusM:round3(raw.prefetchRadiusM),minForwardM:round3(raw.prefetchMinForwardM),wanted:finite(raw.prefetchWantedChunks),ready:finite(raw.prefetchedReadyChunks),queued:finite(raw.prefetchQueuedChunks),meshPrepares:finite(raw.prefetchMeshPrepares),hits:finite(raw.prefetchHits)},
+      lifecycle:{
+        queued:finite(raw.jobsQueued),started:finite(raw.jobsStarted),completed:finite(raw.jobsCompleted),abandoned:finite(raw.jobsAbandoned),
+        buildersAbandoned:finite(raw.buildersAbandoned),restarted:finite(raw.jobsRestarted),inProgress:finite(raw.inProgressJobs),prefetchInProgress:finite(raw.prefetchInProgressJobs),
+        candidatesProcessed:finite(raw.candidatesProcessed),candidatesAbandoned:finite(raw.candidatesAbandoned),
+        visible:{started:finite(raw.visibleJobsStarted),completed:finite(raw.visibleJobsCompleted),abandoned:finite(raw.visibleJobsAbandoned)},
+        prefetch:{started:finite(raw.prefetchJobsStarted),completed:finite(raw.prefetchJobsCompleted),abandoned:finite(raw.prefetchJobsAbandoned)},
+        wanted:{updates:finite(raw.wantedSetUpdates),added:finite(raw.wantedAdded),removed:finite(raw.wantedRemoved),maxChanges:finite(raw.maxWantedChanges),lastAdded:finite(raw.lastWantedAdded),lastRemoved:finite(raw.lastWantedRemoved),lastAt:round3(raw.lastWantedAt)},
+        oldestQueuedAgeMs:round3(raw.oldestQueuedAgeMs),oldestBuilderAgeMs:round3(raw.oldestBuilderAgeMs),maxJobAgeMs:round3(raw.maxJobAgeMs),maxBuilderAgeMs:round3(raw.maxBuilderAgeMs),
+        abandonReasons:{...(raw.abandonReasons||{})},
+        lastAbandonedJob:raw.lastAbandonedJob?{...raw.lastAbandonedJob,ageMs:round3(raw.lastAbandonedJob.ageMs),builderAgeMs:round3(raw.lastAbandonedJob.builderAgeMs),at:round3(raw.lastAbandonedJob.at)}:null,
+        lastCompletedJob:raw.lastCompletedJob?{...raw.lastCompletedJob,ageMs:round3(raw.lastCompletedJob.ageMs),builderAgeMs:round3(raw.lastCompletedJob.builderAgeMs),at:round3(raw.lastCompletedJob.at)}:null
+      },
       catchup:{threshold:finite(raw.catchupQueueThreshold),sliceBudgetMs:round3(raw.catchupSliceBudgetMs),candidateBatchSize:finite(raw.catchupCandidateBatchSize),slices:finite(raw.catchupSlices)},
       maintenance:{queueSorts:finite(raw.queueSorts),lastQueueSortMs:round3(raw.lastQueueSortMs),maxQueueSortMs:round3(raw.maxQueueSortMs),cacheTrimRuns:finite(raw.cacheTrimRuns),lastCacheTrimMs:round3(raw.lastCacheTrimMs),maxCacheTrimMs:round3(raw.maxCacheTrimMs)},
       slice:{lastMs:round3(raw.lastSliceMs),maxMs:round3(raw.maxSliceMs),lastAt:round3(raw.lastSliceAt),count:finite(raw.sliceCount),lastCandidates:finite(raw.lastCandidates),maxCandidates:finite(raw.maxCandidates),budgetMs:round3(raw.sliceBudgetMs),candidateBatchSize:finite(raw.candidateBatchSize)},
@@ -295,6 +307,7 @@ export function createForestChunkStreamer(options){
     installDiagnosticAlias('__WORLD_DRIVE_P936_FOREST__',()=>diagnostics.forest.snapshot);
     installDiagnosticAlias('__WORLD_DRIVE_P940_FOREST__',()=>diagnostics.forest.snapshot);
     installDiagnosticAlias('__WORLD_DRIVE_P941_FOREST__',()=>diagnostics.forest.snapshot);
+    installDiagnosticAlias('__WORLD_DRIVE_BLOCK8_FOREST__',()=>diagnostics.forest.snapshot);
     if(typeof globalThis.setTimeout!=='function')return;
     const attempt=()=>{
       const current=diagnostics.framePacing.snapshot;
