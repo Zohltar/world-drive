@@ -1,12 +1,15 @@
 # World Drive — no-ABS runtime and continuous guard rails R1
 
-Status: **exact-head automated PASS; HUMAN validation pending**
+Status: **exact-head automated PASS; HUMAN PASS (2026-09-16)**
 
 Branch: `candidate/physics-no-abs-guardrails-r1`
 
 Published implementation checkpoint: `f9597b5fc77aece9eb46a7868f978c85434f41c8`
 
 Exact-head workflow run: `35053235510` — **PASS**
+
+Human checkpoint: **PASS** — the no-ABS trail-braking behavior and corrected
+Nordschleife guard-rail presentation were accepted for integration.
 
 Baseline: Physics Trail-Braking R4 local tree `b1ded84b26beccab8c574cd63422bdd2a687090e`
 (published equivalent `0a6c43b4007ddc7cd6b5fdc4b65f069b0799c825`)
