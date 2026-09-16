@@ -1,6 +1,6 @@
 # World Drive — player ABS toggle R1
 
-Status: **exact-head automated PASS; HUMAN comparison pending**
+Status: **exact-head automated PASS; HUMAN diagnostic complete — ABS ON path isolated**
 
 Branch: `candidate/physics-abs-toggle-r1`
 
@@ -53,7 +53,19 @@ GitHub Actions run
 passed on the exact published implementation checkpoint
 `6ab85c244af4e65eafb0e2356b6a100e7b01f384`.
 
-## Human comparison
+## Human comparison result
+
+The player completed the comparison and reported that trail braking behaved
+correctly with ABS OFF. The base no-ABS tire/chassis path is therefore accepted
+for this diagnosis; the excessive understeer belongs to the active ABS/EBD
+allocation. The toggle itself worked as intended and remains part of the next
+candidate.
+
+The correction continues on `candidate/physics-trail-braking-r4`, where ABS ON
+preserves the configured mechanical bias until measured contact-patch reserve
+requires intervention.
+
+## Reproduction sequence
 
 Use the WRX on the same Laguna Seca or Nordschleife corner, at the same entry
 speed, and compare:
@@ -63,6 +75,6 @@ speed, and compare:
    available rotation;
 3. repeat with partial braking so the no-ABS case stays below wheel lock.
 
-The comparison should distinguish an ABS allocation problem from the base tire,
-steering or road-contact model. Do not integrate this candidate to `dev` before
-the human result.
+This sequence distinguished an ABS allocation problem from the base tire,
+steering and road-contact model. Do not integrate the stacked R4 candidate to
+`dev` before its human result.

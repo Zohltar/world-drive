@@ -116,53 +116,72 @@ function axleLoadFractions(vehicle,axles,longitudinalAccel=0){
   return loads;
 }
 
-// V21.27 P2 — road-car service braking gets a lightweight EBD layer. The
-// configured brakeShare remains the low-deceleration mechanical bias, then the
-// distribution progressively follows the combined-force reserve of each axle
-// as braking grows. This prevents a dynamically unloaded rear axle from being
-// asked to carry braking force that its cornering load has already consumed.
-// Vehicles that explicitly set absEnabled:false (for example the F1 profile)
-// retain fixed brake bias.
-function effectiveServiceBrakeShares(vehicle,axles,axleLoads,requestedBrakeAccel=0,lateralAccel=0){
+// Trail Braking R4 — EBD is a constraint, not a replacement brake bias.
+// Preserve the configured mechanical front/rear split while both axles can
+// carry it. Move only the share that would exceed an axle's remaining combined
+// tire capacity. The previous deceleration-based blend began moving pressure
+// forward even when the rear request was feasible; during trail braking that
+// removed the intended rear contribution and produced the human-reported ABS
+// understeer. Explicit no-ABS vehicles retain their fixed hydraulic split.
+export function effectiveServiceBrakeShares(
+  vehicle,
+  axles,
+  axleLoads,
+  requestedBrakeAccel=0,
+  measuredAxleBrakeCapacityAccel=null
+){
   const base=axles.map(axle=>Math.max(0,finite(axle?.brakeShare,0)));
   const baseTotal=base.reduce((sum,value)=>sum+value,0)||1;
   for(let i=0;i<base.length;i++)base[i]/=baseTotal;
 
   if(vehicle?.absEnabled===false)return base;
 
-  const decelG=Math.abs(finite(requestedBrakeAccel,0))/G;
-  const ebdBlend=clamp((decelG-.15)/.55,0,1);
-  if(ebdBlend<=0)return base;
-
   const load=axles.map((_,index)=>Math.max(.001,finite(axleLoads?.[index],0)));
   const loadTotal=load.reduce((sum,value)=>sum+value,0)||1;
   for(let i=0;i<load.length;i++)load[i]/=loadTotal;
 
-  const rawStatic=axles.map(axle=>Math.max(.001,finite(axle?.staticLoadFraction,0)));
-  const staticTotal=rawStatic.reduce((sum,value)=>sum+value,0)||1;
-  const lateralLimit=Math.max(.1,finite(vehicle?.lateralAccelLimit,G));
-  const lateralUtilization=clamp(Math.abs(finite(lateralAccel,0))/lateralLimit,0,1);
-  const combinedReserve=load.map((normalShare,index)=>{
-    const staticShare=rawStatic[index]/staticTotal;
-    const axleLateralUtilization=clamp(
-      lateralUtilization*staticShare/Math.max(.001,normalShare),
-      0,
-      1
-    );
-    return normalShare*Math.sqrt(Math.max(0,1-axleLateralUtilization*axleLateralUtilization));
-  });
-  const reserveTotal=combinedReserve.reduce((sum,value)=>sum+value,0);
-  const target=reserveTotal>1e-8
-    ?combinedReserve.map(value=>value/reserveTotal)
-    :load;
+  const longitudinalCapacity=Math.max(
+    .1,
+    Math.abs(finite(vehicle?.longitudinalAccelLimit,vehicle?.brake||G))
+  );
+  const brakeDemand=Math.abs(finite(requestedBrakeAccel,0));
+  if(brakeDemand<=1e-8)return base;
 
-  const result=new Array(axles.length);
-  let total=0;
-  for(let i=0;i<result.length;i++){
-    result[i]=base[i]+(target[i]-base[i])*ebdBlend;
-    total+=result[i];
+  // Prefer the tire solver's measured, lateral-force-aware reserve. The
+  // dynamic-load fallback keeps this exported helper deterministic in direct
+  // unit probes that do not provide contact-patch measurements.
+  const measured=Array.isArray(measuredAxleBrakeCapacityAccel)&&
+    measuredAxleBrakeCapacityAccel.length===axles.length
+      ?measuredAxleBrakeCapacityAccel.map(value=>Math.max(0,finite(value,0)))
+      :null;
+  const axleCapacity=measured||load.map(normalShare=>normalShare*longitudinalCapacity);
+
+  const maxShares=axleCapacity.map(capacity=>
+    clamp(capacity/brakeDemand,0,1)
+  );
+  if(base.every((share,index)=>share<=maxShares[index]+1e-8))return base;
+
+  const capacityTotal=axleCapacity.reduce((sum,value)=>sum+value,0);
+  if(capacityTotal<brakeDemand-1e-8){
+    return capacityTotal>1e-8
+      ?axleCapacity.map(value=>value/capacityTotal)
+      :load;
   }
-  total=total||1;
+
+  const result=base.map((share,index)=>Math.min(share,maxShares[index]));
+  let unassigned=Math.max(0,1-result.reduce((sum,value)=>sum+value,0));
+  for(let pass=0;pass<axles.length&&unassigned>1e-10;pass++){
+    const headroom=result.map((share,index)=>Math.max(0,maxShares[index]-share));
+    const totalHeadroom=headroom.reduce((sum,value)=>sum+value,0);
+    if(totalHeadroom<=1e-10)break;
+    const amount=Math.min(unassigned,totalHeadroom);
+    for(let i=0;i<result.length;i++){
+      result[i]+=amount*headroom[i]/totalHeadroom;
+    }
+    unassigned-=amount;
+  }
+
+  const total=result.reduce((sum,value)=>sum+value,0)||1;
   for(let i=0;i<result.length;i++)result[i]/=total;
   return result;
 }
@@ -475,12 +494,73 @@ export function createPerWheelShadowSolver({hz=120,maxSubSteps=8}={}){
       input?.combinedServiceBrakeControl===undefined
         ?(!handbrake&&surfaceId.startsWith('asphalt'))
         :!!input.combinedServiceBrakeControl;
+    let measuredAxleBrakeCapacityAccel=null;
+    if(
+      vehicle?.absEnabled!==false&&
+      combinedServiceBrakeControl&&
+      Math.abs(brakeForceN)>.01
+    ){
+      const axleReserveN=Array.from({length:axles.length},()=>0);
+      for(const contact of contacts){
+        const axleIndex=clamp(
+          Math.trunc(finite(contact?.axleIndex,contact?.front?0:Math.min(1,axles.length-1))),
+          0,
+          axles.length-1
+        );
+        const axle=axles[axleIndex];
+        const side=contact?.side||(finite(contact?.localX)<0?'left':'right');
+        const localX=finite(contact?.localX);
+        const localZ=finite(contact?.localZ,axle?.positionM||0);
+        const steerAngle=contactSteerAngle({contact:{...contact,side},axle,geometry});
+        const patch=contactPatchVelocity({
+          bodyVx:body.vx,
+          bodyVz:body.vz,
+          yawRate:input?.yawRate,
+          localX,
+          localZ,
+          steerAngle
+        });
+        const normalLoadN=wheelNormalLoad({
+          contact:{...contact,side},
+          axle,
+          axleIndex,
+          axleLoads,
+          counts,
+          massKg,
+          lateralAccel:input?.lateralAccel,
+          cgHeight
+        });
+        if(normalLoadN<=1)continue;
+
+        // Evaluate this contact at free-rolling speed. Its lateral-only force
+        // demand gives the longitudinal portion of the same friction ellipse
+        // that is genuinely still available to service braking this step.
+        const rollingForce=tireForceAtOmega({
+          tire,
+          surfaceId,
+          normalLoadN,
+          patch,
+          omega:patch.longitudinal/Math.max(.05,tire.rollingRadiusM),
+          steerAngle,
+          localX,
+          localZ
+        });
+        const capacityN=Math.max(0,finite(rollingForce?.capacityN,0));
+        const lateralDemandN=Math.abs(finite(rollingForce?.fyWheel,0));
+        const longitudinalReserveN=
+          finite(rollingForce?.utilization,0)>=1
+            ?0
+            :Math.sqrt(Math.max(0,capacityN*capacityN-lateralDemandN*lateralDemandN));
+        axleReserveN[axleIndex]+=longitudinalReserveN;
+      }
+      measuredAxleBrakeCapacityAccel=axleReserveN.map(forceN=>forceN/massKg);
+    }
     const effectiveBrakeShares=effectiveServiceBrakeShares(
       vehicle,
       axles,
       axleLoads,
       input?.requestedBrakeAccel,
-      combinedServiceBrakeControl?input?.lateralAccel:0
+      measuredAxleBrakeCapacityAccel
     );
     const wheels=[];
     let totalForceX=0,totalForceZ=0,totalYawMomentNm=0;

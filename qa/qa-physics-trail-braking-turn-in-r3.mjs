@@ -34,7 +34,7 @@ function angleDelta(target,current){
   return Math.atan2(Math.sin(target-current),Math.cos(target-current));
 }
 
-function runTurnIn({brakeLeadSec=0,brakePedal=1,turnInput=.38,startKmh=64,frameRate=120}={}){
+function runTurnIn({brakeLeadSec=0,brakePedal=1,turnInput=.38,startKmh=64,frameRate=120,absEnabled=true}={}){
   const dt=1/frameRate;
   let state={
     absX:0,absZ:0,heading:0,speed:startKmh/3.6,
@@ -73,6 +73,7 @@ function runTurnIn({brakeLeadSec=0,brakePedal=1,turnInput=.38,startKmh=64,frameR
     gamepadState,
     updateTransmission:()=>0,
     getServiceBrakeInput:()=>controls.braking?brakePedal:0,
+    getAbsEnabled:()=>absEnabled,
     vehiclePresentation:{airborne:false,wheelContacts:contacts,updateSuspensionVisuals(){},updateWheels(){}},
     vehicleVisuals:{updateBrakeLights(){}},
     truckTrailerSystem:{
@@ -161,16 +162,19 @@ function runTurnIn({brakeLeadSec=0,brakePedal=1,turnInput=.38,startKmh=64,frameR
       brakeG:Math.abs(capturedBrake?.acceleration||0)/G,
       brakeGripScale:physical.serviceBrakeGripScale,
       frontBrakeShare:Number(physical.serviceBrakeShares?.find((_,index)=>vehicle.axles[index]?.positionM>=0)||0),
+      frontAxleLoad:Number(physical.axleLoads?.find((_,index)=>vehicle.axles[index]?.positionM>=0)||0),
       frontUtil:loadWeightedUtil(front),
       rearUtil:loadWeightedUtil(rear),
       physicalYawAccel:Number(physical.predictedYawAccel)||0,
+      lockedWheels:physical.wheels.filter(wheel=>wheel.locked).length,
+      absActiveWheels:physical.wheels.filter(wheel=>wheel.absActive).length,
       sideslipDeg:angleDelta(state.velocityHeading,state.heading)*RAD_TO_DEG
     });
   }
 
   const sampleAt=seconds=>timeline[Math.min(timeline.length-1,Math.max(0,Math.round(seconds*frameRate)-1))];
   return {
-    brakeLeadSec,brakePedal,turnInput,startKmh,frameRate,
+    brakeLeadSec,brakePedal,turnInput,startKmh,frameRate,absEnabled,
     samples:[.05,.10,.20,.35,.50,.75].map(seconds=>({
       seconds,
       ...Object.fromEntries(Object.entries(sampleAt(seconds)).filter(([key])=>key!=='t').map(([key,value])=>[
@@ -189,10 +193,16 @@ const tightLowSpeed=runTurnIn({startKmh:50,turnInput:1,brakeLeadSec:.20,brakePed
 const tightLowSpeedCoast=runTurnIn({startKmh:50,turnInput:1,brakePedal:0});
 const tightLowSpeed60=runTurnIn({startKmh:50,turnInput:1,brakeLeadSec:.20,brakePedal:1,frameRate:60});
 const tightLowSpeed30=runTurnIn({startKmh:50,turnInput:1,brakeLeadSec:.20,brakePedal:1,frameRate:30});
+const brakeSweep=[.2,.35,.5,.7,1].map(brakePedal=>({
+  brakePedal,
+  abs:runTurnIn({brakeLeadSec:.20,brakePedal,absEnabled:true}),
+  noAbs:runTurnIn({brakeLeadSec:.20,brakePedal,absEnabled:false})
+}));
 
 const reports=[
   coast,simultaneous,brakeFirst,aggressiveBrakeFirst,tightLowSpeed,
-  tightLowSpeedCoast,tightLowSpeed60,tightLowSpeed30
+  tightLowSpeedCoast,tightLowSpeed60,tightLowSpeed30,
+  ...brakeSweep.flatMap(({abs,noAbs})=>[abs,noAbs])
 ];
 for(const report of reports){
   for(const point of report.timeline){
@@ -235,6 +245,25 @@ for(const report of [tightLowSpeed,aggressiveBrakeFirst,tightLowSpeed60,tightLow
     `${report.startKmh} km/h @ ${report.frameRate} Hz became unstable after brake release: ${released.sideslipDeg} deg`);
 }
 
+// R4 — the player comparison isolated the old ABS/EBD path: ABS OFF restored
+// natural trail-brake rotation because its fixed hydraulic split remained at
+// 62/38, while ABS ON pre-emptively shifted up to 79% forward. A feasible
+// partial trail-brake request must now retain the configured split; ABS may
+// redistribute only once measured contact-patch reserve is actually exceeded.
+const configuredFrontShare=vehicle.axles.find(axle=>axle.positionM>=0)?.brakeShare||0;
+for(const {brakePedal,abs,noAbs} of brakeSweep){
+  const absPoint=pointAt(abs,.35);
+  const noAbsPoint=pointAt(noAbs,.35);
+  assert.ok(Math.abs(absPoint.frontBrakeShare-configuredFrontShare)<.015,
+    `ABS pre-emptively replaced brake bias at pedal ${brakePedal}: ${absPoint.frontBrakeShare}`);
+  assert.ok(Math.abs(noAbsPoint.frontBrakeShare-configuredFrontShare)<1e-9,
+    `no-ABS path changed fixed brake bias at pedal ${brakePedal}: ${noAbsPoint.frontBrakeShare}`);
+  assert.equal(absPoint.lockedWheels,0,
+    `ABS allowed a locked wheel at pedal ${brakePedal}`);
+}
+assert.ok(pointAt(brakeSweep.at(-1).noAbs,.35).rearSlip>.80,
+  'full no-ABS comparison no longer exposes rear tire over-slip');
+
 const summarize=(report,seconds)=>{
   const point=pointAt(report,seconds);
   return {
@@ -245,12 +274,23 @@ const summarize=(report,seconds)=>{
     rearSlip:Number(point.rearSlip.toFixed(3)),
     yawAuthority:Number(yawAuthority(point).toFixed(3)),
     sideslipDeg:Number(point.sideslipDeg.toFixed(2)),
-    brakeGripScale:Number(point.brakeGripScale.toFixed(3))
+    brakeGripScale:Number(point.brakeGripScale.toFixed(3)),
+    frontBrakeShare:Number(point.frontBrakeShare.toFixed(3)),
+    frontAxleLoad:Number(point.frontAxleLoad.toFixed(3)),
+    frontUtil:Number(point.frontUtil.toFixed(3)),
+    rearUtil:Number(point.rearUtil.toFixed(3)),
+    lockedWheels:point.lockedWheels,
+    absActiveWheels:point.absActiveWheels
   };
 };
 
 console.log('PHYSICS TRAIL-BRAKING TURN-IN R3 QA: PASS',{
   moderateSimultaneous:summarize(simultaneous,.35),
   tightRelease:[tightLowSpeed,tightLowSpeed60,tightLowSpeed30].map(report=>summarize(report,.75)),
-  highwayRelease:summarize(aggressiveBrakeFirst,.75)
+  highwayRelease:summarize(aggressiveBrakeFirst,.75),
+  brakeSweep:brakeSweep.map(({brakePedal,abs,noAbs})=>({
+    brakePedal,
+    abs:summarize(abs,.35),
+    noAbs:summarize(noAbs,.35)
+  }))
 });

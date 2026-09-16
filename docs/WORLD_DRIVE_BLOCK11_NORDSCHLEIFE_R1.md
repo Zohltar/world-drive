@@ -1,6 +1,6 @@
 # World Drive — Block 11B Nordschleife R1
 
-Status: **R4 bridge-seam performance correction HUMAN PASS (2026-09-15); overall full-lap checkpoint held by follow-up WRX trail-braking HUMAN FAIL**
+Status: **R4 bridge-seam performance correction HUMAN PASS (2026-09-15); overall full-lap checkpoint held by Physics Trail-Braking R4 retest**
 
 Branch: `candidate/block11-nordschleife-r1`
 
@@ -86,9 +86,11 @@ passed exact-head workflow run `34918367074`, including the new T13 bridge and
 furniture performance contract, runtime integration audit and production build.
 The following human retest reported normal Nordschleife performance, accepting
 the R4 performance correction. The same drive still exposed easy rear
-breakaway followed by excessive understeer while braking in a corner; that
-separate physics defect was not fully resolved by R2 and is now isolated on
-`candidate/physics-trail-braking-r3`; it prevents overall full-lap promotion.
+breakaway followed by excessive understeer while braking in a corner. A later
+ABS ON/OFF comparison restored correct trail braking with ABS OFF and isolated
+the active EBD path. The measured-reserve correction now lives on
+`candidate/physics-trail-braking-r4`; it still prevents overall full-lap
+promotion until the ABS-ON human retest passes.
 
 ## Automated result
 
@@ -136,7 +138,8 @@ for:
 - no invisible road support outside the 9 m asphalt;
 - no civil vehicles on the circuit;
 - stable WRX trail braking without rear breakaway followed by excessive
-  understeer — **R2 HUMAN FAIL; retest Physics Trail-Braking R3**.
+  understeer — **ABS OFF diagnostic PASS; retest measured-reserve Physics
+  Trail-Braking R4 with ABS ON**.
 
 R1 does not claim a survey-grade surface mesh. In particular,
 [Porsche describes](https://newsroom.porsche.com/en/2020/motorsports/porsche-nuerburgring-nordschleife-caracciola-karussell-22455.html)

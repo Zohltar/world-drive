@@ -328,7 +328,9 @@ function runtimeIntegrationProbe({
       physicalRearUtil:Number(maxUtil(rearWheels).toFixed(3)),
       physicalFrontSlipAngleDeg:Number((frontWheels.reduce((maximum,wheel)=>Math.max(maximum,Math.abs(Number(wheel.slipAngle)||0)),0)*180/Math.PI).toFixed(2)),
       physicalRearSlipAngleDeg:Number((rearWheels.reduce((maximum,wheel)=>Math.max(maximum,Math.abs(Number(wheel.slipAngle)||0)),0)*180/Math.PI).toFixed(2)),
-      physicalYawAccel:Number((physical.predictedYawAccel||0).toFixed(3))
+      physicalYawAccel:Number((physical.predictedYawAccel||0).toFixed(3)),
+      frontBrakeShare:Number((physical.serviceBrakeShares?.find((_,index)=>vehicle.axles[index]?.positionM>=0)||0).toFixed(3)),
+      absActiveWheels:(physical.wheels||[]).filter(wheel=>wheel.absActive).length
     });
   };
   captureFrame(0);
@@ -352,6 +354,15 @@ function runtimeIntegrationProbe({
     `one-second Laguna trail braking still produces excessive front push: ${maxFrontSlip}`);
   assert.ok(maxSideslipRad*180/Math.PI<3,
     `one-second Laguna trail braking produced excessive chassis sideslip: ${maxSideslipRad*180/Math.PI} deg`);
+  const configuredFrontShare=vehicle.axles.find(axle=>axle.positionM>=0)?.brakeShare||0;
+  const initialFrontShare=timeline[0]?.frontBrakeShare||0;
+  if(radius>=40){
+    assert.ok(Math.abs(initialFrontShare-configuredFrontShare)<.015,
+      `feasible Laguna trail braking replaced mechanical brake bias: ${initialFrontShare}`);
+  }else{
+    assert.ok(initialFrontShare>configuredFrontShare+.08&&initialFrontShare<.85,
+      `tight Laguna entry did not constrain EBD from measured tire reserve: ${initialFrontShare}`);
+  }
   const finalTargetYaw=Math.abs(lateralDynamicsEnvelope({
     vehicle,
     speed:state.speed,

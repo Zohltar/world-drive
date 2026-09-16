@@ -62,8 +62,12 @@ for(const brakingG of [.30,.60,.80]){
 
   assert.equal(result.serviceBrakeShares.length,2,'EBD diagnostic brake shares missing');
   assert.ok(Number.isFinite(frontMax)&&Number.isFinite(rearMax),'combined tire utilization became non-finite');
+  assert.ok(frontMax<1.0,`front tires saturated during ${brakingG}g service braking in an ordinary bend`);
   assert.ok(rearMax<1.0,`rear tires saturated during ${brakingG}g service braking in an ordinary bend`);
-  assert.ok(rearMax<frontMax+.12,`rear braking demand became excessively dominant at ${brakingG}g: front=${frontMax} rear=${rearMax}`);
+  assert.ok(Math.abs(result.serviceBrakeShares[0]-.62)<.015,
+    `feasible ${brakingG}g bend pre-emptively replaced mechanical brake bias: ${result.serviceBrakeShares[0]}`);
+  assert.ok(result.wheels.every(w=>!w.locked),
+    `ABS-equipped tire locked during feasible ${brakingG}g service braking`);
 }
 
 // F1-style opt-out: explicit ABS disable must retain the mechanical brake bias.
@@ -86,4 +90,4 @@ for(const brakingG of [.30,.60,.80]){
 }
 
 console.log('V21.27 WRX BRAKE IN CORNER QA: PASS');
-console.log('load-aware EBD keeps the rear axle stable under service braking while preserving explicit no-ABS bias');
+console.log('measured-reserve EBD preserves feasible bias while keeping both axles below saturation');

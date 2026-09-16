@@ -95,17 +95,19 @@ for(let i=0;i<72;i++){
 assert.equal(result?.wheelCount,4,'hard-braking QA must resolve all four tires');
 const front=result.wheels.filter(w=>w.front);
 assert.equal(front.length,2,'hard-braking QA must identify both front tires');
-assert.ok(front.every(w=>!w.locked),'ABS-equipped WRX front tires must not stay locked under service braking');
-assert.ok(front.some(w=>w.absActive),'ABS telemetry should show front-wheel intervention in this repro');
+assert.ok(result.wheels.every(w=>!w.locked),'ABS-equipped WRX tires must not stay locked under service braking');
+assert.ok(result.wheels.some(w=>w.absActive),'ABS telemetry should show wheel intervention in this repro');
 assert.ok(result.predictedAccelX>0,`right steering under ABS braking must still generate rightward tire force, got ${result.predictedAccelX}`);
 assert.ok(result.predictedYawAccel>0,`right steering under ABS braking must not yaw the chassis left, got ${result.predictedYawAccel}`);
 
 console.log('GRIP R8 HARD-BRAKING STEERING QA: PASS');
 console.log(JSON.stringify({
+  serviceBrakeShares:result.serviceBrakeShares,
   predictedAccelX:result.predictedAccelX,
   predictedAccelZ:result.predictedAccelZ,
   predictedYawAccel:result.predictedYawAccel,
-  front:front.map(w=>({
+  wheels:result.wheels.map(w=>({
+    front:w.front,
     side:w.side,
     locked:w.locked,
     absActive:w.absActive,
