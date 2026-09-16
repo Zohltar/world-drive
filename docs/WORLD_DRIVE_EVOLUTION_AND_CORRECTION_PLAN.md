@@ -70,14 +70,14 @@ Before coding, be able to answer:
 **Issue #2:** **OPEN / watch-only / not reproduced**  
 **Issue #9:** **DONE/CERTIFIED — HUMAN YUNGAS VISUAL/PERFORMANCE PASS (2026-09-05)**  
 **Issue #10:** **DONE/CERTIFIED — HUMAN PASS (2026-09-12) — steep planar road-contact correction**  
-**Issue #11:** **ACTIVE — affected `coupe` model identified; targeted authored-forward correction in candidate validation**
+**Issue #11:** **ACTIVE — `coupe` forward-axis candidate `9e57b289ee91c9a572efd0674572613a84ba95c1` exact-head run `35099893909` PASS; awaiting HUMAN PASS**
 **Issue #12:** **OPEN / PARKED — forest streaming falls behind after sustained driving; resume investigation inside Block 8 biome work**  
 **Issue #13:** **DONE/CERTIFIED — HUMAN PASS (2026-09-12) — bounded road-articulation contact correction**  
 **Block 8 — Biome-aware natural scenery:** **PLANNED / DEFERRED — includes the parked Issue #12 forest-readiness work when activated**  
 **Block 9 — AI-assisted 3D asset authoring and selective GLB modernization:** **PLANNED / DEFERRED — pilot-first, no wholesale asset replacement**  
 **Block 10 — Mobile browser driving controls:** **ABANDONED / NOT PLANNED (2026-09-13) — experiment stopped by user; no mobile-control candidate runtime was integrated**  
 **Block 11 — Circuit presets / closed-loop authored track routes:** **DONE/CERTIFIED — Laguna Seca HUMAN PASS (2026-09-14); Nordschleife performance HUMAN PASS (2026-09-15); no-ABS runtime and continuous guard rails HUMAN PASS (2026-09-16); integrated `dev` checkpoint `568f557a051832559fa1f3166350cc338a399ee1`, exact-head Dev Integration `35054930198` PASS**
-**Active correction block:** **ISSUE #11 — correct only the generic-pack `coupe` authored-forward axis, then obtain exact-head automation and HUMAN PASS before integration**
+**Active correction block:** **ISSUE #11 — generic-pack `coupe` authored-forward axis corrected; exact-head automation PASS; forced-spawn HUMAN PASS required before integration**
 **Stable `main`:** `b74e7377eaaf2b128eb893c547f4c2da3d14bbea` — tag `v21.32`; must remain untouched without explicit user approval.  
 **Previous rollback/reference:** `9a69c39242eb0f3e2cf8d2fd68675c1cfad23dd8` — tag `v21.31`.
 
@@ -401,7 +401,7 @@ GitHub Issue #13: **CLOSED / COMPLETED (2026-09-12)**.
 
 ## Exact next action
 
-**Validate the isolated Issue #11 `coupe` forward-axis correction on a candidate branch, then deliver it for a forced-spawn human comparison before integration.**
+**Run the forced-spawn human comparison of the Issue #11 `coupe` candidate; integrate only after HUMAN PASS.**
 
 Current unresolved work is intentionally not auto-started:
 
@@ -844,9 +844,9 @@ The defect was reproduced as false axle contact loss on steep but planar road su
 
 ## Issue #11 — one civil-traffic vehicle rotated ~90° from route heading
 
-**ACTIVE — `coupe` IDENTIFIED / TARGETED CANDIDATE VALIDATION.**
+**ACTIVE — exact-head candidate automation PASS / awaiting HUMAN PASS.**
 
-The blue generic-pack `coupe` follows the correct path but its body is visually rotated roughly 90° sideways. The supplied asset confirms why: this is the only pack body with its longitudinal geometry authored on X rather than Y. Apply an explicit per-model forward-yaw correction before length normalization while preserving traffic routing, speed, lane placement and all correctly aligned variants. Require exact-head automation plus a forced `coupe` human comparison before integration.
+The blue generic-pack `coupe` follows the correct path but its body is visually rotated roughly 90° sideways. The supplied asset confirms why: this is the only pack body with its longitudinal geometry authored on X rather than Y. Candidate `9e57b289ee91c9a572efd0674572613a84ba95c1` applies an explicit `-90°` per-model forward-yaw correction before length normalization while preserving traffic routing, speed, lane placement and all correctly aligned variants. Exact-head workflow `35099893909` is PASS. Require a forced `coupe` human comparison before integration.
 
 ## Issue #12 — forest streaming falls behind after sustained driving
 

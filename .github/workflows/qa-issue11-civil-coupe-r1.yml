@@ -11,6 +11,7 @@ on:
       - 'src/traffic/civil-traffic.js'
       - 'assets/traffic/generic_passenger_car_pack_traffic.glb'
       - 'qa/qa-traffic-*.mjs'
+      - 'docs/WORLD_DRIVE_EVOLUTION_AND_CORRECTION_PLAN.md'
       - '.github/workflows/qa-issue11-civil-coupe-r1.yml'
   workflow_dispatch:
 
