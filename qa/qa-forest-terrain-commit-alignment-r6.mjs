@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import {spawnSync} from 'node:child_process';
+import {fileURLToPath} from 'node:url';
 
 const localPath=new URL('../src/local-world-builder.js',import.meta.url);
 const sceneryPath=new URL('../src/scenery/scenery-renderer-p9.js',import.meta.url);
@@ -8,8 +9,9 @@ const local=fs.readFileSync(localPath,'utf8');
 const scenery=fs.readFileSync(sceneryPath,'utf8');
 
 for(const file of [localPath,sceneryPath]){
-  const result=spawnSync(process.execPath,['--check',file.pathname],{encoding:'utf8'});
-  if(result.status!==0)throw new Error(`Syntax check failed for ${file.pathname}\n${result.stderr||result.stdout}`);
+  const filePath=fileURLToPath(file);
+  const result=spawnSync(process.execPath,['--check',filePath],{encoding:'utf8'});
+  if(result.status!==0)throw new Error(`Syntax check failed for ${filePath}\n${result.stderr||result.stdout}`);
 }
 
 assert.match(
