@@ -77,7 +77,7 @@ Before coding, be able to answer:
 **Block 9 — AI-assisted 3D asset authoring and selective GLB modernization:** **PLANNED / DEFERRED — pilot-first, no wholesale asset replacement**  
 **Block 10 — Mobile browser driving controls:** **ABANDONED / NOT PLANNED (2026-09-13) — experiment stopped by user; no mobile-control candidate runtime was integrated**  
 **Block 11 — Circuit presets / closed-loop authored track routes:** **ACTIVE — Laguna Seca HUMAN PASS (2026-09-14); Nordschleife R4 performance HUMAN PASS (2026-09-15); continuous guard-rail visual correction pending automation and HUMAN retest**
-**Active correction block:** **NO-ABS + NORDSCHLEIFE GUARD RAILS R1 — user rejected the remaining ABS behavior and ordered its removal; fixed-bias runtime plus relief-following continuous guard rails implemented, exact-head automation and HUMAN retest pending**
+**Active correction block:** **NO-ABS + NORDSCHLEIFE GUARD RAILS R1 — user rejected the remaining ABS behavior and ordered its removal; fixed-bias runtime plus relief-following continuous guard rails passed exact-head run `35053235510`; HUMAN retest pending**
 **Stable `main`:** `b74e7377eaaf2b128eb893c547f4c2da3d14bbea` — tag `v21.32`; must remain untouched without explicit user approval.  
 **Previous rollback/reference:** `9a69c39242eb0f3e2cf8d2fd68675c1cfad23dd8` — tag `v21.31`.
 
@@ -401,7 +401,7 @@ GitHub Issue #13: **CLOSED / COMPLETED (2026-09-12)**.
 
 ## Exact next action
 
-**Validate and publish No-ABS + Nordschleife Guard Rails R1, then retest WRX trail braking and visually inspect the photographed Nordschleife rail sections while confirming performance remains normal.**
+**Pull No-ABS + Nordschleife Guard Rails R1, then retest WRX trail braking and visually inspect the photographed Nordschleife rail sections while confirming performance remains normal.**
 
 Current unresolved work is intentionally not auto-started:
 
