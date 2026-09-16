@@ -4,7 +4,7 @@ import {createRoutingGeometry} from '../src/routing/routing.js';
 import {
   createWaterProximityIndex,
   pointSegmentDistanceSquared
-} from '../src/spatial-proximity-index.js';
+} from '../src/geography/spatial-proximity-index.js';
 import {FOREST_STREAMING_POLICY as FOREST} from '../src/forest-streaming-policy.js';
 
 assert.equal(FOREST.candidatesPerBuildSlice,12,'Block 8 R2 must not repeat the rejected candidate-cap increase');

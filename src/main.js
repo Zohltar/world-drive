@@ -60,7 +60,7 @@ import { createWheelGroundSupport } from './wheel-ground-support.js';
 import { createVehiclePlacementController } from './vehicles/vehicle-placement-controller.js';
 import { createCameraController } from './camera.js';
 import { createRoutingGeometry, angleDelta, nearestPointOnPolyline } from './routing.js';
-import { createWaterProximityIndex } from './spatial-proximity-index.js';
+import { createWaterProximityIndex } from './geography/spatial-proximity-index.js';
 import { createRoutingService } from './routing-service.js';
 import { createGeocodingService, validLatLon } from './geocoding.js';
 import {

@@ -5,7 +5,7 @@ on:
     branches:
       - candidate/block8-forest-readiness-r2
     paths:
-      - 'src/spatial-proximity-index.js'
+      - 'src/geography/spatial-proximity-index.js'
       - 'src/routing/routing.js'
       - 'src/main.js'
       - 'src/scenery/scenery-renderer-p9.js'

@@ -1,4 +1,4 @@
-import {createBoundsSpatialIndex,pointSegmentDistanceSquared} from '../spatial-proximity-index.js';
+import {createBoundsSpatialIndex,pointSegmentDistanceSquared} from '../geography/spatial-proximity-index.js';
 
 // World Drive - routing geometry subsystem
 // Pure route geometry helpers. Network fetching (OSRM/Nominatim) remains in main.js
