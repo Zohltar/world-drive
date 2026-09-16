@@ -58,7 +58,7 @@ export function createGuardRailBoxTransforms({
 // transforms while submitting each homogeneous set as one InstancedMesh.
 export function createSceneryRenderer({
   THREE,statusEl,features,terrainDetailGroup,infrastructureGroup,buildingGroup,
-  forestGroup,materials,featureCentroid,terrainHeight,nearestRoute,isWaterAt,
+  forestGroup,materials,featureCentroid,terrainHeight,nearestRoute,isNearRoute,isWaterAt,
   pointInPolygon,getWorldOffset
 }){
   if(!THREE)throw new Error('Scenery renderer requires THREE');
@@ -283,6 +283,7 @@ export function createSceneryRenderer({
     getWorldOffset,
     terrainHeight,
     nearestRoute,
+    isNearRoute,
     isWaterAt,
     blocksForest,
     onStats:updateForestStatus

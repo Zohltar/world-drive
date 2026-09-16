@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import {createForestChunkStreamer} from '../src/forest-chunk-streamer-core.js';
 
 const wrapperSource=fs.readFileSync(new URL('../src/forest-chunk-streamer.js',import.meta.url),'utf8');
-assert.ok(wrapperSource.includes("readinessMode:'block8-r1-job-lifecycle'"),'Block 8 readiness diagnostic mode is missing');
+assert.ok(wrapperSource.includes("readinessMode:'block8-r2-spatial-proximity'"),'Block 8 R2 readiness diagnostic mode is missing');
 assert.ok(wrapperSource.includes("installDiagnosticAlias('__WORLD_DRIVE_BLOCK8_FOREST__'"),'Block 8 console diagnostic alias is missing');
 assert.ok(wrapperSource.includes('lifecycle:{'),'Block 8 lifecycle snapshot is missing');
 

@@ -14,6 +14,8 @@ import {
 // update remains; candidate generation and matrix upload already happened idle.
 // P9.40 keeps the same visual/streaming policy while removing redundant queue
 // sorting and cache trimming from every candidate slice.
+// Block 8 R2 preserves that scheduler and routes high-frequency road/water
+// exclusion tests through exact bounded spatial indexes.
 export function createForestChunkStreamer({
   THREE,
   forestGroup,
@@ -21,6 +23,7 @@ export function createForestChunkStreamer({
   getParentRenderOffset,
   terrainHeight,
   nearestRoute,
+  isNearRoute,
   isWaterAt,
   blocksForest,
   onStats
@@ -343,12 +346,15 @@ export function createForestChunkStreamer({
   }
 
   function cellNearRoad(x,z){
+    const distance=FOREST.roadClearance+cellHalfDiagonal+4;
+    if(typeof isNearRoute==='function')return isNearRoute(x,z,distance,true);
     const nr=nearestRoute(x,z);
-    return !!nr&&Number.isFinite(nr.d)&&nr.d<=FOREST.roadClearance+cellHalfDiagonal+4;
+    return !!nr&&Number.isFinite(nr.d)&&nr.d<=distance;
   }
 
   function tooCloseToRoadExact(x,z,nearRoadCell){
     if(!nearRoadCell)return false;
+    if(typeof isNearRoute==='function')return isNearRoute(x,z,FOREST.roadClearance,false);
     const nr=nearestRoute(x,z);
     return !!nr&&Number.isFinite(nr.d)&&nr.d<FOREST.roadClearance;
   }

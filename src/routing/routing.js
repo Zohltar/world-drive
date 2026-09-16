@@ -1,3 +1,5 @@
+import {createBoundsSpatialIndex,pointSegmentDistanceSquared} from '../spatial-proximity-index.js';
+
 // World Drive - routing geometry subsystem
 // Pure route geometry helpers. Network fetching (OSRM/Nominatim) remains in main.js
 // for this first routing refactor.
@@ -12,6 +14,71 @@ export function createRoutingGeometry({
 
   function routeLength(){
     return Number(getRouteLength?.())||0;
+  }
+
+  const ROUTE_PROXIMITY_CELL_M=240;
+  const ROUTE_PROXIMITY_MAX_M=160;
+  const routeProximityIndex=createBoundsSpatialIndex({
+    cellSize:ROUTE_PROXIMITY_CELL_M,
+    maxIndexedCells:1200
+  });
+  let routeIndexSignature={list:null,length:-1,first:null,middle:null,last:null};
+  const routeProximityPerf={queries:0,fallbackQueries:0,rebuilds:0};
+
+  function routeSignature(segs){
+    const length=segs.length;
+    return {
+      list:segs,length,
+      first:segs[0]||null,
+      middle:segs[Math.floor(length/2)]||null,
+      last:segs[length-1]||null
+    };
+  }
+
+  function routeSignatureMatches(next){
+    return routeIndexSignature.list===next.list&&routeIndexSignature.length===next.length&&
+      routeIndexSignature.first===next.first&&routeIndexSignature.middle===next.middle&&
+      routeIndexSignature.last===next.last;
+  }
+
+  function rebuildProximityIndex(){
+    const segs=segments();
+    routeProximityIndex.rebuild(segs,segment=>({
+      minx:Math.min(segment.ax,segment.bx)-ROUTE_PROXIMITY_MAX_M,
+      maxx:Math.max(segment.ax,segment.bx)+ROUTE_PROXIMITY_MAX_M,
+      minz:Math.min(segment.az,segment.bz)-ROUTE_PROXIMITY_MAX_M,
+      maxz:Math.max(segment.az,segment.bz)+ROUTE_PROXIMITY_MAX_M
+    }));
+    routeIndexSignature=routeSignature(segs);
+    routeProximityPerf.rebuilds++;
+    return proximityStats();
+  }
+
+  function ensureProximityIndex(){
+    const segs=segments();
+    if(!routeSignatureMatches(routeSignature(segs)))rebuildProximityIndex();
+    return segs;
+  }
+
+  function isNearRoute(x,z,maxDistance,inclusive=false){
+    const segs=ensureProximityIndex();
+    if(!segs.length)return false;
+    const limit=Math.max(0,Number(maxDistance)||0);
+    routeProximityPerf.queries++;
+    if(limit>ROUTE_PROXIMITY_MAX_M){
+      routeProximityPerf.fallbackQueries++;
+      const nearest=nearestRoute(x,z);
+      return !!nearest&&Number.isFinite(nearest.d)&&(inclusive?nearest.d<=limit:nearest.d<limit);
+    }
+    const limit2=limit*limit;
+    return routeProximityIndex.someAt(x,z,segment=>{
+      const distance2=pointSegmentDistanceSquared(x,z,segment);
+      return inclusive?distance2<=limit2:distance2<limit2;
+    });
+  }
+
+  function proximityStats(){
+    return {...routeProximityPerf,maxDistance:ROUTE_PROXIMITY_MAX_M,index:routeProximityIndex.stats()};
   }
 
   function nearestRoute(x,z){
@@ -97,6 +164,9 @@ export function createRoutingGeometry({
 
   return {
     nearestRoute,
+    isNearRoute,
+    rebuildProximityIndex,
+    proximityStats,
     routePointAt,
     routePointAtCum
   };

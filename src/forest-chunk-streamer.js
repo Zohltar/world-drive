@@ -263,7 +263,7 @@ export function createForestChunkStreamer(options){
     const raw=activeBase().stats?.()||{},seed=activeEntry;
     return {
       enabled:true,observerMode:'p931-ahead-priority',startupMode:'p934-startup-route-seed',streamingMode:'p940-dirty-priority-queue',
-      hitchMode:'p941-frame-window-runtime',readinessMode:'block8-r1-job-lifecycle',legacyObserverMode:'p929-direct-last-slice',
+      hitchMode:'p941-frame-window-runtime',readinessMode:'block8-r2-spatial-proximity',legacyObserverMode:'p929-direct-last-slice',
       routeCache:{key:activeEntry.key,slots:entries.length,maxSlots:ROUTE_CACHE_SLOTS,lastRebase:lastRouteCacheRebase?{...lastRouteCacheRebase}:null},
       trees:visible.trees,near:visible.near,mid:visible.mid,far:visible.far,edge:visible.edge,
       activeChunks:finite(raw.activeChunks),cachedChunks:finite(raw.cachedChunks),queuedChunks:finite(raw.queuedChunks),

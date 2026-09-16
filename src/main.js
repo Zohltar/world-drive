@@ -60,6 +60,7 @@ import { createWheelGroundSupport } from './wheel-ground-support.js';
 import { createVehiclePlacementController } from './vehicles/vehicle-placement-controller.js';
 import { createCameraController } from './camera.js';
 import { createRoutingGeometry, angleDelta, nearestPointOnPolyline } from './routing.js';
+import { createWaterProximityIndex } from './spatial-proximity-index.js';
 import { createRoutingService } from './routing-service.js';
 import { createGeocodingService, validLatLon } from './geocoding.js';
 import {
@@ -135,6 +136,8 @@ const routingGeometry=createRoutingGeometry({
   getRouteLength:()=>routeLength
 });
 const nearestRoute=(x,z)=>routingGeometry.nearestRoute(x,z);
+const isNearRoute=(x,z,maxDistance,inclusive=false)=>
+  routingGeometry.isNearRoute(x,z,maxDistance,inclusive);
 
 // V21.21.5 vehicle-local route lookup. The general nearestRoute() remains
 // untouched for OSM/sign/metadata projections, but the driving loop exploits
@@ -603,6 +606,18 @@ const waterData=createWaterDataService({
 const waterFeatures=waterData.waterFeatures;
 const bridgeFeatures=waterData.bridgeFeatures;
 const coastlineFeatures=waterData.coastlineFeatures;
+const waterProximity=createWaterProximityIndex({
+  getFeatures:()=>waterFeatures,
+  waterWidth,
+  pointInPolygon:pointInPolygon2D,
+  cellSize:240,
+  maxMargin:16,
+  maxIndexedCells:900
+});
+installDiagnosticAlias('__WORLD_DRIVE_BLOCK8_SPATIAL__',()=>({
+  route:routingGeometry.proximityStats(),
+  water:waterProximity.stats()
+}));
 
 const bridgeStatus=$('bridgeStatus');
 
@@ -712,6 +727,7 @@ const sceneryRenderer=createSceneryRenderer({
   featureCentroid,
   terrainHeight:(x,z)=>terrainAbs(x,z),
   nearestRoute:(x,z)=>nearestRoute(x,z),
+  isNearRoute:(x,z,maxDistance,inclusive)=>isNearRoute(x,z,maxDistance,inclusive),
   isWaterAt:(x,z,margin)=>isWaterAt(x,z,margin),
   pointInPolygon:(x,z,points)=>pointInPolygon2D(x,z,points),
   getWorldOffset:()=>worldOffset
@@ -986,30 +1002,8 @@ function pointInPolygon2D(x,z,points){
   }
   return inside;
 }
-function pointSegDist2D(px,pz,a,b){
-  const vx=b.x-a.x,vz=b.z-a.z,wx=px-a.x,wz=pz-a.z;
-  const vv=vx*vx+vz*vz||1;
-  const t=Math.max(0,Math.min(1,(wx*vx+wz*vz)/vv));
-  return Math.hypot(px-(a.x+vx*t),pz-(a.z+vz*t));
-}
 function isWaterAt(x,z,margin=5){
-  for(const f of waterFeatures){
-    if(!f.points?.length)continue;
-    if(f.kind==='polygon'){
-      if(pointInPolygon2D(x,z,f.points))return true;
-      // Also reject close to shoreline to avoid trunks at water edge.
-      for(let i=0;i<f.points.length;i++){
-        const a=f.points[i],b=f.points[(i+1)%f.points.length];
-        if(pointSegDist2D(x,z,a,b)<margin)return true;
-      }
-    }else{
-      const half=Math.max(margin,waterWidth(f.tags)*.55+margin);
-      for(let i=0;i<f.points.length-1;i++){
-        if(pointSegDist2D(x,z,f.points[i],f.points[i+1])<half)return true;
-      }
-    }
-  }
-  return false;
+  return waterProximity.isWaterAt(x,z,margin);
 }
 function removeTreesOverWater(){
   // Existing forest may predate an asynchronous hydro response.
@@ -1179,6 +1173,8 @@ updateHydroCacheHUD().catch(()=>{});
 async function loadWaterAround(absx,absz){
   const result=await waterData.loadAround(absx,absz);
   if(!result.ok)return false;
+  waterProximity.invalidate();
+  waterProximity.rebuild();
 
   // Geometry/render orchestration deliberately stays in main.js for 13A.
   rebuildBridgeSpans();
