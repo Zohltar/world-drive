@@ -6,7 +6,11 @@ export const GENERIC_PASSENGER_PACK_FALLBACK_URL='./assets/traffic/generic_passe
 export const CIVIL_TRAFFIC_VEHICLE_POOL=Object.freeze([
   Object.freeze({id:'sonata',label:'Hyundai Sonata',source:'sonata',weight:1.0,targetLength:4.85}),
   Object.freeze({id:'compact',label:'Compact',source:'generic-pack',bodyName:'Compact Body',weight:1.15,targetLength:4.05}),
-  Object.freeze({id:'coupe',label:'Coupe',source:'generic-pack',bodyName:'Coupe Body',weight:.55,targetLength:4.55}),
+  // This authored body is the only pack variant whose longitudinal axis is +X
+  // instead of -Y. Rotate it into the common pack-forward contract before the
+  // template is measured; otherwise it drives sideways and its width is scaled
+  // to targetLength as though it were the vehicle length.
+  Object.freeze({id:'coupe',label:'Coupe',source:'generic-pack',bodyName:'Coupe Body',weight:.55,targetLength:4.55,forwardYaw:-Math.PI/2}),
   Object.freeze({id:'hatchback',label:'Hatchback',source:'generic-pack',bodyName:'Hatchback Body',weight:1.15,targetLength:4.30}),
   Object.freeze({id:'minivan',label:'Minivan',source:'generic-pack',bodyName:'minivan body',weight:.65,targetLength:5.05}),
   Object.freeze({id:'offroad',label:'Off-road',source:'generic-pack',bodyName:'Offroad Body',weight:.45,targetLength:4.55}),
@@ -110,8 +114,12 @@ function extractGenericVehicle(rootNode,entry){
   });
 
   // The source pack is Blender-style: X=lateral, Y=longitudinal, Z=up and
-  // vehicles face -Y. Rotate into World Drive's X=lateral, Y=up, +Z=forward.
+  // vehicles normally face -Y. Rotate into World Drive's X=lateral, Y=up,
+  // +Z=forward, then apply the one explicitly authored forward-axis exception.
+  // YXZ makes forwardYaw a World Drive yaw after the source up-axis conversion.
+  assembly.rotation.order='YXZ';
   assembly.rotation.x=-Math.PI/2;
+  assembly.rotation.y=Number(entry.forwardYaw)||0;
   normalizeGenericTemplate(assembly,entry.targetLength);
   assembly.userData.trafficVehicleId=entry.id;
   assembly.userData.trafficVehicleLabel=entry.label;

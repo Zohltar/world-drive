@@ -70,14 +70,14 @@ Before coding, be able to answer:
 **Issue #2:** **OPEN / watch-only / not reproduced**  
 **Issue #9:** **DONE/CERTIFIED — HUMAN YUNGAS VISUAL/PERFORMANCE PASS (2026-09-05)**  
 **Issue #10:** **DONE/CERTIFIED — HUMAN PASS (2026-09-12) — steep planar road-contact correction**  
-**Issue #11:** **OPEN / one civil-traffic model rotated ~90° / deferred**  
+**Issue #11:** **ACTIVE — affected `coupe` model identified; targeted authored-forward correction in candidate validation**
 **Issue #12:** **OPEN / PARKED — forest streaming falls behind after sustained driving; resume investigation inside Block 8 biome work**  
 **Issue #13:** **DONE/CERTIFIED — HUMAN PASS (2026-09-12) — bounded road-articulation contact correction**  
 **Block 8 — Biome-aware natural scenery:** **PLANNED / DEFERRED — includes the parked Issue #12 forest-readiness work when activated**  
 **Block 9 — AI-assisted 3D asset authoring and selective GLB modernization:** **PLANNED / DEFERRED — pilot-first, no wholesale asset replacement**  
 **Block 10 — Mobile browser driving controls:** **ABANDONED / NOT PLANNED (2026-09-13) — experiment stopped by user; no mobile-control candidate runtime was integrated**  
 **Block 11 — Circuit presets / closed-loop authored track routes:** **DONE/CERTIFIED — Laguna Seca HUMAN PASS (2026-09-14); Nordschleife performance HUMAN PASS (2026-09-15); no-ABS runtime and continuous guard rails HUMAN PASS (2026-09-16); integrated `dev` checkpoint `568f557a051832559fa1f3166350cc338a399ee1`, exact-head Dev Integration `35054930198` PASS**
-**Active correction block:** **NONE — latest accepted World Drive circuit/physics checkpoint is integrated and certified; wait for an explicit next priority**
+**Active correction block:** **ISSUE #11 — correct only the generic-pack `coupe` authored-forward axis, then obtain exact-head automation and HUMAN PASS before integration**
 **Stable `main`:** `b74e7377eaaf2b128eb893c547f4c2da3d14bbea` — tag `v21.32`; must remain untouched without explicit user approval.  
 **Previous rollback/reference:** `9a69c39242eb0f3e2cf8d2fd68675c1cfad23dd8` — tag `v21.31`.
 
@@ -401,12 +401,12 @@ GitHub Issue #13: **CLOSED / COMPLETED (2026-09-12)**.
 
 ## Exact next action
 
-**No correction is currently active. Preserve the certified Block 11 checkpoint and wait for an explicit next priority.**
+**Validate the isolated Issue #11 `coupe` forward-axis correction on a candidate branch, then deliver it for a forced-spawn human comparison before integration.**
 
 Current unresolved work is intentionally not auto-started:
 
 - Issue #2 remains **watch-only / not reproduced**; collect diagnostics only if it reappears;
-- Issue #11 remains **deferred**; if prioritized, identify the single affected civil-traffic model and audit its authored forward-axis/yaw contract before editing;
+- Issue #11 is **ACTIVE**: the user image identifies the blue `coupe`; asset inspection confirms it is the only generic-pack body authored longitudinally on X rather than Y. Correct that per-model forward-axis contract without changing traffic routing, speed, lane placement or the ten correctly aligned variants;
 - Issue #12 is **PARKED**; do not resume it as a standalone correction. Carry the existing diagnostics and failed-candidate evidence into Block 8 when biome-aware natural scenery work begins;
 - Block 7 composition-root reduction remains **deferred / evidence-driven only**;
 - Block 8 biome-aware natural scenery remains **planned/deferred**; when activated, begin by reopening and stabilizing forest readiness/streaming as its first runtime workstream, then add biome classification and palette selection;
@@ -844,9 +844,9 @@ The defect was reproduced as false axle contact loss on steep but planar road su
 
 ## Issue #11 — one civil-traffic vehicle rotated ~90° from route heading
 
-**OPEN / USER-REPORTED / DEFERRED.**
+**ACTIVE — `coupe` IDENTIFIED / TARGETED CANDIDATE VALIDATION.**
 
-One specific civil-traffic model follows the correct path but its body is visually rotated roughly 90° sideways. Correct only the affected authored/model-forward yaw contract while preserving traffic routing, speed, lane placement and all correctly aligned variants.
+The blue generic-pack `coupe` follows the correct path but its body is visually rotated roughly 90° sideways. The supplied asset confirms why: this is the only pack body with its longitudinal geometry authored on X rather than Y. Apply an explicit per-model forward-yaw correction before length normalization while preserving traffic routing, speed, lane placement and all correctly aligned variants. Require exact-head automation plus a forced `coupe` human comparison before integration.
 
 ## Issue #12 — forest streaming falls behind after sustained driving
 
