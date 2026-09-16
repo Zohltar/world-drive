@@ -4,6 +4,54 @@ import {createStaticBoxInstances} from '../rendering/static-box-instances.js';
 
 export {createStaticBoxInstances} from '../rendering/static-box-instances.js';
 
+export function createGuardRailBoxTransforms({
+  points=[],terrainHeight,getWorldOffset,maxSpanM=5,overlapM=.14
+}={}){
+  if(!Array.isArray(points)||points.length<2||typeof terrainHeight!=='function')return [];
+  const offset=typeof getWorldOffset==='function'?getWorldOffset():{x:0,z:0};
+  const span=Math.max(1,Number(maxSpanM)||5);
+  const overlap=Math.max(0,Math.min(.5,Number(overlapM)||0));
+  const transforms=[];
+
+  for(let i=0;i<points.length-1;i++){
+    const a=points[i],b=points[i+1];
+    const edgeDx=Number(b?.x)-Number(a?.x);
+    const edgeDz=Number(b?.z)-Number(a?.z);
+    const edgeLength=Math.hypot(edgeDx,edgeDz);
+    if(!Number.isFinite(edgeLength)||edgeLength<.5)continue;
+
+    // OSM guard-rail ways can contain long edges. A single horizontal box at
+    // their midpoint sinks into rolling terrain and looks like repeated gaps.
+    // Short pitched spans sample both endpoints and stay joined over relief.
+    const sections=Math.max(1,Math.ceil(edgeLength/span));
+    for(let section=0;section<sections;section++){
+      const t0=section/sections,t1=(section+1)/sections;
+      const x0=a.x+edgeDx*t0,z0=a.z+edgeDz*t0;
+      const x1=a.x+edgeDx*t1,z1=a.z+edgeDz*t1;
+      const ground0=Number(terrainHeight(x0,z0));
+      const ground1=Number(terrainHeight(x1,z1));
+      if(!Number.isFinite(ground0)||!Number.isFinite(ground1))continue;
+      const y0=ground0+.72,y1=ground1+.72;
+      const dx=x1-x0,dy=y1-y0,dz=z1-z0;
+      const horizontalLength=Math.hypot(dx,dz);
+      const length=Math.hypot(horizontalLength,dy);
+      if(!Number.isFinite(length)||length<.25)continue;
+
+      transforms.push({
+        x:(x0+x1)/2-(Number(offset?.x)||0),
+        y:(y0+y1)/2,
+        z:(z0+z1)/2-(Number(offset?.z)||0),
+        width:.10,
+        height:.18,
+        depth:length+overlap,
+        pitch:-Math.atan2(dy,horizontalLength),
+        yaw:Math.atan2(dx,dz)
+      });
+    }
+  }
+  return transforms;
+}
+
 // Dense OSM areas can contain hundreds of simple buildings and thousands of
 // guard-rail sections. One Mesh per box turns those features into thousands of
 // WebGL draw calls even though they all share one material. Keep their exact
@@ -134,27 +182,6 @@ export function createSceneryRenderer({
         z:mz-offset.z,
         width:6,
         height:h,
-        depth:len,
-        yaw:Math.atan2(dx,dz)
-      });
-    }
-    return transforms;
-  }
-
-  function guardRailBoxTransforms(points){
-    const offset=getWorldOffset();
-    const transforms=[];
-    for(let i=0;i<points.length-1;i++){
-      const a=points[i],b=points[i+1];
-      const dx=b.x-a.x,dz=b.z-a.z,len=Math.hypot(dx,dz);
-      if(len<.5)continue;
-      const mx=(a.x+b.x)/2,mz=(a.z+b.z)/2;
-      transforms.push({
-        x:mx-offset.x,
-        y:terrainHeight(mx,mz)+.72,
-        z:mz-offset.z,
-        width:.10,
-        height:.18,
         depth:len,
         yaw:Math.atan2(dx,dz)
       });
@@ -406,7 +433,9 @@ export function createSceneryRenderer({
       }else if(tags.man_made==='dam'||tags.waterway==='dam'){
         damInstances.push(...damBoxTransforms(feature.points));
       }else if(tags.barrier==='guard_rail'){
-        guardRailInstances.push(...guardRailBoxTransforms(feature.points));
+        guardRailInstances.push(...createGuardRailBoxTransforms({
+          points:feature.points,terrainHeight,getWorldOffset
+        }));
       }else if(tags.natural==='bare_rock'||tags.natural==='scree'||tags.natural==='cliff'){
         object=addLandPatch(feature.points,rockMat,.04);
         if(object)terrainDetailGroup.add(object);

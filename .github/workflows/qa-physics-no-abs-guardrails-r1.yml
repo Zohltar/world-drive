@@ -1,0 +1,53 @@
+name: Physics No ABS and Guard Rails R1
+
+on:
+  push:
+    branches:
+      - candidate/physics-no-abs-guardrails-r1
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  exact-head:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install
+        run: npm ci
+      - name: No-ABS runtime contract
+        run: |
+          node qa/qa-physics-no-abs-r1.mjs
+          node qa/qa-main-c5-loaded-settings.mjs
+          node qa/qa-physics-trail-braking-turn-in-r3.mjs
+          node qa/V21_27_WRX_BRAKE_IN_CORNER_QA.mjs
+          node qa/V21_27_WRX_TRAIL_BRAKE_QA.mjs
+      - name: Nordschleife guard-rail and performance contracts
+        run: |
+          node qa/qa-nordschleife-guard-rail-continuity-r1.mjs
+          node qa/qa-block11-nordschleife-r1.mjs
+          node qa/qa-block11-nordschleife-r2.mjs
+          node qa/qa-block11-nordschleife-perf-r3.mjs
+          node qa/qa-block11-nordschleife-bridge-perf-r4.mjs
+      - name: Road, scenery and finite geometry regressions
+        run: |
+          node qa/qa-road-surface-continuity-r1.mjs
+          node qa/qa-osm-geometry-finite-r1.mjs
+          node qa/qa-geofabrik-tiles-r1.mjs
+          node qa/qa-streaming-p913-transitions.mjs
+      - name: Full driving matrix
+        run: node qa/DEV_DRIVING_SIM_QA.mjs
+      - name: Runtime integration audit
+        run: node qa/DEV_INTEGRATION_AUDIT.mjs
+      - name: Production build
+        run: npm run build
+      - name: Code split
+        run: node qa/V21_31_CODE_SPLIT_QA.mjs

@@ -1735,21 +1735,6 @@ function autopilotControl(...args){return autopilotController.autopilotControl(.
 function toggleAssist(...args){return autopilotController.toggleAssist(...args);}
 function updateSpeedLimitModeUI(...args){return autopilotController.updateSpeedLimitModeUI(...args);}
 function toggleRoadSpeedLimits(...args){return autopilotController.toggleRoadSpeedLimits(...args);}
-function vehicleHasAbs(){return VEHICLE?.absEnabled!==false;}
-function runtimeAbsEnabled(){return vehicleHasAbs()&&appSettings.absEnabled!==false;}
-function toggleAbs(){
-  if(!vehicleHasAbs()){
-    toast('ABS non disponible sur ce véhicule');
-    syncV21RuntimeControls();
-    return false;
-  }
-
-  appSettings.absEnabled=appSettings.absEnabled===false;
-  queueSettingsSave();
-  syncV21RuntimeControls();
-  toast(`ABS ${appSettings.absEnabled?'activé':'désactivé'}`);
-  return appSettings.absEnabled;
-}
 
 const autopilotStateBridge={};
 Object.defineProperties(autopilotStateBridge,{
@@ -2351,7 +2336,6 @@ drivingRuntime=createDrivingRuntime({
     maxSpeedKmh,
     maxSpeedMps:MAX
   }),
-  getAbsEnabled:()=>appSettings.absEnabled!==false,
   getRouteLength:()=>routeLength,
   getWorldOffset:()=>worldOffset,
   getCivilTrafficEnabled:()=>ROUTE_CIVIL_TRAFFIC,
@@ -2459,7 +2443,6 @@ function ensureV21MenuSystem(){
     multiplayer,
     cameraController,
     toggleAssist,
-    toggleAbs,
     toggleRoadSpeedLimits,
     toggleAutopilot,
     resetToRoad,
@@ -2468,8 +2451,6 @@ function ensureV21MenuSystem(){
     toast,
     getRuntimeState:()=>({
       assist,
-      absEnabled:runtimeAbsEnabled(),
-      absAvailable:vehicleHasAbs(),
       obeyRoadSpeedLimits,
       transmissionMode,
       autopilot

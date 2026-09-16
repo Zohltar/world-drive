@@ -82,10 +82,6 @@ export function physicalAxleCombinedUtilization({wheels=[],front=false}={}){
 
 const GRAVITY=9.80665;
 
-export function effectiveRuntimeAbsEnabled({vehicle=null,userEnabled=true}={}){
-  return vehicle?.absEnabled!==false&&userEnabled!==false;
-}
-
 // Grip R5 — physical off-road sideslip friction. The V21.27 tire/surface model
 // already knows the tire compound and dirt peak/sliding friction; use that same
 // model for the authoritative terrain path instead of a steering-demand proxy.
@@ -179,7 +175,7 @@ export function landingSideslipGripSeed({sideslipRad=0,speedAbs=0}={}){
 
 export function createDrivingRuntime({
   getState,setState,getFlags,getRouteLength,getWorldOffset,nearestRouteForVehicle,
-  autopilotControl,keyboardActionDown,gamepadState,updateTransmission,getServiceBrakeInput,getAbsEnabled,
+  autopilotControl,keyboardActionDown,gamepadState,updateTransmission,getServiceBrakeInput,
   vehiclePresentation,vehicleVisuals,truckTrailerSystem,roadSurfaceGrip,getVehicleId,
   VEHICLE,vehicleTopSpeedKmh,activeTransmissionProfile,effectiveEngineRedlineRpm,
   transmissionRedlineSpeedKmh,vehicleReverseLimitMps,physicsClamp,
@@ -195,7 +191,10 @@ export function createDrivingRuntime({
   const physicsShadow=createPerWheelShadowSolver({hz:120,maxSubSteps:8});
   let wasAirborne=false;
   let serviceBrakeGripScale=1;
-  let serviceBrakeAbsEnabled=effectiveRuntimeAbsEnabled({vehicle:VEHICLE});
+  // The player-validated fixed-bias path is now the only gameplay brake path.
+  // Keep the authored vehicle profiles intact as historical/tuning metadata,
+  // but never expose ABS/EBD to either authoritative tire solver at runtime.
+  const serviceBrakeAbsEnabled=false;
   const runtimeVehicle=Object.create(
     VEHICLE&&typeof VEHICLE==='object'?VEHICLE:Object.prototype
   );
@@ -206,10 +205,6 @@ export function createDrivingRuntime({
   const maneuverState=createManeuverState();
 
   function update(dt){
-    serviceBrakeAbsEnabled=effectiveRuntimeAbsEnabled({
-      vehicle:VEHICLE,
-      userEnabled:typeof getAbsEnabled==='function'?getAbsEnabled():true
-    });
     const initialState=getState();
     const nr=nearestRouteForVehicle(initialState.absX,initialState.absZ);
     const ap=autopilotControl(dt,nr);
@@ -723,8 +718,7 @@ export function createDrivingRuntime({
     physicsShadowDiagnostics:()=>({
       ...physicsShadow.diagnostics(),
       serviceBrakeGripScale,
-      absAvailable:VEHICLE?.absEnabled!==false,
-      absEnabled:serviceBrakeAbsEnabled
+      absEnabled:false
     })
   };
 }

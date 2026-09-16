@@ -18,7 +18,8 @@ const transforms=Array.from({length:guardRailSections},(_,index)=>({
   width:.10,
   height:.18,
   depth:.8,
-  yaw:(index%19)*.01
+  yaw:(index%19)*.01,
+  pitch:Math.sin(index*.02)*.08
 }));
 const guardRails=createStaticBoxInstances({
   THREE,
@@ -52,7 +53,8 @@ const filtered=createStaticBoxInstances({
 });
 assert.equal(filtered.count,1,'invalid static instances reached GPU buffers');
 
-assert.match(scenerySource,/guardRailInstances\.push\(\.\.\.guardRailBoxTransforms\(feature\.points\)\)/);
+assert.match(scenerySource,/guardRailInstances\.push\(\.\.\.createGuardRailBoxTransforms\(\{/);
+assert.match(scenerySource,/maxSpanM=5,overlapM=\.14/,'guard rails lost relief-following subdivision');
 assert.match(scenerySource,/farBuildingShadowInstances/);
 assert.match(scenerySource,/createStaticBoxInstances\(\{THREE,\.\.\.options\}\)/);
 assert.doesNotMatch(

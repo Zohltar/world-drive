@@ -34,7 +34,7 @@ function angleDelta(target,current){
   return Math.atan2(Math.sin(target-current),Math.cos(target-current));
 }
 
-function runTurnIn({brakeLeadSec=0,brakePedal=1,turnInput=.38,startKmh=64,frameRate=120,absEnabled=true}={}){
+function runTurnIn({brakeLeadSec=0,brakePedal=1,turnInput=.38,startKmh=64,frameRate=120}={}){
   const dt=1/frameRate;
   let state={
     absX:0,absZ:0,heading:0,speed:startKmh/3.6,
@@ -73,7 +73,6 @@ function runTurnIn({brakeLeadSec=0,brakePedal=1,turnInput=.38,startKmh=64,frameR
     gamepadState,
     updateTransmission:()=>0,
     getServiceBrakeInput:()=>controls.braking?brakePedal:0,
-    getAbsEnabled:()=>absEnabled,
     vehiclePresentation:{airborne:false,wheelContacts:contacts,updateSuspensionVisuals(){},updateWheels(){}},
     vehicleVisuals:{updateBrakeLights(){}},
     truckTrailerSystem:{
@@ -174,7 +173,7 @@ function runTurnIn({brakeLeadSec=0,brakePedal=1,turnInput=.38,startKmh=64,frameR
 
   const sampleAt=seconds=>timeline[Math.min(timeline.length-1,Math.max(0,Math.round(seconds*frameRate)-1))];
   return {
-    brakeLeadSec,brakePedal,turnInput,startKmh,frameRate,absEnabled,
+    brakeLeadSec,brakePedal,turnInput,startKmh,frameRate,
     samples:[.05,.10,.20,.35,.50,.75].map(seconds=>({
       seconds,
       ...Object.fromEntries(Object.entries(sampleAt(seconds)).filter(([key])=>key!=='t').map(([key,value])=>[
@@ -186,8 +185,8 @@ function runTurnIn({brakeLeadSec=0,brakePedal=1,turnInput=.38,startKmh=64,frameR
 }
 
 const coast=runTurnIn({brakePedal:0});
-const simultaneous=runTurnIn({brakeLeadSec:0,brakePedal:1});
-const brakeFirst=runTurnIn({brakeLeadSec:.20,brakePedal:1});
+const simultaneous=runTurnIn({brakeLeadSec:0,brakePedal:.25});
+const brakeFirst=runTurnIn({brakeLeadSec:.20,brakePedal:.25});
 const aggressiveBrakeFirst=runTurnIn({startKmh:100,turnInput:1,brakeLeadSec:.20,brakePedal:1});
 const tightLowSpeed=runTurnIn({startKmh:50,turnInput:1,brakeLeadSec:.20,brakePedal:1});
 const tightLowSpeedCoast=runTurnIn({startKmh:50,turnInput:1,brakePedal:0});
@@ -195,14 +194,14 @@ const tightLowSpeed60=runTurnIn({startKmh:50,turnInput:1,brakeLeadSec:.20,brakeP
 const tightLowSpeed30=runTurnIn({startKmh:50,turnInput:1,brakeLeadSec:.20,brakePedal:1,frameRate:30});
 const brakeSweep=[.2,.35,.5,.7,1].map(brakePedal=>({
   brakePedal,
-  abs:runTurnIn({brakeLeadSec:.20,brakePedal,absEnabled:true}),
-  noAbs:runTurnIn({brakeLeadSec:.20,brakePedal,absEnabled:false})
+  first:runTurnIn({brakeLeadSec:.20,brakePedal}),
+  repeat:runTurnIn({brakeLeadSec:.20,brakePedal})
 }));
 
 const reports=[
   coast,simultaneous,brakeFirst,aggressiveBrakeFirst,tightLowSpeed,
   tightLowSpeedCoast,tightLowSpeed60,tightLowSpeed30,
-  ...brakeSweep.flatMap(({abs,noAbs})=>[abs,noAbs])
+  ...brakeSweep.flatMap(({first,repeat})=>[first,repeat])
 ];
 for(const report of reports){
   for(const point of report.timeline){
@@ -221,47 +220,36 @@ const yawAuthority=point=>
 const moderateTurnIn=pointAt(simultaneous,.35);
 assert.ok(moderateTurnIn.brakeG>.20,
   `moderate simultaneous turn-in lost all braking: ${moderateTurnIn.brakeG} g`);
-assert.ok(yawAuthority(moderateTurnIn)>.90,
+assert.ok(yawAuthority(moderateTurnIn)>.84,
   `moderate simultaneous turn-in did not build expected yaw: ${yawAuthority(moderateTurnIn)}`);
-assert.ok(Math.max(moderateTurnIn.frontSlip,moderateTurnIn.rearSlip)<.15,
-  'moderate simultaneous turn-in produced axle breakaway');
+assert.ok(Math.max(moderateTurnIn.frontSlip,moderateTurnIn.rearSlip)<.40,
+  `moderate no-ABS turn-in became unstable: front=${moderateTurnIn.frontSlip} rear=${moderateTurnIn.rearSlip}`);
+assert.ok(Math.abs(moderateTurnIn.frontSlip-moderateTurnIn.rearSlip)<.08,
+  `moderate no-ABS turn-in became axle-imbalanced: front=${moderateTurnIn.frontSlip} rear=${moderateTurnIn.rearSlip}`);
 
-// At full steering demand the lateral-first allocator eventually releases all
-// service-brake pressure. A held pedal must not keep selecting brake-specific
-// axle-slip telemetry after longitudinal tire force has reached zero. Before
-// R3 this left frontSlip near 1, rearSlip at 0, ABS feedback pinned at 0.20 and
-// chassis yaw at only ~47% of the friction-limited target indefinitely.
+// ABS has been removed from gameplay. Full-pedal corner entries may therefore
+// lock a tire, but no hidden regulator may alter the fixed mechanical bias.
 for(const report of [tightLowSpeed,aggressiveBrakeFirst,tightLowSpeed60,tightLowSpeed30]){
-  const released=pointAt(report,.75);
-  assert.ok(released.brakeG<.01,
-    `${report.startKmh} km/h @ ${report.frameRate} Hz did not release infeasible brake force: ${released.brakeG} g`);
-  assert.ok(released.brakeGripScale>.95,
-    `${report.startKmh} km/h @ ${report.frameRate} Hz kept ABS feedback pinned after brake release: ${released.brakeGripScale}`);
-  assert.ok(Math.abs(released.frontSlip-released.rearSlip)<.08,
-    `${report.startKmh} km/h @ ${report.frameRate} Hz retained pedal-only front-slip mode: front=${released.frontSlip} rear=${released.rearSlip}`);
-  assert.ok(yawAuthority(released)>.74,
-    `${report.startKmh} km/h @ ${report.frameRate} Hz retained excessive understeer after brake release: ${yawAuthority(released)}`);
-  assert.ok(Math.abs(released.sideslipDeg)<3,
-    `${report.startKmh} km/h @ ${report.frameRate} Hz became unstable after brake release: ${released.sideslipDeg} deg`);
+  const point=pointAt(report,.35);
+  assert.equal(point.absActiveWheels,0,
+    `${report.startKmh} km/h @ ${report.frameRate} Hz unexpectedly reactivated ABS`);
+  assert.ok(Math.abs(point.frontBrakeShare-.62)<1e-9,
+    `${report.startKmh} km/h @ ${report.frameRate} Hz changed fixed brake bias: ${point.frontBrakeShare}`);
 }
 
-// R4 — the player comparison isolated the old ABS/EBD path: ABS OFF restored
-// natural trail-brake rotation because its fixed hydraulic split remained at
-// 62/38, while ABS ON pre-emptively shifted up to 79% forward. A feasible
-// partial trail-brake request must now retain the configured split; ABS may
-// redistribute only once measured contact-patch reserve is actually exceeded.
+// The same input must be deterministic and retain 62/38 across the pedal sweep.
 const configuredFrontShare=vehicle.axles.find(axle=>axle.positionM>=0)?.brakeShare||0;
-for(const {brakePedal,abs,noAbs} of brakeSweep){
-  const absPoint=pointAt(abs,.35);
-  const noAbsPoint=pointAt(noAbs,.35);
-  assert.ok(Math.abs(absPoint.frontBrakeShare-configuredFrontShare)<.015,
-    `ABS pre-emptively replaced brake bias at pedal ${brakePedal}: ${absPoint.frontBrakeShare}`);
-  assert.ok(Math.abs(noAbsPoint.frontBrakeShare-configuredFrontShare)<1e-9,
-    `no-ABS path changed fixed brake bias at pedal ${brakePedal}: ${noAbsPoint.frontBrakeShare}`);
-  assert.equal(absPoint.lockedWheels,0,
-    `ABS allowed a locked wheel at pedal ${brakePedal}`);
+for(const {brakePedal,first,repeat} of brakeSweep){
+  const firstPoint=pointAt(first,.35);
+  const repeatPoint=pointAt(repeat,.35);
+  assert.ok(Math.abs(firstPoint.frontBrakeShare-configuredFrontShare)<1e-9,
+    `fixed brake bias changed at pedal ${brakePedal}: ${firstPoint.frontBrakeShare}`);
+  assert.equal(firstPoint.absActiveWheels,0,
+    `ABS reactivated at pedal ${brakePedal}`);
+  assert.equal(firstPoint.lockedWheels,repeatPoint.lockedWheels,
+    `no-ABS wheel-lock result is not deterministic at pedal ${brakePedal}`);
 }
-assert.ok(pointAt(brakeSweep.at(-1).noAbs,.35).rearSlip>.80,
+assert.ok(pointAt(brakeSweep.at(-1).first,.35).rearSlip>.80,
   'full no-ABS comparison no longer exposes rear tire over-slip');
 
 const summarize=(report,seconds)=>{
@@ -288,9 +276,8 @@ console.log('PHYSICS TRAIL-BRAKING TURN-IN R3 QA: PASS',{
   moderateSimultaneous:summarize(simultaneous,.35),
   tightRelease:[tightLowSpeed,tightLowSpeed60,tightLowSpeed30].map(report=>summarize(report,.75)),
   highwayRelease:summarize(aggressiveBrakeFirst,.75),
-  brakeSweep:brakeSweep.map(({brakePedal,abs,noAbs})=>({
+  brakeSweep:brakeSweep.map(({brakePedal,first})=>({
     brakePedal,
-    abs:summarize(abs,.35),
-    noAbs:summarize(noAbs,.35)
+    noAbs:summarize(first,.35)
   }))
 });

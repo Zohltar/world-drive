@@ -13,7 +13,10 @@ export function createStaticBoxInstances({
   if(!THREE||!material||!Array.isArray(transforms)||!transforms.length)return null;
   const valid=transforms.filter(item=>
     item&&
-    [item.x,item.y,item.z,item.width,item.height,item.depth,item.yaw??0].every(Number.isFinite)&&
+    [
+      item.x,item.y,item.z,item.width,item.height,item.depth,
+      item.pitch??0,item.yaw??0,item.roll??0
+    ].every(Number.isFinite)&&
     item.width>0&&item.height>0&&item.depth>0
   );
   if(!valid.length)return null;
@@ -24,7 +27,7 @@ export function createStaticBoxInstances({
   for(let i=0;i<valid.length;i++){
     const item=valid[i];
     transform.position.set(item.x,item.y,item.z);
-    transform.rotation.set(0,item.yaw||0,0);
+    transform.rotation.set(item.pitch||0,item.yaw||0,item.roll||0,'YXZ');
     transform.scale.set(item.width,item.height,item.depth);
     transform.updateMatrix();
     mesh.setMatrixAt(i,transform.matrix);
