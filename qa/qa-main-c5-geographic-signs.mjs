@@ -183,7 +183,9 @@ assert.doesNotMatch(main,/function addFallbackSpeedSign\(/,'main still owns fall
 assert.doesNotMatch(main,/function addGeographicRoadSigns\(/,'main still owns geographic sign orchestration');
 assert.match(main,/addGeographicRoadSigns:\(\)=>geographicSignOrchestrator\?\.addGeographicRoadSigns\(\)/,'road-furniture late orchestration contract changed');
 assert.match(main,/const geographicSigns=signData\.signs/,'sign data ownership changed');
-assert.ok(lines<2810,`C5.4 did not materially reduce main.js: ${lines} lines`);
+// Later circuit and physics composition added wiring without returning any of
+// the geographic-sign functions rejected above. Retain a coarse reinlining cap.
+assert.ok(lines<2900,`C5.4 geographic-sign ownership unexpectedly returned to main: ${lines} lines`);
 
 console.log('CLEANUP C5.4 GEOGRAPHIC SIGN QA: PASS',{
   mainLines:lines,

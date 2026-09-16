@@ -220,7 +220,7 @@ const main=fs.readFileSync(mainPath,'utf8');
 assert.match(runtime,/from '.\/driving-runtime-base\.js'/,'canonical driving runtime no longer delegates to base runtime');
 assert.match(runtimeBase,/createPerWheelShadowSolver/,'driving runtime base does not import/create shadow solver');
 assert.match(runtimeBase,/physicsShadow\.advance\(dt,\{/,'driving runtime base does not advance shadow solver');
-assert.match(runtimeBase,/physicsShadowDiagnostics:\(\)=>physicsShadow\.diagnostics\(\)/,'shadow diagnostics are not exposed by driving runtime base');
+assert.match(runtimeBase,/physicsShadowDiagnostics:\(\)=>\(\{[\s\S]*\.\.\.physicsShadow\.diagnostics\(\),[\s\S]*absEnabled:false[\s\S]*\}\)/,'shadow diagnostics are not exposed by driving runtime base');
 assert.match(main,/getVehicleId:\(\)=>vehicleSystem\.activeId/,'driving runtime is not receiving active vehicle identity');
 assert.match(main,/worldDriveDiagnostics\.physics\.shadow=\(\)=>/,'canonical physics-shadow diagnostics hook is missing');
 assert.match(main,/installDiagnosticAlias\(\s*'WorldDrivePhysicsShadow'/s,'DevTools physics-shadow compatibility delegate is missing');

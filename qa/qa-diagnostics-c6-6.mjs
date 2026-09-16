@@ -20,6 +20,6 @@ if(!/installDiagnosticAlias\(\s*'WorldDrivePhysicsShadow',\s*\(\)=>worldDriveDia
 if(/window\.WorldDrivePhysicsShadow\s*=/.test(main))throw new Error('independent legacy writer remains');
 if(!runtimeBase.includes('const physicsShadow=createPerWheelShadowSolver({hz:120,maxSubSteps:8});'))throw new Error('shadow solver cadence changed');
 if(!runtimeBase.includes('physicsShadow.advance(dt,{'))throw new Error('shadow solver advance hook missing');
-if(!runtimeBase.includes('physicsShadowDiagnostics:()=>physicsShadow.diagnostics()'))throw new Error('shadow snapshot API changed');
+if(!/physicsShadowDiagnostics:\(\)=>\(\{[\s\S]*\.\.\.physicsShadow\.diagnostics\(\),[\s\S]*absEnabled:false[\s\S]*\}\)/.test(runtimeBase))throw new Error('shadow snapshot API no longer preserves solver diagnostics plus no-ABS state');
 
 console.log('CLEANUP C6.6 PHYSICS SHADOW DIAGNOSTICS QA: PASS');

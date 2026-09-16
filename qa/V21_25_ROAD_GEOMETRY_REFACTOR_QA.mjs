@@ -12,7 +12,9 @@ const facadePath=path.join(src,'road-geometry.js');
 const modulePath=path.join(src,'road','road-geometry.js');
 const localWorldPath=path.join(src,'local-world-builder.js');
 const localWorldP925Path=path.join(src,'local-world-builder-p925.js');
-const routeLifecyclePath=path.join(src,'route-lifecycle.js');
+const routeLifecyclePath=fs.existsSync(path.join(src,'routing','route-lifecycle.js'))
+  ?path.join(src,'routing','route-lifecycle.js')
+  :path.join(src,'route-lifecycle.js');
 
 assert.equal(fs.existsSync(mainPath),true,'src/main.js missing');
 assert.equal(fs.existsSync(facadePath),true,'src/road-geometry.js public facade missing');

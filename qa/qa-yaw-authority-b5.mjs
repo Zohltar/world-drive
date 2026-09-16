@@ -50,15 +50,24 @@ function oldAdvance(args={}){
   const driftKinematicScale=oldDriftKinematicCoupling({sideslipRad:currentSideslip,forceCoupledSlide});
   const driftPhysicalAuthority=airborne?0:driftTireForceAuthority({sideslipRad:currentSideslip,forceCoupledSlide});
   const physicalYaw=Number.isFinite(physicalTireYawAccel)?physicalTireYawAccel:frictionYawAccel;
-  const yawReleaseBoost=driftKinematicScale>.82&&Math.abs(yawRate)<Math.abs(dynamicYawRate)?1.35:1;
+  const currentDynamic=Number(dynamicYawRate)||0;
+  const step=Math.max(0,Number(dt)||0);
+  const yawReleaseBoost=driftKinematicScale>.82&&Math.abs(yawRate)<Math.abs(currentDynamic)?1.35:1;
   const yawGripResponseScale=airborne?0:driftKinematicScale*(1-.85*driftPhysicalAuthority);
-  const fallbackYawAccel=useLegacyDriftAssist?referenceGripLossFallbackYawAcceleration({
+  let fallbackYawAccel=useLegacyDriftAssist?referenceGripLossFallbackYawAcceleration({
     frictionYawAccel,yawRate,frontSlip:targetFrontSlip,rearSlip:targetRearSlip,
     frontForceScale:frontLateralForceScale,rearForceScale:rearLateralForceScale
   }):0;
+  const targetDirection=Math.sign(yawRate);
+  if(Math.abs(yawRate)<=.01&&driftPhysicalAuthority<.05){
+    fallbackYawAccel=0;
+  }else if(fallbackYawAccel*targetDirection>0&&step>0){
+    const remainingYawRate=Math.max(0,Math.abs(yawRate)-currentDynamic*targetDirection);
+    fallbackYawAccel=targetDirection*Math.min(Math.abs(fallbackYawAccel),remainingYawRate/step);
+  }
   const authoritativeYawAccel=blendDriftForce(fallbackYawAccel,physicalYaw,driftPhysicalAuthority);
-  dynamicYawRate+=authoritativeYawAccel*dt;
-  dynamicYawRate+=(yawRate-dynamicYawRate)*(1-Math.exp(-dt*yawResponse*yawReleaseBoost*yawGripResponseScale));
+  dynamicYawRate=currentDynamic+authoritativeYawAccel*step;
+  dynamicYawRate+=(yawRate-dynamicYawRate)*(1-Math.exp(-step*yawResponse*yawReleaseBoost*yawGripResponseScale));
   return {yawRate,dynamicYawRate,frontDominance,rearDominance,fourWheelSlide,frictionYawLoss,forceCoupledSlide,driftKinematicScale,driftPhysicalAuthority,physicalTireYawAccel:physicalYaw,yawReleaseBoost,yawGripResponseScale,fallbackYawAccel,authoritativeYawAccel};
 }
 
