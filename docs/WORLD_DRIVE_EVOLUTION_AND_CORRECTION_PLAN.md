@@ -2,8 +2,8 @@
 
 Canonical work branch: `dev`  
 Stable branch: `main`  
-Current stable `main`: `b74e7377eaaf2b128eb893c547f4c2da3d14bbea` — `Release: prepare V21.32 stable candidate` — tag `v21.32`  
-Previous rollback/reference: `9a69c39242eb0f3e2cf8d2fd68675c1cfad23dd8` — `Release V21.31 stable` — tag `v21.31`  
+Current stable `main`: `ad893a9d078df4a3d24d81b929bb2905a8bc57e1` — World Drive V21.33 stable — tag `v21.33`
+Previous rollback/reference: `b74e7377eaaf2b128eb893c547f4c2da3d14bbea` — World Drive V21.32 stable — tag `v21.32`
 Status: **ACTIVE — canonical restart source of truth**
 
 GitHub live state + this file override chat memory when they disagree.
@@ -57,8 +57,8 @@ Before coding, be able to answer:
 
 **Plan phase:** post-refactor hardening and correctness  
 **Architecture state:** **R1–R9 + Phase O DONE/CERTIFIED; R8 architecture FROZEN**  
-**Release V21.32:** **PUBLISHED/STABLE (2026-09-12) — tag `v21.32` @ `b74e7377eaaf2b128eb893c547f4c2da3d14bbea`; release QA `34716507570` PASS; Windows installer + portable ZIP published**  
-**Post-release `dev` baseline before this docs checkpoint:** `63f07a14be2c911f216ee3c56e8eca357d36b887` — `Merge release V21.32 back into dev`; package/channel `21.32.0 dev`; Dev Integration `34717736610` PASS  
+**Release V21.33:** **PUBLISHED/STABLE (2026-09-16) — tag `v21.33` @ `ad893a9d078df4a3d24d81b929bb2905a8bc57e1`; Windows release run `35122084068` PASS; installer + portable ZIP published**
+**Post-release `dev` baseline before this docs checkpoint:** `e07c3c2db3a03821c077ea6bd5aa31f6ca8671ac` — `Dev: reopen V21.33 development channel`; package/channel `21.33.0 dev`; Dev Integration `35122659744` PASS
 **Block 1 — DOM safety:** **DONE/CERTIFIED — HUMAN PASS**  
 **Block 2 — Route lifecycle stale-generation guard:** **DONE/CERTIFIED — HUMAN PASS**  
 **Block 3 — Retired road-terrain transition workload:** **DONE/CERTIFIED — HUMAN PASS**  
@@ -78,8 +78,8 @@ Before coding, be able to answer:
 **Block 10 — Mobile browser driving controls:** **ABANDONED / NOT PLANNED (2026-09-13) — experiment stopped by user; no mobile-control candidate runtime was integrated**  
 **Block 11 — Circuit presets / closed-loop authored track routes:** **DONE/CERTIFIED — Laguna Seca HUMAN PASS (2026-09-14); Nordschleife performance HUMAN PASS (2026-09-15); no-ABS runtime and continuous guard rails HUMAN PASS (2026-09-16); integrated `dev` checkpoint `568f557a051832559fa1f3166350cc338a399ee1`, exact-head Dev Integration `35054930198` PASS**
 **Active correction block:** **NONE — latest accepted civil-traffic correction is integrated and certified; wait for an explicit next priority**
-**Stable `main`:** `b74e7377eaaf2b128eb893c547f4c2da3d14bbea` — tag `v21.32`; must remain untouched without explicit user approval.  
-**Previous rollback/reference:** `9a69c39242eb0f3e2cf8d2fd68675c1cfad23dd8` — tag `v21.31`.
+**Stable `main`:** `ad893a9d078df4a3d24d81b929bb2905a8bc57e1` — tag `v21.33`; must remain untouched without explicit user approval.
+**Previous rollback/reference:** `b74e7377eaaf2b128eb893c547f4c2da3d14bbea` — tag `v21.32`.
 
 ## Block 5A certified checkpoint
 
@@ -406,7 +406,7 @@ GitHub Issue #13: **CLOSED / COMPLETED (2026-09-12)**.
 Current unresolved work is intentionally not auto-started:
 
 - Issue #2 remains **watch-only / not reproduced**; collect diagnostics only if it reappears;
-- Issue #11 is **ACTIVE**: the user image identifies the blue `coupe`; asset inspection confirms it is the only generic-pack body authored longitudinally on X rather than Y. Correct that per-model forward-axis contract without changing traffic routing, speed, lane placement or the ten correctly aligned variants;
+- Issue #11 is **DONE/CERTIFIED**: the measured-axis R2 correction received HUMAN PASS and is included in V21.33;
 - Issue #12 is **PARKED**; do not resume it as a standalone correction. Carry the existing diagnostics and failed-candidate evidence into Block 8 when biome-aware natural scenery work begins;
 - Block 7 composition-root reduction remains **deferred / evidence-driven only**;
 - Block 8 biome-aware natural scenery remains **planned/deferred**; when activated, begin by reopening and stabilizing forest readiness/streaming as its first runtime workstream, then add biome classification and palette selection;
@@ -436,7 +436,7 @@ Do not modify `main` without explicit user approval. Do not begin a deferred blo
 | P3 | Natural scenery is currently biome-agnostic, allowing ecologically wrong vegetation (for example conifers in tropical regions) | future biome classifier + forest/scenery asset selection | **PLANNED — Block 8** |
 | P3 | Current authored GLBs come from heterogeneous sources with inconsistent topology, axes, materials and movable-part/light ownership; newer AI-assisted 3D authoring may enable cleaner World Drive-specific assets | future AI/CAD/Blender authoring pipeline + vehicle/scenery asset QA | **PLANNED — Block 9** |
 | P3 | Browser build runs on phones but lacks a purpose-built mobile driving input scheme | retired Block 10 experiment | **NOT PLANNED — user decision 2026-09-13** |
-| P2 | Preset system has no first-class closed-loop circuit route support | route presets + route lifecycle/routing input boundary | **ACTIVE — Block 11; Laguna Seca first, Nordschleife second** |
+| P2 | Preset system has no first-class closed-loop circuit route support | route presets + route lifecycle/routing input boundary | **DONE/CERTIFIED — Block 11 — Laguna Seca + Nordschleife HUMAN PASS** |
 | P3 | `src/main.js` remains large composition root | `src/main.js` | **DEFERRED — no refactor without concrete benefit** |
 
 ---
@@ -508,7 +508,7 @@ Focused run `33915664612`: PASS. Post-integration Dev Integration `33915756142`:
 
 ## Current active correction block
 
-**NONE — Block 11 is integrated and certified.**
+**NONE — V21.33 is published; Block 11 and Issue #11 are integrated and certified.**
 
 The accepted Laguna Seca and Nordschleife circuit work, Nordschleife performance correction, fixed-bias no-ABS driving behavior and continuous relief-following guard rails are all present in the certified `dev` checkpoint. Do not begin a deferred roadmap block without a new explicit priority.
 
