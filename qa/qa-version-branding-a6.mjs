@@ -44,7 +44,7 @@ assert.ok(indexSource.includes('<script type="module" src="/src/version.js"></sc
 
 const refName=process.env.GITHUB_REF_NAME||'';
 const expectedChannel=(refName==='main'||refName.startsWith('release/'))?'stable':'dev';
-assert.equal(pkg.version,'21.32.0','A6 must align the package build with the V21.32 baseline');
+assert.equal(pkg.version,'21.33.0','A6 must align the package build with the V21.33 baseline');
 assert.equal(pkg.worldDriveChannel,expectedChannel,'package channel must match branch role: release/main=stable, development=dev');
 
 console.log('CLEANUP A6 VERSION / BUILD BRANDING QA: PASS',{
