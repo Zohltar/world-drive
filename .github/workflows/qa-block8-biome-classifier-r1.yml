@@ -48,6 +48,8 @@ jobs:
   real-data-atlas:
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    env:
+      RESOLVE_SHA256: be36d6209e443038d02e309f0447c6e7f2a62f5fe60c605ffe90d064952f2a60
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -57,22 +59,79 @@ jobs:
         with:
           python-version: '3.12'
       - name: Install build-only geospatial dependencies
-        run: python -m pip install numpy==2.2.6 rasterio==1.4.3 pyshp==2.3.1
+        run: python -m pip install numpy==2.2.6 rasterio==1.4.3 pyshp==2.3.1 shapely==2.1.2
       - name: Synthetic polygon, hole and reproducibility tests
         run: python qa/qa-block8-biome-builder-r1.py
-      - name: Retrieve source archive for offline preprocessing only
-        run: curl --fail --location --retry 2 --connect-timeout 20 --max-time 180 --max-filesize 200000000 https://storage.googleapis.com/teow2016/Ecoregions2017.zip -o "$RUNNER_TEMP/Ecoregions2017.zip"
-      - name: Build and verify global 0.1 and 0.05 degree prototypes
+      - name: Retrieve pinned source archive for offline preprocessing only
+        run: |
+          curl --fail --location --proto '=https' --proto-redir '=https' --retry 2 --connect-timeout 20 --max-time 180 --max-filesize 200000000 https://storage.googleapis.com/teow2016/Ecoregions2017.zip -o "$RUNNER_TEMP/Ecoregions2017.zip"
+          echo "$RESOLVE_SHA256  $RUNNER_TEMP/Ecoregions2017.zip" | sha256sum --check --strict
+      - name: Independent polygon evidence for the disputed Baffin control
+        run: |
+          python - <<'PY'
+          import importlib.util, json, os, tempfile
+          from pathlib import Path
+          import shapefile
+          from shapely.geometry import Point, shape
+          spec = importlib.util.spec_from_file_location('builder', 'tools/biomes/build-resolve-atlas.py')
+          builder = importlib.util.module_from_spec(spec)
+          spec.loader.exec_module(builder)
+          root = Path(os.environ['RUNNER_TEMP'])
+          controls = [(67.5, -64), (67.45, -63.95), (70, -75), (69.95, -74.95)]
+          evidence = [{'latitude': lat, 'longitude': lon, 'sourceHits': []} for lat, lon in controls]
+          with tempfile.TemporaryDirectory() as tmp:
+              path = builder.extract_source(root / 'Ecoregions2017.zip', Path(tmp))
+              encoding = builder.source_encoding(path)['encoding']
+              with shapefile.Reader(str(path), encoding=encoding, encodingErrors='strict') as reader:
+                  for item in reader.iterShapeRecords():
+                      x0, y0, x1, y1 = item.shape.bbox
+                      selected = [i for i, (lat, lon) in enumerate(controls) if x0 <= lon <= x1 and y0 <= lat <= y1]
+                      if not selected:
+                          continue
+                      geometry = shape(item.shape.__geo_interface__)
+                      fields = item.record.as_dict()
+                      for i in selected:
+                          lat, lon = controls[i]
+                          if geometry.covers(Point(lon, lat)):
+                              evidence[i]['sourceHits'].append({k: fields[k] for k in ('ECO_ID', 'ECO_NAME', 'BIOME_NUM')})
+          output = root / 'biome-atlases'
+          output.mkdir(parents=True, exist_ok=True)
+          report = {'sourceSha256': builder.sha256(root / 'Ecoregions2017.zip'), 'method': 'Independent GEOS polygon covers; not a raster lookup', 'controls': evidence}
+          (output / 'baffin-source-evidence.json').write_text(json.dumps(report, indent=2) + '\n')
+          print(json.dumps(report, indent=2))
+          PY
+      - name: Build BOTH global resolutions before geographic assertions
         run: |
           for resolution in 0.1 0.05; do
             OUTPUT="$RUNNER_TEMP/biome-atlases/$resolution"
-            python tools/biomes/build-resolve-atlas.py --input "$RUNNER_TEMP/Ecoregions2017.zip" --output "$OUTPUT" --cell-degrees "$resolution"
-            node qa/qa-block8-biome-atlas-r1.mjs "$OUTPUT"
+            python tools/biomes/build-resolve-atlas.py --input "$RUNNER_TEMP/Ecoregions2017.zip" --output "$OUTPUT" --cell-degrees "$resolution" --expected-sha256 "$RESOLVE_SHA256"
           done
+      - name: Verify real geographic controls at both resolutions
+        run: |
+          FAILED=0
+          for resolution in 0.1 0.05; do
+            node qa/qa-block8-biome-atlas-r1.mjs "$RUNNER_TEMP/biome-atlases/$resolution" || FAILED=1
+          done
+          exit "$FAILED"
       - name: Preserve atlas, provenance and geographic measurements
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: biome-r1-atlases-${{ github.sha }}
           path: ${{ runner.temp }}/biome-atlases
+          if-no-files-found: warn
+      - name: Preserve pinned source and exact prototype for offline reproduction
+        if: always()
+        run: |
+          mkdir -p "$RUNNER_TEMP/biome-source"
+          cp "$RUNNER_TEMP/Ecoregions2017.zip" "$RUNNER_TEMP/biome-source/"
+          git archive --format=tar.gz HEAD tools/biomes qa/qa-block8-biome-atlas-r1.mjs qa/qa-block8-biome-builder-r1.py qa/qa-block8-biome-prototype-r1.mjs docs/WORLD_DRIVE_BLOCK8_BIOME_R1_AUDIT.md docs/WORLD_DRIVE_EVOLUTION_AND_CORRECTION_PLAN.md .github/workflows/qa-block8-biome-classifier-r1.yml > "$RUNNER_TEMP/biome-source/prototype-source.tar.gz"
+      - name: Upload offline reproduction source
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: biome-r1-source-${{ github.sha }}
+          path: ${{ runner.temp }}/biome-source
+          compression-level: 0
+          retention-days: 7
           if-no-files-found: warn
