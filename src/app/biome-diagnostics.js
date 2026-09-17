@@ -13,14 +13,18 @@ export function attachBiomeRouteDiagnostics(lifecycle,options,{target=globalThis
     const serialized=JSON.stringify(config);
     if(!serialized||serialized.length>2*1024*1024)throw new RangeError('Diagnostic configuration size');
     stop();const token=loadEpoch;
+    // Register before the lazy import: pagehide may happen while it is pending.
+    target.addEventListener?.('pagehide',stop);listening=true;
     try{
       const module=await load();if(token!==loadEpoch)return {status:'discarded'};
       observer??=module.createBiomeGameplayDiagnostics({getState:options.getState,
         getGeneration:()=>lifecycle.worldDrive.route.generation,getRoute:()=>options.route,
         isRouteReady:()=>routeReady});
-      const result=observer.start(JSON.parse(serialized));
-      target.addEventListener?.('pagehide',stop);listening=true;return result;
-    }catch(error){lastError=String(error?.message??error).slice(0,160);throw error;}
+      return observer.start(JSON.parse(serialized));
+    }catch(error){
+      if(token!==loadEpoch)return {status:'discarded'};
+      stop();lastError=String(error?.message??error).slice(0,160);throw error;
+    }
   }
   const api=Object.freeze({start,stop,refresh:()=>observer?.refresh(),
     snapshot:()=>observer?.diagnostics()??{enabled:false,diagnosticOnly:true,phase:'disabled',error:lastError},

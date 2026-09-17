@@ -95,8 +95,8 @@ await test('teleport detection invalidates current location and old handles',asy
   assert.equal(h.api.diagnostics().teleports,1);assert.equal(h.clients[0].closed,true);await h.tick();assert.equal(h.api.diagnostics().freshCurrentChunk,true);h.api.stop();
 });
 await test('in-flight capture cannot publish after route invalidation',async()=>{
-  const h=open();const gate=deferred();h.api.start(config);
-  const t=h.tick();while(!h.clients[0]?.calls)await Promise.resolve();h.clients[0].gate=gate;
+  const gate=deferred(),h=open({factory:()=>Object.assign(new MockClient(),{gate})});h.api.start(config);
+  const t=h.tick();while(!h.clients[0]?.calls)await Promise.resolve();
   h.api.invalidate();h.setReady(false);await t;assert.equal(h.api.diagnostics().last,null);assert.equal(h.api.sample(0,0,0).status,'unavailable');h.api.stop();
 });
 await test('configuration copied before asynchronous initialization',async()=>{
@@ -145,9 +145,11 @@ await test('browser facade stays lazy and preserves original route promise/resul
   assert.equal(target.WorldDriveDiagnostics.forest.biomes.snapshot().enabled,false);
 });
 await test('pagehide cancels pending lazy startup before Worker construction',async()=>{
-  const gate=deferred();let made=0;const target={document:{},addEventListener(){},removeEventListener(){}};
+  const gate=deferred(),listeners=new Map();let made=0;
+  const target={document:{},addEventListener:(name,cb)=>listeners.set(name,cb),removeEventListener:name=>listeners.delete(name)};
   attachBiomeRouteDiagnostics({worldDrive:{route:{generation:0}}},{route:[]},{target,load:()=>gate.promise});
-  const api=target.WorldDriveDiagnostics.forest.biomes,p=api.start(config);api.stop();
+  const api=target.WorldDriveDiagnostics.forest.biomes,p=api.start(config);
+  assert.equal(typeof listeners.get('pagehide'),'function');listeners.get('pagehide')();assert.equal(listeners.size,0);
   gate.resolve({createBiomeGameplayDiagnostics:()=>{made++;}});assert.equal((await p).status,'discarded');assert.equal(made,0);
 });
 await test('side observer failure cannot change the successful routing promise',async()=>{
@@ -156,6 +158,17 @@ await test('side observer failure cannot change the successful routing promise',
   const out=attachBiomeRouteDiagnostics({worldDrive:{route:{generation:0}},loadRoute:()=>result},{route:[]},
     {target,load:async()=>({createBiomeGameplayDiagnostics:()=>fake})});
   await target.WorldDriveDiagnostics.forest.biomes.start(config);assert.equal(out.loadRoute(),result);assert.equal(await result,true);
+});
+await test('late failed lazy import cannot overwrite a newer start or keep a page listener',async()=>{
+  const gate=deferred(),listeners=new Map();let count=0;
+  const target={document:{},addEventListener:(name,cb)=>listeners.set(name,cb),removeEventListener:name=>listeners.delete(name)};
+  const fake={start:()=>({status:'enabled'}),stop(){},diagnostics:()=>({enabled:true})};
+  attachBiomeRouteDiagnostics({worldDrive:{route:{generation:0}}},{route:[]},
+    {target,load:()=>++count===1?gate.promise:Promise.resolve({createBiomeGameplayDiagnostics:()=>fake})});
+  const api=target.WorldDriveDiagnostics.forest.biomes,old=api.start(config);
+  assert.equal((await api.start(config)).status,'enabled');gate.reject(new Error('old import failed'));
+  assert.equal((await old).status,'discarded');assert.equal(api.snapshot().enabled,true);
+  assert.equal(listeners.size,1);api.stop();assert.equal(listeners.size,0);
 });
 console.log(`PASS R8 diagnostic lifecycle ${tests.length} groups (unit clients are emulated)`);
 if(process.argv.includes('--report'))writeFileSync(process.argv[process.argv.indexOf('--report')+1],JSON.stringify({status:'PASS',groups:tests,client:'EMULATED',synchronousReads:100000},null,2));
