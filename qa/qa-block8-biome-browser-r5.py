@@ -76,6 +76,12 @@ def main(routes, output, executable):
     spec=importlib.util.spec_from_file_location('partition',ROOT/'tools/biomes/partition-refinement-batches.py')
     module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module)
     class Quiet(http.server.SimpleHTTPRequestHandler):
+        def do_GET(self):
+            if self.path == '/__biome-r5-harness__':
+                body=b'<!doctype html><meta charset="utf-8"><title>Biome worker QA</title>'
+                self.send_response(200);self.send_header('Content-Type','text/html');self.send_header('Content-Length',str(len(body)));self.end_headers();self.wfile.write(body)
+            else:
+                super().do_GET()
         def log_message(self,*args):
             pass
     with tempfile.TemporaryDirectory(prefix='biome-r5-',dir=ROOT) as temporary:
@@ -87,9 +93,9 @@ def main(routes, output, executable):
         try:
             with sync_playwright() as pw:
                 browser=pw.chromium.launch(headless=True,executable_path=executable,args=['--no-sandbox'])
-                page=browser.new_page();workers=[];page.on('worker',lambda w:workers.append(w.url))
+                page=browser.new_page();workers=[];errors=[];page.on('worker',lambda w:workers.append(w.url));page.on('pageerror',lambda error:errors.append(str(error)))
                 origin=f'http://127.0.0.1:{server.server_port}'
-                page.goto(origin+'/')
+                page.goto(origin+'/__biome-r5-harness__')
                 report=page.evaluate(JS,dict(base=origin+'/'+work.name+'/',
                   real=json.loads((work/'real/directory.json').read_text()),
                   synthetic=json.loads((work/'synthetic/directory.json').read_text()),
@@ -97,6 +103,7 @@ def main(routes, output, executable):
                   expected=json.loads((routes/'route-source-expectations.json').read_text())))
                 report.update(browser=browser.version,observedWorkerURLs=workers,packaging=packaging)
                 assert len(workers)==2
+                assert not errors, errors
                 browser.close()
         finally:
             server.shutdown();server.server_close();thread.join()
