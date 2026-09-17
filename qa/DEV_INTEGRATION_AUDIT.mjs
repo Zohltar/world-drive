@@ -1,3 +1,4 @@
+await import('./qa-diagnostics-c6-final-inventory.mjs');
 // Dev Integration permanent regression inventory.
 // Issues #9, #10 and #13 stay here after certification: future imagery/terrain
 // or vehicle-contact changes must keep their accepted correction contracts green.

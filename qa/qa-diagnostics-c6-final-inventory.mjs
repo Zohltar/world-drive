@@ -41,6 +41,9 @@ const byName={};
 for(const row of rows)(byName[row.name]??=[]).push({kind:row.kind,file:row.file,line:row.line});
 
 const expected=new Map([
+  // Already certified with forest R4; exact alias owners remain constrained.
+  ['__WORLD_DRIVE_BLOCK8_FOREST__',['diagnostic-alias:src/forest-chunk-streamer.js']],
+  ['__WORLD_DRIVE_BLOCK8_SPATIAL__',['diagnostic-alias:src/main.js']],
   ['__WORLD_DRIVE_P923_LOCAL_WORLD__',[
     'direct-write:src/local-world-builder-p925.js',
     'direct-write:src/local-world/local-world-builder-p926.js',
