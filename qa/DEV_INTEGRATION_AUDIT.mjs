@@ -33,4 +33,6 @@ await import('./qa-physics-trail-braking-turn-in-r3.mjs');
 await import('./qa-physics-no-abs-r1.mjs');
 await import('./qa-nordschleife-guard-rail-continuity-r1.mjs');
 await import('./qa-physics-combined-trail-braking-r1.mjs');
+await import('./qa-block8-biome-service-boundary-r3.mjs');
+await import('./qa-block8-biome-service-r3.mjs');
 await import('./DEV_INTEGRATION_AUDIT_BASE.mjs');
