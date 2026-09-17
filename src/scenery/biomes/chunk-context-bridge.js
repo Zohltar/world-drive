@@ -5,6 +5,8 @@
 import {CHUNK_CONTEXT_SCHEMA, MAX_CHUNK_CONTEXTS, MAX_CONTEXT_PAYLOAD,
   MISSING_CHUNK_CONTEXT, snapshotIdentity, chunkContextKey, copyChunkPoints,
   installChunkContext} from './chunk-context-snapshot.js';
+import {FOREST_LAYOUT_ID, FOREST_POINT_COUNT, createForestCandidateAdapter,
+  copyForestChunkRequest} from './forest-candidate-adapter.js';
 const freeze=Object.freeze;
 const outcome=(status,reason=null,snapshot=null)=>freeze({status,reason,snapshot});
 const bounded=(v,min,max)=>Number.isInteger(v)&&v>=min&&v<=max;
@@ -64,30 +66,48 @@ export function createBiomeChunkContextBridge({client,identity,layoutId='forest-
     }catch(error){return current(r,w)?rejected('window-worker-failure'):discarded();}
     finally{updatePending=false;}
   }
-  function prepareChunk({cx,cz,points,refresh=false}={}){
+  function prepare({cx,cz,points,refresh=false,origin,routeId}={},procedural=false){
     if(closed)return Promise.resolve(outcome('unavailable','disposed'));
     if(!projectionId)return Promise.resolve(outcome('unavailable','route-not-ready'));
-    const key=chunkContextKey(projectionId,layoutId,cx,cz),flat=copyChunkPoints(points);
+    const key=chunkContextKey(projectionId,layoutId,cx,cz);
+    let adapter=null;
+    if(procedural){
+      adapter=createForestCandidateAdapter({origin,routeId});
+      if(layoutId!==FOREST_LAYOUT_ID||projectionId!==adapter.projectionId
+        ||typeof client.captureForestChunk!=='function')return Promise.resolve(rejected('forest-layout-or-client-mismatch'));
+    }else if(layoutId===FOREST_LAYOUT_ID)return Promise.resolve(rejected('forest-layout-requires-procedural-request'));
+    const flat=procedural?null:copyChunkPoints(points);
     const previous=cache.get(key);
-    if(previous&&!previous.matches(flat))return Promise.resolve(rejected('chunk-layout-conflict'));
+    if(previous&&!procedural&&!previous.matches(flat))return Promise.resolve(rejected('chunk-layout-conflict'));
     if(previous&&!refresh){cache.delete(key);cache.set(key,previous);stats.cacheHits++;return Promise.resolve(outcome('prepared',null,previous.view));}
     if(!ready||routePending)return Promise.resolve(outcome('unavailable','window-not-ready'));
     const r=routeEpoch,w=windowEpoch,pendingKey=`${r}/${w}/${key}`;
     const other=pending.get(pendingKey);
     if(other){
-      if(other.points.length!==flat.length||!other.points.every((n,i)=>n===flat[i]))return Promise.resolve(rejected('chunk-layout-conflict'));
+      if(other.procedural!==procedural||(!procedural&&(other.points.length!==flat.length||!other.points.every((n,i)=>n===flat[i]))))return Promise.resolve(rejected('chunk-layout-conflict'));
       stats.deduplicated++;return other.promise;
     }
     // Reserve the worst-case normalized dictionary plus coordinate/index payload.
-    const reservation=flat.byteLength+flat.length+MAX_CHUNK_CONTEXTS*MAX_CONTEXT_PAYLOAD;
+    const reservation=(procedural?FOREST_POINT_COUNT*18:flat.byteLength+flat.length)+MAX_CHUNK_CONTEXTS*MAX_CONTEXT_PAYLOAD;
     if(pending.size>=maxPendingChunks||pendingBytes+reservation>maxPendingBytes)return Promise.resolve(busy('chunk-admission'));
-    const request={schema:CHUNK_CONTEXT_SCHEMA,key,requestId:++requestId,...ready,cx,cz,projectionId,layoutId,points:flat};
-    const job={points:flat,promise:null};pending.set(pendingKey,job);pendingBytes+=reservation;
+    let request={schema:CHUNK_CONTEXT_SCHEMA,key,requestId:++requestId,...ready,cx,cz,projectionId,layoutId};
+    if(procedural)request=copyForestChunkRequest({...request,origin:adapter.origin,routeId:adapter.routeId});
+    else request.points=flat;
+    const job={points:flat,procedural,promise:null};pending.set(pendingKey,job);pendingBytes+=reservation;
     stats.peakPendingChunks=Math.max(stats.peakPendingChunks,pending.size);stats.peakPendingBytes=Math.max(stats.peakPendingBytes,pendingBytes);
     // The microtask lets the bounded pending entry exist before client callbacks.
-    job.promise=Promise.resolve().then(()=>current(r,w)?client.captureChunk(request):null).then(packet=>{
+    job.promise=Promise.resolve().then(()=>current(r,w)
+      ?(procedural?client.captureForestChunk(request):client.captureChunk(request)):null).then(reply=>{
       if(!current(r,w))return discarded();
-      const installed=installChunkContext(packet,request,fixed,{isCurrent:()=>!closed&&r===routeEpoch});
+      let packet=reply,complete=request;
+      if(procedural){
+        if(!(reply?.points instanceof Float64Array)||reply.points.length!==FOREST_POINT_COUNT*2)
+          return rejected('forest-point-buffer-bound');
+        // No hashing/projection/chunk generation here. R6 validates and privately
+        // copies the bounded exact-point buffer; lookup still requires exact lon/lat.
+        complete={...request,points:reply.points};packet=reply.packet;
+      }
+      const installed=installChunkContext(packet,complete,fixed,{isCurrent:()=>!closed&&r===routeEpoch});
       if(installed.payloadBytes>maxBytes)return rejected('chunk-residency-budget');
       // All validation is complete before touching valid resident data.
       const old=cache.get(key);
@@ -108,7 +128,8 @@ export function createBiomeChunkContextBridge({client,identity,layoutId='forest-
   }
   function lookup(cx,cz,index,lon,lat){return get(cx,cz)?.lookup(index,lon,lat)??MISSING_CHUNK_CONTEXT;}
   function dispose(){if(closed)return;closed=true;routeEpoch++;windowEpoch++;ready=null;clear();client.dispose();}
-  return freeze({setRoute,update,prepareChunk,get,lookup,dispose,diagnostics:()=>({...stats,closed,
+  return freeze({setRoute,update,prepareChunk:options=>prepare(options),
+    prepareForestChunk:options=>prepare(options,true),get,lookup,dispose,diagnostics:()=>({...stats,closed,
     routeEpoch,windowEpoch,workerGeneration,ready:!!ready,projectionId,layoutId,identity:fixed,
     residentChunks:cache.size,residentPayloadBytes:residentBytes,pendingChunks:pending.size,pendingReservedBytes:pendingBytes,
     maxChunks,maxBytes,maxPendingChunks,maxPendingBytes,routePending,updatePending})});

@@ -6,6 +6,7 @@ import {createBiomeBatchSource} from './batch-source.js';
 import {createBiomeTileTransport} from './tile-transport.js';
 import {createBiomeBatchRouteSession} from './batch-route-session.js';
 import {captureChunkContext,snapshotIdentity} from './chunk-context-snapshot.js';
+import {copyForestChunkRequest, buildForestChunkRequest} from './forest-candidate-adapter.js';
 let session=null,identity=null,initializing=false,inFlight=0;
 self.addEventListener('message',async({data})=>{
   const {id,op,args=[]}=data??{};
@@ -31,7 +32,12 @@ self.addEventListener('message',async({data})=>{
       if(!session)throw new Error('Worker not initialized');
       if(op==='route')value=session.setRoute(args[0]);
       else if(op==='update')value=await session.update(args[0],args[1]);
-      else if(op==='chunk')value=captureChunkContext(args[0],identity,session);
+      else if(op==='forest-chunk'){
+        const safe=copyForestChunkRequest(args[0]),state=session.diagnostics();
+        if(!state.ready||state.generation!==safe.generation||state.serial!==safe.serial)throw new Error('Stale forest window');
+        const request=buildForestChunkRequest(safe);
+        value={points:request.points,packet:captureChunkContext(request,identity,session)};
+      }else if(op==='chunk')value=captureChunkContext(args[0],identity,session);
       else if(op==='sample'){
         const points=args[0];
         if(!Array.isArray(points)||points.length>256||!points.every(p=>Array.isArray(p)&&p.length===2&&p.every(Number.isFinite)))throw new Error('Invalid sample bound');

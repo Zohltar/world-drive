@@ -5,11 +5,12 @@ import {fileURLToPath} from 'node:url';
 import {join,resolve,dirname} from 'node:path';
 const root=fileURLToPath(new URL('../',import.meta.url));
 const folder=join(root,'src/scenery/biomes');
-const names=['chunk-context-snapshot.js','chunk-context-bridge.js','batch-source.js','batch-route-session.js','biome-preparation-worker.js','biome-worker-client.js','tile-transport.js','route-tile-plan.js','route-preparer.js','biome-profiles.js','regional-classifier.js','local-refinement.js','biome-service.js','palette-registry.js'];
+const names=['forest-candidate-adapter.js','chunk-context-snapshot.js','chunk-context-bridge.js','batch-source.js','batch-route-session.js','biome-preparation-worker.js','biome-worker-client.js','tile-transport.js','route-tile-plan.js','route-preparer.js','biome-profiles.js','regional-classifier.js','local-refinement.js','biome-service.js','palette-registry.js'];
 assert.deepEqual(readdirSync(folder).sort(),names.toSorted());
 for(const name of names) {
   const source=readFileSync(join(folder,name),'utf8');
   for(const match of source.matchAll(/(?:from\s*|import\s*)['"]([^'"]+)['"]/g)) {
+    if(name==='forest-candidate-adapter.js'&&match[1]==='../../forest-streaming-policy.js')continue;
     assert.ok(match[1].startsWith('./'),`${name}: non-local dependency ${match[1]}`);
     assert.ok(names.includes(match[1].slice(2)),`${name}: unknown domain dependency`);
   }

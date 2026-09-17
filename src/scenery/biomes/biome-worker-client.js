@@ -1,4 +1,5 @@
 import {validateChunkRequest} from './chunk-context-snapshot.js';
+import {copyForestChunkRequest} from './forest-candidate-adapter.js';
 /** Explicit browser worker client: bounded RPC, no main-thread fallback.
  * Async sample snapshots are not the game's synchronous forest query contract.
  */
@@ -14,7 +15,7 @@ export function createBiomeWorkerClient({timeoutMs=30000}={}){
   worker.addEventListener('messageerror',()=>dispose('Worker message error'));
   worker.addEventListener('message',({data})=>{
     const p=pending.get(data?.id);if(!p)return;pending.delete(data.id);clearTimeout(p.timer);
-    if(p.epoch!==epoch&&(p.op==='sample'||p.op==='chunk')){p.reject(new Error('Stale route sample'));return;}
+    if(p.epoch!==epoch&&(p.op==='sample'||p.op==='chunk'||p.op==='forest-chunk')){p.reject(new Error('Stale route sample'));return;}
     if(data.ok)p.resolve(data.value);else p.reject(new Error(data.error));
   });
   function call(op,args){
@@ -44,6 +45,8 @@ export function createBiomeWorkerClient({timeoutMs=30000}={}){
       const safe={};for(const k of ['schema','key','requestId','generation','serial','cx','cz','projectionId','layoutId'])safe[k]=request[k];
       safe.points=new Float64Array(request.points);return call('chunk',[safe]);
     }catch(e){return Promise.reject(e);}},
+    captureForestChunk(request){try{return call('forest-chunk',[copyForestChunkRequest(request)]);}
+      catch(e){return Promise.reject(e);}},
     sample(p){return points(p,256)?call('sample',[p]):Promise.reject(new Error('Invalid sample bound'));},
     diagnostics:()=>call('stats',[]),dispose,
     admission:()=>({pending:pending.size,maxPending:4,closed})});
