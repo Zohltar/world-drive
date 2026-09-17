@@ -104,8 +104,36 @@ external handles are additional. No total-memory/FPS guarantee is claimed.
   expectations. Heavy preparation APIs are trapped on the main page. Explicit
   single-point diagnostic reads may use the R7 bounded sampler.
 
-Local unit tests pass; native/production/full integration must be verified on the
-new exact candidate SHA. Never transfer R7's PASS to this runtime-connection change.
+Implementation checkpoint `b075cfe16bd2c3f552ddfbd35c72301db1ebef2f`, exact-head
+run **35286510364 PASS**, both full jobs. The initial run 35286259708 failed the
+strict global inventory because its regex treated a typeof equality as assignment;
+reading the native callback into a local variable fixes that without a QA exception.
+A separate pagehide/lazy-import cancellation race was corrected with permanent tests.
+Historical failures remain failures. Later documentation commits need their own QA.
+
+Verified results: 26 R8 Node groups, all 97 maintained integration run commands exit
+zero (requiredFailures=0, toleratedFailures=0), all prior biome and forest R4 gates.
+The matrix is a candidate check, not a canonical dev-head run.
+
+Chromium 143.0.7499.4 executed BOTH native ESM and Vite production harnesses. Each
+mode checked 6 Laguna Seca chunks / 10,464 raw candidates and 7 Nordschleife chunks /
+12,208 raw candidates, zero source-record mismatches and no unavailable current
+samples. Each created seven dedicated Workers over route/teleport transitions and
+terminated all seven; neither page reported an error. Main-page heavy-operation
+traps, missing-geography behavior and stationary no-retry checks passed.
+
+Observed route-plan maximum was about 1.4 ms and progress-observation maximum
+0.4–0.5 ms in these isolated runs. Recorded final-service receipt maxima were
+0.2–0.3 ms; these reset on service replacement and are NOT the maximum of every
+receipt during the entire experiment. Round-trip maxima about 59–61 ms include
+asynchronous I/O/waiting and are NOT main CPU time. No FPS/GPU or full-game claim.
+`freshCurrentChunk` refers to location freshness, not complete geographic resolution.
+
+Integration, R8 browser and code ZIP SHA-256 digests were checked. All twelve
+intended R8 source/test/workflow/document files match their local tested bytes.
+Exact artifact `biome-r8-gameplay-b075cfe16bd2c3f552ddfbd35c72301db1ebef2f`
+contains `gameplay-browser-r8-qa.json` and the finite `pilot/` directory. The code
+artifact is an offline reproduction subset, not a complete game distribution.
 
 ## Next gates / not completed by this stage
 

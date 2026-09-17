@@ -1,29 +1,27 @@
 # World Drive — Block 8 active candidate
 
 Companion to the canonical evolution/correction plan. Updated 2026-09-17.
-This is the current restart ledger; R1-R6 detailed reports are historical.
+Current restart ledger; R1–R7 detailed reports remain historical/API references.
 
 ## Current state
 
-Existing branch: `candidate/block8-biome-classifier-r1`, draft/unmerged PR #14.
-Latest verified implementation: **R7 actual forest candidate adapter**,
-`45787f9afc1fb36c96fcb591ba220670bf163bfc`, exact-head run **35275728861 PASS**.
-Both contract/integration and real-data/native-browser jobs completed successfully.
-Later docs/ancestry commits require their OWN exact-head QA. Read live candidate
-HEAD and PR before work; never transfer an earlier run's PASS to a later SHA.
-Do not restart the importer, classifier, transport, batches, Worker, R6 bridge or R7 adapter.
+Existing branch `candidate/block8-biome-classifier-r1`, draft/unmerged PR #14.
+Latest verified implementation: **R8 opt-in route-lifecycle diagnostics**,
+`b075cfe16bd2c3f552ddfbd35c72301db1ebef2f`, exact-head run **35286510364 PASS**.
+Both integration and real-data/native/production-browser jobs completed successfully.
+Later docs/ancestry commits require their OWN exact-head QA. Read the live candidate
+HEAD and PR before work; never transfer an earlier PASS to a later SHA.
+Do not restart the importer, classifier, transport, batching, Worker, snapshots,
+forest candidate adapter or the new diagnostic lifecycle observer.
 
-Integrated gameplay remains the forest-R4-certified baseline from
+Integrated gameplay remains the forest-R4-certified runtime from
 `45ab6bc770097239add81eeaca9c4d32de9968a2` (Dev Integration 35230199150 PASS).
-Before this R7 ledger-only synchronization, dev was
-`3aef6d5694c60294bfa2084920f86b2d1d1f7457`, Dev Integration **35268749403 PASS**.
-Earlier dev maintenance includes documentation and two QA files only: strict C6
-inventory now recognizes the already-certified forest/spatial diagnostic aliases
-with exact owners, while unknown globals/moved owners/direct writes still fail.
-Historical supplemental failure 35264487841 remains a failed record.
-This ledger-only advance does NOT integrate any biome runtime or R7 QA imports.
-Read the current dev HEAD and its canonical exact-head Dev Integration live.
-Stable main: `ad893a9d078df4a3d24d81b929bb2905a8bc57e1` / v21.33, untouched.
+Before this ledger update, dev was `eb47faf25c10ac019f15792125f85b65d40b22e0`,
+canonical Dev Integration **35276481129 PASS**. This ledger-only update DOES NOT
+integrate R8 runtime or tests into dev. Existing dev differences from the certified
+runtime remain documentation and the earlier strict C6 inventory QA correction.
+Read the current dev SHA and its own canonical Dev Integration result live.
+Stable main remains `ad893a9d078df4a3d24d81b929bb2905a8bc57e1` / v21.33; no movement authorized.
 
 ## Verified milestones (immutable historical evidence)
 
@@ -39,92 +37,106 @@ Stable main: `ad893a9d078df4a3d24d81b929bb2905a8bc57e1` / v21.33, untouched.
 | R6 exact-point snapshots | 03eed818f42be4dc5e80d9b8d10149bdaebe0fcb | 35268092976 | PASS |
 | R6 final docs/ancestry | ab22531111239770208e44eac2657c048395b239 | 35268837896 | PASS |
 | R7 forest coordinate adapter | 45787f9afc1fb36c96fcb591ba220670bf163bfc | 35275728861 | PASS |
+| R7 final docs/ancestry | 2eccd01df3630ad47a34ad1284dff76fb7f4ea6d | 35276559316 | PASS |
+| R8 opt-in lifecycle diagnostics | b075cfe16bd2c3f552ddfbd35c72301db1ebef2f | 35286510364 | PASS |
 
-## R7 behavior and evidence
+## R8 application boundary
 
-The adapter imports the existing unchanged forest hash/policy. Natural slot is
-cellIndex*109+candidateIndex. It preserves all 1,744 raw candidates, the 1,024-slot
-first layer, signed absolute chunks and exact main.js projection arithmetic.
-Render-origin offsets never enter deterministic sampling. Immutable projection
-identity includes both origin coordinates' exact bits plus explicit route identity.
-Pole singularity/domain overflow fail explicitly; no silent wrapping or ecological fill.
+The stable public route facade delegates to the unchanged maintained routing
+implementation, with a small application-only observer wrapper. main.js, actual
+routing logic, forest R4, terrain/hydro/roads/physics and dependencies are unchanged.
+The wrapper installs `WorldDriveDiagnostics.forest.biomes` in the EXISTING diagnostic
+registry, not a new global alias. It lazy-loads the observer only on explicit start.
 
-New `forest-chunk` preparation sends bounded metadata, not a main-thread-generated
-point array. A real Worker generates coordinates and captures R6 contexts. Main
-receipt retains R6 private-copy/identity/epoch/buffer validation and atomic publication.
-Exact synchronous reads do not start Worker work or I/O. `prepared` means a valid
-snapshot, NOT that every point has known geography: inspect resolved/noData/unavailable
-counts and explicitly refresh when coverage changes. No placement authority is granted.
+Disabled by default: no diagnostic timer, Worker, biome data request or route scan.
+Explicit startup takes a trusted partial directory plus base URL. Successful route
+completion is observed without altering or awaiting its original promise. Route
+requests/reset/generation changes invalidate observation immediately; older results
+cannot resume a newer route. Pagehide cancels startup even during the lazy import,
+terminates active work and does not silently restart on BFCache restoration.
 
-Exact implementation run: **97 maintained integration commands, all exit zero**,
-requiredFailures=0, toleratedFailures=0. This is the CANDIDATE command matrix, not a
-dev-head run. Twenty-two new R7 Node groups pass, as do R1-R6, Python packaging and
-explicit certified forest R4 regressions. Runtime-diff/no-game-activation guards pass.
+One delayed idle task admits at most four diagnostic chunks: current, then up to
+three route-forward chunks. This is NOT full visible/forward forest coverage.
+Spherical route progress comes from the canonical route planner, not plane metres.
+Direction/reverse, negative chunks, stale origin/generation and >960 m teleports are
+handled. Teleports are detected at an observation/response boundary, not through a
+new immediate physics hook. Stationary missing windows are not retried endlessly;
+explicit refresh or changed progress permits another attempt. Fatal worker startup
+failures stop admission instead of causing a repeated initialization loop.
 
-The independent parity test executes the ACTUAL four original forest-builder bodies
-and main.js projection functions. **36 chunks / 62,784 raw candidate comparisons**:
-zero coordinate/order mismatches, first-layer boundary exactly 1,024. Three intentional
-salt/axis mutations are rejected. Original runtime files were downloaded from the
-exact-head code artifact, checked against their original Git blob hashes, and this
-parity test was repeated locally with the same results.
+Full candidate generation, HTTP, gzip, digest and source geometry remain in the
+existing Worker. Synchronous diagnostic sample reads use one bounded R7 point lookup
+and prepared R6 context; no per-tree async renderer integration exists. Valid packets
+and known geography are distinct: resolved/noData/unavailable counts stay visible,
+and no placement, elevation or transition authority is granted.
 
-Native Chromium **143.0.7499.4**, two actual module Workers, no page errors. The
-main page traps hash sampling DURING preparation and also tile/page fetch, gzip and
-digest. Expected real coordinates come from the original generator, not the adapter;
-expected ecoregions come from the original unclipped source polygons.
+Observer: one active poll, no pending poll queue, at most four sequential chunk
+captures; bridge 16 chunks / 4 MiB accounted retained payload. Existing R5/R6 transport,
+service, pending-byte and RPC limits remain. Reported receipt cost covers validation
+and copying, not every native/message allocation; round-trip time includes waiting.
+Idle admission (2 ms headroom) is NOT a hard frame-time budget. Route preparation has
+bounded but potentially whole-route work up to 20,000 points outside the frame loop.
+No total-heap or FPS guarantee follows from these limits.
 
-| Native R7 experiment | Chunks / candidate reads | Result |
-| --- | ---: | --- |
-| Selected chunks around original Laguna Seca vertices | 6 / 10,464 | all resolved; zero mismatches/unavailable |
-| Selected chunks around original Nordschleife vertices | 7 / 12,208 | all resolved; zero mismatches/unavailable |
-| 300 forward/reverse windows over 150 MOCK tiles | 1,744 per chunk / 523,200 | exact expected records |
-| Repeated prepared reads | 100,000 | stable object; no new capture |
+## Verified R8 evidence
 
-Both real and synthetic stores peaked at four chunks / **141,952 accounted bytes**
-under the 160,000-byte test cap. Synthetic store: 296 publications, four reuses,
-292 evictions. Stale route/window, held-handle invalidation and recovery pass.
-These are selected raw candidates, NOT accepted roots, complete long-road coverage,
-current vegetation, visual streaming or GPU/game frame-time certification.
+- **26 R8 Node groups PASS**, with emulated clients explicitly distinguished from
+  native browser tests: defaults, idle admission, stationary requests, missing data,
+  partial packets, errors, route/origin invalidation, teleport, stale in-flight
+  captures, copied configuration, pagehide during import, superseded import failure,
+  original routing-promise identity and 100,000 synchronous reads without new work.
+- **97 maintained canonical integration commands exit zero**;
+  requiredFailures=0, toleratedFailures=0. This is the CANDIDATE command matrix,
+  not the separate canonical dev-head workflow. Certified forest R4 and all prior
+  R1–R7 source, synthetic, Python and native regressions remain green.
+- Native Chromium runs the actual PUBLIC route factory and maintained lifecycle
+  on the two original repository circuit polylines. Other game services are STUBS.
+  This is not the complete Three.js game, continuous driving or GPU/frame-pacing QA.
+- The same harness runs as native ESM AND through a real Vite production build,
+  including its lazy import and generated dedicated Worker. Both have no page errors.
+  Main-page traps reject accidental preparation hash work, tile/page I/O, gzip and digest.
+- Each browser mode verifies 6 Laguna Seca chunks / 10,464 raw candidates and
+  7 Nordschleife chunks / 12,208 raw candidates against unchanged original source
+  expectations: zero mismatches/unavailable at the selected current chunks.
+  Missing pilot geography stays explicit; stationary failure is not endlessly
+  retried; pagehide terminates every observer-owned Worker.
 
-Default bridge limits remain 32 chunks / 4 MiB accounted resident payload, two
-pending chunks / 1 MiB reserved. Procedural worst-case reservation: 293,536 bytes.
-R5's separate service/transport/cache and four-RPC admission limits remain unchanged.
-Payload limits exclude total native/JS heap, message overhead and caller-held handles.
+Exact-head evidence artifact: `biome-r8-gameplay-b075cfe16bd2c3f552ddfbd35c72301db1ebef2f`,
+`gameplay-browser-r8-qa.json`, plus its finite `pilot/` pages and source tiles.
+Integration and code artifacts carry their own exact SHA. Source/ZIP hashes and
+reports are checked before claiming parity. Locally executed unit tests use emulated
+clients; native browser evidence is from GitHub Actions. No local restriction bypass.
 
-Implementation artifact ZIP digests (integration, forest, code) were checked.
-All eleven published R7 files match the locally tested SHA-256 inventory exactly.
-Evidence: `biome-r7-forest-45787f9afc1fb36c96fcb591ba220670bf163bfc`, including
-`forest-parity-r7.json`, `forest-plan.json`, original source expectations and
-`forest-browser-r7-qa.json`. Browser evidence is from Actions, not an emulated client.
+Initial R8 run 35286259708 remains a FAILED integration record: the existing regex
+inventory mistook a typeof equality check on cancelIdleCallback for a global write.
+The callback is now read into a local reference. No C6 exception/new global or
+weakened audit was introduced. Its separate browser job passed; that does not make
+the whole historical run green. Pagehide race was separately corrected and retested.
 
-## Protected foundations
+## Protected foundations and next action
 
-Pinned RESOLVE source SHA-256:
+Pinned source SHA-256:
 `be36d6209e443038d02e309f0447c6e7f2a62f5fe60c605ffe90d064952f2a60`.
-Earlier independent 6,327-point matrix retains 4,846 records and 1,481 source-no-data
-cases, including original Baffin and unchanged 201-point Yungas controls. R5/R6 native
-original circuit-vertex tests and mock long progression remain permanent regressions.
-Source agreement is not field ecology. Actual asset registry remains EMPTY.
+Earlier 6,327 original controls (4,846 source records / 1,481 explicit no-data),
+Baffin and unchanged 201-point Yungas transect remain protected. R7's 62,784 raw
+coordinate/traversal comparisons and 1,024-slot first-layer boundary remain intact.
+Source agreement is not contemporary tree cover or ecological field truth.
 
-## Exact next action
+**Next: package a finite trusted diagnostic pilot, then run the FULL GAME with
+observer OFF/ON and measure readiness/receipt cost together with existing frame
+pacing.** The observer already exists and is connected through the public route
+factory; do not rewrite it. Preserve disabled-by-default behavior and forest R4.
+Broaden fine-data coverage to a REAL long road before claiming sustained high-speed
+biome readiness. No renderer, density, placement or palette activation yet.
 
-**Bind actual gameplay route/Worker/snapshot admission in DIAGNOSTIC-ONLY mode.**
-First audit route-ready/reset/teleport/disposal and current generation/origin ownership.
-Choose an off-frame bounded admission point, preserve forest R4, and use R7 absolute
-keys with R6 prepared synchronous reads. Do not generate a whole chunk, await per-tree
-RPC, or perform network/decoding in the forest frame loop. Measure current/forward
-coverage, missing data, staging, snapshot receipt and frame pacing on actual routes
-before visual activation. Existing placement exclusions remain authoritative.
+Worldwide fine-data publication, persistent caching, authenticated root retrieval,
+real compatible models and ecological transition/local elevation policy remain open.
+The current root is trusted application input, not signed or automatically fetched.
+The actual asset registry is EMPTY. No human driving test is requested until a
+straightforward pilot and the necessary automatic full-game checks are ready.
 
-Worldwide fine distribution, persistent caching, trusted-root retrieval, long real-road
-readiness, reviewed compatible models and ecological transitions/elevation remain open.
-The current directory is trusted application input with partial coverage; missing fine
-data stays uncertainty. No human driving test is requested for this disconnected stage.
-
-Read ON THE CANDIDATE `WORLD_DRIVE_BLOCK8_BIOME_R7_FOREST_ADAPTER.md`, then the R6,
-R5, R4, R3, R2 and R1 detailed documents as historical/API references. This ledger is
-part of the canonical plan and is synchronized on dev/candidate. No biome merge or
-main movement is authorized merely by green automation. Forest R4 / Issue #12 stays
-integrated/HUMAN PASS; biome R1-R7 are NOT integrated or visually certified. No real
-asset, density, treeline or visual transition was activated. Earlier 8-bit local
-prototype remains obsolete; never overwrite the maintained uint16 implementation.
+Read on the candidate `WORLD_DRIVE_BLOCK8_BIOME_R8_GAMEPLAY_DIAGNOSTICS.md`, then R7
+and previous detailed reports. This ledger is synchronized on dev/candidate. Forest
+R4 / Issue #12 remains integrated/HUMAN PASS. Biome R1–R8 remains CANDIDATE work,
+not integrated or visually certified. Never merge PR #14 or advance main merely
+because automated QA is green. The earlier 8-bit prototype is obsolete.
