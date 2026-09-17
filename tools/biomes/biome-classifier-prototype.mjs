@@ -114,6 +114,13 @@ export function createBiomeClassifier(atlas = null, { cacheLimit = 256, blendMet
       transition: false, mix: Object.freeze([]), elevationApplied: false,
       placementAuthority: false });
   }
+  // Real RESOLVE source assigns ECO_ID 0 ('Rock and Ice') to BIOME_NUM 11.
+  // Preserve that source metadata, but do not mistake permanent ice for a tundra
+  // asset palette. 98 is a LOCAL rendering-context profile, not an upstream code.
+  function profileBiome(record) {
+    return source?.id === 'RESOLVE-ECOREGIONS-2017' && record?.id === 0
+      && record.biome === 11 && record.name === 'Rock and Ice' ? 98 : (record?.biome ?? 0);
+  }
   function axisMix(fraction, halfWidth) {
     if (halfWidth <= 0) return [0, 0];
     if (fraction < halfWidth) return [-1, 0.5 * (1 - smooth(fraction / halfWidth))];
@@ -137,7 +144,7 @@ export function createBiomeClassifier(atlas = null, { cacheLimit = 256, blendMet
     const weights = new Map();
     function add(record, weight) {
       if (weight <= 0) return;
-      const biome = record?.biome ?? 0;
+      const biome = profileBiome(record);
       weights.set(biome, (weights.get(biome) ?? 0) + weight);
     }
     add(primary, (1 - wx) * (1 - wy));
@@ -149,7 +156,7 @@ export function createBiomeClassifier(atlas = null, { cacheLimit = 256, blendMet
     const mix = Object.freeze([...weights].sort((a, b) => a[0] - b[0])
       .map(([biome, weight]) => Object.freeze({ biome, weight })));
     const transition = mix.length > 1;
-    return Object.freeze({ ...BIOME_PROFILES[primary.biome], ecoregion: primary, source,
+    return Object.freeze({ ...BIOME_PROFILES[profileBiome(primary)], ecoregion: primary, source,
       confidence: transition ? 'boundary' : 'regional', reason: null,
       resolutionDegrees: cellDegrees, transition, mix, elevationApplied: false,
       placementAuthority: false });
