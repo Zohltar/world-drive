@@ -20,7 +20,8 @@ export function scheduleBiomeObservation(callback){
     else void callback(true);
   },250);
   return ()=>{cancelled=true;clearTimeout(timer);
-    if(idleId!==null&&typeof globalThis.cancelIdleCallback==='function')globalThis.cancelIdleCallback(idleId);};
+    const cancelIdle=globalThis.cancelIdleCallback;
+    if(idleId!==null&&typeof cancelIdle==='function')cancelIdle.call(globalThis,idleId);};
 }
 export function createBiomeGameplayDiagnostics({getState,getGeneration,getRoute,isRouteReady,
   schedule=scheduleBiomeObservation,clientFactory=createBiomeWorkerClient,now=()=>performance.now()}={}){
