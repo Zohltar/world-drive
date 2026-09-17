@@ -71,13 +71,13 @@ Before coding, be able to answer:
 **Issue #9:** **DONE/CERTIFIED — HUMAN YUNGAS VISUAL/PERFORMANCE PASS (2026-09-05)**  
 **Issue #10:** **DONE/CERTIFIED — HUMAN PASS (2026-09-12) — steep planar road-contact correction**  
 **Issue #11:** **DONE/CERTIFIED — HUMAN PASS (2026-09-16); integrated `dev` checkpoint `4ad64194d53849c0c344872b59ffab2c1b3ba2a2`, exact-head Dev Integration `35104245846` PASS**
-**Issue #12:** **ACTIVE — Block 8 R4 progressive first-layer correction after R3 HUMAN FAIL**
+**Issue #12:** **DONE/CERTIFIED — HUMAN PASS (2026-09-17) — R4 progressive first-layer forest-readiness correction; runtime/reference `ca1fbb4b7b3448a2f18ae655545046464acba4e3`, post-integration checkpoint `f6e59985a945cc193a7a6eb1066a06dcb120602f`, exact-head Dev Integration `35229697126` PASS**
 **Issue #13:** **DONE/CERTIFIED — HUMAN PASS (2026-09-12) — bounded road-articulation contact correction**  
-**Block 8 — Biome-aware natural scenery:** **ACTIVE (2026-09-16) — R4 progressive first-layer forest-readiness correction before biome classification**
+**Block 8 — Biome-aware natural scenery:** **ACTIVE (2026-09-17) — forest readiness / Issue #12 DONE/CERTIFIED; next phase is biome/ecoregion data-source audit and classifier prototype**
 **Block 9 — AI-assisted 3D asset authoring and selective GLB modernization:** **PLANNED / DEFERRED — pilot-first, no wholesale asset replacement**  
 **Block 10 — Mobile browser driving controls:** **ABANDONED / NOT PLANNED (2026-09-13) — experiment stopped by user; no mobile-control candidate runtime was integrated**  
 **Block 11 — Circuit presets / closed-loop authored track routes:** **DONE/CERTIFIED — Laguna Seca HUMAN PASS (2026-09-14); Nordschleife performance HUMAN PASS (2026-09-15); no-ABS runtime and continuous guard rails HUMAN PASS (2026-09-16); integrated `dev` checkpoint `568f557a051832559fa1f3166350cc338a399ee1`, exact-head Dev Integration `35054930198` PASS**
-**Active correction block:** **Block 8 / Issue #12 — `candidate/block8-forest-readiness-r4`; uniform 64/109 first-layer coverage commits before background densification, with scheduler budgets unchanged**
+**Active correction block:** **NONE — Issue #12 R4 is certified; Block 8 continues as feature work with biome/ecoregion classification and palette selection**
 **Stable `main`:** `ad893a9d078df4a3d24d81b929bb2905a8bc57e1` — tag `v21.33`; must remain untouched without explicit user approval.
 **Previous rollback/reference:** `b74e7377eaaf2b128eb893c547f4c2da3d14bbea` — tag `v21.32`.
 
@@ -401,15 +401,15 @@ GitHub Issue #13: **CLOSED / COMPLETED (2026-09-12)**.
 
 ## Exact next action
 
-**Block 8 is active by explicit user decision. Preserve the certified V21.33 baseline and validate the Issue #12 R4 progressive first-layer correction on `candidate/block8-forest-readiness-r4` before adding biome classification or palettes.**
+**Block 8 remains active by explicit user decision. Preserve the certified Issue #12 R4 forest-readiness baseline and start the biome/ecoregion data-source audit + classifier prototype on a fresh candidate; do not incidentally retune the certified R4 streaming scheduler.**
 
 Current unresolved work is intentionally not auto-started:
 
 - Issue #2 remains **watch-only / not reproduced**; collect diagnostics only if it reappears;
 - Issue #11 is **DONE/CERTIFIED**: the measured-axis R2 correction received HUMAN PASS and is included in V21.33;
-- Issue #12 is **ACTIVE inside Block 8**; R2 proved the bounded route/hydro indexes work but received HUMAN FAIL at 3.5 km because already-covered terrain replacements consumed 36 of 81 completed builds. R3 preserves the budgets and prioritizes missing coverage before replacements;
+- Issue #12 is **DONE/CERTIFIED inside Block 8**; R4 received HUMAN PASS on 2026-09-17 with no visible forest cutoff ahead at high speed. Candidate focused run `35180462666` PASS; post-integration checkpoint `f6e59985a945cc193a7a6eb1066a06dcb120602f` passed exact-head Dev Integration `35229697126`;
 - Block 7 composition-root reduction remains **deferred / evidence-driven only**;
-- Block 8 biome-aware natural scenery is **ACTIVE**; stabilize forest readiness/streaming first, then add biome classification and palette selection;
+- Block 8 biome-aware natural scenery is **ACTIVE**; forest readiness is certified, so proceed with biome/ecoregion classification and palette selection while preserving the R4 scheduler/budgets;
 - Block 9 AI-assisted 3D asset authoring remains **planned/deferred**; begin with one controlled pilot asset and do not replace accepted GLBs wholesale without measured visual/runtime benefit;
 - Block 10 mobile browser driving controls is **ABANDONED / NOT PLANNED** by user decision; do not integrate the retired candidate branch.
 - Block 11 is **DONE/CERTIFIED**: Laguna Seca has HUMAN PASS. Nordschleife R4 checkpoint `36a1adecfdcbbaa59e3994423d8ff62cefd9e067` passed exact-head run `34918367074`, and the user confirmed normal performance on 2026-09-15. Physics Trail-Braking R2 then passed exact-head run `35022259552` but received HUMAN FAIL because the WRX remained very understeered. R3 implementation checkpoint `c5f2c60ec44bb8628b3e68c331fdc3b788332c14` passed run `35026732737`; final docs checkpoint `bb23e201645b61e2cb4c18bdfc7906fea0a4c30c` passed run `35026882948`. Physics ABS Toggle R1 implementation checkpoint `6ab85c244af4e65eafb0e2356b6a100e7b01f384` passed exact-head run `35030137277`, and final checkpoint `8eacda43baab8c4341fcb00da887c789bc60f969` passed run `35030318769`. The human comparison confirmed correct trail braking with ABS OFF; the subsequent R4 correction was still rejected as problematic. By user decision ABS was removed from gameplay. The final candidate also corrected the reported repeated Nordschleife guard-rail gaps with 5 m pitched, overlapping spans while preserving single-batch instancing. Human PASS was recorded on 2026-09-16, final candidate checkpoint `e5d14b2351ed3958a0171add4f3bca3862675d26` passed run `35054421284`, and integrated `dev` checkpoint `568f557a051832559fa1f3166350cc338a399ee1` passed exact-head Dev Integration `35054930198`.
@@ -502,15 +502,42 @@ Focused run `33915664612`: PASS. Post-integration Dev Integration `33915756142`:
 
 **DONE/CERTIFIED — HUMAN PASS (2026-09-12).** See checkpoint above.
 
+## Issue #12 — sustained-driving forest readiness
+
+**DONE/CERTIFIED — HUMAN PASS (2026-09-17).**
+
+Final human-tested candidate:
+
+```text
+candidate/block8-forest-readiness-r4
+ca1fbb4b7b3448a2f18ae655545046464acba4e3
+```
+
+Certified R4 behavior:
+
+- first visible layer uses 64 of the existing 109 candidates per cell across all 16 cells: 1,024 evaluations before first display versus 1,744 for a fully densified chunk;
+- after the first layer, remaining densification is demoted behind every still-empty coverage job;
+- R3 coverage-before-replacement priority remains preserved;
+- exact bounded route/hydro proximity indexes remain preserved;
+- normal scheduler budget remains `.95 ms / 12 candidates` and catch-up remains `1.55 ms / 20 candidates`;
+- full 109-candidate density remains unchanged after densification;
+- deterministic route/cache, blocker, hydro, road-clearance and terrain-refresh semantics remain protected.
+
+Focused R4 candidate run `35180462666`: **PASS**.  
+Human checkpoint: **PASS (2026-09-17)** — no visible forest cutoff ahead at high speed.  
+Runtime/reference integrated from `ca1fbb4b7b3448a2f18ae655545046464acba4e3`.  
+Post-integration checkpoint `f6e59985a945cc193a7a6eb1066a06dcb120602f`; exact-head Dev Integration `35229697126`: **PASS**.  
+GitHub Issue #12: **CLOSED / COMPLETED (2026-09-17)**.
+
 ---
 
 # 4. Active and future roadmap
 
 ## Current active correction block
 
-**NONE — V21.33 is published; Block 11 and Issue #11 are integrated and certified.**
+**NONE — Issue #12 R4 is integrated and certified; Block 8 continues as planned feature work rather than an active correction.**
 
-The accepted Laguna Seca and Nordschleife circuit work, Nordschleife performance correction, fixed-bias no-ABS driving behavior and continuous relief-following guard rails are all present in the certified `dev` checkpoint. Do not begin a deferred roadmap block without a new explicit priority.
+The forest-readiness baseline is now protected. Block 8 may proceed with biome/ecoregion classification and natural-palette selection, but the certified R4 scheduling budgets, coverage-first priority, bounded route/hydro queries and deterministic first-layer behavior must not be retuned incidentally.
 
 ---
 
@@ -524,9 +551,9 @@ The accepted Laguna Seca and Nordschleife circuit work, Nordschleife performance
 
 ## Block 8 — Biome-aware natural scenery generation
 
-**ACTIVE (2026-09-16) — Issue #12 R4 progressive first-layer correction is the current runtime/readiness workstream.**
+**ACTIVE (2026-09-17) — Issue #12 forest readiness is DONE/CERTIFIED; biome/ecoregion classification is now the current workstream.**
 
-Issue #12 was reopened when the user explicitly activated this block. The previous human-FAIL candidates and runtime snapshots remain diagnostic evidence, but none of those candidate runtime changes are accepted as a solution. R1 added job/builder lifecycle evidence and received HUMAN FAIL near 2.4 km. R2 replaced the unbounded route/hydro predicates with exact bounded spatial indexes and improved browser throughput from one to four candidates per slice, but still received HUMAN FAIL at 3.5 km. Its spatial diagnostics showed zero fallbacks and stable indexes; lifecycle evidence instead showed that already-covered terrain replacements consumed 36 of 81 completed builds. R3 preserved the certified budgets and geographic indexes while making missing visible coverage authoritative over replacements and limiting terrain-refresh builder resets to the affected radius; the human retest improved both reach and appearance speed but remained insufficient. R4 keeps those gains and commits a deterministic 64/109-candidate layer across all 16 cells (1,024 evaluations instead of 1,744 before first display), then demotes that chunk so remaining empty coverage stays ahead of densification.
+Issue #12 is now **DONE/CERTIFIED**. R1 added job/builder lifecycle evidence and received HUMAN FAIL near 2.4 km. R2 replaced the unbounded route/hydro predicates with exact bounded spatial indexes and improved browser throughput, but still received HUMAN FAIL at 3.5 km. R3 preserved the certified budgets and geographic indexes while making missing visible coverage authoritative over replacements and limiting terrain-refresh builder resets to the affected radius; the human retest improved both reach and appearance speed but remained insufficient. R4 kept those gains and added a deterministic 64/109-candidate first layer across all 16 cells: **1,024 evaluations before first display instead of 1,744**, followed by background densification at lower priority than any still-empty coverage. Candidate `candidate/block8-forest-readiness-r4` focused run `35180462666` passed the progressive-layer, spatial parity, lifecycle, frame-budget, prefetch, stress, hydro, integration-audit and production-build matrix. The user gave **HUMAN PASS on 2026-09-17**, reporting no visible forest cutoff ahead at high speed. Runtime/reference head `ca1fbb4b7b3448a2f18ae655545046464acba4e3` was integrated to `dev`; post-integration checkpoint `f6e59985a945cc193a7a6eb1066a06dcb120602f` passed exact-head Dev Integration `35229697126`. GitHub Issue #12 is CLOSED / COMPLETED.
 
 Goal: generate natural scenery that matches the biome/ecoregion of the driven route instead of using one globally uniform vegetation set. The primary acceptance example is explicit: a tropical route must not spawn boreal-style fir/conifer forest simply because the generic forest generator is active.
 
@@ -547,8 +574,8 @@ Planned behavior and ownership:
 
 Implementation order when Block 8 is activated:
 
-1. **Issue #12 restart / forest-readiness diagnosis** — reproduce sustained high-speed/long-drive behavior from the current certified `dev`; carry forward the prior human-FAIL snapshots; instrument actual job/builder lifetime, abandonment/restart reasons and prefetch completion; certify a stable readiness baseline before adding biome palette complexity.
-2. **Data-source audit / prototype** — compare practical global biome/ecoregion sources or deterministic classifiers for coordinate lookup, licensing, resolution, offline size and runtime cost.
+1. **Issue #12 restart / forest-readiness diagnosis — DONE/CERTIFIED (2026-09-17)** — R4 progressive first-layer scheduling received HUMAN PASS and is now the protected readiness baseline.
+2. **Data-source audit / prototype — NEXT** — compare practical global biome/ecoregion sources or deterministic classifiers for coordinate lookup, licensing, resolution, offline size and runtime cost.
 3. **Biome service contract** — expose a small coordinate/route query returning biome id + confidence/transition information, with caching and a conservative fallback.
 4. **Palette registry** — map biome ids to authored natural asset pools and density rules without changing forest streaming scheduling.
 5. **Chunk integration** — forest/scenery generation chooses deterministic biome-appropriate assets for each chunk while preserving existing blockers and route cache ownership.
