@@ -32,8 +32,9 @@ def sha256(path):
 
 
 def extract_source(archive, directory):
-    """Extract only four named components, never use untrusted ZIP paths."""
-    extensions = {".shp", ".shx", ".dbf", ".prj"}
+    """Extract named components plus optional codepage, never use ZIP paths."""
+    required = {".shp", ".shx", ".dbf", ".prj"}
+    extensions = required | {".cpg"}
     found = set()
     with zipfile.ZipFile(archive) as source:
         for info in source.infolist():
@@ -42,12 +43,12 @@ def extract_source(archive, directory):
             if path.stem.lower() != "ecoregions2017" or path.suffix.lower() not in extensions:
                 continue
             ext = path.suffix.lower()
-            if ext in found or info.file_size > 400_000_000:
+            if ext in found or info.file_size > (128 if ext == ".cpg" else 400_000_000):
                 raise ValueError("Duplicate or oversized shapefile component")
             found.add(ext)
             with source.open(info) as incoming, (directory / ("Ecoregions2017" + ext)).open("wb") as outgoing:
                 shutil.copyfileobj(incoming, outgoing)
-    if found != extensions:
+    if not required.issubset(found):
         raise ValueError("Missing source shapefile components")
     projection = (directory / "Ecoregions2017.prj").read_text()
     if (not any(key in projection for key in ("GEOGCS", "GEOGCRS"))
@@ -55,6 +56,33 @@ def extract_source(archive, directory):
             or "PROJCS" in projection or "PROJCRS" in projection):
         raise ValueError("Expected unprojected WGS84 longitude/latitude source")
     return directory / "Ecoregions2017.shp"
+
+
+def source_encoding(path):
+    """Honor CPG first, then supported DBF language-driver metadata; decode strictly.
+    GDAL documents CPG/LDID precedence and LDID 0x57 as ISO-8859-1.
+    Unknown nonzero drivers fail closed; absent metadata requires valid UTF-8.
+    """
+    with path.with_suffix(".dbf").open("rb") as stream:
+        header = stream.read(32)
+    if len(header) != 32:
+        raise ValueError("Truncated DBF header")
+    ldid = header[29]
+    cpg = path.with_suffix(".cpg")
+    if cpg.exists():
+        value = cpg.read_text(encoding="utf-8-sig").strip()
+        normalized = re.sub(r"[^a-z0-9]", "", value.lower())
+        known = {"utf8": "utf-8", "65001": "utf-8", "1252": "cp1252",
+                 "windows1252": "cp1252", "cp1252": "cp1252",
+                 "iso88591": "latin1", "88591": "latin1", "latin1": "latin1"}
+        if normalized not in known:
+            raise ValueError(f"Unsupported source CPG: {value!r}")
+        return dict(encoding=known[normalized], authority="cpg", cpg=value, ldid=ldid)
+    if ldid not in (0, 0x03, 0x57):
+        raise ValueError(f"Unsupported DBF language driver: {ldid:#x}")
+    return dict(encoding={0: "utf-8", 0x03: "cp1252", 0x57: "latin1"}[ldid],
+                authority="dbf-ldid" if ldid else "strict-utf8-without-metadata",
+                cpg=None, ldid=ldid)
 
 
 def build(archive, output, cell_degrees, expected_sha256=None):
@@ -70,7 +98,9 @@ def build(archive, output, cell_degrees, expected_sha256=None):
     cells = np.zeros((height, width), dtype=np.uint16)
     with tempfile.TemporaryDirectory() as temporary:
         path = extract_source(archive, Path(temporary))
-        with shapefile.Reader(str(path), encoding="utf-8") as reader:
+        text_encoding = source_encoding(path)
+        print(json.dumps({"sourceTextEncoding": text_encoding}), flush=True)
+        with shapefile.Reader(str(path), encoding=text_encoding["encoding"], encodingErrors="strict") as reader:
             indexed = []
             catalog = {}
             for index, record in enumerate(reader.iterRecords()):
@@ -120,11 +150,11 @@ def build(archive, output, cell_degrees, expected_sha256=None):
     manifest = dict(schema=SCHEMA, crs="EPSG:4326", west=-180, north=90,
                     width=width, height=height, cellDegrees=360 / width,
                     records=records, source=dict(id="RESOLVE-ECOREGIONS-2017", license="CC-BY-4.0",
-                    sha256=digest, url=SOURCE_URL, citation="Dinerstein et al. (2017), doi:10.1093/biosci/bix014"),
+                    sha256=digest, url=SOURCE_URL, textEncoding=text_encoding, citation="Dinerstein et al. (2017), doi:10.1093/biosci/bix014"),
                     encoding="uint16-little-endian-gzip", cellSha256=hashlib.sha256(raw).hexdigest(),
                     modifications="Cell-center rasterization; record slots sorted by ECO_ID; 0 means no data")
     (output / "manifest.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    metrics = dict(sourceSha256=digest, sourceZipBytes=archive.stat().st_size,
+    metrics = dict(sourceTextEncoding=text_encoding, sourceSha256=digest, sourceZipBytes=archive.stat().st_size,
                    sourceRecords=len(records) - 1, cellDegrees=cell_degrees,
                    rawBytes=len(raw), gzipBytes=len(packed), manifestBytes=(output / "manifest.json").stat().st_size,
                    assignedCells=int(np.count_nonzero(cells)), totalCells=width * height,
