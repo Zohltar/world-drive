@@ -190,7 +190,7 @@ export function createLocalRefinement(manifest, {maxTiles = 8, maxBytes = 8 * 10
       key:address.key, slot:chosen, ecoregion:records[chosen], sourceSha256:sourceSha,
       precision:'source-polygons', boundary, placementAuthority:false, elevationApplied:false};
   }
-  return Object.freeze({install, query, clear(){ tiles.clear(); bytes=0; },
+  return Object.freeze({install, query, has:key => tiles.has(key), clear(){ tiles.clear(); bytes=0; },
     diagnostics(){ return {...stats, residentTiles:tiles.size, residentArrayBytes:bytes,
       maxTiles, maxBytes, maxCellEdges:MAX_EDGES}; }});
 }

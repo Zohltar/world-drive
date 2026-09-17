@@ -109,8 +109,8 @@ export async function prepareBiomeService({regionalAtlas = null, refinementManif
     const address = refinementAddress(lat, lon);
     return !disposed && address ? entries.get(address.key) ?? null : null;
   }
-  async function prepareTile(key, inputBytes, requestToken) {
-    if (!current(requestToken)) { stats.staleDrops++; return outcome('discarded', 'stale-route'); }
+  async function prepareTile(key, inputBytes, requestToken, {signal} = {}) {
+    if (!current(requestToken) || signal?.aborted) { stats.staleDrops++; return outcome('discarded', 'stale-route'); }
     const entry = entries.get(key);
     if (!local || !entry) { stats.rejected++; return outcome('rejected', 'tile-not-in-manifest'); }
     if (!(inputBytes instanceof Uint8Array) || !(inputBytes.buffer instanceof ArrayBuffer)
@@ -128,7 +128,7 @@ export async function prepareBiomeService({regionalAtlas = null, refinementManif
     stats.maxPendingBytesObserved = Math.max(stats.maxPendingBytesObserved, stats.pendingBytes);
     try {
       const actual = await digest(bytes);
-      if (!current(requestToken)) { stats.staleDrops++; return outcome('discarded', 'stale-route'); }
+      if (!current(requestToken) || signal?.aborted) { stats.staleDrops++; return outcome('discarded', 'stale-route'); }
       if (actual !== entry.sha256) { stats.rejected++; return outcome('rejected', 'tile-sha256'); }
       // Fatal decoding refuses silently replaced invalid UTF-8. Schema/geometry
       // validation and cache eviction are atomic inside the R2 installer.
@@ -180,6 +180,7 @@ export async function prepareBiomeService({regionalAtlas = null, refinementManif
     local?.clear(); regional?.clearCache(); local = null; regional = null;
   }
   return freeze({query, beginRoute, requestFor, prepareTile, dispose,
+    isTileResident:key => !disposed && (local?.has(key) ?? false),
     routeToken:() => token,
     diagnostics:() => ({...stats, generation, disposed, source,
       maxPendingTiles, maxPendingBytes, manifestTiles:entries.size,

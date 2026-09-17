@@ -5,7 +5,7 @@ import {fileURLToPath} from 'node:url';
 import {join,resolve,dirname} from 'node:path';
 const root=fileURLToPath(new URL('../',import.meta.url));
 const folder=join(root,'src/scenery/biomes');
-const names=['biome-profiles.js','regional-classifier.js','local-refinement.js','biome-service.js','palette-registry.js'];
+const names=['tile-transport.js','route-tile-plan.js','route-preparer.js','biome-profiles.js','regional-classifier.js','local-refinement.js','biome-service.js','palette-registry.js'];
 assert.deepEqual(readdirSync(folder).sort(),names.toSorted());
 for(const name of names) {
   const source=readFileSync(join(folder,name),'utf8');
@@ -13,7 +13,8 @@ for(const name of names) {
     assert.ok(match[1].startsWith('./'),`${name}: non-local dependency ${match[1]}`);
     assert.ok(names.includes(match[1].slice(2)),`${name}: unknown domain dependency`);
   }
-  assert.doesNotMatch(source,/\b(?:fetch|setTimeout|setInterval|requestIdleCallback|requestAnimationFrame)\s*\(/);
+  if(name!=='tile-transport.js')assert.doesNotMatch(source,/\b(?:fetch|setTimeout|setInterval|requestIdleCallback|requestAnimationFrame)\s*\(/);
+  else assert.doesNotMatch(source,/\b(?:setInterval|requestIdleCallback|requestAnimationFrame)\s*\(/);
   assert.doesNotMatch(source,/\bMath\.random\s*\(/);
   assert.doesNotMatch(source,/\b(?:window|document|THREE)\./);
 }
