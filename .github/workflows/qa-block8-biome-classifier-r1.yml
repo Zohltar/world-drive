@@ -30,6 +30,7 @@ jobs:
         run: |
           node qa/qa-block8-biome-prototype-r1.mjs
           node qa/qa-block8-biome-rock-ice-r1.mjs
+          node qa/qa-block8-biome-refinement-r2.mjs
       - name: Install canonical workflow parser (CI only)
         run: python -m pip install PyYAML==6.0.2
       - name: Every maintained Dev Integration run step
@@ -66,6 +67,7 @@ jobs:
         run: |
           python qa/qa-block8-biome-builder-r1.py
           python qa/qa-block8-biome-source-parity-r1.py --self-test
+          python qa/qa-block8-biome-refinement-parity-r2.py --self-test
       - name: Retrieve pinned source archive for offline preprocessing only
         run: |
           curl --fail --location --proto '=https' --proto-redir '=https' --retry 2 --connect-timeout 20 --max-time 180 --max-filesize 200000000 https://storage.googleapis.com/teow2016/Ecoregions2017.zip -o "$RUNNER_TEMP/Ecoregions2017.zip"
@@ -85,6 +87,15 @@ jobs:
             node qa/qa-block8-biome-atlas-r1.mjs "$RUNNER_TEMP/biome-atlases/$resolution" || FAILED=1
           done
           exit "$FAILED"
+      - name: Bounded local source refinement and original precision gates
+        run: python qa/qa-block8-biome-refinement-parity-r2.py --source "$RUNNER_TEMP/Ecoregions2017.zip" --atlases "$RUNNER_TEMP/biome-atlases" --output "$RUNNER_TEMP/biome-refinement"
+      - name: Preserve bounded refinement and source-agreement measurements
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: biome-r2-refinement-${{ github.sha }}
+          path: ${{ runner.temp }}/biome-refinement
+          if-no-files-found: error
       - name: Preserve atlas, provenance and geographic measurements
         if: always()
         uses: actions/upload-artifact@v4
@@ -96,7 +107,7 @@ jobs:
         if: always()
         run: |
           mkdir -p "$RUNNER_TEMP/biome-code"
-          git archive --format=tar.gz HEAD tools/biomes qa/qa-block8-biome-atlas-r1.mjs qa/qa-block8-biome-builder-r1.py qa/qa-block8-biome-prototype-r1.mjs qa/qa-block8-biome-rock-ice-r1.mjs qa/qa-block8-biome-source-parity-r1.py docs/WORLD_DRIVE_BLOCK8_BIOME_R1_AUDIT.md docs/WORLD_DRIVE_BLOCK8_BIOME_R1_REAL_DATA.md .github/workflows/qa-block8-biome-classifier-r1.yml > "$RUNNER_TEMP/biome-code/prototype-source.tar.gz"
+          git archive --format=tar.gz HEAD tools/biomes qa/qa-block8-biome-atlas-r1.mjs qa/qa-block8-biome-builder-r1.py qa/qa-block8-biome-prototype-r1.mjs qa/qa-block8-biome-rock-ice-r1.mjs qa/qa-block8-biome-source-parity-r1.py qa/qa-block8-biome-refinement-r2.mjs qa/qa-block8-biome-refinement-parity-r2.py docs/WORLD_DRIVE_BLOCK8_BIOME_R1_AUDIT.md docs/WORLD_DRIVE_BLOCK8_BIOME_R1_REAL_DATA.md docs/WORLD_DRIVE_BLOCK8_BIOME_R2_LOCAL_REFINEMENT.md .github/workflows/qa-block8-biome-classifier-r1.yml > "$RUNNER_TEMP/biome-code/prototype-source.tar.gz"
       - name: Upload offline reproduction code
         if: always()
         uses: actions/upload-artifact@v4
