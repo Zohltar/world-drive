@@ -1,0 +1,400 @@
+from pathlib import Path
+
+
+def replace_once(text, old, new, label):
+    count = text.count(old)
+    if count != 1:
+        raise SystemExit(f'{label}: expected exactly one match, found {count}')
+    return text.replace(old, new, 1)
+
+
+core_path = Path('src/forest-chunk-streamer-core.js')
+core = core_path.read_text()
+core = replace_once(
+    core,
+    "// Block 8 R2 preserves that scheduler and routes high-frequency road/water\n// exclusion tests through exact bounded spatial indexes.",
+    "// Block 8 R4 preserves those budgets and spatial indexes, but commits a\n// deterministic uniform first layer before the remaining candidates densify in\n// the background. A partially covered chunk is demoted behind missing coverage.",
+    'core header',
+)
+
+core = replace_once(
+    core,
+    "  const catchupMinIdleMs=Math.max(1.5,FOREST.forestCatchupMinIdleMs||3.2);\n",
+    "  const catchupMinIdleMs=Math.max(1.5,FOREST.forestCatchupMinIdleMs||3.2);\n"
+    "  const firstLayerCandidatesPerCell=Math.min(\n"
+    "    Math.max(1,Math.floor(FOREST.firstLayerCandidatesPerCell||64)),\n"
+    "    Math.max(1,FOREST.candidatesPerCell||1)\n"
+    "  );\n"
+    "  const firstLayerCandidateTarget=totalCells*firstLayerCandidatesPerCell;\n"
+    "  const firstLayerCoverageFraction=firstLayerCandidatesPerCell/Math.max(1,FOREST.candidatesPerCell||1);\n"
+    "  const progressiveFirstLayer=firstLayerCandidatesPerCell<FOREST.candidatesPerCell;\n",
+    'R4 constants',
+)
+
+core = replace_once(
+    core,
+    "    catchupSlices:0,\n    jobsQueued:0,",
+    "    catchupSlices:0,\n"
+    "    firstLayerCandidatesPerCell,\n"
+    "    firstLayerCandidateTarget,\n"
+    "    firstLayerCoverageFraction,\n"
+    "    firstLayerChunksCommitted:0,\n"
+    "    firstLayerVisibleCommits:0,\n"
+    "    firstLayerPrefetchCommits:0,\n"
+    "    densificationChunksCompleted:0,\n"
+    "    jobsQueued:0,",
+    'R4 perf fields',
+)
+
+core = replace_once(
+    core,
+    "    // Block 8 R3: a replacement already has an old visible chunk covering the\n"
+    "    // area. Missing coverage must finish first; otherwise terrain refreshes can\n"
+    "    // consume almost half of the available build throughput while holes remain.\n"
+    "    if(chunk.replace){\n"
+    "      return {band:2,score:nearDistance,nearDistance,forward};\n"
+    "    }\n"
+    "    if(!visibleKeys.has(chunk.key)){\n"
+    "      const pc=prefetchPriorityCenter(center);\n"
+    "      return {band:3,score:chunkPriorityDistance(chunk,pc)+Math.max(0,prefetchMinForwardM-forward)*2,nearDistance,forward};\n"
+    "    }",
+    "    // Block 8 R4: first-layer coverage is useful immediately, so once a job\n"
+    "    // has committed that uniform layer its remaining densification must yield to\n"
+    "    // every still-empty coverage job. R3 replacement priority remains unchanged.\n"
+    "    if(chunk.firstLayerCommitted){\n"
+    "      return {band:4,score:nearDistance,nearDistance,forward};\n"
+    "    }\n"
+    "    if(chunk.replace){\n"
+    "      return {band:2,score:nearDistance,nearDistance,forward};\n"
+    "    }\n"
+    "    if(!visibleKeys.has(chunk.key)){\n"
+    "      const pc=prefetchPriorityCenter(center);\n"
+    "      return {band:3,score:chunkPriorityDistance(chunk,pc)+Math.max(0,prefetchMinForwardM-forward)*2,nearDistance,forward};\n"
+    "    }",
+    'R4 queue priority',
+)
+
+old_builder = '''  function createBuilder(desc,buildSerial){
+    return {desc,buildSerial,cellIndex:0,candidateIndex:0,cell:null,accepted:0,buckets:Array.from({length:densityBuckets},()=>[])};
+  }
+
+  function beginBuilderCell(builder){
+    if(builder.cellIndex>=totalCells)return false;
+    const index=builder.cellIndex;
+    const sx=Math.floor(index/chunkCells),sz=index%chunkCells;
+    const cellCx=builder.desc.cx*chunkCells+sx,cellCz=builder.desc.cz*chunkCells+sz;
+    const cellX=(cellCx+.5)*FOREST.cellSize,cellZ=(cellCz+.5)*FOREST.cellSize;
+    builder.candidateIndex=0;
+    builder.cell={cellCx,cellCz,nearRoadCell:cellNearRoad(cellX,cellZ),baseDensity:densityAt(cellX,cellZ)};
+    return true;
+  }
+
+  function advanceBuilderCandidate(builder){
+    builder.candidateIndex++;
+    if(builder.candidateIndex>=FOREST.candidatesPerCell){
+      builder.cellIndex++;
+      builder.candidateIndex=0;
+      builder.cell=null;
+    }
+    return builder.cellIndex>=totalCells;
+  }
+'''
+
+new_builder = '''  function createBuilder(desc,buildSerial){
+    return {
+      desc,buildSerial,phase:0,cellIndex:0,candidateIndex:0,cell:null,
+      firstLayerReady:false,accepted:0,buckets:Array.from({length:densityBuckets},()=>[])
+    };
+  }
+
+  function beginBuilderCell(builder){
+    if(builder.cellIndex>=totalCells)return false;
+    const index=builder.cellIndex;
+    const sx=Math.floor(index/chunkCells),sz=index%chunkCells;
+    const cellCx=builder.desc.cx*chunkCells+sx,cellCz=builder.desc.cz*chunkCells+sz;
+    const cellX=(cellCx+.5)*FOREST.cellSize,cellZ=(cellCz+.5)*FOREST.cellSize;
+    builder.candidateIndex=builder.phase===0?0:firstLayerCandidatesPerCell;
+    builder.cell={cellCx,cellCz,nearRoadCell:cellNearRoad(cellX,cellZ),baseDensity:densityAt(cellX,cellZ)};
+    return true;
+  }
+
+  function advanceBuilderCandidate(builder){
+    const phaseLimit=builder.phase===0?firstLayerCandidatesPerCell:FOREST.candidatesPerCell;
+    builder.candidateIndex++;
+    if(builder.candidateIndex>=phaseLimit){
+      builder.cellIndex++;
+      builder.cell=null;
+      if(builder.cellIndex>=totalCells&&builder.phase===0&&progressiveFirstLayer){
+        builder.phase=1;
+        builder.cellIndex=0;
+        builder.candidateIndex=firstLayerCandidatesPerCell;
+        builder.firstLayerReady=true;
+        return false;
+      }
+      builder.candidateIndex=builder.phase===0?0:firstLayerCandidatesPerCell;
+    }
+    return builder.cellIndex>=totalCells;
+  }
+'''
+core = replace_once(core, old_builder, new_builder, 'R4 builder phases')
+
+core = replace_once(
+    core,
+    "  function finalizeBuilder(builder){\n    let floats=0;",
+    "  function finalizeBuilder(builder,{coverageFraction=1}={}){\n    let floats=0;",
+    'finalize signature',
+)
+core = replace_once(
+    core,
+    "    return {...builder.desc,matrices,maxCount:Math.floor(floats/16),accepted:builder.accepted,lastUsed:performance.now(),mesh:null,group:null,visibleCount:0,state:null,prefetched:false,cacheTerrainRevision};",
+    "    return {...builder.desc,matrices,maxCount:Math.floor(floats/16),accepted:builder.accepted,coverageFraction,lastUsed:performance.now(),mesh:null,group:null,visibleCount:0,state:null,prefetched:false,cacheTerrainRevision};",
+    'coverage fraction result',
+)
+
+core = replace_once(
+    core,
+    "  function updateChunkDensity(data,center,force=false){\n"
+    "    if(!data.mesh)return;\n"
+    "    const distance=chunkPriorityDistance(data,center);\n"
+    "    const fraction=densityFractionForDistance(distance);\n"
+    "    const count=Math.max(0,Math.min(data.maxCount,Math.round(data.maxCount*fraction)));",
+    "  function updateChunkDensity(data,center,force=false){\n"
+    "    if(!data.mesh)return;\n"
+    "    const distance=chunkPriorityDistance(data,center);\n"
+    "    const targetFraction=densityFractionForDistance(distance);\n"
+    "    const availableFraction=Math.max(.01,Math.min(1,Number.isFinite(data.coverageFraction)?data.coverageFraction:1));\n"
+    "    const fraction=Math.min(1,targetFraction/availableFraction);\n"
+    "    const count=Math.max(0,Math.min(data.maxCount,Math.round(data.maxCount*fraction)));",
+    'partial density normalization',
+)
+
+core = replace_once(
+    core,
+    "  function replaceActive(oldData,newData,center){\n"
+    "    if(!ensureMesh(newData,center))return false;\n"
+    "    if(newData.group.parent!==forestGroup)forestGroup.add(newData.group);\n"
+    "    active.set(newData.key,newData);cache.set(newData.key,newData);\n"
+    "    if(oldData&&oldData!==newData)disposeChunk(oldData);\n"
+    "    newData.lastUsed=performance.now();perf.chunksReplaced++;return true;\n"
+    "  }",
+    "  function replaceActive(oldData,newData,center,{countReplacement=true}={}){\n"
+    "    if(!ensureMesh(newData,center))return false;\n"
+    "    if(newData.group.parent!==forestGroup)forestGroup.add(newData.group);\n"
+    "    active.set(newData.key,newData);cache.set(newData.key,newData);\n"
+    "    if(oldData&&oldData!==newData)disposeChunk(oldData);\n"
+    "    newData.lastUsed=performance.now();if(countReplacement)perf.chunksReplaced++;return true;\n"
+    "  }",
+    'progressive replace accounting',
+)
+
+core = replace_once(
+    core,
+    "      ...desc,replace,builder:null,readyToCommit:false,\n"
+    "      id:nextJobId++,queuedAt:performance.now(),startedAt:0,lastWorkedAt:0,",
+    "      ...desc,replace,builder:null,readyToCommit:false,firstLayerCommitted:false,firstLayerCommittedAt:0,\n"
+    "      id:nextJobId++,queuedAt:performance.now(),startedAt:0,lastWorkedAt:0,",
+    'job progressive state',
+)
+
+core = replace_once(
+    core,
+    "      id:job.id,key:job.key,band,replace:!!job.replace,candidates:job.candidatesProcessed||0,\n"
+    "      slices:job.slices||0,ageMs,builderAgeMs,at:now",
+    "      id:job.id,key:job.key,band,replace:!!job.replace,firstLayerCommitted:!!job.firstLayerCommitted,candidates:job.candidatesProcessed||0,\n"
+    "      slices:job.slices||0,ageMs,builderAgeMs,at:now",
+    'completion progressive flag',
+)
+
+old_finish = '''  function finishJob(job,data){
+    const old=cache.get(job.key)||active.get(job.key)||null;
+    const wanted=wantedKeys.has(job.key),visible=visibleKeys.has(job.key);
+    if(job.replace){
+      if(visible&&active.has(job.key))replaceActive(active.get(job.key),data,lastCenter);
+      else{
+        if(old&&old!==data)disposeChunk(old);
+        cache.set(job.key,data);
+        if(visible)attach(data,lastCenter);else if(wanted)preparePrefetchMesh(data,lastCenter);
+      }
+    }else if(visible)attach(data,lastCenter);
+    else{cache.set(job.key,data);if(wanted)preparePrefetchMesh(data,lastCenter);}
+    perf.chunksBuilt++;
+  }
+'''
+
+new_finish = '''  function commitFirstLayer(job){
+    if(job.replace||job.firstLayerCommitted||!job.builder?.firstLayerReady)return false;
+    const data=finalizeBuilder(job.builder,{coverageFraction:firstLayerCoverageFraction});
+    const wanted=wantedKeys.has(job.key),visible=visibleKeys.has(job.key);
+    if(visible)attach(data,lastCenter);
+    else{cache.set(job.key,data);if(wanted)preparePrefetchMesh(data,lastCenter);}
+    job.firstLayerCommitted=true;
+    job.firstLayerCommittedAt=performance.now();
+    perf.firstLayerChunksCommitted++;
+    if(visible)perf.firstLayerVisibleCommits++;
+    else if(prefetchKeys.has(job.key))perf.firstLayerPrefetchCommits++;
+    queuePriorityDirty=true;
+    return true;
+  }
+
+  function finishJob(job,data){
+    const old=cache.get(job.key)||active.get(job.key)||null;
+    const wanted=wantedKeys.has(job.key),visible=visibleKeys.has(job.key);
+    const progressive=job.firstLayerCommitted&&!job.replace;
+    if(job.replace||progressive){
+      if(visible&&active.has(job.key))replaceActive(active.get(job.key),data,lastCenter,{countReplacement:job.replace});
+      else{
+        if(old&&old!==data)disposeChunk(old);
+        cache.set(job.key,data);
+        if(visible)attach(data,lastCenter);else if(wanted)preparePrefetchMesh(data,lastCenter);
+      }
+    }else if(visible)attach(data,lastCenter);
+    else{cache.set(job.key,data);if(wanted)preparePrefetchMesh(data,lastCenter);}
+    if(progressive)perf.densificationChunksCompleted++;
+    perf.chunksBuilt++;
+  }
+'''
+core = replace_once(core, old_finish, new_finish, 'R4 first layer commit')
+
+old_run = '''      if(!wantedKeys.has(job.key)&&!job.replace){queue.shift();abandonJob(job,'no-longer-wanted');}
+      else if(!job.replace&&active.has(job.key)){queue.shift();abandonJob(job,'already-active');}
+      else if(!job.replace&&cache.has(job.key)){
+        queue.shift();abandonJob(job,'already-cached');if(visibleKeys.has(job.key))attach(cache.get(job.key),lastCenter);
+      }else if(job.readyToCommit){
+        const commitStarted=performance.now();
+        const data=finalizeBuilder(job.builder);queue.shift();queued.delete(job.key);recordJobCompletion(job);finishJob(job,data);trimCache();
+        const commitEnded=performance.now();perf.lastCommitMs=commitEnded-commitStarted;perf.lastCommitAt=commitEnded;perf.maxCommitMs=Math.max(perf.maxCommitMs,perf.lastCommitMs);
+      }else{
+        if(!job.builder)startBuilder(job);
+        if(job.builder.buildSerial!==serial){recordBuilderLoss(job,'serial-restart',{abandonJob:false});startBuilder(job);job.readyToCommit=false;}
+        const stopAt=sliceStart+activeBudgetMs;
+        while(job.builder.cellIndex<totalCells&&candidates<activeCandidateCap){
+          if(candidates>0){if(performance.now()>=stopAt)break;if(!deadline.didTimeout&&deadline.timeRemaining()<.35)break;}
+          processBuilderCandidate(job.builder);candidates++;job.candidatesProcessed++;perf.candidatesProcessed++;
+        }
+        job.slices++;job.lastWorkedAt=performance.now();
+        if(job.builder.cellIndex>=totalCells)job.readyToCommit=true;
+      }
+'''
+
+new_run = '''      if(!wantedKeys.has(job.key)&&!job.replace){queue.shift();abandonJob(job,'no-longer-wanted');}
+      else if(!job.replace&&!job.firstLayerCommitted&&active.has(job.key)){queue.shift();abandonJob(job,'already-active');}
+      else if(!job.replace&&!job.firstLayerCommitted&&cache.has(job.key)){
+        queue.shift();abandonJob(job,'already-cached');if(visibleKeys.has(job.key))attach(cache.get(job.key),lastCenter);
+      }else if(job.readyToCommit){
+        const commitStarted=performance.now();
+        const data=finalizeBuilder(job.builder);queue.shift();queued.delete(job.key);recordJobCompletion(job);finishJob(job,data);trimCache();
+        const commitEnded=performance.now();perf.lastCommitMs=commitEnded-commitStarted;perf.lastCommitAt=commitEnded;perf.maxCommitMs=Math.max(perf.maxCommitMs,perf.lastCommitMs);
+      }else{
+        if(!job.builder)startBuilder(job);
+        if(job.builder.buildSerial!==serial){recordBuilderLoss(job,'serial-restart',{abandonJob:false});startBuilder(job);job.readyToCommit=false;}
+        const stopAt=sliceStart+activeBudgetMs;
+        while(job.builder.cellIndex<totalCells&&candidates<activeCandidateCap){
+          if(candidates>0){if(performance.now()>=stopAt)break;if(!deadline.didTimeout&&deadline.timeRemaining()<.35)break;}
+          processBuilderCandidate(job.builder);candidates++;job.candidatesProcessed++;perf.candidatesProcessed++;
+          if(job.builder.firstLayerReady&&!job.firstLayerCommitted&&!job.replace)break;
+        }
+        job.slices++;job.lastWorkedAt=performance.now();
+        if(job.builder.firstLayerReady&&!job.firstLayerCommitted&&!job.replace)commitFirstLayer(job);
+        if(job.builder.cellIndex>=totalCells&&(!progressiveFirstLayer||job.builder.phase===1))job.readyToCommit=true;
+      }
+'''
+core = replace_once(core, old_run, new_run, 'R4 run queue')
+
+core = replace_once(
+    core,
+    "      inProgressJobs:queue.reduce((count,job)=>count+(job.builder?1:0),0),\n"
+    "      prefetchInProgressJobs:queue.reduce((count,job)=>count+(job.builder&&prefetchKeys.has(job.key)?1:0),0),",
+    "      inProgressJobs:queue.reduce((count,job)=>count+(job.builder?1:0),0),\n"
+    "      progressiveInProgressChunks:queue.reduce((count,job)=>count+(job.firstLayerCommitted?1:0),0),\n"
+    "      prefetchInProgressJobs:queue.reduce((count,job)=>count+(job.builder&&prefetchKeys.has(job.key)?1:0),0),",
+    'R4 stats',
+)
+core_path.write_text(core)
+
+policy_path = Path('src/forest-streaming-policy.js')
+policy = policy_path.read_text()
+policy = replace_once(
+    policy,
+    "  candidatesPerCell:109,\n",
+    "  candidatesPerCell:109,\n\n"
+    "  // Block 8 R4: commit a uniform 64/109 candidate layer across every cell\n"
+    "  // before background densification completes the remaining candidates.\n"
+    "  firstLayerCandidatesPerCell:64,\n",
+    'R4 policy',
+)
+policy_path.write_text(policy)
+
+wrapper_path = Path('src/forest-chunk-streamer.js')
+wrapper = wrapper_path.read_text()
+wrapper = replace_once(
+    wrapper,
+    "readinessMode:'block8-r3-coverage-before-replacement'",
+    "readinessMode:'block8-r4-progressive-first-layer'",
+    'wrapper readiness marker',
+)
+wrapper = replace_once(
+    wrapper,
+    "      queueMix:{coverage:finite(raw.queuedCoverageChunks),replacement:finite(raw.queuedReplacementChunks)},\n"
+    "      chunksBuilt:finite(raw.chunksBuilt),chunksReplaced:finite(raw.chunksReplaced),matrixUploads:finite(raw.matrixUploads),densityCountUpdates:finite(raw.densityCountUpdates),",
+    "      queueMix:{coverage:finite(raw.queuedCoverageChunks),replacement:finite(raw.queuedReplacementChunks)},\n"
+    "      progressive:{firstLayerCandidatesPerCell:finite(raw.firstLayerCandidatesPerCell),candidateTarget:finite(raw.firstLayerCandidateTarget),coverageFraction:round3(raw.firstLayerCoverageFraction),committed:finite(raw.firstLayerChunksCommitted),visibleCommits:finite(raw.firstLayerVisibleCommits),prefetchCommits:finite(raw.firstLayerPrefetchCommits),densified:finite(raw.densificationChunksCompleted),inProgress:finite(raw.progressiveInProgressChunks)},\n"
+    "      chunksBuilt:finite(raw.chunksBuilt),chunksReplaced:finite(raw.chunksReplaced),matrixUploads:finite(raw.matrixUploads),densityCountUpdates:finite(raw.densityCountUpdates),",
+    'wrapper progressive diagnostic',
+)
+wrapper_path.write_text(wrapper)
+
+lifecycle_path = Path('qa/qa-block8-forest-lifecycle-diagnostics-r1.mjs')
+lifecycle = lifecycle_path.read_text()
+lifecycle = replace_once(
+    lifecycle,
+    "readinessMode:'block8-r3-coverage-before-replacement'",
+    "readinessMode:'block8-r4-progressive-first-layer'",
+    'lifecycle marker',
+)
+lifecycle = lifecycle.replace(
+    'Block 8 R3 readiness diagnostic mode is missing',
+    'Block 8 R4 readiness diagnostic mode is missing',
+)
+lifecycle_path.write_text(lifecycle)
+
+plan_path = Path('docs/WORLD_DRIVE_EVOLUTION_AND_CORRECTION_PLAN.md')
+plan = plan_path.read_text()
+replacements = [
+    (
+        '**Issue #12:** **ACTIVE — Block 8 R3 coverage-before-replacement correction after R2 HUMAN FAIL**',
+        '**Issue #12:** **ACTIVE — Block 8 R4 progressive first-layer correction after R3 HUMAN FAIL**',
+    ),
+    (
+        '**Block 8 — Biome-aware natural scenery:** **ACTIVE (2026-09-16) — R3 forest-readiness correction before biome classification**',
+        '**Block 8 — Biome-aware natural scenery:** **ACTIVE (2026-09-16) — R4 progressive first-layer forest-readiness correction before biome classification**',
+    ),
+    (
+        '**Active correction block:** **Block 8 / Issue #12 — `candidate/block8-forest-readiness-r3`; missing forest coverage precedes already-covered terrain replacements, with scheduler budgets unchanged**',
+        '**Active correction block:** **Block 8 / Issue #12 — `candidate/block8-forest-readiness-r4`; uniform 64/109 first-layer coverage commits before background densification, with scheduler budgets unchanged**',
+    ),
+    (
+        '**Block 8 is active by explicit user decision. Preserve the certified V21.33 baseline and validate the Issue #12 R3 coverage-before-replacement correction on `candidate/block8-forest-readiness-r3` before adding biome classification or palettes.**',
+        '**Block 8 is active by explicit user decision. Preserve the certified V21.33 baseline and validate the Issue #12 R4 progressive first-layer correction on `candidate/block8-forest-readiness-r4` before adding biome classification or palettes.**',
+    ),
+    (
+        '**ACTIVE (2026-09-16) — Issue #12 R3 coverage-before-replacement correction is the current runtime/readiness workstream.**',
+        '**ACTIVE (2026-09-16) — Issue #12 R4 progressive first-layer correction is the current runtime/readiness workstream.**',
+    ),
+]
+for old, new in replacements:
+    plan = replace_once(plan, old, new, f'plan marker: {old[:40]}')
+old_block = (
+    'R3 therefore preserves the certified budgets and geographic indexes while making missing coverage authoritative over '
+    'replacements and limiting terrain-refresh builder resets to the affected radius.'
+)
+new_block = (
+    'R3 preserved the certified budgets and geographic indexes while making missing visible coverage authoritative over '
+    'replacements and limiting terrain-refresh builder resets to the affected radius; the human retest improved both reach '
+    'and appearance speed but remained insufficient. R4 keeps those gains and commits a deterministic 64/109-candidate '
+    'layer across all 16 cells (1,024 evaluations instead of 1,744 before first display), then demotes that chunk so '
+    'remaining empty coverage stays ahead of densification.'
+)
+plan = replace_once(plan, old_block, new_block, 'plan R3 summary')
+plan_path.write_text(plan)
+
+print('R4 patch applied')
