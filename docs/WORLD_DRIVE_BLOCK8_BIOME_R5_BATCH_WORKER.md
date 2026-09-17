@@ -22,7 +22,8 @@ Different manifests cannot assign conflicting content to the same tile key.
 A one-degree page holds at most 100 original 0.1-degree tile descriptors. Page
 bytes are SHA-256 pinned by a `world-drive-biome-directory-v1` root containing
 one shared catalog and an explicit revision. Pages are limited to 64 KiB; a root
-to 4096 pages and 2 MiB in the worker initialization/packager contract. This is a
+to 4096 pages and 2 MiB of UTF-8 bytes in the packager. The browser client
+caps serialized initialization at 2,097,152 characters; that is not a UTF-8 byte limit. This is a
 bounded PARTIAL distribution index, not a published worldwide fine atlas.
 The root itself remains a trusted application input, not a signed publisher root.
 
@@ -113,10 +114,39 @@ inventory. The workflow executes all existing canonical Dev Integration commands
 explicit forest R4 regressions and R1-R4 real-geography checks. A pending run must
 not be reported as PASS; consult the current exact-head run and browser artifact.
 
+## Verified native-browser milestone
+
+Milestone `a3ad99dce5aa1672c84f9f32a1f379b30bebc7c3`, run **35263745441 PASS**,
+including both jobs and native Chromium 143.0.7499.4. Earlier implementation
+`ad8aa1d0cd5e2523e96c0d9fb09adc97c6b9af0c` also passed run 35263466518; the
+milestone adds an isolated minimal HTML harness and checks for page errors.
+No game entrypoint is loaded by the browser harness.
+
+Verified `browser-r5-qa.json`: 206 Laguna Seca + 1,068 Nordschleife original
+positions all ready and matching source records; 300 forward/reverse windows
+across 150 synthetic tiles / 15 pages also all ready. Two native Worker URLs
+were observed; main-thread preparation traps remained armed. Stale routes,
+stale sample epochs, admission, oversize samples and worker termination passed.
+The integration artifact records all 97 commands exit-zero and zero required or
+tolerated failures. All three downloaded ZIP digests and 13 code files match.
+
+Synthetic run: 299 handoffs, 2 peak services, 2 cached pages, 3,608-byte peak
+resident arrays. Real circuits: 3 page fetches, 4 tile transfers, 2,258 gzip bytes,
+16,598 decoded JSON bytes, 6,348-byte peak resident arrays, 10,566-byte peak
+transport reservations. The fourth transfer reloads an overlapping tile during
+atomic handoff; this is not claimed optimal caching. Memory is payload accounting,
+not total heap. The UI heartbeat ran 130 frames in this one measurement; it proves
+progress, not a frame-time or gameplay-performance budget.
+
+The fixed test pack covers compact circuits, while the long path is synthetic.
+Neither establishes global geographic distribution, high-speed game readiness,
+visual continuity, ecological accuracy or GPU frame pacing. Later documentation
+commits require their own exact-head QA; the milestone is not a self-certifying
+reference to a future commit.
+
 ## Exact next action
 
-Verify exact-head native browser results and fix any failures before visual work.
-Then prepare a bounded synchronous chunk-context snapshot bridge and validate
+Prepare a bounded synchronous chunk-context snapshot bridge and validate
 actual gameplay route/worker admission (diagnostic-only first), while addressing
 continuous long-route geographic distribution and persistent cache separately.
 The root is not fetched/authenticated automatically by R5. No worldwide fine-data
