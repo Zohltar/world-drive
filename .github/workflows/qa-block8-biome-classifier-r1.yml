@@ -116,6 +116,17 @@ jobs:
         run: npm ci
       - name: Actual route lifecycle and lazy diagnostic Worker in native and built browser
         run: python qa/qa-block8-biome-gameplay-browser-r8.py --forest "$RUNNER_TEMP/biome-r7-forest" --output "$RUNNER_TEMP/biome-r8-gameplay"
+      - name: Pinned finite diagnostic pilot packaging and explicit launcher
+        run: python qa/qa-block8-biome-pilot-r9.py --pilot "$RUNNER_TEMP/biome-r8-gameplay/pilot"
+      - name: Full production game diagnostic OFF ON OFF experiment
+        run: python qa/qa-block8-biome-fullgame-r9.py --pilot "$RUNNER_TEMP/biome-r8-gameplay/pilot" --output "$RUNNER_TEMP/biome-r9-fullgame"
+      - name: Preserve R9 full game results and installable pilot
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: biome-r9-fullgame-${{ github.sha }}
+          path: ${{ runner.temp }}/biome-r9-fullgame
+          if-no-files-found: error
       - name: Preserve R8 observer and diagnostic pilot evidence
         if: always()
         uses: actions/upload-artifact@v4
@@ -155,7 +166,7 @@ jobs:
         if: always()
         run: |
           mkdir -p "$RUNNER_TEMP/biome-code"
-          git archive --format=tar.gz HEAD src/route-lifecycle.js src/routing/route-lifecycle.js src/app/biome-diagnostics.js src/app/diagnostics.js qa/qa-block8-biome-gameplay-r8.mjs qa/qa-block8-biome-gameplay-browser-r8.py docs/WORLD_DRIVE_BLOCK8_BIOME_R8_GAMEPLAY_DIAGNOSTICS.md src/main.js src/forest-streaming-policy.js src/forest-chunk-streamer-core.js qa/qa-block8-biome-forest-adapter-r7.mjs qa/qa-block8-biome-forest-parity-r7.mjs qa/qa-block8-biome-forest-browser-r7.py docs/WORLD_DRIVE_BLOCK8_BIOME_R7_FOREST_ADAPTER.md qa/qa-block8-biome-chunk-context-r6.mjs qa/qa-block8-biome-chunk-browser-r6.py docs/WORLD_DRIVE_BLOCK8_BIOME_R6_CHUNK_CONTEXT.md docs/WORLD_DRIVE_BLOCK8_ACTIVE_CANDIDATE.md docs/WORLD_DRIVE_EVOLUTION_AND_CORRECTION_PLAN.md qa/biome-batch-fixtures-r5.mjs qa/qa-block8-biome-batches-r5.mjs qa/qa-block8-biome-partition-r5.py qa/qa-block8-biome-browser-r5.py docs/WORLD_DRIVE_BLOCK8_BIOME_R5_BATCH_WORKER.md src/routing/circuits qa/qa-block8-biome-loading-r4.mjs qa/qa-block8-biome-route-real-r4.mjs qa/qa-block8-biome-route-real-r4.py docs/WORLD_DRIVE_BLOCK8_BIOME_R4_ROUTE_LOADING.md src/scenery/biomes tools/biomes qa/qa-block8-biome-service-r3.mjs qa/qa-block8-biome-service-boundary-r3.mjs qa/qa-block8-biome-service-real-r3.mjs qa/DEV_INTEGRATION_AUDIT.mjs docs/WORLD_DRIVE_BLOCK8_BIOME_R3_SERVICE_PALETTES.md qa/qa-block8-biome-atlas-r1.mjs qa/qa-block8-biome-builder-r1.py qa/qa-block8-biome-prototype-r1.mjs qa/qa-block8-biome-rock-ice-r1.mjs qa/qa-block8-biome-source-parity-r1.py qa/qa-block8-biome-refinement-r2.mjs qa/qa-block8-biome-refinement-parity-r2.py docs/WORLD_DRIVE_BLOCK8_BIOME_R1_AUDIT.md docs/WORLD_DRIVE_BLOCK8_BIOME_R1_REAL_DATA.md docs/WORLD_DRIVE_BLOCK8_BIOME_R2_LOCAL_REFINEMENT.md .github/workflows/qa-block8-biome-classifier-r1.yml > "$RUNNER_TEMP/biome-code/prototype-source.tar.gz"
+          git archive --format=tar.gz HEAD qa/qa-block8-biome-pilot-r9.py qa/qa-block8-biome-fullgame-r9.py docs/WORLD_DRIVE_BLOCK8_BIOME_R9_FULL_GAME_PILOT.md src/route-lifecycle.js src/routing/route-lifecycle.js src/app/biome-diagnostics.js src/app/diagnostics.js qa/qa-block8-biome-gameplay-r8.mjs qa/qa-block8-biome-gameplay-browser-r8.py docs/WORLD_DRIVE_BLOCK8_BIOME_R8_GAMEPLAY_DIAGNOSTICS.md src/main.js src/forest-streaming-policy.js src/forest-chunk-streamer-core.js qa/qa-block8-biome-forest-adapter-r7.mjs qa/qa-block8-biome-forest-parity-r7.mjs qa/qa-block8-biome-forest-browser-r7.py docs/WORLD_DRIVE_BLOCK8_BIOME_R7_FOREST_ADAPTER.md qa/qa-block8-biome-chunk-context-r6.mjs qa/qa-block8-biome-chunk-browser-r6.py docs/WORLD_DRIVE_BLOCK8_BIOME_R6_CHUNK_CONTEXT.md docs/WORLD_DRIVE_BLOCK8_ACTIVE_CANDIDATE.md docs/WORLD_DRIVE_EVOLUTION_AND_CORRECTION_PLAN.md qa/biome-batch-fixtures-r5.mjs qa/qa-block8-biome-batches-r5.mjs qa/qa-block8-biome-partition-r5.py qa/qa-block8-biome-browser-r5.py docs/WORLD_DRIVE_BLOCK8_BIOME_R5_BATCH_WORKER.md src/routing/circuits qa/qa-block8-biome-loading-r4.mjs qa/qa-block8-biome-route-real-r4.mjs qa/qa-block8-biome-route-real-r4.py docs/WORLD_DRIVE_BLOCK8_BIOME_R4_ROUTE_LOADING.md src/scenery/biomes tools/biomes qa/qa-block8-biome-service-r3.mjs qa/qa-block8-biome-service-boundary-r3.mjs qa/qa-block8-biome-service-real-r3.mjs qa/DEV_INTEGRATION_AUDIT.mjs docs/WORLD_DRIVE_BLOCK8_BIOME_R3_SERVICE_PALETTES.md qa/qa-block8-biome-atlas-r1.mjs qa/qa-block8-biome-builder-r1.py qa/qa-block8-biome-prototype-r1.mjs qa/qa-block8-biome-rock-ice-r1.mjs qa/qa-block8-biome-source-parity-r1.py qa/qa-block8-biome-refinement-r2.mjs qa/qa-block8-biome-refinement-parity-r2.py docs/WORLD_DRIVE_BLOCK8_BIOME_R1_AUDIT.md docs/WORLD_DRIVE_BLOCK8_BIOME_R1_REAL_DATA.md docs/WORLD_DRIVE_BLOCK8_BIOME_R2_LOCAL_REFINEMENT.md .github/workflows/qa-block8-biome-classifier-r1.yml > "$RUNNER_TEMP/biome-code/prototype-source.tar.gz"
       - name: Upload offline reproduction code
         if: always()
         uses: actions/upload-artifact@v4
