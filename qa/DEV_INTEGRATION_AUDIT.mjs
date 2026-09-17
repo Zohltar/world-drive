@@ -39,3 +39,4 @@ await import('./qa-physics-combined-trail-braking-r1.mjs');
 await import('./qa-block8-biome-service-boundary-r3.mjs');
 await import('./qa-block8-biome-service-r3.mjs');
 await import('./DEV_INTEGRATION_AUDIT_BASE.mjs');
+await import('./qa-block8-biome-chunk-context-r6.mjs');

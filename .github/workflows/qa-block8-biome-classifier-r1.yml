@@ -35,6 +35,7 @@ jobs:
           node qa/qa-block8-biome-service-r3.mjs
           node qa/qa-block8-biome-loading-r4.mjs
           node qa/qa-block8-biome-batches-r5.mjs
+          node qa/qa-block8-biome-chunk-context-r6.mjs
           python qa/qa-block8-biome-partition-r5.py
       - name: Install canonical workflow parser (CI only)
         run: python -m pip install PyYAML==6.0.2
@@ -104,6 +105,8 @@ jobs:
           python -m playwright install --with-deps chromium
       - name: Native Chromium module worker and successive batch windows
         run: python qa/qa-block8-biome-browser-r5.py --routes "$RUNNER_TEMP/biome-route-r4" --output "$RUNNER_TEMP/biome-route-r4/browser-r5-qa.json"
+      - name: Native Worker exact-point chunk snapshot bridge
+        run: python qa/qa-block8-biome-chunk-browser-r6.py --routes "$RUNNER_TEMP/biome-route-r4" --output "$RUNNER_TEMP/biome-route-r4/chunk-browser-r6-qa.json"
       - name: Preserve real route preparation evidence
         if: always()
         uses: actions/upload-artifact@v4
@@ -129,7 +132,7 @@ jobs:
         if: always()
         run: |
           mkdir -p "$RUNNER_TEMP/biome-code"
-          git archive --format=tar.gz HEAD qa/biome-batch-fixtures-r5.mjs qa/qa-block8-biome-batches-r5.mjs qa/qa-block8-biome-partition-r5.py qa/qa-block8-biome-browser-r5.py docs/WORLD_DRIVE_BLOCK8_BIOME_R5_BATCH_WORKER.md src/routing/circuits qa/qa-block8-biome-loading-r4.mjs qa/qa-block8-biome-route-real-r4.mjs qa/qa-block8-biome-route-real-r4.py docs/WORLD_DRIVE_BLOCK8_BIOME_R4_ROUTE_LOADING.md src/scenery/biomes tools/biomes qa/qa-block8-biome-service-r3.mjs qa/qa-block8-biome-service-boundary-r3.mjs qa/qa-block8-biome-service-real-r3.mjs qa/DEV_INTEGRATION_AUDIT.mjs docs/WORLD_DRIVE_BLOCK8_BIOME_R3_SERVICE_PALETTES.md qa/qa-block8-biome-atlas-r1.mjs qa/qa-block8-biome-builder-r1.py qa/qa-block8-biome-prototype-r1.mjs qa/qa-block8-biome-rock-ice-r1.mjs qa/qa-block8-biome-source-parity-r1.py qa/qa-block8-biome-refinement-r2.mjs qa/qa-block8-biome-refinement-parity-r2.py docs/WORLD_DRIVE_BLOCK8_BIOME_R1_AUDIT.md docs/WORLD_DRIVE_BLOCK8_BIOME_R1_REAL_DATA.md docs/WORLD_DRIVE_BLOCK8_BIOME_R2_LOCAL_REFINEMENT.md .github/workflows/qa-block8-biome-classifier-r1.yml > "$RUNNER_TEMP/biome-code/prototype-source.tar.gz"
+          git archive --format=tar.gz HEAD qa/qa-block8-biome-chunk-context-r6.mjs qa/qa-block8-biome-chunk-browser-r6.py docs/WORLD_DRIVE_BLOCK8_BIOME_R6_CHUNK_CONTEXT.md docs/WORLD_DRIVE_BLOCK8_ACTIVE_CANDIDATE.md docs/WORLD_DRIVE_EVOLUTION_AND_CORRECTION_PLAN.md qa/biome-batch-fixtures-r5.mjs qa/qa-block8-biome-batches-r5.mjs qa/qa-block8-biome-partition-r5.py qa/qa-block8-biome-browser-r5.py docs/WORLD_DRIVE_BLOCK8_BIOME_R5_BATCH_WORKER.md src/routing/circuits qa/qa-block8-biome-loading-r4.mjs qa/qa-block8-biome-route-real-r4.mjs qa/qa-block8-biome-route-real-r4.py docs/WORLD_DRIVE_BLOCK8_BIOME_R4_ROUTE_LOADING.md src/scenery/biomes tools/biomes qa/qa-block8-biome-service-r3.mjs qa/qa-block8-biome-service-boundary-r3.mjs qa/qa-block8-biome-service-real-r3.mjs qa/DEV_INTEGRATION_AUDIT.mjs docs/WORLD_DRIVE_BLOCK8_BIOME_R3_SERVICE_PALETTES.md qa/qa-block8-biome-atlas-r1.mjs qa/qa-block8-biome-builder-r1.py qa/qa-block8-biome-prototype-r1.mjs qa/qa-block8-biome-rock-ice-r1.mjs qa/qa-block8-biome-source-parity-r1.py qa/qa-block8-biome-refinement-r2.mjs qa/qa-block8-biome-refinement-parity-r2.py docs/WORLD_DRIVE_BLOCK8_BIOME_R1_AUDIT.md docs/WORLD_DRIVE_BLOCK8_BIOME_R1_REAL_DATA.md docs/WORLD_DRIVE_BLOCK8_BIOME_R2_LOCAL_REFINEMENT.md .github/workflows/qa-block8-biome-classifier-r1.yml > "$RUNNER_TEMP/biome-code/prototype-source.tar.gz"
       - name: Upload offline reproduction code
         if: always()
         uses: actions/upload-artifact@v4

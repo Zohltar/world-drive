@@ -5,7 +5,7 @@ import {fileURLToPath} from 'node:url';
 import {join,resolve,dirname} from 'node:path';
 const root=fileURLToPath(new URL('../',import.meta.url));
 const folder=join(root,'src/scenery/biomes');
-const names=['batch-source.js','batch-route-session.js','biome-preparation-worker.js','biome-worker-client.js','tile-transport.js','route-tile-plan.js','route-preparer.js','biome-profiles.js','regional-classifier.js','local-refinement.js','biome-service.js','palette-registry.js'];
+const names=['chunk-context-snapshot.js','chunk-context-bridge.js','batch-source.js','batch-route-session.js','biome-preparation-worker.js','biome-worker-client.js','tile-transport.js','route-tile-plan.js','route-preparer.js','biome-profiles.js','regional-classifier.js','local-refinement.js','biome-service.js','palette-registry.js'];
 assert.deepEqual(readdirSync(folder).sort(),names.toSorted());
 for(const name of names) {
   const source=readFileSync(join(folder,name),'utf8');

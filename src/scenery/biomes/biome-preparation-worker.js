@@ -5,7 +5,8 @@
 import {createBiomeBatchSource} from './batch-source.js';
 import {createBiomeTileTransport} from './tile-transport.js';
 import {createBiomeBatchRouteSession} from './batch-route-session.js';
-let session=null,initializing=false,inFlight=0;
+import {captureChunkContext,snapshotIdentity} from './chunk-context-snapshot.js';
+let session=null,identity=null,initializing=false,inFlight=0;
 self.addEventListener('message',async({data})=>{
   const {id,op,args=[]}=data??{};
   if(!Number.isSafeInteger(id)||id<1)return;
@@ -22,6 +23,7 @@ self.addEventListener('message',async({data})=>{
         const config=args[0];
         source=await createBiomeBatchSource(config);
         transport=createBiomeTileTransport({baseUrl:config.baseUrl});
+        identity=snapshotIdentity(config.directory);
         session=createBiomeBatchRouteSession({source,transport});
         value={worker:true,module:true,compression:typeof DecompressionStream==='function',crypto:!!crypto.subtle};
       }catch(e){source?.dispose();transport?.dispose();throw e;}finally{initializing=false;}
@@ -29,6 +31,7 @@ self.addEventListener('message',async({data})=>{
       if(!session)throw new Error('Worker not initialized');
       if(op==='route')value=session.setRoute(args[0]);
       else if(op==='update')value=await session.update(args[0],args[1]);
+      else if(op==='chunk')value=captureChunkContext(args[0],identity,session);
       else if(op==='sample'){
         const points=args[0];
         if(!Array.isArray(points)||points.length>256||!points.every(p=>Array.isArray(p)&&p.length===2&&p.every(Number.isFinite)))throw new Error('Invalid sample bound');
