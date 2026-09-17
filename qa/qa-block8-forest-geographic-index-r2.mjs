@@ -23,7 +23,7 @@ assert.ok(mainSource.includes('createWaterProximityIndex'),'main does not own th
 assert.ok(mainSource.includes("installDiagnosticAlias('__WORLD_DRIVE_BLOCK8_SPATIAL__'"),'spatial diagnostics alias is missing');
 assert.ok(mainSource.includes('waterProximity.invalidate();')&&mainSource.includes('waterProximity.rebuild();'),
   'hydro reload does not rebuild its spatial index before vegetation reconciliation');
-assert.ok(wrapperSource.includes("readinessMode:'block8-r3-coverage-before-replacement'"),'R3 readiness mode marker is missing');
+assert.ok(wrapperSource.includes("readinessMode:'block8-r4-progressive-first-layer'"),'R4 readiness mode marker is missing');
 
 const segments=[];
 for(let i=0;i<5000;i++){
