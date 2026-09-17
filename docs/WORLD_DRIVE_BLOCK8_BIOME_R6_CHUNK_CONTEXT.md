@@ -1,99 +1,95 @@
 # Block 8 biome R6 — Exact-point synchronous chunk-context bridge
 
 2026-09-17. Existing PR #14, `candidate/block8-biome-classifier-r1`.
-Restart baseline: candidate `e563e49c2224437148796b6422031bc572eda4c6`, exact-head
-Block 8 run `35265768818` PASS. Dev `e8ea6655e0dffa449f11bc706d010c2351830502`,
-canonical Dev Integration `35265318780` PASS. Main remains
-`ad893a9d078df4a3d24d81b929bb2905a8bc57e1` / v21.33, no movement authorized.
+Verified implementation: `03eed818f42be4dc5e80d9b8d10149bdaebe0fcb`, exact-head
+Block 8 run **35268092976 PASS**, both contract/integration and native-browser jobs.
+Restart baseline was candidate `e563e49c2224437148796b6422031bc572eda4c6`, run
+35265768818 PASS. Before this documentation synchronization dev was
+`e8ea6655e0dffa449f11bc706d010c2351830502`, canonical Dev Integration 35265318780 PASS.
+Main remains `ad893a9d078df4a3d24d81b929bb2905a8bc57e1` / v21.33, no movement authorized.
+Later documentation/ancestry commits need their own exact-head QA. Consult the live
+PR and active-candidate ledger; this immutable implementation PASS is not transferable.
 
 **Candidate-only. No game entrypoint, forest scheduler, geometry, density, actual
-asset, exclusion, road, hydro, terrain, physics or package change.** This completes
-the snapshot-bridge implementation step, not the later gameplay admission step.
-Read the active-candidate ledger and live exact-head QA for the verified checkpoint.
+asset, exclusion, road, hydro, terrain, physics or package change.** R6 implements
+and validates the snapshot bridge, not the later actual-game admission step.
 
-## Why snapshots are point-addressed, not interpolated cells
+## Exact points, not interpolated cells
 
-The Worker is asynchronous; a rendering loop must not wait for a Worker per tree.
-A chunk request contains its exact preselected geographic positions in deterministic
-candidate-index order. One request handles up to 2,048 points (enough for the current
-16 x 109 = 1,744 forest candidates). R6 does NOT yet generate the actual forest's
-candidate coordinates; the future adapter must reproduce that mapping and be
-separately tested. Synthetic 1,744-point chunks are not that certification.
+A rendering loop must not wait for a Worker per tree. One explicit chunk preparation
+request supplies exact `[longitude, latitude]` candidate positions in deterministic
+index order, up to 2,048 points (capacity for 16 x 109 = 1,744 forest candidates).
+R6 does NOT yet generate the actual forest candidate coordinates. The future adapter
+must reproduce and test that sampler/projection; synthetic 1,744-point chunks do not
+certify actual forest coordinate parity or placement exclusions.
 
-A point near a boundary must not borrow the ecoregion of the chunk center. This
-bridge does not interpolate, round geographic positions, pick nearest samples or
-extend a resolved point's authority to its neighbours. `lookup(index, lon, lat)`
-returns a context ONLY when index and coordinates exactly match the prepared request.
-An unknown position returns a shared unavailable context, never a forest fallback.
-The original source-no-data / unresolved / Rock and Ice distinctions are preserved.
-Regional hints are not promoted to source-polygon precision.
+`lookup(index, lon, lat)` returns a prepared context only for an exact index/coordinate
+match. There is no nearest sample, interpolation, geographic rounding or chunk-center
+biome extrapolation. Unknown positions return one shared unavailable context, never
+a forest fallback. Source-no-data and unavailable remain distinct. Rock and Ice uses
+its reviewed profile without rewriting the upstream tundra record. Regional hints
+are not promoted to source-polygon precision.
 
-## Worker and publication boundary
+## Worker and atomic publication
 
-`chunk-context-snapshot.js` defines the bounded wire contract, Worker-side capture,
-and receipt validation. `biome-preparation-worker.js` adds one explicit `chunk`
-operation using the existing R5 session. It checks ready state, route generation
-and window serial before querying exact source polygons. It deduplicates up to
-64 distinct contexts and emits a Uint16 context-index buffer, not 1,744 duplicate
-record objects. Higher diversity is explicitly rejected; no partial packet is
-published. The R1-R5 service/planner/transport implementations are unchanged.
+`chunk-context-snapshot.js` defines the bounded wire contract, Worker capture and
+receipt validation. The existing R5 Worker adds an explicit `chunk` operation that
+checks ready state, route generation and window serial, then queries exact source
+polygons. Up to 64 distinct contexts are deduplicated with Uint16 indices. Higher
+diversity is rejected atomically, never truncated or partially published. R1-R5
+service, transport, batch and route-planner implementations are reused unchanged.
 
-The R5 client retains its four-RPC admission and deadline. The new chunk call
-copies only declared fields and bounded coordinate data; arbitrary extra caller
-fields do not cross the message channel. Route epochs also reject stale chunk
-replies. No main-thread Fetch, gzip or hashing fallback is added.
+The client retains four-RPC admission/deadlines and route-epoch stale reply rejection.
+`captureChunk` copies only declared fields and bounded coordinates; unrelated caller
+fields cannot inflate the message. No UI-thread Fetch/gzip/hash fallback is added.
+`chunk-context-bridge.js` exclusively owns the initialized client and route/window
+acknowledgements. It validates fixed source id/license/SHA, catalog SHA, distribution
+revision, projection/layout/absolute chunk key, request id, generation, serial, record /
+index bounds and profile consistency. Placement/elevation/transition authority stays
+false. All validation completes before replacement; invalid refreshes retain good data.
+A prepared packet may contain source-no-data or unavailable samples: `prepared` does
+not assert every point has a resolved terrestrial biome.
 
-`chunk-context-bridge.js` exclusively owns a previously initialized Worker client.
-It manages route/window acknowledgements and snapshot publication. It checks fixed
-source id/license/SHA, catalog SHA, distribution revision, absolute chunk key,
-request id, route generation, window serial, dictionary/index bounds, profile
-consistency and absence of placement/elevation/transition authority. Failed refreshes
-retain the previously valid snapshot. Publication occurs only after the entire
-packet passes validation. A prepared snapshot can contain exact source-no-data or
-unavailable samples; `prepared` does NOT mean all points have a terrestrial biome.
+## Immutability, deterministic addresses and lifecycle
 
-## Immutability, address and lifecycle
+Keys include explicit projection id, layout revision and signed absolute integer
+chunk coordinates. Floating-origin scene coordinates are not keys. Reusing a key with
+changed positions is rejected while resident or pending in the current route/window.
+The future adapter owns correct projection/layout identifiers. An absent or evicted
+entry never schedules work; preparation is always explicit.
 
-Keys include explicit projection id, candidate-layout revision, and signed absolute
-integer chunk coordinates. Never use the floating-origin scene coordinates as keys.
-A repeated key with changed candidate positions is rejected while resident or pending.
-The future game adapter must make projection/layout identifiers describe its real
-projection and sampler version. A missing/evicted entry does not schedule anything.
+Copied arrays stay in private closures. Public facades, contexts, source records and
+counts are frozen; no writable backing buffer escapes. SharedArrayBuffer and small
+views backed by oversized buffers are rejected. Reads reuse context objects and do
+not invoke geometry, I/O, promises or preparation. `bridge.lookup` also constructs a
+bounded string key; no zero-total-allocation or measured game-frame-time claim.
 
-Typed arrays remain in private closures and are copied on installation. Public
-facades, contexts, source records and counts are frozen; no mutable buffer escapes.
-Reads reuse existing context objects. `snapshot.lookup()` has no I/O, promise, timer,
-geometry query or preparation side effects. `bridge.lookup()` also computes a bounded
-string key; no claim of zero total engine allocations or measured game frame time.
-
-A new route immediately clears the store and invalidates even lookup functions
-held by an external caller. Late route/window completions are discarded. A newer
-window may continue using already-published same-route exact geography, which is
-valid under the fixed source/catalog identity. New preparation waits for a matching
-ready window. Disposal invalidates retained views and terminates the owned client.
-Canceled work stays accounted until its promise settles. No retry loop or unbounded
-queue is introduced. Unsupported/dead Workers cannot publish replacement data.
+New routes/disposal invalidate even externally retained snapshot lookup handles.
+Already returned immutable context objects remain historical values, not live leases.
+Published same-route exact geography can survive newer preparation windows under the
+fixed identity, but late old-window packets cannot publish. No new preparation occurs
+without matching ready-window acknowledgement. Canceled requests remain accounted
+until settlement. Disposal terminates the owned client. There is no retry storm or
+unbounded queue; callers must release old handles the bridge cannot reclaim for them.
 
 ## Default retained payload limits
 
-- Snapshot store: at most 32 chunks and 4 MiB accounted payload; configurable hard
-  ceilings 128 chunks / 16 MiB. Oldest preparation-use entries are evicted. Pure
-  render reads do not mutate LRU order.
-- In flight: at most two chunk requests / 1 MiB reserved payload, no internal queue.
-  Each reserves coordinates, indices and the worst-case 64-record dictionary.
-- One window update and one route change can be pending alongside the two chunks,
-  within the existing client's maximum of four RPCs. Busy is explicit.
-- Packet: <=2,048 positions; <=64 context records. Each dictionary record is charged
-  a conservative 4,096 bytes in addition to exact coordinate/index array lengths.
-  SharedArrayBuffer or oversized backing-buffer views are rejected.
+| Boundary | Default | Hard configurable maximum |
+| --- | --- | --- |
+| Resident snapshots | 32 chunks / 4 MiB accounted | 128 chunks / 16 MiB |
+| Pending snapshots | 2 requests / 1 MiB reserved | 2 requests / 2 MiB |
+| One packet | 2,048 positions / 64 contexts | fixed |
 
-These are bounded bridge-owned retained/accounted payloads, NOT total browser/JS
-heap guarantees. Worker-side temporary objects/serialization, structured-clone
-copies, native resources, object headers and caller-held old snapshots are additional.
-R5's separate services, caches and transport limits still apply. A caller must release
-its old handles; the bridge cannot reclaim references retained by another owner.
+Each dictionary record is conservatively charged 4,096 bytes plus exact coordinate
+and index array bytes. Pending reservations include the worst-case dictionary. Pure
+render reads do not update LRU; preparation use does. One pending window and one route
+change fit alongside two captures within the four-RPC client. Busy is explicit.
+These are bridge-owned retained/accounted payload limits, NOT total JS/native heap.
+Structured clones, serialization, native resources, temporary parsing/crypto objects,
+object headers and caller-held old snapshots are additional. R5's independent service,
+source-cache, transport and preparation budgets still apply.
 
-## API (preparation, not a rendering-loop call sequence)
+## Preparation API
 
 ```js
 const client = createBiomeWorkerClient();
@@ -103,40 +99,59 @@ const bridge = createBiomeChunkContextBridge({client, identity:directory,
 await bridge.setRoute(coordinates, {projectionId:'reviewed-route-projection-v1'});
 await bridge.update(distanceAlongRoute);
 const result = await bridge.prepareChunk({cx, cz, points:exactCandidateLonLat});
-// During rendering, acquire a handle and perform synchronous reads only:
+// Render-side reads only; never await or prepare in the per-tree loop.
 const snapshot = bridge.get(cx, cz);
 const context = snapshot?.lookup(candidateIndex, longitude, latitude);
-// Placement exclusions and reviewed model compatibility remain separate owners.
 bridge.dispose();
 ```
 
-The client is exclusively owned by the bridge after initialization. Do not issue
-independent route/window changes through the raw client behind its back. Identity
-is trusted application configuration, not a newly authenticated global directory.
-Worker structured messaging basis: https://html.spec.whatwg.org/multipage/workers.html
-(retrieved 2026-09-17). Immutability is reconstructed on receipt, not assumed to
-survive serialization as property descriptors.
+Do not issue independent route/window changes through the raw client after bridge
+ownership. The root identity remains trusted application input, not newly signed or
+automatically authenticated global distribution. Worker messaging basis:
+https://html.spec.whatwg.org/multipage/workers.html (retrieved 2026-09-17).
+Freeze/immutability is reconstructed after structured messaging, not assumed preserved.
 
-## Validation and next action
+## Verified evidence at implementation SHA 03eed818f42b
 
-Local R6: 30 synthetic Node test groups PASS, including 200,000 synchronous reads,
-maximum chunk size, actual 1,744-count capacity, mixed contexts, authority/mutation
-rejection, byte/count eviction, stale route/window, held-handle invalidation,
-coalescing/admission, exact addresses and recovery. Existing R1 14, Rock/Ice 3,
-R2 16, R3 35, R4 25 and R5 17 groups pass locally, as does Python R5 packaging.
-No local native-browser PASS is claimed; use the new exact-head CI evidence.
+- **30 R6 Node groups PASS**, including 200,000 synchronous reads, 2,048-point capacity,
+  mixed-boundary contexts, no-data/authority/mutation rejection, copied RPC fields,
+  backing-buffer bounds, count/byte eviction, coalescing, admission, stale route/window,
+  retained-handle invalidation, disposal and recovery. Included in permanent candidate QA.
+- **97 maintained canonical integration commands all exit zero** in run 35268092976;
+  requiredFailures=0, toleratedFailures=0. Candidate matrix, not a canonical dev-head run.
+- Existing R1-R5, Python packaging, original source parity and explicit certified forest
+  R4 tests PASS. Protected-runtime diff and absent-game-activation checks PASS.
+- Native Chromium **143.0.7499.4**, two actual module Workers, isolated main page with
+  gzip/digest/tile-fetch traps. No page errors. Original 206 Laguna Seca and 1,068
+  Nordschleife vertices pass via the new bridge with zero source-record mismatches.
+- 300 synthetic forward/reverse windows across 150 mock tiles, 1,744 points per chunk:
+  **523,200 exact lookups**. Another **100,000 prepared reads** return the same context
+  object without increasing capture calls. 296 publications, four cache reuses and
+  292 evictions; peak four chunks / **141,952 accounted bytes**, below the test's
+  four-chunk / 160,000-byte limits. Real point snapshots peak at 16,456 accounted bytes.
+- Native stale-route/window, held-snapshot invalidation, disposal and recovery gates
+  pass. The UI heartbeat is progress evidence only, not gameplay FPS or GPU pacing.
 
-`qa/qa-block8-biome-chunk-browser-r6.py` adds isolated native Chromium/Worker
-validation using the existing real circuit geometry/source expectations, plus
-300 synthetic forward/reverse windows, 1,744 exact positions per chunk and repeated
-synchronous reads. Main-page preparation traps remain enabled. No game entrypoint
-is loaded, and the synthetic chunks are NOT real forest placement coordinates.
-The permanent candidate regression inventory and focused workflow include R6.
-A pending run is not a PASS and no historical run certifies a new commit.
+Exact artifact: `biome-r4-routes-03eed818f42be4dc5e80d9b8d10149bdaebe0fcb`, file
+`chunk-browser-r6-qa.json`. Integration, browser and code artifact ZIP SHA-256 digests
+were checked. All 50 locally available files in the implementation artifact matched
+byte-for-byte. A separate local HTTP smoke test also matched all 1,274 original source
+records but used an EMULATED Worker; native browser evidence is from GitHub Actions.
 
-Next: implement the actual forest candidate-coordinate adapter and bind game route /
-Worker admission in DIAGNOSTIC-ONLY mode. Keep visual forest R4 unchanged until
-separately reviewed readiness/frame-pacing and human visual gates. Partial fine-data
-distribution, persistent caching, trusted-root loading, real long roads, reviewed
-models and ecological transition/elevation policy remain open. Do not merge PR #14
-or move main merely because automation is green.
+Synthetic chunks use uniform MOCK geography, not actual forest candidate coordinates
+or a real long road. Neither these circuits nor the heartbeat certify continuous
+high-speed gameplay. Original R2/R3 source tests (6,327 points, including 1,481 no-data),
+Baffin and unchanged 201-point Yungas controls remain separate gates. Source agreement
+is not contemporary land cover or ecological field truth.
+
+## Exact next action
+
+Implement the actual forest deterministic candidate-coordinate adapter, including
+negative absolute chunks, floating-origin invariance, projection/route identity,
+1,744-point indexing and 64/109 first-layer traversal parity. Then bind gameplay
+route/Worker admission in **DIAGNOSTIC-ONLY** mode. Keep forest R4 unchanged until
+separately reviewed readiness/frame-pacing and human visual gates.
+Worldwide fine-data distribution, persistent caching, trusted-root retrieval, long
+real-road readiness, reviewed models and ecological transition/elevation policy are
+still open. The actual asset registry remains empty. Do not merge PR #14 or move main
+merely because automation is green. No human driving test is requested for R6.
