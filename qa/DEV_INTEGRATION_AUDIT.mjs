@@ -1,3 +1,4 @@
+await import('./qa-diagnostics-c6-final-inventory.mjs');
 await import('./qa-block8-biome-loading-r4.mjs');
 await import('./qa-block8-biome-batches-r5.mjs');
 // Dev Integration permanent regression inventory.
