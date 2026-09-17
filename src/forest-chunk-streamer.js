@@ -263,11 +263,12 @@ export function createForestChunkStreamer(options){
     const raw=activeBase().stats?.()||{},seed=activeEntry;
     return {
       enabled:true,observerMode:'p931-ahead-priority',startupMode:'p934-startup-route-seed',streamingMode:'p940-dirty-priority-queue',
-      hitchMode:'p941-frame-window-runtime',readinessMode:'block8-r3-coverage-before-replacement',legacyObserverMode:'p929-direct-last-slice',
+      hitchMode:'p941-frame-window-runtime',readinessMode:'block8-r4-progressive-first-layer',legacyObserverMode:'p929-direct-last-slice',
       routeCache:{key:activeEntry.key,slots:entries.length,maxSlots:ROUTE_CACHE_SLOTS,lastRebase:lastRouteCacheRebase?{...lastRouteCacheRebase}:null},
       trees:visible.trees,near:visible.near,mid:visible.mid,far:visible.far,edge:visible.edge,
       activeChunks:finite(raw.activeChunks),cachedChunks:finite(raw.cachedChunks),queuedChunks:finite(raw.queuedChunks),
       queueMix:{coverage:finite(raw.queuedCoverageChunks),replacement:finite(raw.queuedReplacementChunks)},
+      progressive:{firstLayerCandidatesPerCell:finite(raw.firstLayerCandidatesPerCell),candidateTarget:finite(raw.firstLayerCandidateTarget),coverageFraction:round3(raw.firstLayerCoverageFraction),committed:finite(raw.firstLayerChunksCommitted),visibleCommits:finite(raw.firstLayerVisibleCommits),prefetchCommits:finite(raw.firstLayerPrefetchCommits),densified:finite(raw.densificationChunksCompleted),inProgress:finite(raw.progressiveInProgressChunks)},
       chunksBuilt:finite(raw.chunksBuilt),chunksReplaced:finite(raw.chunksReplaced),matrixUploads:finite(raw.matrixUploads),densityCountUpdates:finite(raw.densityCountUpdates),
       startupDirection:{seeded:seed.startupDirectionSeeded,seedDistanceM:STARTUP_DIRECTION_SEED_M,angle:Number.isFinite(seed.startupSeedAngle)?round3(seed.startupSeedAngle):null,dirX:round3(seed.startupSeedDir.x),dirZ:round3(seed.startupSeedDir.z)},
       aheadPriority:{enabled:raw.aheadPriority===true,nearPriorityDistance:round3(raw.nearPriorityDistance),leadM:round3(raw.priorityLeadM),confidence:round3(raw.travelConfidence),dirX:round3(raw.travelDirX),dirZ:round3(raw.travelDirZ)},

@@ -14,8 +14,9 @@ import {
 // update remains; candidate generation and matrix upload already happened idle.
 // P9.40 keeps the same visual/streaming policy while removing redundant queue
 // sorting and cache trimming from every candidate slice.
-// Block 8 R2 preserves that scheduler and routes high-frequency road/water
-// exclusion tests through exact bounded spatial indexes.
+// Block 8 R4 preserves those budgets and spatial indexes, but commits a
+// deterministic uniform first layer before the remaining candidates densify in
+// the background. A partially covered chunk is demoted behind missing coverage.
 export function createForestChunkStreamer({
   THREE,
   forestGroup,
@@ -51,6 +52,13 @@ export function createForestChunkStreamer({
   const catchupSliceBudgetMs=Math.max(sliceBudgetMs,FOREST.forestCatchupSliceBudgetMs||1.55);
   const catchupCandidateBatchSize=Math.max(candidateBatchSize,FOREST.forestCatchupCandidatesPerSlice||20);
   const catchupMinIdleMs=Math.max(1.5,FOREST.forestCatchupMinIdleMs||3.2);
+  const firstLayerCandidatesPerCell=Math.min(
+    Math.max(1,Math.floor(FOREST.firstLayerCandidatesPerCell||64)),
+    Math.max(1,FOREST.candidatesPerCell||1)
+  );
+  const firstLayerCandidateTarget=totalCells*firstLayerCandidatesPerCell;
+  const firstLayerCoverageFraction=firstLayerCandidatesPerCell/Math.max(1,FOREST.candidatesPerCell||1);
+  const progressiveFirstLayer=firstLayerCandidatesPerCell<FOREST.candidatesPerCell;
 
   let assets=null;
   let active=new Map();
@@ -123,6 +131,13 @@ export function createForestChunkStreamer({
     catchupSliceBudgetMs,
     catchupCandidateBatchSize,
     catchupSlices:0,
+    firstLayerCandidatesPerCell,
+    firstLayerCandidateTarget,
+    firstLayerCoverageFraction,
+    firstLayerChunksCommitted:0,
+    firstLayerVisibleCommits:0,
+    firstLayerPrefetchCommits:0,
+    densificationChunksCompleted:0,
     jobsQueued:0,
     jobsStarted:0,
     jobsCompleted:0,
@@ -242,9 +257,12 @@ export function createForestChunkStreamer({
   function queuePriority(chunk,center){
     const nearDistance=chunkPriorityDistance(chunk,center);
     const forward=signedForwardDistance(chunk,center);
-    // Block 8 R3: a replacement already has an old visible chunk covering the
-    // area. Missing coverage must finish first; otherwise terrain refreshes can
-    // consume almost half of the available build throughput while holes remain.
+    // Block 8 R4: first-layer coverage is useful immediately, so once a job
+    // has committed that uniform layer its remaining densification must yield to
+    // every still-empty coverage job. R3 replacement priority remains unchanged.
+    if(chunk.firstLayerCommitted){
+      return {band:4,score:nearDistance,nearDistance,forward};
+    }
     if(chunk.replace){
       return {band:2,score:nearDistance,nearDistance,forward};
     }
@@ -408,7 +426,10 @@ export function createForestChunkStreamer({
   }
 
   function createBuilder(desc,buildSerial){
-    return {desc,buildSerial,cellIndex:0,candidateIndex:0,cell:null,accepted:0,buckets:Array.from({length:densityBuckets},()=>[])};
+    return {
+      desc,buildSerial,phase:0,cellIndex:0,candidateIndex:0,cell:null,
+      firstLayerReady:false,accepted:0,buckets:Array.from({length:densityBuckets},()=>[])
+    };
   }
 
   function beginBuilderCell(builder){
@@ -417,17 +438,25 @@ export function createForestChunkStreamer({
     const sx=Math.floor(index/chunkCells),sz=index%chunkCells;
     const cellCx=builder.desc.cx*chunkCells+sx,cellCz=builder.desc.cz*chunkCells+sz;
     const cellX=(cellCx+.5)*FOREST.cellSize,cellZ=(cellCz+.5)*FOREST.cellSize;
-    builder.candidateIndex=0;
+    builder.candidateIndex=builder.phase===0?0:firstLayerCandidatesPerCell;
     builder.cell={cellCx,cellCz,nearRoadCell:cellNearRoad(cellX,cellZ),baseDensity:densityAt(cellX,cellZ)};
     return true;
   }
 
   function advanceBuilderCandidate(builder){
+    const phaseLimit=builder.phase===0?firstLayerCandidatesPerCell:FOREST.candidatesPerCell;
     builder.candidateIndex++;
-    if(builder.candidateIndex>=FOREST.candidatesPerCell){
+    if(builder.candidateIndex>=phaseLimit){
       builder.cellIndex++;
-      builder.candidateIndex=0;
       builder.cell=null;
+      if(builder.cellIndex>=totalCells&&builder.phase===0&&progressiveFirstLayer){
+        builder.phase=1;
+        builder.cellIndex=0;
+        builder.candidateIndex=firstLayerCandidatesPerCell;
+        builder.firstLayerReady=true;
+        return false;
+      }
+      builder.candidateIndex=builder.phase===0?0:firstLayerCandidatesPerCell;
     }
     return builder.cellIndex>=totalCells;
   }
@@ -459,13 +488,13 @@ export function createForestChunkStreamer({
     return advanceBuilderCandidate(builder);
   }
 
-  function finalizeBuilder(builder){
+  function finalizeBuilder(builder,{coverageFraction=1}={}){
     let floats=0;
     for(const bucket of builder.buckets)floats+=bucket.length;
     const matrices=new Float32Array(floats);
     let cursor=0;
     for(const bucket of builder.buckets){if(bucket.length){matrices.set(bucket,cursor);cursor+=bucket.length;}}
-    return {...builder.desc,matrices,maxCount:Math.floor(floats/16),accepted:builder.accepted,lastUsed:performance.now(),mesh:null,group:null,visibleCount:0,state:null,prefetched:false,cacheTerrainRevision};
+    return {...builder.desc,matrices,maxCount:Math.floor(floats/16),accepted:builder.accepted,coverageFraction,lastUsed:performance.now(),mesh:null,group:null,visibleCount:0,state:null,prefetched:false,cacheTerrainRevision};
   }
 
   function reprojectChunkHeights(data){
@@ -517,7 +546,9 @@ export function createForestChunkStreamer({
   function updateChunkDensity(data,center,force=false){
     if(!data.mesh)return;
     const distance=chunkPriorityDistance(data,center);
-    const fraction=densityFractionForDistance(distance);
+    const targetFraction=densityFractionForDistance(distance);
+    const availableFraction=Math.max(.01,Math.min(1,Number.isFinite(data.coverageFraction)?data.coverageFraction:1));
+    const fraction=Math.min(1,targetFraction/availableFraction);
     const count=Math.max(0,Math.min(data.maxCount,Math.round(data.maxCount*fraction)));
     if(force||count!==data.visibleCount){data.mesh.count=count;data.visibleCount=count;perf.densityCountUpdates++;}
     data.state=densityBand(distance);
@@ -573,12 +604,12 @@ export function createForestChunkStreamer({
     return true;
   }
 
-  function replaceActive(oldData,newData,center){
+  function replaceActive(oldData,newData,center,{countReplacement=true}={}){
     if(!ensureMesh(newData,center))return false;
     if(newData.group.parent!==forestGroup)forestGroup.add(newData.group);
     active.set(newData.key,newData);cache.set(newData.key,newData);
     if(oldData&&oldData!==newData)disposeChunk(oldData);
-    newData.lastUsed=performance.now();perf.chunksReplaced++;return true;
+    newData.lastUsed=performance.now();if(countReplacement)perf.chunksReplaced++;return true;
   }
 
   function trimCache(){
@@ -631,7 +662,7 @@ export function createForestChunkStreamer({
     const existing=queued.get(desc.key);
     if(existing){if(replace)existing.replace=true;return existing;}
     const job={
-      ...desc,replace,builder:null,readyToCommit:false,
+      ...desc,replace,builder:null,readyToCommit:false,firstLayerCommitted:false,firstLayerCommittedAt:0,
       id:nextJobId++,queuedAt:performance.now(),startedAt:0,lastWorkedAt:0,
       slices:0,candidatesProcessed:0,startedBand:null,
       queuedBand:visibleKeys.has(desc.key)?'visible':(prefetchKeys.has(desc.key)?'prefetch':'other')
@@ -716,16 +747,32 @@ export function createForestChunkStreamer({
     perf.maxJobAgeMs=Math.max(perf.maxJobAgeMs,ageMs);
     perf.maxBuilderAgeMs=Math.max(perf.maxBuilderAgeMs,builderAgeMs);
     perf.lastCompletedJob={
-      id:job.id,key:job.key,band,replace:!!job.replace,candidates:job.candidatesProcessed||0,
+      id:job.id,key:job.key,band,replace:!!job.replace,firstLayerCommitted:!!job.firstLayerCommitted,candidates:job.candidatesProcessed||0,
       slices:job.slices||0,ageMs,builderAgeMs,at:now
     };
+  }
+
+  function commitFirstLayer(job){
+    if(job.replace||job.firstLayerCommitted||!job.builder?.firstLayerReady)return false;
+    const data=finalizeBuilder(job.builder,{coverageFraction:firstLayerCoverageFraction});
+    const wanted=wantedKeys.has(job.key),visible=visibleKeys.has(job.key);
+    if(visible)attach(data,lastCenter);
+    else{cache.set(job.key,data);if(wanted)preparePrefetchMesh(data,lastCenter);}
+    job.firstLayerCommitted=true;
+    job.firstLayerCommittedAt=performance.now();
+    perf.firstLayerChunksCommitted++;
+    if(visible)perf.firstLayerVisibleCommits++;
+    else if(prefetchKeys.has(job.key))perf.firstLayerPrefetchCommits++;
+    queuePriorityDirty=true;
+    return true;
   }
 
   function finishJob(job,data){
     const old=cache.get(job.key)||active.get(job.key)||null;
     const wanted=wantedKeys.has(job.key),visible=visibleKeys.has(job.key);
-    if(job.replace){
-      if(visible&&active.has(job.key))replaceActive(active.get(job.key),data,lastCenter);
+    const progressive=job.firstLayerCommitted&&!job.replace;
+    if(job.replace||progressive){
+      if(visible&&active.has(job.key))replaceActive(active.get(job.key),data,lastCenter,{countReplacement:job.replace});
       else{
         if(old&&old!==data)disposeChunk(old);
         cache.set(job.key,data);
@@ -733,6 +780,7 @@ export function createForestChunkStreamer({
       }
     }else if(visible)attach(data,lastCenter);
     else{cache.set(job.key,data);if(wanted)preparePrefetchMesh(data,lastCenter);}
+    if(progressive)perf.densificationChunksCompleted++;
     perf.chunksBuilt++;
   }
 
@@ -757,8 +805,8 @@ export function createForestChunkStreamer({
       const activeBudgetMs=catchup?catchupSliceBudgetMs:sliceBudgetMs;
       const activeCandidateCap=catchup?catchupCandidateBatchSize:candidateBatchSize;
       if(!wantedKeys.has(job.key)&&!job.replace){queue.shift();abandonJob(job,'no-longer-wanted');}
-      else if(!job.replace&&active.has(job.key)){queue.shift();abandonJob(job,'already-active');}
-      else if(!job.replace&&cache.has(job.key)){
+      else if(!job.replace&&!job.firstLayerCommitted&&active.has(job.key)){queue.shift();abandonJob(job,'already-active');}
+      else if(!job.replace&&!job.firstLayerCommitted&&cache.has(job.key)){
         queue.shift();abandonJob(job,'already-cached');if(visibleKeys.has(job.key))attach(cache.get(job.key),lastCenter);
       }else if(job.readyToCommit){
         const commitStarted=performance.now();
@@ -771,9 +819,11 @@ export function createForestChunkStreamer({
         while(job.builder.cellIndex<totalCells&&candidates<activeCandidateCap){
           if(candidates>0){if(performance.now()>=stopAt)break;if(!deadline.didTimeout&&deadline.timeRemaining()<.35)break;}
           processBuilderCandidate(job.builder);candidates++;job.candidatesProcessed++;perf.candidatesProcessed++;
+          if(job.builder.firstLayerReady&&!job.firstLayerCommitted&&!job.replace)break;
         }
         job.slices++;job.lastWorkedAt=performance.now();
-        if(job.builder.cellIndex>=totalCells)job.readyToCommit=true;
+        if(job.builder.firstLayerReady&&!job.firstLayerCommitted&&!job.replace)commitFirstLayer(job);
+        if(job.builder.cellIndex>=totalCells&&(!progressiveFirstLayer||job.builder.phase===1))job.readyToCommit=true;
       }
       report(false);maybeResolveInitial(lastCenter);recordSlice(sliceStart,candidates,catchup);
       if(queue.length&&assets?.trees?.length){scheduleIdle(step);return;}
@@ -903,6 +953,7 @@ export function createForestChunkStreamer({
       visibleWantedChunks:visibleKeys.size,prefetchWantedChunks:prefetchKeys.size,
       prefetchedReadyChunks:prefetchReadyCount(),prefetchQueuedChunks:prefetchQueuedCount(),
       inProgressJobs:queue.reduce((count,job)=>count+(job.builder?1:0),0),
+      progressiveInProgressChunks:queue.reduce((count,job)=>count+(job.firstLayerCommitted?1:0),0),
       prefetchInProgressJobs:queue.reduce((count,job)=>count+(job.builder&&prefetchKeys.has(job.key)?1:0),0),
       oldestQueuedAgeMs:queue.reduce((max,job)=>Math.max(max,performance.now()-(job.queuedAt||performance.now())),0),
       oldestBuilderAgeMs:queue.reduce((max,job)=>Math.max(max,job.startedAt?performance.now()-job.startedAt:0),0),

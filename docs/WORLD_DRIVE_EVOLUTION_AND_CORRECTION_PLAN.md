@@ -71,13 +71,13 @@ Before coding, be able to answer:
 **Issue #9:** **DONE/CERTIFIED — HUMAN YUNGAS VISUAL/PERFORMANCE PASS (2026-09-05)**  
 **Issue #10:** **DONE/CERTIFIED — HUMAN PASS (2026-09-12) — steep planar road-contact correction**  
 **Issue #11:** **DONE/CERTIFIED — HUMAN PASS (2026-09-16); integrated `dev` checkpoint `4ad64194d53849c0c344872b59ffab2c1b3ba2a2`, exact-head Dev Integration `35104245846` PASS**
-**Issue #12:** **ACTIVE — Block 8 R3 coverage-before-replacement correction after R2 HUMAN FAIL**
+**Issue #12:** **ACTIVE — Block 8 R4 progressive first-layer correction after R3 HUMAN FAIL**
 **Issue #13:** **DONE/CERTIFIED — HUMAN PASS (2026-09-12) — bounded road-articulation contact correction**  
-**Block 8 — Biome-aware natural scenery:** **ACTIVE (2026-09-16) — R3 forest-readiness correction before biome classification**
+**Block 8 — Biome-aware natural scenery:** **ACTIVE (2026-09-16) — R4 progressive first-layer forest-readiness correction before biome classification**
 **Block 9 — AI-assisted 3D asset authoring and selective GLB modernization:** **PLANNED / DEFERRED — pilot-first, no wholesale asset replacement**  
 **Block 10 — Mobile browser driving controls:** **ABANDONED / NOT PLANNED (2026-09-13) — experiment stopped by user; no mobile-control candidate runtime was integrated**  
 **Block 11 — Circuit presets / closed-loop authored track routes:** **DONE/CERTIFIED — Laguna Seca HUMAN PASS (2026-09-14); Nordschleife performance HUMAN PASS (2026-09-15); no-ABS runtime and continuous guard rails HUMAN PASS (2026-09-16); integrated `dev` checkpoint `568f557a051832559fa1f3166350cc338a399ee1`, exact-head Dev Integration `35054930198` PASS**
-**Active correction block:** **Block 8 / Issue #12 — `candidate/block8-forest-readiness-r3`; missing forest coverage precedes already-covered terrain replacements, with scheduler budgets unchanged**
+**Active correction block:** **Block 8 / Issue #12 — `candidate/block8-forest-readiness-r4`; uniform 64/109 first-layer coverage commits before background densification, with scheduler budgets unchanged**
 **Stable `main`:** `ad893a9d078df4a3d24d81b929bb2905a8bc57e1` — tag `v21.33`; must remain untouched without explicit user approval.
 **Previous rollback/reference:** `b74e7377eaaf2b128eb893c547f4c2da3d14bbea` — tag `v21.32`.
 
@@ -401,7 +401,7 @@ GitHub Issue #13: **CLOSED / COMPLETED (2026-09-12)**.
 
 ## Exact next action
 
-**Block 8 is active by explicit user decision. Preserve the certified V21.33 baseline and validate the Issue #12 R3 coverage-before-replacement correction on `candidate/block8-forest-readiness-r3` before adding biome classification or palettes.**
+**Block 8 is active by explicit user decision. Preserve the certified V21.33 baseline and validate the Issue #12 R4 progressive first-layer correction on `candidate/block8-forest-readiness-r4` before adding biome classification or palettes.**
 
 Current unresolved work is intentionally not auto-started:
 
@@ -524,9 +524,9 @@ The accepted Laguna Seca and Nordschleife circuit work, Nordschleife performance
 
 ## Block 8 — Biome-aware natural scenery generation
 
-**ACTIVE (2026-09-16) — Issue #12 R3 coverage-before-replacement correction is the current runtime/readiness workstream.**
+**ACTIVE (2026-09-16) — Issue #12 R4 progressive first-layer correction is the current runtime/readiness workstream.**
 
-Issue #12 was reopened when the user explicitly activated this block. The previous human-FAIL candidates and runtime snapshots remain diagnostic evidence, but none of those candidate runtime changes are accepted as a solution. R1 added job/builder lifecycle evidence and received HUMAN FAIL near 2.4 km. R2 replaced the unbounded route/hydro predicates with exact bounded spatial indexes and improved browser throughput from one to four candidates per slice, but still received HUMAN FAIL at 3.5 km. Its spatial diagnostics showed zero fallbacks and stable indexes; lifecycle evidence instead showed that already-covered terrain replacements consumed 36 of 81 completed builds. R3 therefore preserves the certified budgets and geographic indexes while making missing coverage authoritative over replacements and limiting terrain-refresh builder resets to the affected radius.
+Issue #12 was reopened when the user explicitly activated this block. The previous human-FAIL candidates and runtime snapshots remain diagnostic evidence, but none of those candidate runtime changes are accepted as a solution. R1 added job/builder lifecycle evidence and received HUMAN FAIL near 2.4 km. R2 replaced the unbounded route/hydro predicates with exact bounded spatial indexes and improved browser throughput from one to four candidates per slice, but still received HUMAN FAIL at 3.5 km. Its spatial diagnostics showed zero fallbacks and stable indexes; lifecycle evidence instead showed that already-covered terrain replacements consumed 36 of 81 completed builds. R3 preserved the certified budgets and geographic indexes while making missing visible coverage authoritative over replacements and limiting terrain-refresh builder resets to the affected radius; the human retest improved both reach and appearance speed but remained insufficient. R4 keeps those gains and commits a deterministic 64/109-candidate layer across all 16 cells (1,024 evaluations instead of 1,744 before first display), then demotes that chunk so remaining empty coverage stays ahead of densification.
 
 Goal: generate natural scenery that matches the biome/ecoregion of the driven route instead of using one globally uniform vegetation set. The primary acceptance example is explicit: a tropical route must not spawn boreal-style fir/conifer forest simply because the generic forest generator is active.
 
