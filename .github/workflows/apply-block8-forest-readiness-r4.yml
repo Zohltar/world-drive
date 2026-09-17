@@ -24,7 +24,9 @@ jobs:
         with:
           node-version: 22
       - name: Apply patch
-        run: python tools/apply_block8_forest_r4.py
+        run: |
+          python tools/apply_block8_forest_r4.py
+          python -c "from pathlib import Path; p=Path('qa/qa-block8-forest-coverage-priority-r3.mjs'); s=p.read_text(); s=s.replace(\"readinessMode:'block8-r3-coverage-before-replacement'\",\"readinessMode:'block8-r4-progressive-first-layer'\").replace('R3 readiness diagnostic mode is missing','R4 readiness diagnostic mode is missing'); p.write_text(s)"
       - name: Syntax and inherited focused QA
         run: |
           node --check src/forest-chunk-streamer-core.js
@@ -35,6 +37,6 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git rm .github/workflows/apply-block8-forest-readiness-r4.yml tools/apply_block8_forest_r4.py
-          git add src/forest-chunk-streamer-core.js src/forest-streaming-policy.js src/forest-chunk-streamer.js qa/qa-block8-forest-lifecycle-diagnostics-r1.mjs docs/WORLD_DRIVE_EVOLUTION_AND_CORRECTION_PLAN.md
+          git add src/forest-chunk-streamer-core.js src/forest-streaming-policy.js src/forest-chunk-streamer.js qa/qa-block8-forest-lifecycle-diagnostics-r1.mjs qa/qa-block8-forest-coverage-priority-r3.mjs docs/WORLD_DRIVE_EVOLUTION_AND_CORRECTION_PLAN.md
           git commit -m "fix(forest): add progressive first-layer coverage"
           git push origin HEAD:candidate/block8-forest-readiness-r4
