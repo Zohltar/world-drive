@@ -1,0 +1,78 @@
+name: Block 8 Biome Classifier R1 QA
+
+on:
+  push:
+    branches:
+      - candidate/block8-biome-classifier-r1
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  contract-and-integration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Verify certified runtime is untouched
+        run: git diff --exit-code 45ab6bc770097239add81eeaca9c4d32de9968a2 HEAD -- src server electron public package.json package-lock.json .github/workflows/qa-dev-integration.yml
+      - name: Classifier contract and bounded-query stress
+        run: node qa/qa-block8-biome-prototype-r1.mjs
+      - name: Install canonical workflow parser (CI only)
+        run: python -m pip install PyYAML==6.0.2
+      - name: Every maintained Dev Integration run step
+        run: python tools/biomes/run-canonical-integration.py
+      - name: Certified R4 progressive layer and geographic parity
+        run: |
+          node qa/qa-block8-forest-geographic-index-r2.mjs
+          node qa/qa-block8-forest-progressive-layer-r4.mjs
+          node qa/qa-block8-forest-lifecycle-diagnostics-r1.mjs
+      - name: Record exact-head integration results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: biome-r1-integration-${{ github.sha }}
+          path: ${{ runner.temp }}/biome-canonical-integration.json
+          if-no-files-found: warn
+
+  real-data-atlas:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install build-only geospatial dependencies
+        run: python -m pip install numpy==2.2.6 rasterio==1.4.3 pyshp==2.3.1
+      - name: Synthetic polygon, hole and reproducibility tests
+        run: python qa/qa-block8-biome-builder-r1.py
+      - name: Retrieve source archive for offline preprocessing only
+        run: curl --fail --location --retry 2 --connect-timeout 20 --max-time 180 --max-filesize 200000000 https://storage.googleapis.com/teow2016/Ecoregions2017.zip -o "$RUNNER_TEMP/Ecoregions2017.zip"
+      - name: Build and verify global 0.1 and 0.05 degree prototypes
+        run: |
+          for resolution in 0.1 0.05; do
+            OUTPUT="$RUNNER_TEMP/biome-atlases/$resolution"
+            python tools/biomes/build-resolve-atlas.py --input "$RUNNER_TEMP/Ecoregions2017.zip" --output "$OUTPUT" --cell-degrees "$resolution"
+            node qa/qa-block8-biome-atlas-r1.mjs "$OUTPUT"
+          done
+      - name: Preserve atlas, provenance and geographic measurements
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: biome-r1-atlases-${{ github.sha }}
+          path: ${{ runner.temp }}/biome-atlases
+          if-no-files-found: warn
