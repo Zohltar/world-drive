@@ -73,7 +73,7 @@ Before coding, be able to answer:
 **Issue #11:** **DONE/CERTIFIED — HUMAN PASS (2026-09-16); integrated `dev` checkpoint `4ad64194d53849c0c344872b59ffab2c1b3ba2a2`, exact-head Dev Integration `35104245846` PASS**
 **Issue #12:** **DONE/CERTIFIED — HUMAN PASS (2026-09-17) — R4 progressive first-layer forest-readiness correction; runtime/reference `ca1fbb4b7b3448a2f18ae655545046464acba4e3`, post-integration checkpoint `f6e59985a945cc193a7a6eb1066a06dcb120602f`, exact-head Dev Integration `35229697126` PASS**
 **Issue #13:** **DONE/CERTIFIED — HUMAN PASS (2026-09-12) — bounded road-articulation contact correction**  
-**Block 8 — Biome-aware natural scenery:** **ACTIVE — forest readiness certified on `dev`; biome R1–R3 validated on PR #14, NOT integrated or visually activated. Resume the existing candidate; see the active-candidate checkpoint below.**
+**Block 8 — Biome-aware natural scenery:** **ACTIVE on existing PR #14; forest readiness remains certified on `dev`. Biome work is NOT integrated or visually activated. Current candidate milestone, exact-head QA and next action are in `WORLD_DRIVE_BLOCK8_ACTIVE_CANDIDATE.md`.**
 **Block 9 — AI-assisted 3D asset authoring and selective GLB modernization:** **PLANNED / DEFERRED — pilot-first, no wholesale asset replacement**  
 **Block 10 — Mobile browser driving controls:** **ABANDONED / NOT PLANNED (2026-09-13) — experiment stopped by user; no mobile-control candidate runtime was integrated**  
 **Block 11 — Circuit presets / closed-loop authored track routes:** **DONE/CERTIFIED — Laguna Seca HUMAN PASS (2026-09-14); Nordschleife performance HUMAN PASS (2026-09-15); no-ABS runtime and continuous guard rails HUMAN PASS (2026-09-16); integrated `dev` checkpoint `568f557a051832559fa1f3166350cc338a399ee1`, exact-head Dev Integration `35054930198` PASS**
@@ -414,7 +414,7 @@ GitHub Issue #13: **CLOSED / COMPLETED (2026-09-12)**.
 
 ## Exact next action
 
-**Resume the EXISTING Block 8 candidate / PR #14 using `docs/WORLD_DRIVE_BLOCK8_ACTIVE_CANDIDATE.md` and live exact-head checks. R1 source audit, R2 bounded local refinement and R3 maintained service/palette contracts already exist; do not restart them. Continue bounded transport/decompression and continuous-route preparation, then the remaining data-distribution, asset, transition/elevation and visual gates. Preserve the certified forest R4 scheduler.**
+**Resume the EXISTING Block 8 candidate / PR #14 at the exact next action in `docs/WORLD_DRIVE_BLOCK8_ACTIVE_CANDIDATE.md`, checked against live exact-head QA. R1 source audit, R2 local refinement and R3 service/palette contracts are historical completed candidate milestones, not a request to restart them. The ledger tracks subsequent loading/distribution and visual gates. Preserve the certified forest R4 scheduler and keep candidate work separate from integrated runtime.**
 
 Current unresolved work is intentionally not auto-started:
 
@@ -446,7 +446,7 @@ Do not modify `main` without explicit user approval. Do not begin a deferred blo
 | P2 | Coarse satellite imagery triangles could cross asphalt on steep road cuts | imagery road-aware geometry refinement | **DONE/CERTIFIED — Issue #9 — HUMAN YUNGAS PASS** |
 | P2 | Steep planar road pitch could be consumed as suspension travel and drop an axle contact | `src/physics/steep-slope-contact.js`, vehicle presentation/contact path | **DONE/CERTIFIED — Issue #10 — HUMAN PASS** |
 | P2 | Bounded pitch/bank articulation could drop diagonal wheel contacts and trigger a low-speed lateral slide | `src/physics/steep-slope-contact.js`, `src/vehicles/vehicle-presentation.js` | **DONE/CERTIFIED — Issue #13 — HUMAN PASS** |
-| P3 | Natural scenery is currently biome-agnostic, allowing ecologically wrong vegetation (for example conifers in tropical regions) | `src/scenery/biomes/` on candidate PR #14; future visual asset integration | **ACTIVE — candidate validated through R3; not integrated/activated; see active-candidate ledger** |
+| P3 | Natural scenery is currently biome-agnostic, allowing ecologically wrong vegetation (for example conifers in tropical regions) | `src/scenery/biomes/` on candidate PR #14; future visual asset integration | **ACTIVE — latest candidate milestone/QA in active-candidate ledger; not integrated/activated** |
 | P3 | Current authored GLBs come from heterogeneous sources with inconsistent topology, axes, materials and movable-part/light ownership; newer AI-assisted 3D authoring may enable cleaner World Drive-specific assets | future AI/CAD/Blender authoring pipeline + vehicle/scenery asset QA | **PLANNED — Block 9** |
 | P3 | Browser build runs on phones but lacks a purpose-built mobile driving input scheme | retired Block 10 experiment | **NOT PLANNED — user decision 2026-09-13** |
 | P2 | Preset system has no first-class closed-loop circuit route support | route presets + route lifecycle/routing input boundary | **DONE/CERTIFIED — Block 11 — Laguna Seca + Nordschleife HUMAN PASS** |
