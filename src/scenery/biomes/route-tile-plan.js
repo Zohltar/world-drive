@@ -84,5 +84,9 @@ export function createBiomeRoutePlan(coordinates) {
       requiredTiles:ordered.length,tests:Math.min(tests,maxTests),segments:Math.min(segments,maxTests),
       positionMeters,fromMeters:low,toMeters:high,totalMeters,corridorMeters});
   }
-  return Object.freeze({window,totalMeters,pointCount:points.length});
+  return Object.freeze({window,totalMeters,pointCount:points.length,
+    distanceAtVertex(index){
+      if(!Number.isInteger(index)||index<0||index>=cumulative.length)throw new RangeError('Invalid route vertex');
+      return cumulative[index];
+    }});
 }

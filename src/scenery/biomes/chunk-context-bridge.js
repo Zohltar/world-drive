@@ -21,7 +21,7 @@ export function createBiomeChunkContextBridge({client,identity,layoutId='forest-
   let routeEpoch=0,windowEpoch=0,workerGeneration=null,ready=null,projectionId=null;
   let closed=false,routePending=false,updatePending=false,requestId=0,residentBytes=0,pendingBytes=0;
   const stats={published:0,cacheHits:0,deduplicated:0,rejected:0,discarded:0,busy:0,evictions:0,
-    peakChunks:0,peakBytes:0,peakPendingChunks:0,peakPendingBytes:0};
+    peakChunks:0,peakBytes:0,peakPendingChunks:0,peakPendingBytes:0,receipts:0,lastReceiptMs:0,maxReceiptMs:0};
   const current=(r,w)=>!closed&&r===routeEpoch&&w===windowEpoch;
   const busy=reason=>{stats.busy++;return outcome('busy',reason);};
   const rejected=reason=>{stats.rejected++;return outcome('rejected',reason);};
@@ -107,7 +107,11 @@ export function createBiomeChunkContextBridge({client,identity,layoutId='forest-
         // copies the bounded exact-point buffer; lookup still requires exact lon/lat.
         complete={...request,points:reply.points};packet=reply.packet;
       }
-      const installed=installChunkContext(packet,complete,fixed,{isCurrent:()=>!closed&&r===routeEpoch});
+      const receiptStart=performance.now();
+      let installed;
+      try{installed=installChunkContext(packet,complete,fixed,{isCurrent:()=>!closed&&r===routeEpoch});}
+      finally{stats.receipts++;stats.lastReceiptMs=performance.now()-receiptStart;
+        stats.maxReceiptMs=Math.max(stats.maxReceiptMs,stats.lastReceiptMs);}
       if(installed.payloadBytes>maxBytes)return rejected('chunk-residency-budget');
       // All validation is complete before touching valid resident data.
       const old=cache.get(key);

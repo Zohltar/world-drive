@@ -1,3 +1,4 @@
+await import('./qa-block8-biome-gameplay-r8.mjs');
 await import('./qa-block8-biome-forest-adapter-r7.mjs');
 await import('./qa-block8-biome-forest-parity-r7.mjs');
 await import('./qa-diagnostics-c6-final-inventory.mjs');
