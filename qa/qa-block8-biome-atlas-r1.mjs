@@ -28,7 +28,8 @@ const cases = [
   ['Montreal regional context', 45.5, -73.6, ['temperate']],
   ['Borneo interior', 0.5, 114, ['tropical']],
   ['Central Sahara', 24, 10, ['desert']],
-  ['Baffin Island', 67.5, -64, ['alpine-tundra']],
+  ['Baffin interior (source-polygon verified)', 70, -75, ['alpine-tundra']],
+  ['Greenland ice interior', 72, -40, ['rock-ice']],
   ['Tibetan plateau', 32, 88, ['alpine-tundra']],
 ];
 const results = cases.map(([name, lat, lon, expected]) => {
@@ -37,6 +38,22 @@ const results = cases.map(([name, lat, lon, expected]) => {
   assert.deepEqual(service.query(lat, lon), result);
   return { name, lat, lon, biome: result.biome, family: result.family, ecoregion: result.ecoregion.name };
 });
+// Keep the ORIGINAL failing coastal point. Independent source evidence proves
+// land at the query but no land at the 0.1-degree owning cell centre. Both coarse
+// prototypes currently miss it; this is an explicitly UNRESOLVED precision case,
+// not an excuse to fill oceans or claim production geographic certification.
+const sourceEvidence = JSON.parse(readFileSync(join(directory, '..', 'source-parity.json'), 'utf8'));
+assert.equal(sourceEvidence.sourceSha256, manifest.source.sha256);
+const sourcePoint = sourceEvidence.sourceControls.find(p => p.latitude === 67.5 && p.longitude === -64);
+assert.equal(sourceEvidence.cellCenterParityPassed, true);
+assert.equal(sourcePoint?.sourceRecord?.id, 415);
+assert.equal(sourcePoint?.sourceRecord?.biome, 11);
+const coastalResult = service.query(67.5, -64);
+assert.equal(coastalResult.reason, 'no-data', 'Pinned coarse experiment changed: revisit documented coastal evidence');
+assert.equal(coastalResult.canopy, 'none');
+assert.equal(coastalResult.placementAuthority, false);
+const knownCoastalLimitation = { latitude: 67.5, longitude: -64, sourceEcoregion: 'Davis Highlands tundra',
+  sourceBiome: 11, rasterResult: coastalResult.reason, status: 'UNRESOLVED; requires finer local representation' };
 // A sensitive road corridor is measured, not falsely certified by a broad-family smoke.
 const corridor = Array.from({ length: 21 }, (_, i) => {
   const lat = -16.33 + i * 0.01, lon = -67.95 + i * 0.0125;
@@ -47,7 +64,7 @@ assert.equal(service.query(0, -140).reason, 'no-data');
 assert.deepEqual(service.query(0, -180), service.query(0, 180));
 const queryStart = performance.now();
 for (let i = 0; i < 100000; i++) service.query(50.8 + (i % 1000) / 100000, -68.8 + i / 100000);
-const report = { geographicChecks: results.length, results, yungasCorridorDiagnosticOnly: corridor,
+const report = { geographicChecks: results.length, results, knownCoastalLimitation, yungasCorridorDiagnosticOnly: corridor,
   sourceSha256: manifest.source.sha256, cellSha256: manifest.cellSha256,
   constructionMs, query100kMs: performance.now() - queryStart, diagnostics: service.diagnostics(),
   limitations: ['Regional raster, not exact polygon boundaries', 'No elevation/treeline override',
