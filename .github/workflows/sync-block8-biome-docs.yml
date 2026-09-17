@@ -13,13 +13,29 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - run: python tools/sync-block8-docs.py
-      - name: Commit only documentation on preparation branch
+      - name: Keep current next action in one maintained ledger
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import subprocess
+          p=Path('docs/WORLD_DRIVE_EVOLUTION_AND_CORRECTION_PLAN.md')
+          assert subprocess.check_output(['git','hash-object',str(p)],text=True).strip()=='ed317ac34a5b65dd3a2f2147a693a538277622f0'
+          s=p.read_text()
+          replacements=[
+          ('**Block 8 — Biome-aware natural scenery:** **ACTIVE — forest readiness certified on `dev`; biome R1–R3 validated on PR #14, NOT integrated or visually activated. Resume the existing candidate; see the active-candidate checkpoint below.**','**Block 8 — Biome-aware natural scenery:** **ACTIVE on existing PR #14; forest readiness remains certified on `dev`. Biome work is NOT integrated or visually activated. Current candidate milestone, exact-head QA and next action are in `WORLD_DRIVE_BLOCK8_ACTIVE_CANDIDATE.md`.**'),
+          ('**Resume the EXISTING Block 8 candidate / PR #14 using `docs/WORLD_DRIVE_BLOCK8_ACTIVE_CANDIDATE.md` and live exact-head checks. R1 source audit, R2 bounded local refinement and R3 maintained service/palette contracts already exist; do not restart them. Continue bounded transport/decompression and continuous-route preparation, then the remaining data-distribution, asset, transition/elevation and visual gates. Preserve the certified forest R4 scheduler.**','**Resume the EXISTING Block 8 candidate / PR #14 at the exact next action in `docs/WORLD_DRIVE_BLOCK8_ACTIVE_CANDIDATE.md`, checked against live exact-head QA. R1 source audit, R2 local refinement and R3 service/palette contracts are historical completed candidate milestones, not a request to restart them. The ledger tracks subsequent loading/distribution and visual gates. Preserve the certified forest R4 scheduler and keep candidate work separate from integrated runtime.**'),
+          ('**ACTIVE — candidate validated through R3; not integrated/activated; see active-candidate ledger**','**ACTIVE — latest candidate milestone/QA in active-candidate ledger; not integrated/activated**')]
+          for old,new in replacements:
+              assert s.count(old)==1,(old,s.count(old))
+              s=s.replace(old,new,1)
+          p.write_text(s)
+          PY
+      - name: Commit only canonical documentation on preparation branch
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add docs/WORLD_DRIVE_EVOLUTION_AND_CORRECTION_PLAN.md docs/WORLD_DRIVE_BLOCK8_ACTIVE_CANDIDATE.md
-          git commit -m 'docs: synchronize canonical Block 8 restart with validated R1-R3'
+          git add docs/WORLD_DRIVE_EVOLUTION_AND_CORRECTION_PLAN.md
+          git commit -m 'docs: centralize Block 8 current checkpoint and next action'
           git push origin HEAD:docs/block8-biome-r3-restart-sync
       - uses: actions/upload-artifact@v4
         with:
