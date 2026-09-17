@@ -119,3 +119,45 @@ Worldwide fine distribution, persistent caching, trusted-root retrieval, long re
 road coverage, reviewed compatible assets and ecological transition/elevation rules
 remain open. The actual asset registry is empty. No human driving test is requested
 for this disconnected adapter. No PR merge or main movement is authorized by QA.
+
+## Verified implementation checkpoint — 2026-09-17
+
+Implementation `45787f9afc1fb36c96fcb591ba220670bf163bfc`, exact-head run
+**35275728861 PASS**, both jobs completed successfully. This statement is about that
+immutable implementation SHA; later docs/ancestry checkpoints require their own QA.
+
+All 97 maintained integration commands exited zero (requiredFailures=0,
+toleratedFailures=0); all R7 unit groups, original-source parity and earlier R1-R6 /
+forest R4 regressions passed. The actual original builder/projection oracle compared
+36 signed/origin variants and **62,784 candidate positions**, with zero coordinate or
+traversal mismatches and first-layer boundary at 1,024. All three mutation controls
+rejected the changed salt/axis formulas. The same test passed locally after downloading
+and verifying the original full runtime files from the exact-head code artifact.
+
+Native Chromium 143.0.7499.4 observed two actual module Workers and no page errors.
+Main-thread sampling was trapped throughout preparation, alongside fetch/gzip/digest.
+Six selected chunks around Laguna Seca original vertices contained 10,464 raw candidates;
+seven around Nordschleife contained 12,208. **All 22,672 matched the original source
+records, with zero unavailable/no-data results at those selected positions.** This does
+not replace the earlier source-no-data and boundary controls or prove full route coverage.
+
+The 300-window / 150-MOCK-tile native progression used actual adapter coordinates:
+523,200 exact reads plus 100,000 repeated reads without new capture. Both real and mock
+bridge stores peaked at four chunks / 141,952 accounted bytes under a 160,000-byte cap.
+Mock store: 296 publications, four cache reuses, 292 evictions. Stale-window/route discard,
+held-snapshot invalidation and recovery passed. UI heartbeat is not a game FPS test.
+
+Source, integration and forest artifact ZIP digests were verified. All eleven R7
+published files matched the local SHA-256 inventory. Exact forest artifact:
+`biome-r7-forest-45787f9afc1fb36c96fcb591ba220670bf163bfc`; files
+`forest-parity-r7.json`, `forest-plan.json`, `forest-source-expectations.json`,
+`forest-browser-r7-qa.json`, and three original source-polygon tiles. Native evidence
+comes from Actions. No local browser restriction was bypassed.
+
+Important for the next lifecycle owner: `prepared` means packet validation/publication,
+not universal ecological availability. Inspect snapshot counts; explicitly request a
+refresh when previously missing coverage becomes available. Never reinterpret source
+no-data as a loading error, or an unavailable sample as permission to plant a forest.
+
+No gameplay entrypoint, rendering, forest scheduler, density or placement was changed.
+Current next action remains the diagnostic-only lifecycle/admission described above.
