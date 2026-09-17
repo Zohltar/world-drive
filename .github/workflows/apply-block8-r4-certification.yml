@@ -1,0 +1,36 @@
+name: Apply Block 8 R4 Certification
+
+on:
+  push:
+    branches:
+      - docs/block8-r4-certification
+    paths:
+      - '.github/workflows/apply-block8-r4-certification.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: docs/block8-r4-certification
+          fetch-depth: 0
+      - name: Apply certification patch
+        run: python tools/certify_block8_r4.py
+      - name: Verify canonical markers
+        run: |
+          grep -F 'Issue #12:** **DONE/CERTIFIED' docs/WORLD_DRIVE_EVOLUTION_AND_CORRECTION_PLAN.md
+          grep -F '35229697126' docs/WORLD_DRIVE_EVOLUTION_AND_CORRECTION_PLAN.md
+          grep -F 'Data-source audit / prototype — NEXT' docs/WORLD_DRIVE_EVOLUTION_AND_CORRECTION_PLAN.md
+      - name: Commit clean docs checkpoint
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/apply-block8-r4-certification.yml tools/certify_block8_r4.py
+          git add docs/WORLD_DRIVE_EVOLUTION_AND_CORRECTION_PLAN.md
+          git commit -m "Docs: certify Block 8 forest readiness R4"
+          git push origin HEAD:docs/block8-r4-certification
