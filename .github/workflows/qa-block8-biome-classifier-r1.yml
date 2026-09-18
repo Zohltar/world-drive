@@ -24,8 +24,8 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Verify certified runtime is untouched
-        run: git diff --exit-code 45ab6bc770097239add81eeaca9c4d32de9968a2 HEAD -- src ':!src/scenery/biomes' ':!src/app/biome-diagnostics.js' ':!src/route-lifecycle.js' server electron public package.json package-lock.json .github/workflows/qa-dev-integration.yml
+      - name: Preserve accepted runtime except exact R12 inert owner seams
+        run: node qa/qa-block8-rendered-pilot-boundary-r12.mjs
       - name: Classifier contract and bounded-query stress
         run: |
           node qa/qa-block8-biome-gzip-headers-r9.mjs

@@ -24,7 +24,7 @@ for(const [oldName,newName] of [['biome-classifier-prototype.mjs','regional-clas
   assert.ok(source.includes(`export * from '../../src/scenery/biomes/${newName}'`));
   assert.ok(source.split('\n').length<=4,'Prototype facade has diverging implementation');
 }
-// R8 permits exactly one lazy application observer entry. Visual consumers remain forbidden.
+// Direct domain imports remain limited to R8; the explicit R12 port is guarded separately.
 function files(path) {return readdirSync(path,{withFileTypes:true}).flatMap(e=>e.isDirectory()?files(join(path,e.name)):[join(path,e.name)]);}
 for(const path of files(join(root,'src'))) {
   if(path.startsWith(folder+'/')||!path.endsWith('.js'))continue;
@@ -38,4 +38,4 @@ for(const path of files(join(root,'src'))) {
 const audit=readFileSync(join(root,'qa/DEV_INTEGRATION_AUDIT.mjs'),'utf8');
 assert.ok(audit.includes("await import('./qa-block8-biome-service-r3.mjs')"));
 assert.ok(audit.includes("await import('./qa-block8-biome-service-boundary-r3.mjs')"));
-console.log('PASS Block 8 maintained biome service ownership; only the R8 lazy diagnostic entry is admitted; visual activation absent');
+console.log('PASS Block 8 maintained biome service ownership; direct domain imports remain limited to the R8 observer; R12 opt-in port is guarded separately');

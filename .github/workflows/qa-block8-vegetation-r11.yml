@@ -20,8 +20,8 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Preserve entire human-tested R10 runtime
-        run: git diff --exit-code 82a5d492fd61fb3345aa397dfbe4f75345ed7d7c HEAD -- src public server electron vite.config.js package.json package-lock.json .github/workflows/qa-dev-integration.yml
+      - name: Preserve accepted runtime except exact R12 inert owner seams
+        run: node qa/qa-block8-rendered-pilot-boundary-r12.mjs
       - name: Deterministic policy and original geometry contracts
         run: |
           mkdir -p "$RUNNER_TEMP/biome-r11"

@@ -1,96 +1,104 @@
 # World Drive — Block 8 active candidate
 
-Companion to the canonical evolution/correction plan. Updated 2026-09-18 (Toronto).
-Read the canonical plan on dev, live dev/main HEADs, exact dev Integration and PR #14.
+Companion to the canonical plan. Updated 2026-09-18 (Toronto).
+Read the canonical plan on dev, current dev/main HEADs, exact dev Integration and PR #14.
 
-## Current state — R11 summer style accepted; R11W winter gallery
+## Current state — summer AND winter style accepted; first rendered pilot R12
 
-Existing branch `candidate/block8-biome-classifier-r1`; PR #14 remains draft/unmerged.
-R9 circuit and R10 Manic diagnostic hardware checkpoints are accepted. Do not repeat
-their loading/eviction tests. R11 summer STYLE PASS and permission to use the first
-models are recorded in PR comment **5732527872**:
-« C'est bien comme premiere passe, tu peux les utiliser, on ajoutera de la variete plus tard ».
-Additional variety is deferred. Production planting is still not activated.
+Existing branch `candidate/block8-biome-classifier-r1`, PR #14 draft/unmerged.
+R9 loaded circuit and R10 extended Manic diagnostic hardware checkpoints remain
+accepted. R11 summer style/use: comment **5732527872**. R11W winter style:
+comment **5734183717**, user verdict **« pass excellent! »**.
+Do not repeat those gallery or diagnostic-only driving tests. Additional general
+model variety is deferred. The six summer and four winter shapes are the accepted
+first-pass assets, not identified botanical species or a global ecology catalog.
 
-**The user then changed the immediate priority to FOUR winter variants in the same
-vegetation preview**, and asked to receive a result only when it can be shown:
-- conifer: snowy, with its original silhouette;
-- temperate broadleaf: explicitly **leafless AND snowy**, not a white leafy crown;
-- shrub: dormant/bare, with light snow;
-- rock: snow with a small icy/frosted accent.
-No tropical or dry-woodland winter variant in this stage. No automatic climate,
-calendar, hemisphere or in-game winter system is authorized or implied by the gallery.
+Latest instruction: continue until an actual version is ready for a new rendered
+human test, not another planning acknowledgment. R12 is a deliberately narrow
+**Nordschleife geometry-only visual pilot**, initially OFF. See
+**WORLD_DRIVE_BLOCK8_RENDERED_PILOT_R12.md** for scope, design and test procedure.
+Winter trees are leafless AND snowy; terrain/road/weather/grip are not winterized.
 
-R11W implementation remains under `tools/biomes/`. The unchanged summer factory and
-its six buffers remain the reference; a seasonal wrapper builds the four additional
-models once and switches the isolated preview between summer and winter. Production
-registry/placement authority remain inactive. Winter STYLE review is still open;
-summer style acceptance must not be requested again.
-Detailed scope and commands: **WORLD_DRIVE_BLOCK8_VEGETATION_R11_WINTER.md**.
-The R11 report remains the summer-policy/geometry reference, with its style outcome updated.
+## R12 implementation boundary
 
-## Verified baseline and current QA rule
+No full forest rewrite, new tree placement, density reduction or scheduler tuning.
+Two exact additive seams register the existing forest scene and route lifecycle;
+one inert application port lazily imports the explicit R12 controller on start.
+The original core streamer, original instance matrices/counts/materials/bounds,
+R4 first-layer order/budgets, exclusions and all accepted model buffers stay unchanged.
+An exact source guard strips ONLY the two reviewed insertions and compares the
+remaining runtime byte-for-byte to the accepted c7bb checkpoint. New/deleted runtime
+files beyond the single port are forbidden. The previous blanket guards are replaced
+by this stronger scoped comparison, not broad exclusions of whole renderer files.
 
-Accepted R11 source: `dbcaa6aa6fe85c85457a3bf37bee23b9e91fc2a5`.
-Its exact-head workflows were independently re-read as successful:
-- R11 authoring **35361228176**;
-- R10 real Manic **35361228124**;
-- full R1–R9, forest R4 and 97 maintained integration commands **35361228123**.
-Before this docs-only synchronization, dev was
-`a4a8bb2a1485f6126caec532f4f25d5a8cec1799`, canonical Dev Integration **35361162996 PASS**.
+The controller uses the existing native Worker, source identity and bounded
+snapshot bridge. A chunk can change geometry only after all **1,744 exact R4
+candidate coordinates** individually resolve to ecoregion **686 / Western European
+broadleaf forests / biome 4 / Palearctic** in the pinned source. No centre-of-chunk
+classification is propagated to unchecked points. Existing R4 placements are the
+ONLY targets. Unavailable, corrupt, mixed or out-of-scope chunks retain the original
+forest, not a guessed palette or an empty hole. Every replacement is reversible.
 
-These are BASELINE results, not results for a new winter SHA. The live PR records
-the latest exact candidate SHA and all three workflows. Verify their completion
-before delivering winter preview instructions. The expanded R11 workflow retains
-all existing guards/tests and adds winter geometry and native Vite/Chromium UI QA.
-Every documentation/ancestry advance requires its own exact-head checks.
-Dev synchronization at this stage is Markdown-only; it does not integrate PR #14.
+The scoped generic model is the accepted temperate broadleaf: 60 triangles in summer,
+114 in winter, replacing the 68-triangle conifer geometry of an existing mesh.
+This does NOT assert that every actual tree near the circuit is deciduous. The pilot
+is an art-family/renderer validation using exact regional source context, not species
+identification, current tree cover or a finished mixed-forest distribution.
+A homogeneous proved mesh stays ONE mesh; no additional per-chunk material/model pool.
+Other biomes, simultaneous mixed species, shrubs/rocks, automatic seasons and global
+activation are not part of R12. Actual boundary-distance/DEM-datum inputs remain
+prerequisites for their optional R11 policies; no synthetic thresholds are defaults.
 
-## Accepted hardware evidence (do not reopen)
+## Exact-head QA and branch discipline
 
-R9 loaded circuit PASS: comment **5729735550**. R10 telemetry: **5731654953**;
+Accepted winter reference: **c7bb678d290c8e275c79b134a23cc6897d1e26f7**.
+Historical exact checks: R11W **35375358480**, R10 **35375358374**, complete
+R1–R9 and 97 canonical integration commands **35375358408**, all PASS.
+Before this docs synchronization dev was **59d345d9e33b308cb40e7049e57d7094907996a5**,
+with canonical Dev Integration **35374829974 PASS**.
+Those are BASELINE results, not a PASS assigned to a newer R12 SHA.
+
+Before delivering a new test candidate, verify ALL FOUR exact-head workflows:
+- Block 8 Biome Classifier R1 QA (all maintained integration/geographic/native/Vite checks);
+- Block 8 Real Manic Long Road R10 QA;
+- Block 8 Vegetation Authoring R11 QA, including winter checks;
+- Block 8 Rendered Biome Pilot R12 QA (exact runtime boundary, pure contracts,
+  real source package/oracle and actual full Vite/Three game summer/winter/OFF).
+
+Current exact candidate SHA, run IDs, outcomes and measured evidence are recorded in
+the live PR checkpoint. No older PASS transfers to a new documentation/ancestry SHA.
+The R12 document describes implemented contracts; its test gates are not outcomes
+until the final exact-head workflows/artifacts are checked. Dev changes here remain
+Markdown-only, not integration of PR #14. Main remains **ad893a9d078df4a3d24d81b929bb2905a8bc57e1 / v21.33**.
+No PR merge, release or main movement is approved. Block 8 is still ACTIVE, not DONE.
+
+## Accepted hardware evidence (historical; do not reopen)
+
+R9 loaded circuit PASS: **5729735550**. R10 telemetry: **5731654953**;
 explicit R10 verdict **« tres fluide aucune saccade »**: **5731692833**.
-Manic complete JSON: 10,680.923 m progress, 32 publications, 16 snapshot evictions,
-16 resident snapshots /567,808 accounted bytes, three successful tile loads, no
-rejections, fresh current plus three forward chunks /6,976 resolved candidates.
-Later pasted console: 10,802.930 m; do not combine it with the earlier JSON as one
-snapshot. Initial approximate 220 km/h was user-reported, not a constant speed trace.
-The no-perceived-stutter verdict does not erase nonzero cumulative frame counters,
-certify a paired OFF/ON delta, additional page/tile turnover or all visible forest.
-The road-furniture profiling lead is separate, not a human-reported regression.
+Complete Manic JSON: 10,680.923 m, 32 publications, 16 snapshot evictions,
+16 resident snapshots /567,808 accounted bytes, three successful tile loads,
+no rejection; current plus three forward chunks /6,976 resolved candidates.
+Later pasted console: 10,802.930 m; not the same capture. Initial approximate 220 km/h
+is user-reported, not a complete speed trace. Nonzero cumulative frame counters are
+not erased by the no-perceived-saccade verdict. No paired OFF/ON delta, extra tile/page
+turnover or whole-forest/full-191-km hardware test is claimed. Road-furniture profiling
+is a separate lead, not a human-reported regression or a blocker to R12.
 
-## Protected state and provenance
+## Provenance and next action
 
-Main: `ad893a9d078df4a3d24d81b929bb2905a8bc57e1` / v21.33, untouched.
-No runtime, src, public, server, Electron, Vite, dependency, forest-R4 scheduler,
-density, exclusion, route, terrain, hydro or physics change belongs to R11W.
-No global model replacement, PR merge, release or in-game winter activation.
-The original procedural conifer and summer silhouettes stay byte-identical.
-The R3 production registry stays empty. Preserve all Worker/cache limits and the
-R9/R10 opt-in diagnostic behavior; OFF starts no biome timer, Worker or tile I/O.
-
-R10 source/data report: WORLD_DRIVE_BLOCK8_BIOME_R10_MANIC_PILOT.md.
-Pinned Manic route: 1,497 vertices; 191,203.340 m spherical length, distinct from
-OSRM 191,414.1 m. It is not an authoritative replacement for ordinary game routing.
-26 fine tiles/two pages; 800 awaited native windows, 667,952 distinct candidates,
-5,388,960 reads with no source mismatch/noData/unavailable. All sampled source
-positions are ecoregion 373, not a multi-biome or ecological transition test.
-RESOLVE source SHA-256:
+RESOLVE archive SHA-256:
 `be36d6209e443038d02e309f0447c6e7f2a62f5fe60c605ffe90d064952f2a60`.
-R10 ZIP: 55,499 bytes / `560c91b174f9d24b091c03a214fd9bd70fd58fce5702a59565d871f3d56d669b`.
-R9 ZIP: 30,321 bytes / `221689248d420b1fb1971723d951151e47d9a2d17202f925cf0c0e7796c4cf07`.
-Both packages remain unchanged. Earlier immutable milestones and evidence remain in
-the R1–R11 reports and the ledger at dbcaa6; do not restart completed stages.
+R10 Manic pack and its OSM route attribution stay unchanged:
+55,499 bytes / `560c91b174f9d24b091c03a214fd9bd70fd58fce5702a59565d871f3d56d669b`.
+R9 pack unchanged: 30,321 bytes /
+`221689248d420b1fb1971723d951151e47d9a2d17202f925cf0c0e7796c4cf07`.
+Historical details remain in the R1–R11W reports and immutable earlier ledgers.
 
-## Exact next action — show winter in vegetation preview
-
-After all three current exact-head workflows are green, inspect the actual winter
-screenshots, then deliver the same candidate and same preview page with
-`?season=winter`. No Python, new biome package or driving retest is needed.
-Validate winter style only; do not claim GPU driving performance from this gallery.
-After winter review, resume the limited opt-in rendered pilot with the existing
-approved shapes, not another general-variety pass. Regional memberships must be
-qualified; real boundary distances and datum-qualified regional elevation bands are
-still prerequisites to those optional policies. Synthetic R11 altitudes are not defaults.
-Global fine distribution, persistent caching and trusted-root retrieval remain later.
-Block 8 is active candidate work, NOT DONE/CERTIFIED or merge-authorized.
+Verify R12 automation, inspect the actual rendered screenshots, then provide the
+small separate R12 pack and candidate pull instructions. The NEW human gate concerns
+visible temperate trees in driving, winter model switching, geometry pop-in and
+fluidity, not a repeat of the accepted loading-only or gallery gates.
+Keep R12 opt-in and unmerged until that visual/performance verdict. Afterwards widen
+coverage/palettes without a new general modeling phase. Worldwide fine distribution,
+persistent caching and trusted-root retrieval are later work.

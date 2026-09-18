@@ -1,5 +1,19 @@
 # Block 8 R11W — four winter variants in vegetation preview
 
+## Accepted outcome — 2026-09-18
+
+**HUMAN winter STYLE PASS: « pass excellent! »**, PR #14 comment **5734183717**,
+accepted reference **c7bb678d290c8e275c79b134a23cc6897d1e26f7**. All four winter
+shapes are accepted; do not ask for the same gallery verdict again. Summer approval
+5732527872 remains valid. Next action is the limited opt-in rendered R12 pilot in
+WORLD_DRIVE_BLOCK8_RENDERED_PILOT_R12.md, not additional model variety. This approval
+is style/use acceptance, not a winter driving/GPU benchmark, automatic season rule,
+merge or release permission.
+
+The following implementation and original review procedure are retained as historical
+evidence. Any pending-review/show-preview wording below is superseded by this outcome.
+
+
 2026-09-18. Existing candidate `candidate/block8-biome-classifier-r1`, PR #14.
 This is an authoring-gallery extension, not the first rendered driving pilot.
 

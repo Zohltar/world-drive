@@ -21,8 +21,8 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Preserve accepted R9 runtime and all game behavior
-        run: git diff --exit-code e6ee0e223a814ae250bc8da7ea36d73bdcef920e HEAD -- src public server electron vite.config.js package.json package-lock.json .github/workflows/qa-dev-integration.yml
+      - name: Preserve accepted runtime except exact R12 inert owner seams
+        run: node qa/qa-block8-rendered-pilot-boundary-r12.mjs
       - name: Pinned real route and continuous diagnostic chunk plan
         run: node qa/qa-block8-biome-long-road-plan-r10.mjs
       - name: Install authoring-only dependencies

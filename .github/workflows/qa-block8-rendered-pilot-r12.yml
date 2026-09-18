@@ -1,0 +1,60 @@
+name: Block 8 Rendered Biome Pilot R12 QA
+on:
+  push:
+    branches: [candidate/block8-biome-classifier-r1]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  rendered-pilot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      RESOLVE_SHA256: be36d6209e443038d02e309f0447c6e7f2a62f5fe60c605ffe90d064952f2a60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Preserve exact approved runtime and asset boundaries
+        run: node qa/qa-block8-rendered-pilot-boundary-r12.mjs
+      - name: Bounded proof and reversible scene contracts
+        run: |
+          mkdir -p "$RUNNER_TEMP/biome-r12"
+          node qa/qa-block8-rendered-pilot-r12.mjs "$RUNNER_TEMP/biome-r12/unit-qa.json"
+          node qa/qa-block8-forest-progressive-layer-r4.mjs
+      - name: Existing project and build-only geographic dependencies
+        run: |
+          npm ci
+          python -m pip install numpy==2.2.6 rasterio==1.4.3 pyshp==2.3.1 shapely==2.1.2 playwright==1.57.0
+          python -m playwright install --with-deps chromium
+      - name: Retrieve pinned source and prepare finite route data
+        run: |
+          curl --fail --location --proto '=https' --proto-redir '=https' --retry 2 --connect-timeout 20 --max-time 180 --max-filesize 200000000 https://storage.googleapis.com/teow2016/Ecoregions2017.zip -o "$RUNNER_TEMP/Ecoregions2017.zip"
+          echo "$RESOLVE_SHA256  $RUNNER_TEMP/Ecoregions2017.zip" | sha256sum --check --strict
+          python tools/biomes/build-resolve-atlas.py --input "$RUNNER_TEMP/Ecoregions2017.zip" --output "$RUNNER_TEMP/atlas-r12" --cell-degrees 0.1 --expected-sha256 "$RESOLVE_SHA256"
+          python tools/biomes/build-rendered-pilot-r12.py --source "$RUNNER_TEMP/Ecoregions2017.zip" --atlas "$RUNNER_TEMP/atlas-r12" --output "$RUNNER_TEMP/biome-r12/pilot"
+      - name: Reproducible finite package
+        run: |
+          python tools/biomes/build-rendered-pilot-r12.py --source "$RUNNER_TEMP/Ecoregions2017.zip" --atlas "$RUNNER_TEMP/atlas-r12" --output "$RUNNER_TEMP/r12-repeat"
+          cmp "$RUNNER_TEMP/biome-r12/pilot/world-drive-biome-pilot-r12.zip" "$RUNNER_TEMP/r12-repeat/world-drive-biome-pilot-r12.zip"
+      - name: Original source parity and full Vite game summer winter OFF
+        run: python qa/qa-block8-rendered-pilot-browser-r12.py --pilot "$RUNNER_TEMP/biome-r12/pilot" --output "$RUNNER_TEMP/biome-r12/native"
+      - name: Preserve exact candidate and measured evidence
+        if: always()
+        run: |
+          mkdir -p "$RUNNER_TEMP/biome-r12"
+          git rev-parse HEAD > "$RUNNER_TEMP/biome-r12/tested-commit.txt"
+          git archive --format=tar.gz HEAD tools/biomes src/app/forest-visual-pilot.js src/app/biome-diagnostics.js src/scenery/scenery-renderer-p933.js src/scenery/biomes src/forest-proxy-assets.js src/forest-streaming-policy.js src/routing/circuits/nordschleife.json qa/qa-block8-rendered-pilot-r12.mjs qa/qa-block8-rendered-pilot-boundary-r12.mjs qa/qa-block8-rendered-pilot-browser-r12.py docs/WORLD_DRIVE_BLOCK8_ACTIVE_CANDIDATE.md docs/WORLD_DRIVE_BLOCK8_RENDERED_PILOT_R12.md .github/workflows/qa-block8-rendered-pilot-r12.yml > "$RUNNER_TEMP/biome-r12/r12-source.tar.gz"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: biome-r12-rendered-${{ github.sha }}
+          path: ${{ runner.temp }}/biome-r12
+          if-no-files-found: error

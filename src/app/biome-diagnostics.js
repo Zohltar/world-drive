@@ -1,3 +1,4 @@
+import {registerForestPilotRoute} from './forest-visual-pilot.js';
 /** Public-route facade observation only. The maintained routing implementation
  * and its original promises/results stay authoritative. Disabled until start().
  */
@@ -7,6 +8,9 @@ export function attachBiomeRouteDiagnostics(lifecycle,options,{target=globalThis
   if(!target.document)return lifecycle; // Node/legacy callers retain exact API.
   let observer=null,loadEpoch=0,request=0,routeReady=!!options.route?.length,lastError=null;
   let listening=false;
+  const visualPilot=registerForestPilotRoute({getState:options.getState,
+    getGeneration:()=>lifecycle.worldDrive.route.generation,getRoute:()=>options.route,
+    isRouteReady:()=>routeReady},target);
   function stop(){loadEpoch++;observer?.stop();lastError=null;
     if(listening)target.removeEventListener?.('pagehide',stop);listening=false;}
   async function start(config){
@@ -30,7 +34,7 @@ export function attachBiomeRouteDiagnostics(lifecycle,options,{target=globalThis
     snapshot:()=>observer?.diagnostics()??{enabled:false,diagnosticOnly:true,phase:'disabled',error:lastError},
     sample:(cx,cz,index)=>observer?.sample(cx,cz,index)??null});
   ensureWorldDriveDiagnostics(target).forest.biomes=api;
-  function invalidate(){request++;routeReady=false;
+  function invalidate(){visualPilot.invalidate();request++;routeReady=false;
     try{observer?.invalidate('game-route-lifecycle');}
     catch(error){lastError=String(error?.message??error).slice(0,160);}
   }
