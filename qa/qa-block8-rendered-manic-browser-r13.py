@@ -21,6 +21,8 @@ INSTALL=Path('public/local-data/biomes/pilot-r13');URL='/local-data/biomes/pilot
 SNAP='()=>WorldDriveDiagnostics.forest.visualPilot.snapshot()'
 spec=importlib.util.spec_from_file_location('r13_r9',ROOT/'qa/qa-block8-biome-fullgame-r9.py')
 R9=importlib.util.module_from_spec(spec);spec.loader.exec_module(R9)
+network_spec=importlib.util.spec_from_file_location('r13_network',ROOT/'qa/qa-block8-rendered-manic-network-r13.py')
+R13_NETWORK=importlib.util.module_from_spec(network_spec);network_spec.loader.exec_module(R13_NETWORK)
 ORACLE=r'''async ({directory,base,plan,expected})=>{
  const {createBiomeWorkerClient}=await import('/src/scenery/biomes/biome-worker-client.js');
  const {createBiomeChunkContextBridge}=await import('/src/scenery/biomes/chunk-context-bridge.js');
@@ -72,7 +74,7 @@ def main(pilot,r10,output):
     log=None;server=None
     report={'status':'RUNNING','realVite':True,'fullGame':True,'runtimeStubs':False,'gpuPerformanceCertification':False,
         'browserEnvironment':{'viewportCss':{'width':1100,'height':700},'deviceScaleFactor':1,'requiredRenderedChunks':4,'timeoutMs':120000}}
-    errors=[];engine=[];requests=[];upstream=Counter()
+    errors=[];engine=[];requests=[];routing_requests=[];upstream=Counter()
     try:
         subprocess.run(['npm','run','build'],cwd=ROOT,check=True)
         report['productionBuild']=True
@@ -93,16 +95,14 @@ def main(pilot,r10,output):
             context=browser.new_context(viewport={'width':1100,'height':700},device_scale_factor=1)
             context.add_init_script(R9.INSTRUMENT)
             def network(route):
-                url=route.request.url;parsed=urllib.parse.urlparse(url)
+                url=route.request.url;parsed=urllib.parse.urlsplit(url)
                 if url.startswith(origin+'/'):
                     if URL in url:requests.append(parsed.path)
                     return route.continue_()
                 upstream[parsed.netloc]+=1;headers={'Access-Control-Allow-Origin':'*'}
-                if '/route/v1/driving/' in parsed.path:
-                    points=urllib.parse.unquote(parsed.path.split('/driving/',1)[1]).split(';')
-                    first=list(map(float,points[0].split(',')));last=list(map(float,points[-1].split(',')))
-                    if abs(first[0]+68.3467)<.01 and abs(first[1]-49.3213)<.01 and abs(last[0]+68.7271214)<.01 and abs(last[1]-50.6451065)<.01:
-                        return route.fulfill(status=200,content_type='application/json',headers=headers,body=route_fixture)
+                matched=R13_NETWORK.is_manic_route_request(url)
+                if '/route/v1/' in parsed.path and len(routing_requests)<8:routing_requests.append({'url':url,'matchedRealManicFixture':matched})
+                if matched:return route.fulfill(status=200,content_type='application/json',headers=headers,body=route_fixture)
                 return route.fulfill(status=503,content_type='text/plain',headers=headers,body='R13 controlled geographic fixture')
             context.route('**/*',network)
             page=context.new_page();page.set_default_timeout(120000)
@@ -157,7 +157,7 @@ def main(pilot,r10,output):
                 raise
             finally:context.close();browser.close()
     finally:
-        report.update(pageErrors=errors,engineErrors=engine,pilotRequests=requests,upstreamRequests=dict(upstream),
+        report.update(pageErrors=errors,engineErrors=engine,pilotRequests=requests,upstreamRequests=dict(upstream),routingRequests=routing_requests,
             limitations=['Software-rendered Chromium /1100x700 /DPR1, not user GPU or high-speed performance',
                 'Pinned real router snapshot, not live routing or a GPS trace','Homogeneous regional family, not actual species or current land cover',
                 'Parked summer/winter samples and actual UI jump; not a continuous 191 km rendered drive'])

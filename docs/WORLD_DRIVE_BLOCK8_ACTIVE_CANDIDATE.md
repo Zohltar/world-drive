@@ -98,6 +98,24 @@ Reproducible local pack: 42,342 bytes /
 `1b9bed5cac9dc431c470182c6ec5a1bee35c29ac10ae6f30461b11ee01050bb1`;
 verify the final native workflow package agrees before delivery.
 
+## R13 native fixture correction (failed evidence retained)
+
+Initial candidate **59c433cab7e55af8676520c382ed2b6cf00fe54f**, R13 run
+**35400496903**, FAILED before the vehicle picker: the test HTTP interceptor used
+Python `urlparse`, which moved the semicolon-separated destination to `.params`.
+The fixture therefore rejected BOTH real Manic routing URLs and the game correctly
+remained at "Trajet indisponible". No R13 in-game Worker/geometry activation occurred.
+The independent native source check had passed **383 chunks /667,952 exact points**;
+that is not a rendered PASS for this failed run.
+
+The QA-only correction uses a tested `urlsplit`-based finite route matcher, preserves
+the real captured response and records matched routing URLs. Nine pure network
+regressions cover both actual providers, literal/escaped separators and rejected
+routes/values. The original 1,497-point route, four rendered chunks, 120-second gate,
+1100x700/DPR1, runtime, data bytes and all earlier assertions remain unchanged.
+No synthetic fallback or timeout increase is used. Require the new exact-head
+workflows and inspect screenshots; never transfer partial evidence to the correction.
+
 ## Exact next action
 
 Finish/verify all FIVE final candidate workflows and the documentation-only dev run.
