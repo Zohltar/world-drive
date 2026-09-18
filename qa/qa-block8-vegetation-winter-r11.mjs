@@ -86,6 +86,16 @@ try {
   measured.push({id:d.id,triangles:data.triangles,snowTriangles:data.surfaces.filter(s=>s==='snow').length,
    geometryBytes:Object.values(g.attributes).reduce((n,a)=>n+a.array.byteLength,0),height:g.boundingBox.max.y,fingerprint:geometryFingerprint(g)});
  }
+ test('Conifer snow reaches exposed skirts rather than being hidden by the next layer',()=>{
+  const data=buildWinterVegetationData('preview-conifer-winter',reference);
+  for(let f=0;f<56;f++){
+   const ringY=reference.positions[reference.indices[36+f*3]*3+1];
+   const apexY=reference.positions[reference.indices[37+f*3]*3+1];
+   const snowY=data.positions[(12+f*3+2)*9+1];
+   const ratio=(snowY-ringY)/(apexY-ringY);
+   assert.ok(ratio>=.08&&ratio<=.16,'Snow cap must occupy the visible portion of each overlapping skirt');
+  }
+ });
  test('Winter preparation never mutates the original conifer',()=>assert.equal(geometryFingerprint(source),sourceBefore));
  test('Conifer and rock winter keep summer geometry extrema',()=>{
   for(const id of ['preview-conifer','preview-rock']){

@@ -117,7 +117,7 @@ function snowyConifer(w,reference) {
     if(i<36){w.face(a,tip,b,bark,'wood');continue;}
     const color=Array.from(c.subarray(index[i]*3,index[i]*3+3)).map((v,k)=>v*[.80,.90,1.08][k]);
     // Splitting coplanar faces keeps the certified silhouette and avoids overlay z-fighting.
-    splitSnowFace(w,a,tip,b,.28+.045*Math.sin(i*.37),color,'needles');
+    splitSnowFace(w,a,tip,b,.12+.025*Math.sin(i*.37),color,'needles');
   }
 }
 function snowyRock(w) {
