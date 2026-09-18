@@ -89,7 +89,15 @@ def main(pilot,output):
       else:raise TimeoutError('Vite did not start')
       with sync_playwright() as pw:
         browser=pw.chromium.launch(headless=True,args=['--use-angle=swiftshader','--enable-unsafe-swiftshader'])
-        context=browser.new_context(viewport={'width':1100,'height':700},device_scale_factor=1)
+        # The previous 1100x700 software framebuffer ran at 1.17 FPS even
+        # with the pilot OFF (~1.59 FPS). Native idle admission was starved,
+        # not a tile/geometry failure: 2 chunks passed, 83 yields were deferred.
+        # Keep CSS layout/camera, geometry, densities, idle scheduler and every
+        # assertion intact; reduce only emulated raster density for software CI.
+        context=browser.new_context(viewport={'width':1100,'height':700},device_scale_factor=0.5)
+        report['browserEnvironment']={'viewportCss':{'width':1100,'height':700},
+            'deviceScaleFactor':0.5,'softwareRasterOnly':True,
+            'originalTimeoutMs':120000,'requiredRenderedChunks':4}
         context.add_init_script(R9.INSTRUMENT)
         def network(route):
             url=route.request.url;parsed=urllib.parse.urlparse(url)
@@ -123,6 +131,7 @@ def main(pilot,output):
         report['offNoWorkerOrData']=True
         page.evaluate("() => document.getElementById('presetNordschleifeBtn').click()")
         page.wait_for_function("WorldDriveFramePacing().rendering.routeKind==='circuit' && WorldDriveFramePacing().rendering.routePoints===1068 && document.getElementById('loading').classList.contains('hidden')")
+        page.wait_for_function("WorldDriveFramePacing().rendering.groups.sceneryForest.instancedMeshes>=4")
         page.wait_for_timeout(5000)
         report['offBefore']=page.evaluate(R9.FRAMES,3000)
         activation=page.evaluate("async u => (await import(u)).start({season:'summer'})",URL+'start.mjs')
@@ -179,7 +188,7 @@ def main(pilot,output):
         raise
     finally:
         report.update(pageErrors=errors,engineErrors=engine,pilotRequests=requests,upstreamRequests=dict(upstream),
-            limitations=['Software-rendered Chromium, not user GPU/FPS certification','Real source context is not current tree cover or species identity',
+            limitations=['Software-rendered Chromium at emulated DPR 0.5; not native-resolution or user GPU/FPS certification','Real source context is not current tree cover or species identity',
             'Homogeneous Nordschleife chunks only; trees only; ground/road/weather unchanged','Parked sampling and an actual UI teleport, not continuous high-speed driving'])
         (output/'rendered-pilot-r12-qa.json').write_text(json.dumps(report,indent=2)+'\n')
         server.terminate()
