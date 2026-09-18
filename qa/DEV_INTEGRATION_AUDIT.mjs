@@ -1,3 +1,4 @@
+await import('./qa-block8-biome-gzip-headers-r9.mjs');
 await import('./qa-block8-biome-gameplay-r8.mjs');
 await import('./qa-block8-biome-observer-reanchor-r9.mjs');
 await import('./qa-block8-biome-forest-adapter-r7.mjs');
