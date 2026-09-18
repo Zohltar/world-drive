@@ -6,6 +6,8 @@ import {FOREST_POINT_COUNT,FOREST_LAYOUT_ID} from '../../src/scenery/biomes/fore
 import {createPaletteRegistry} from '../../src/scenery/biomes/palette-registry.js';
 import {MAX_CHUNK_CONTEXTS} from '../../src/scenery/biomes/chunk-context-snapshot.js';
 import {seasonalVegetationId} from './vegetation-winter-data.mjs';
+import LagunaCircuit from '../../src/routing/circuits/laguna-seca.json' with {type:'json'};
+const lagunaCoordinates=Object.freeze(LagunaCircuit.coordinates.map(p=>Object.freeze([...p])));
 export const R12_SOURCE=Object.freeze({id:'RESOLVE-ECOREGIONS-2017',license:'CC-BY-4.0',
   sha256:'be36d6209e443038d02e309f0447c6e7f2a62f5fe60c605ffe90d064952f2a60'});
 export const R12_CATALOG_SHA='e35573844a53dbcf42b508e123649e62651f886d332bf1239ae97cf28d13e0e7';
@@ -17,6 +19,8 @@ export const R12_LIMITS=Object.freeze({proofs:128,meshes:128,groups:2,checksPerS
   proofSliceMs:.8,pollMs:120,chunksPerPoll:2,snapshotChunks:16});
 export const R12_PROFILE='r12-nord-rendered';
 export const R13_PROFILE='r13-manic-boreal';
+export const R14_PROFILE='r14-laguna-woodland';
+export const R14_REGION=Object.freeze({id:423,biome:12,name:'California interior chaparral and woodlands',realm:'Nearctic'});
 export const R13_REGION=Object.freeze({id:373,biome:6,name:'Eastern Canadian forests',realm:'Nearctic'});
 // Fixed reviewed profiles only: callers cannot inject arbitrary ecological rules,
 // asset IDs, source regions or route callbacks through a launcher/configuration.
@@ -26,7 +30,10 @@ const profiles=Object.freeze({
     scope:'Only source-verified homogeneous Nordschleife forest chunks; existing R4 tree placements only'}),
   [R13_PROFILE]:Object.freeze({id:R13_PROFILE,region:R13_REGION,modelId:'preview-conifer',
     palette:'boreal-conifer',revision:'resolve2017-r13-manic-rendered',routeLabel:'Manic-2 → Manic-5',
-    scope:'Only source-verified Eastern Canadian forest chunks along Manic-2 → Manic-5; existing R4 tree placements only'})
+    scope:'Only source-verified Eastern Canadian forest chunks along Manic-2 → Manic-5; existing R4 tree placements only'}),
+  [R14_PROFILE]:Object.freeze({id:R14_PROFILE,region:R14_REGION,modelId:'preview-woodland',
+    palette:'mediterranean-woodland-scrub',revision:'resolve2017-r14-laguna-rendered',routeLabel:'Laguna Seca',
+    scope:'Only source-verified homogeneous Laguna Seca woodland chunks; existing R4 placements and density, not current land cover'})
 });
 export function renderedProfile(id=R12_PROFILE){
   if(typeof id!=='string'||!Object.hasOwn(profiles,id))throw new TypeError('Unknown rendered biome profile');
@@ -44,6 +51,9 @@ export function renderedRouteMatches(id,plan,origin){
   const p=renderedProfile(id),c=plan?.coordinates;
   if(!Array.isArray(c)||c.length<2||c.length>20000)return false;
   if(p.id===R12_PROFILE)return c.length===1068&&c[0]?.[0]===6.951275&&c[0]?.[1]===50.337751;
+  if(p.id===R14_PROFILE)return origin?.lon===lagunaCoordinates[0][0]&&origin?.lat===lagunaCoordinates[0][1]
+    &&c.length===lagunaCoordinates.length&&c.every((a,i)=>Array.isArray(a)&&a.length===2
+      &&a[0]===lagunaCoordinates[i][0]&&a[1]===lagunaCoordinates[i][1]);
   const near=(a,b)=>Array.isArray(a)&&a.length===2&&a.every(Number.isFinite)
     &&Math.abs(a[0]-b[0])<=.012&&Math.abs(a[1]-b[1])<=.008;
   if(!near(c[0],[-68.3467,49.3213])||!near(c.at(-1),[-68.7271214,50.6451065])
@@ -61,13 +71,17 @@ const manicReverse=Object.freeze({aheadMeters:700,behindMeters:2400,corridorMete
 export function renderedWindowOptions(profileId=R12_PROFILE,direction=1){
   const p=renderedProfile(profileId);
   if(direction!==1&&direction!==-1)throw new TypeError('Rendered window direction');
-  return p.id===R12_PROFILE?nordWindow:direction===1?manicForward:manicReverse;
+  return p.id===R13_PROFILE?(direction===1?manicForward:manicReverse):nordWindow;
 }
 export function r12Season(value){
   if(value!=='summer'&&value!=='winter')throw new TypeError('Saison requise : summer ou winter');
   return value;
 }
-export function r12Model(season,profileId=R12_PROFILE){return seasonalVegetationId(renderedProfile(profileId).modelId,r12Season(season));}
+export function r12Model(season,profileId=R12_PROFILE){
+  const profile=renderedProfile(profileId),model=seasonalVegetationId(profile.modelId,r12Season(season));
+  if(!model)throw new TypeError('Variante '+season+' non disponible pour '+profile.routeLabel+'; utiliser summer.');
+  return model;
+}
 export function r12ContextEligible(c,profileId=R12_PROFILE){
   const profile=renderedProfile(profileId),region=profile.region;
   if(c?.status!=='resolved'||c.confidence!=='source-agreement'||c.precision!=='source-polygons'

@@ -14,7 +14,7 @@ import {R12_SOURCE,R12_CATALOG_SHA,R12_LIMITS,R12_PROFILE,renderedProfile,render
 export function validateR12Config(value){
   const text=JSON.stringify(value);if(!text||text.length>2*1024*1024)throw new RangeError('R12 config bound');
   const safe=JSON.parse(text);const identity=snapshotIdentity(safe?.directory);r12Season(safe.season??'summer');
-  const profile=renderedProfile(safe.profile??R12_PROFILE);
+  const profile=renderedProfile(safe.profile??R12_PROFILE);r12Model(safe.season??'summer',profile.id);
   if(!Object.keys(R12_SOURCE).every(k=>identity.source[k]===R12_SOURCE[k])||identity.catalogSha256!==R12_CATALOG_SHA
     ||identity.revision!==profile.revision||typeof safe.baseUrl!=='string')throw new TypeError('R12 pinned source/configuration');
   return safe;
@@ -212,7 +212,7 @@ export function createRenderedBiomePilot({THREE,forestGroup,getState,getGenerati
     return Object.freeze({status:'enabled',pilot:profileId,season,placementAuthority:false});
   }
   function setSeason(value){
-    r12Season(value);if(!enabled)throw new Error('Pilote visuel arrêté');season=value;
+    r12Model(value,profileId);if(!enabled)throw new Error('Pilote visuel arrêté');season=value;
     for(const r of [...records.values()])apply(r.group,r.proof);
     return {season,modifiedChunks:records.size};
   }
