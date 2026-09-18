@@ -15,26 +15,63 @@ export const R12_REGION=Object.freeze({id:686,biome:4,name:'Western European bro
 // unchanged 0.8 ms deadline before EACH read and never bypasses idle admission.
 export const R12_LIMITS=Object.freeze({proofs:128,meshes:128,groups:2,checksPerSlice:FOREST_POINT_COUNT,
   proofSliceMs:.8,pollMs:120,chunksPerPoll:2,snapshotChunks:16});
-const registry=createPaletteRegistry([{id:'preview-temperate',kind:'tree',reviewed:true,
-  provenanceId:'original-R11-style-5732527872',weight:1,palettes:['temperate-broadleaf-mixed'],
-  realms:[R12_REGION.realm],ecoregionIds:[R12_REGION.id]}],{revision:'r12-nord-homogeneous-model-v1'});
+export const R12_PROFILE='r12-nord-rendered';
+export const R13_PROFILE='r13-manic-boreal';
+export const R13_REGION=Object.freeze({id:373,biome:6,name:'Eastern Canadian forests',realm:'Nearctic'});
+// Fixed reviewed profiles only: callers cannot inject arbitrary ecological rules,
+// asset IDs, source regions or route callbacks through a launcher/configuration.
+const profiles=Object.freeze({
+  [R12_PROFILE]:Object.freeze({id:R12_PROFILE,region:R12_REGION,modelId:'preview-temperate',
+    palette:'temperate-broadleaf-mixed',revision:'resolve2017-r12-nord-rendered',routeLabel:'Nordschleife',
+    scope:'Only source-verified homogeneous Nordschleife forest chunks; existing R4 tree placements only'}),
+  [R13_PROFILE]:Object.freeze({id:R13_PROFILE,region:R13_REGION,modelId:'preview-conifer',
+    palette:'boreal-conifer',revision:'resolve2017-r13-manic-rendered',routeLabel:'Manic-2 → Manic-5',
+    scope:'Only source-verified Eastern Canadian forest chunks along Manic-2 → Manic-5; existing R4 tree placements only'})
+});
+export function renderedProfile(id=R12_PROFILE){
+  if(typeof id!=='string'||!Object.hasOwn(profiles,id))throw new TypeError('Unknown rendered biome profile');
+  return profiles[id];
+}
+const registries=new Map(Object.values(profiles).map(p=>[p.id,createPaletteRegistry([
+  {id:p.modelId,kind:'tree',reviewed:true,provenanceId:'original-R11-style-5732527872',weight:1,
+    palettes:[p.palette],realms:[p.region.realm],ecoregionIds:[p.region.id]}
+],{revision:p.id+'-homogeneous-model-v1'})]));
+/** Route-envelope admission is NOT a source classification or exact road hash.
+ * Real routers can resample a road; every candidate still needs exact source proof.
+ * Manic is forward-only in this pilot. The bounds deliberately exclude other presets.
+ */
+export function renderedRouteMatches(id,plan,origin){
+  const p=renderedProfile(id),c=plan?.coordinates;
+  if(!Array.isArray(c)||c.length<2||c.length>20000)return false;
+  if(p.id===R12_PROFILE)return c.length===1068&&c[0]?.[0]===6.951275&&c[0]?.[1]===50.337751;
+  const near=(a,b)=>Array.isArray(a)&&a.length===2&&a.every(Number.isFinite)
+    &&Math.abs(a[0]-b[0])<=.012&&Math.abs(a[1]-b[1])<=.008;
+  if(!near(c[0],[-68.3467,49.3213])||!near(c.at(-1),[-68.7271214,50.6451065])
+    ||!near([origin?.lon,origin?.lat],[-68.3467,49.3213])
+    ||!Number.isFinite(plan.totalMeters)||plan.totalMeters<170000||plan.totalMeters>230000)return false;
+  return c.every(a=>Array.isArray(a)&&a.length===2&&a.every(Number.isFinite)
+    &&a[0]>=-68.90&&a[0]<=-68.20&&a[1]>=49.25&&a[1]<=50.72);
+}
 export function r12Season(value){
   if(value!=='summer'&&value!=='winter')throw new TypeError('Saison requise : summer ou winter');
   return value;
 }
-export function r12Model(season){return seasonalVegetationId('preview-temperate',r12Season(season));}
-export function r12ContextEligible(c){
+export function r12Model(season,profileId=R12_PROFILE){return seasonalVegetationId(renderedProfile(profileId).modelId,r12Season(season));}
+export function r12ContextEligible(c,profileId=R12_PROFILE){
+  const profile=renderedProfile(profileId),region=profile.region;
   if(c?.status!=='resolved'||c.confidence!=='source-agreement'||c.precision!=='source-polygons'
     ||c.paletteEligible!==true||c.placementAuthority!==false||c.elevationApplied!==false
     ||c.source?.id!==R12_SOURCE.id||c.source.license!==R12_SOURCE.license||c.source.sha256!==R12_SOURCE.sha256
-    ||!Object.keys(R12_REGION).every(k=>c.ecoregion?.[k]===R12_REGION[k]))return false;
+    ||!Object.keys(region).every(k=>c.ecoregion?.[k]===region[k]))return false;
   // This is a hypothetical model eligibility query for an already existing R4
   // placement. This registry is private to the pilot and never spawns anything.
-  return registry.select(c,{stableKey:'r12-homogeneous-region',placementAllowed:true}).assetId==='preview-temperate';
+  return registries.get(profileId).select(c,{stableKey:profileId,placementAllowed:true}).assetId===profile.modelId;
 }
-export function createR12Proof(snapshot,adapter,cx,cz){
+export function createR12Proof(snapshot,adapter,cx,cz,profileId=R12_PROFILE){
+  const profile=renderedProfile(profileId);
   if(snapshot?.layoutId!==FOREST_LAYOUT_ID||snapshot.count!==FOREST_POINT_COUNT
     ||snapshot.cx!==cx||snapshot.cz!==cz||snapshot.projectionId!==adapter?.projectionId
+    ||snapshot.identity?.revision!==profile.revision
     ||snapshot.identity?.catalogSha256!==R12_CATALOG_SHA
     ||!Object.keys(R12_SOURCE).every(k=>snapshot.identity?.source?.[k]===R12_SOURCE[k])
     ||typeof snapshot.lookup!=='function')throw new TypeError('Invalid R12 exact-point snapshot');
@@ -50,7 +87,7 @@ export function createR12Proof(snapshot,adapter,cx,cz){
   function eligible(context){
     if(acceptedContexts.has(context))return true;
     contextChecks++;
-    if(!r12ContextEligible(context))return false;
+    if(!r12ContextEligible(context,profileId))return false;
     if(acceptedContexts.size<MAX_CHUNK_CONTEXTS&&fixedData(context)
       &&fixedData(context.source)&&fixedData(context.ecoregion))acceptedContexts.add(context);
     return true;
@@ -68,8 +105,8 @@ export function createR12Proof(snapshot,adapter,cx,cz){
     },
     diagnostics(){return {contextChecks,cachedContexts:acceptedContexts.size,maxCachedContexts:MAX_CHUNK_CONTEXTS};},
     result(){return !failed&&next===FOREST_POINT_COUNT?Object.freeze({key:`${cx}:${cz}`,cx,cz,
-      projectionId:adapter.projectionId,count:next,ecoregionId:R12_REGION.id,
-      modelId:'preview-temperate',sourceSha256:R12_SOURCE.sha256}):null;}
+      projectionId:adapter.projectionId,count:next,ecoregionId:profile.region.id,
+      modelId:profile.modelId,profileId,sourceSha256:R12_SOURCE.sha256}):null;}
   });
 }
 export function r12ChunkKey(group){

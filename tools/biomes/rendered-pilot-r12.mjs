@@ -9,13 +9,14 @@ import {createBiomeObserverPlan} from '../../src/scenery/biomes/route-observer-p
 import {FOREST_LAYOUT_ID} from '../../src/scenery/biomes/forest-candidate-adapter.js';
 import {snapshotIdentity} from '../../src/scenery/biomes/chunk-context-snapshot.js';
 import {buildSeasonalVegetationPrototypes} from './vegetation-seasonal-prototypes.mjs';
-import {R12_SOURCE,R12_CATALOG_SHA,R12_LIMITS,r12Season,r12Model,createR12Proof,r12ChunkKey,sameR12Geometry} from './rendered-pilot-policy-r12.mjs';
+import {R12_SOURCE,R12_CATALOG_SHA,R12_LIMITS,R12_PROFILE,renderedProfile,renderedRouteMatches,r12Season,r12Model,createR12Proof,r12ChunkKey,sameR12Geometry} from './rendered-pilot-policy-r12.mjs';
 
 export function validateR12Config(value){
   const text=JSON.stringify(value);if(!text||text.length>2*1024*1024)throw new RangeError('R12 config bound');
   const safe=JSON.parse(text);const identity=snapshotIdentity(safe?.directory);r12Season(safe.season??'summer');
+  const profile=renderedProfile(safe.profile??R12_PROFILE);
   if(!Object.keys(R12_SOURCE).every(k=>identity.source[k]===R12_SOURCE[k])||identity.catalogSha256!==R12_CATALOG_SHA
-    ||identity.revision!=='resolve2017-r12-nord-rendered'||typeof safe.baseUrl!=='string')throw new TypeError('R12 pinned source/configuration');
+    ||identity.revision!==profile.revision||typeof safe.baseUrl!=='string')throw new TypeError('R12 pinned source/configuration');
   return safe;
 }
 export function scheduleR12(callback,delay=0){
@@ -39,6 +40,7 @@ export function createRenderedBiomePilot({THREE,forestGroup,getState,getGenerati
   let enabled=false,token=0,cancel=null,busy=false,kit=null,client=null,bridge=null,plan=null;
   let config=null,origin=null,generation=null,season='summer',phase='disabled',error=null,worker=null;
   let previousPosition=null,windowSignature=null,knownGeometry=new WeakMap(),parentListening=false;
+  let profileId=R12_PROFILE;
   const waiters=new Set();
   const stats={polls:0,deferrals:0,proofsCompleted:0,proofsRefused:0,proofCandidates:0,swaps:0,restores:0,
     cancelledProofs:0,failures:0,foreignGeometry:0,ownerConflicts:0,proofEvictions:0,
@@ -63,9 +65,9 @@ export function createRenderedBiomePilot({THREE,forestGroup,getState,getGenerati
     proofs.clear();rejected.clear();config=null;origin=null;generation=null;worker=null;
     previousPosition=null;windowSignature=null;knownGeometry=new WeakMap();phase='disabled';
   }
-  function variant(){return kit.assets.find(a=>a.id===r12Model(season));}
+  function variant(){return kit.assets.find(a=>a.id===r12Model(season,profileId));}
   function apply(group,proof){
-    if(!proof||!current()||proof.projectionId!==plan.adapter.projectionId)return;
+    if(!proof||!current()||proof.profileId!==profileId||proof.projectionId!==plan.adapter.projectionId)return;
     // A hidden cached route may reuse numeric chunk addresses with a different
     // geographic origin. Current-route proof must never paint that other owner.
     const routeOwner=group?.parent;
@@ -129,7 +131,7 @@ export function createRenderedBiomePilot({THREE,forestGroup,getState,getGenerati
     });
   }
   async function certify(snapshot,c,t){
-    const proof=createR12Proof(snapshot,plan.adapter,c.cx,c.cz);let done=false;
+    const proof=createR12Proof(snapshot,plan.adapter,c.cx,c.cz,profileId);let done=false;
     while(!done){
       if(!await yieldIdle(t)){stats.cancelledProofs++;return null;}
       const begin=now();let n=0;
@@ -153,9 +155,10 @@ export function createRenderedBiomePilot({THREE,forestGroup,getState,getGenerati
       generation=getGeneration();origin={lat:s.origin?.lat,lon:s.origin?.lon};
       if(!Number.isSafeInteger(generation))throw new TypeError('R12 route generation');
       plan=createBiomeObserverPlan(getRoute(),{origin,routeId:`visual-${generation}`});
-      // This first rendered candidate is deliberately scoped to the authored Nordschleife.
-      if(plan.coordinates.length!==1068||plan.coordinates[0][0]!==6.951275||plan.coordinates[0][1]!==50.337751)
-        throw new Error('Pilote R12 : choisir la Nordschleife avant de démarrer');
+      // Route admission happens before model/Worker construction. Fine source
+      // proof remains independent: no regional class is guessed from this envelope.
+      if(!renderedRouteMatches(profileId,plan,origin))
+        throw new Error('Pilote visuel : choisir '+renderedProfile(profileId).routeLabel+' avant de démarrer');
       kit=assetFactory(THREE);client=clientFactory();phase='initializing';
       const ownClient=client;await ownClient.initialize(config);if(!current(t))return;
       bridge=bridgeFactory({client:ownClient,identity:config.directory,layoutId:FOREST_LAYOUT_ID,maxChunks:R12_LIMITS.snapshotChunks});
@@ -205,8 +208,8 @@ export function createRenderedBiomePilot({THREE,forestGroup,getState,getGenerati
   }
   function start(value){
     const safe=validateR12Config(value);
-    stop();config={directory:safe.directory,baseUrl:safe.baseUrl};season=safe.season??'summer';enabled=true;phase='waiting-route';error=null;arm();
-    return Object.freeze({status:'enabled',pilot:'r12-nord-rendered',season,placementAuthority:false});
+    stop();profileId=safe.profile??R12_PROFILE;config={directory:safe.directory,baseUrl:safe.baseUrl};season=safe.season??'summer';enabled=true;phase='waiting-route';error=null;arm();
+    return Object.freeze({status:'enabled',pilot:profileId,season,placementAuthority:false});
   }
   function setSeason(value){
     r12Season(value);if(!enabled)throw new Error('Pilote visuel arrêté');season=value;
@@ -216,10 +219,10 @@ export function createRenderedBiomePilot({THREE,forestGroup,getState,getGenerati
   function diagnostics(){
     let instances=0;const models={};
     for(const [m,r] of records){if(r.group.parent?.visible===false)continue;instances+=m.count;models[r.id]=(models[r.id]??0)+m.count;}
-    return {enabled,pilot:'r12-nord-rendered',diagnosticOnly:false,placementAuthority:false,geometrySubstitution:true,
+    return {enabled,pilot:profileId,diagnosticOnly:false,placementAuthority:false,geometrySubstitution:true,
       phase,error,season,...stats,modifiedChunks:records.size,modifiedInstances:instances,models,proofCache:proofs.size,
       limits:R12_LIMITS,worker,bridge:bridge?.diagnostics()??null,
-      scope:'Only source-verified homogeneous Nordschleife forest chunks; existing R4 tree placements only',
+      scope:renderedProfile(profileId).scope,
       seasonScope:'Tree models only; terrain, road, grip, weather and automatic seasons unchanged'};
   }
   function audit(){

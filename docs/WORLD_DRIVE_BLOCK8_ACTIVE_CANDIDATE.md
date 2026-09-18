@@ -1,140 +1,111 @@
 # World Drive — Block 8 active candidate
 
-Companion to the canonical plan. Updated 2026-09-18 (Toronto).
-Read the canonical plan on dev, live dev/main HEADs, exact dev Integration and PR #14.
+Canonical-plan companion. Updated 2026-09-18 (Toronto). Read the canonical plan on
+live dev, dev/main HEADs, exact Dev Integration and live PR #14 before any change.
 
-## Current state — R12 rendered pilot verified; NEW human driving gate open
+## Current state — R12 HUMAN PASS; R13 boreal rendered extension
 
-Existing branch `candidate/block8-biome-classifier-r1`, PR #14 draft/unmerged.
-R11 summer style/use is accepted (comment **5732527872**); R11W winter style is
-accepted (comment **5734183717**, user verdict **« pass excellent! »**).
-R9 loaded-circuit and R10 extended-Manic diagnostic hardware gates remain accepted.
-Do not repeat the accepted gallery or diagnostic-only tests. General model variety
-is deferred. The six summer and four winter shapes are the approved first-pass assets.
+Existing branch **candidate/block8-biome-classifier-r1**, PR #14 draft/unmerged.
+R12 rendered Nordschleife HUMAN PASS: **5736150662**, 2026-09-18.
+User confirms all requested tests passed, no errors or perceived performance loss,
+and visible summer/winter changes. The earlier launcher error was followed by a
+successful retry. No new numeric frame trace was supplied with that final verdict.
+Do not request another R12, R9/R10 diagnostic-only or R11/R11W gallery acceptance test.
 
-The latest request is an actual version to test in driving. R12 now renders the
-approved temperate broadleaf on source-qualified **Nordschleife** forest chunks,
-with manual summer/winter switching. It starts OFF. Winter means bare AND snowy
-tree branches, not winterized terrain, road, weather or grip.
-Detailed design, recovery and test procedure: **WORLD_DRIVE_BLOCK8_RENDERED_PILOT_R12.md**.
+R13 adds the approved **boreal conifer** to the same geometry-only controller on
+**Manic-2 → Manic-5**, alongside the accepted Nord temperate profile. Summer is the
+original 68-triangle conifer; winter uses its approved 180-triangle snowy form.
+R13 starts OFF and is explicitly selected by its own finite launcher/profile.
+The new R13 rendered hardware/visual gate is OPEN, subject to its own automated QA.
+Detailed contract, package, limits and user procedure:
+**WORLD_DRIVE_BLOCK8_RENDERED_MANIC_R13.md**.
 
-## Verified implementation reference and evidence
+The earlier R12 report and ledgers retain historical implementation/recovery evidence;
+their old OPEN wording is superseded by the HUMAN PASS above. R12 was delivered at
+**32f91f30e99779dcc541fd81c936ea4014faa9ee** with all four exact-head workflows PASS:
+R12 **35392536553**, R1–R9/integration **35392536598**, R10 **35392536546**,
+R11/R11W **35392536535**. All 97 canonical integration exit codes were zero.
+Do not transfer those results to R13 or another documentation/ancestry SHA.
 
-**e975aa7cfb98ad5d74155980377919e272dd791d** has all FOUR exact-head workflows PASS:
+## R13 implementation and boundaries
 
-- **35390641099** — R12 rendered pilot, full Vite/Three game and native Worker;
-- **35390641238** — R1–R9, protected forest R4 and **97/97 canonical integration commands**;
-- **35390641096** — R10 real Manic long-road regression;
-- **35390641199** — R11/R11W authoring, summer and winter gallery regressions.
+Two fixed profiles bind source revision, region, palette and seasonal asset IDs.
+Every chunk still needs all **1,744 exact R4 candidate positions** checked; no
+centre-point classification shortcut. Nord requires region **686 / biome 4 /
+Palearctic** and uses the generic temperate broadleaf. Manic requires **373 /
+Eastern Canadian forests / biome 6 / Nearctic** and uses the generic conifer.
+A source family is not actual species identification or current tree-cover mapping.
 
-The exact e975 integration artifact was downloaded: all 97 exit codes are zero,
-requiredFailures=0, toleratedFailures=0. R12 artifact **10565277777**, SHA-256
-`da008961224e6e3970cc9e4da353a28ab5f56d47e1621107f9a46a31c11fe950`, was downloaded;
-its tested-commit.txt is e975. Actual summer and winter screenshots were inspected.
-The report is PASS at the ORIGINAL **1100x700 / DPR 1 / four chunks /120 seconds**.
-There are **22 pure contract groups plus one active-route-owner regression**.
+Manic route admission uses known endpoint neighborhoods, 170–230 km length and a
+finite regional bounding box; it permits live-router resampling, not arbitrary or
+reversed routes. This is not an exact road hash or source classification. All fine
+candidate coordinates still need their own source proof. Profile/revision checks
+prevent Nord proofs or data being applied under the Manic profile.
 
-The native source oracle resolves **170,912 positions in 98 chunks**, all matching
-the original region 686 polygons. In the full game, the first checked summer capture
-contains four substituted chunks /2,862 instances. The immediate season identity
-comparison covers **eight chunks /5,320 instances**, unchanged counts and matrix
-hashes through summer/winter and 20 additional round trips. No page/engine errors;
-OFF and route reset stop the pilot and Worker and restore owned geometry.
-The UI teleport checks new geographic proof preparation, not complete visible
-forest convergence after the teleport. These are distinct assertions.
+All existing positions, instance matrices/counts, materials, manual bounds,
+transforms, exclusions, R4 first-layer order, prefetch, budgets and scheduling stay
+unchanged. No new per-chunk mesh/material pass, core streamer change, extra runtime
+seam, dependency change or model-buffer edit. The strict R12 strip-and-compare guard
+remains intact. Missing/corrupt/incompatible chunks retain the original visible forest.
+Every owned geometry replacement is reversible; hidden cached routes remain protected.
 
-This is automation in software-rendered Chromium, NOT a human GPU/FPS/high-speed
-PASS. Full-game draw calls change as the original forest streams; no constant scene
-cost or paired OFF/ON performance certification is inferred. The NEW human gate is
-visible tree geometry, seasonal switching, noticeable pop-in and driving fluidity.
+The existing cooperative **0.8 ms** proof deadline is checked before each read;
+1,744-read cap, genuine idle admission, 120 ms polling and two requests per poll remain.
+Snapshot cache max 16 chunks/4 MiB accounted payload; original Worker limits remain.
+An indivisible read can overrun the deadline; no hard real-time promise is made.
+Only tree geometry changes. No winterized road/terrain, weather, automatic seasons,
+grip, physics, shrub/rock planting, within-chunk mixtures or global activation.
+General modeling variety stays deferred. Trusted regional altitude/datum and actual
+boundary distances remain prerequisites for the optional R11 policies.
 
-## Protected implementation boundary
+## Exact-head gates and branch discipline
 
-R12 changes ONLY geometry on existing R4 InstancedMeshes after every one of the
-chunk's **1,744 exact candidate coordinates** resolves to the reviewed region:
-**686 / Western European broadleaf forests / biome 4 / Palearctic**, with pinned
-RESOLVE source/catalog identity. No centre-of-chunk shortcut or new tree placement.
-The replacement is the approved generic temperate shape: **60 triangles summer,
-114 winter**, versus the original 68-triangle conifer. This is not a claim that every
-actual tree near the circuit is deciduous, a current tree-cover map or species identity.
+Before this synchronization: dev **6e39ca5c55215c4bf8b1822ee9a166a964404d34**,
+canonical Dev Integration **35392505843 PASS**. The new dev advance is documentation
+only (this ledger and the R13 report); it does NOT integrate candidate code or PR #14.
+Every resulting dev HEAD needs its OWN canonical Dev Integration run.
 
-Original instance matrices, density counts, material, manual bounds and exclusions
-are unchanged. No extra per-chunk mesh/material pass. R4 first-layer order, prefetch,
-budgets and scheduler remain protected. Missing/corrupt/mixed/out-of-scope chunks
-retain the original visible forest; every owned substitution is reversible.
-Hidden cached routes with the same numeric chunk addresses are NOT eligible:
-e975 checks membership in the registered, attached, visible route owner before apply.
+R13's complete candidate gate comprises FIVE exact-head workflows:
+R1–R9/integration, R10 long road, R11/R11W authoring, R12 rendered Nord, and NEW
+R13 rendered boreal Manic. Pure/packaging tests run locally, while the full Vite/Three
+and native Worker gates run in Actions. Require every final workflow to finish green,
+inspect its exact-head artifacts and actual screenshots before requesting a user test.
+Final candidate SHA, run IDs and measured outcomes are in the live PR checkpoint.
+Local tests, old PASS and software-rendered frame samples are not human GPU evidence.
 
-Two exact additive seams register the scene and route lifecycle; the single inert
-`src/app/forest-visual-pilot.js` port lazily imports the explicit controller. The
-source guard removes ONLY the two reviewed insertions and compares the remaining
-runtime to c7bb byte-for-byte. No broad renderer exclusion, Worker/domain rewrite,
-dependency update, road/terrain/hydro/physics change or global activation.
+Main is **ad893a9d078df4a3d24d81b929bb2905a8bc57e1 / V21.33** and must remain
+untouched without explicit approval. No merge, release or global activation is approved.
+Block 8 remains ACTIVE candidate work, not integrated or DONE/CERTIFIED.
 
-R12 retains at most 128 proofs, 128 modified meshes and two route-owner listeners;
-bridge max 16 snapshots /4 MiB accounted payload, original pending/Worker limits.
-Current proof policy allows up to **1,744 reads**, but checks the unchanged **0.8 ms
-deadline BEFORE EACH read**. A single read can cross it and is measured. At least
-1 ms genuine idle headroom is still required; timeout never bypasses admission.
-The old 64/256 operation caps are historical. Identical deeply frozen R6 context
-records share one bounded eligibility check; all exact coordinates are still checked.
-Mutable records/accessors are not memoized. Polling stays 120 ms/two requests.
-No automatic seasons, mixed models per chunk, shrub/rock planting or new modeling.
-Real boundary distances and qualified altitude/datum inputs remain prerequisites
-for their respective optional policies; synthetic thresholds are not defaults.
+## Accepted history and finite data
 
-## Recovery history — do not restart or present failed references as PASS
+R9 actual-loaded circuit PASS: **5729735550**. R10 extended Manic PASS:
+**5731692833**, telemetry **5731654953** (32 publications/16 evictions, 16 snapshots,
+567,808 accounted bytes at 10,680.923 m; later console 10,802.930 m is a different sample).
+R11 summer style/use approval: **5732527872**. R11W winter style: **5734183717**.
+All six summer/four winter buffers remain approved; temperate winter is bare AND snowy.
+The road-furniture profiling lead remains separate, not a reported R13 regression.
+Detailed historical R1–R12 reports and the ledger at 32f91f remain available.
 
-R12 already existed at **93b7fb0c1150e1b9645b566c2379edf0ec66efc1**;
-**ec6bec9cdf3cda7a380d27af513ec45f32d6258a** preserved the native timeout.
-The four-chunk gate failed despite 170,912 correct source reads and two rendered
-chunks. The older chat summary naming only c7bb omitted this published work.
-**077e66b38241bba7118dcb587fedc54ced18015e**, QA-only DPR 0.5, also failed
-(**35387973969**); lower raster density was not a fix and is not the delivered setup.
-**454256e41698c132b91241105c9c24a3494f97e0** tried the 256-read cap with the
-same deadline. Subsequent immutable-context reuse and finite full-chunk ceiling,
-then active-route ownership protection, are included in verified e975.
-Earlier failure details remain in the R12 report and ledger at 5a7a8f3.
-
-## Branch discipline and documentation-only follow-up
-
-Before this synchronization dev is **5a7a8f3f8bcfadcc3ce85566e4d52d6f40d50acd**,
-canonical Dev Integration **35389265763 PASS**. This follow-up changes only this
-ledger and the R12 report on dev/candidate. It does NOT integrate PR #14.
-All subsequent documentation/ancestry HEADs need their OWN exact QA: canonical Dev
-Integration for dev and all four candidate workflows. Their final SHA/run IDs are
-recorded in the live PR checkpoint; never transfer e975's PASS to a newer SHA.
-Main remains **ad893a9d078df4a3d24d81b929bb2905a8bc57e1 / v21.33**.
-No PR merge, release or main movement is authorized. Block 8 remains ACTIVE, not DONE.
-
-## Accepted hardware evidence and data provenance
-
-R9 loaded circuit PASS: **5729735550**. R10 telemetry: **5731654953**;
-R10 **« tres fluide aucune saccade »** verdict: **5731692833**.
-Complete Manic JSON: 10,680.923 m, 32 publications, 16 snapshot evictions,
-16 resident snapshots /567,808 accounted bytes, three successful tile loads,
-no rejection; current plus three forward chunks /6,976 resolved candidates.
-The later console at 10,802.930 m is a different capture. Approximate 220 km/h was
-user-reported, not a full speed trace. Nonzero cumulative frame counters are not
-erased. This does not certify paired OFF/ON delta or all visible forest. The
-road-furniture profiling lead is separate, not a blocker or reported regression.
-
-RESOLVE archive SHA-256:
+Pinned RESOLVE source archive:
 `be36d6209e443038d02e309f0447c6e7f2a62f5fe60c605ffe90d064952f2a60`.
-R10 pack unchanged: 55,499 bytes /
-`560c91b174f9d24b091c03a214fd9bd70fd58fce5702a59565d871f3d56d669b`.
-R9 pack unchanged: 30,321 bytes /
-`221689248d420b1fb1971723d951151e47d9a2d17202f925cf0c0e7796c4cf07`.
-R12 separate pack: **34,004 bytes /12 fine tiles /two pages**, SHA-256
-`62354936dadd3a6340061665ab4c62e1f77f1e23e427c8940bcc66be18b74451`.
-It never replaces the R9/R10 directories. Historical R1–R11W reports remain available.
+R9 unchanged: 30,321 bytes / `221689248d420b1fb1971723d951151e47d9a2d17202f925cf0c0e7796c4cf07`.
+R10 unchanged: 55,499 bytes / `560c91b174f9d24b091c03a214fd9bd70fd58fce5702a59565d871f3d56d669b`.
+R12 unchanged: 34,004 bytes / `62354936dadd3a6340061665ab4c62e1f77f1e23e427c8940bcc66be18b74451`.
+R13 repackages R10's **26 identical gzip tiles /two revision-bound manifest pages**,
+without added coverage or changed polygons. Separate directory `pilot-r13`.
+Reproducible local pack: 42,342 bytes /
+`1b9bed5cac9dc431c470182c6ec5a1bee35c29ac10ae6f30461b11ee01050bb1`;
+verify the final native workflow package agrees before delivery.
 
 ## Exact next action
 
-Verify final documentation/ancestry exact-head QA, then deliver the R12 pack and
-pull instructions for the same candidate. Ask for the NEW Nordschleife rendered
-human checkpoint only: a few kilometers with summer trees, manual winter switch,
-visual/pop-in/fluidity feedback and visualPilot/framePacing JSON. No new Manic or
-gallery retest. Keep OFF by default, opt-in and unmerged until the verdict.
-Afterwards widen coverage/palettes without another general modeling phase.
+Finish/verify all FIVE final candidate workflows and the documentation-only dev run.
+On failure, use preserved evidence to fix the original case; do not ask for a human
+PASS on a failing candidate. Once green, provide the small R13 pack and same-branch
+pull instructions. The NEW user test is snowy conifers in driving on Manic: a few
+kilometers, summer/winter switching, late model changes and fluidity. No forced
+10 km diagnostic-only cache retest or repeated gallery acceptance.
+Keep the candidate opt-in/unmerged until the new R13 verdict. Afterwards widen the
+reviewed regional profiles using existing models, not a new general variety phase.
 Worldwide fine distribution, persistent caching and trusted-root retrieval remain later work.
