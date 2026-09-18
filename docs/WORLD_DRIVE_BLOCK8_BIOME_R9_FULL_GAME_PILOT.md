@@ -126,3 +126,61 @@ rAF on normal completion/deadline, and separately rejects caught Frame/Startup/
 Vehicle-start/Audio-frame errors even if ordinary warning storage is full. Three
 local emulated-scheduler checks cover that measurement lifecycle; they are not
 native timing evidence. All changes require a new exact-head native/integration run.
+
+
+## Verified corrected full-game milestone — b8dd4f3e464f
+
+Exact candidate `b8dd4f3e464f9b66b0dce498ca26c3a60c0cd764`, run **35290003608 PASS**.
+Both jobs completed, including full production game and stronger jump/error gates.
+All 97 maintained integration commands exit zero, requiredFailures=0 and
+ toleratedFailures=0; prior R1–R8 and human-certified forest R4 regressions remain.
+Ten package/launcher and four re-anchoring groups pass. The recorded pre-fix Laguna
+position fails on the old plan and passes unchanged on the corrected one.
+
+Native Chromium 143.0.7499.4 / WebGL2 SwiftShader at 960x540 runs actual internal
+game services. No page errors or caught Frame/Startup/Vehicle/Audio errors. Default
+off has no pilot request/Worker; stop ends diagnostic I/O and every owned Worker.
+The two actual UI circuit presets render 206 and 1,068 vertices. All retained jump
+current/forward chunks have 1,744 resolved candidates and no unavailable/no-data.
+This is at most four sampled chunks, NOT all visible forest or complete fine coverage.
+
+| Jump | Expected progress (m) | Observed progress (m) | Route distance (m) |
+| --- | ---: | ---: | ---: |
+| Laguna 25% | 900.214 | 900.201 | <0.001 |
+| Laguna 75% | 2,700.643 | 2,700.662 | <0.001 |
+| Nordschleife 25% | 5,186.540 | 5,187.578 | 0.040 |
+| Nordschleife 75% | 15,559.621 | 15,559.065 | 0.023 |
+
+Maximum receipt validation/copy cost: 1.3 ms Laguna, 0.4 ms Nordschleife. Peak
+retained/accounted bridge payload: five chunks / 177,440 bytes and four / 141,952.
+These costs exclude separate transport/service/native/message memory; they are
+not total heap or hard scheduling guarantees. Software-rendered parked p50 frames
+were roughly 633–833 ms with only 7–10 frames/window. Do NOT present these as an
+absence-of-regression result, hardware frame-pacing certification or driving FPS.
+Activation intervals are included in the raw report; real hardware is the next gate.
+
+Verified artifacts: fullgame 10525788729, integration 10526042398, code 10525604055.
+Their SHA-256 digests match GitHub's metadata; all 74 code files match locally tested
+bytes. The installable ZIP is 30,321 bytes, SHA-256
+`221689248d420b1fb1971723d951151e47d9a2d17202f925cf0c0e7796c4cf07`.
+It is byte-identical to the locally reproduced package from the pinned R8 pilot.
+Subsequent docs/ancestry checkpoints require their own exact-head CI. These numbers
+refer to the immutable b8dd implementation experiment, not an inferred later run.
+
+## Human handoff / continuation
+
+The finite pilot is ready for a diagnostic hardware comparison only once the final
+candidate docs HEAD also passes. Provide the pilot ZIP and existing branch pull;
+no Python install or raw source download is needed by the user. Copy its public/
+subtree, start the game normally, choose one of the two circuits and compare OFF /
+ON / OFF with identical settings and viewport. Close DevTools during driving.
+Before stop, collect `WorldDriveDiagnostics.forest.biomes.snapshot()` together with
+`WorldDriveFramePacing()`. The console snippets above use the existing R8 API.
+
+No changed trees should be visible. Missing pilot data outside these three tiles
+remains explicit and does not alter the existing forest. Do not test this finite
+pack on Manic-2 → Manic-5 expecting fine coverage. Await the hardware diagnostic
+checkpoint; then expand to a real long-road fine-data pilot before any claim of
+sustained high-speed readiness. Keep renderer, palettes, forest budgets and main
+untouched. PR #14 remains draft/unmerged. The active ledger carries the exact next
+step and preserves the distinction between documentation on dev and candidate code.
