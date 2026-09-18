@@ -2,150 +2,112 @@
 
 Canonical-plan companion. Updated 2026-09-18 (Toronto). Read the canonical plan on
 live dev, dev/main HEADs, exact Dev Integration and live PR #14 before any change.
+GitHub live state and the latest verified PR checkpoint override historical reports.
 
-## Current state — R12 HUMAN PASS; R13 boreal rendered extension
+## Current state — R12 and R13 HUMAN PASS; R14 Laguna woodland
 
 Existing branch **candidate/block8-biome-classifier-r1**, PR #14 draft/unmerged.
-R12 rendered Nordschleife HUMAN PASS: **5736150662**, 2026-09-18.
-User confirms all requested tests passed, no errors or perceived performance loss,
-and visible summer/winter changes. The earlier launcher error was followed by a
-successful retry. No new numeric frame trace was supplied with that final verdict.
-Do not request another R12, R9/R10 diagnostic-only or R11/R11W gallery acceptance test.
+**R13 rendered Manic HUMAN PASS: 5737262854**, user: **« ok donc pass pour mon test »**.
+This follows their screenshot of snowy conifers and the clarification that green
+ground is expected: only tree geometry is seasonal. Pale automated-test ground
+was already pale in summer, from blocked geographic services and fallback terrain,
+not snow. No new machine-readable frame trace accompanied this verdict.
+**R12 rendered Nordschleife HUMAN PASS: 5736150662** remains accepted.
+Do not repeat either rendered test, R9/R10 diagnostics or R11/R11W gallery acceptance.
 
-R13 adds the approved **boreal conifer** to the same geometry-only controller on
-**Manic-2 → Manic-5**, alongside the accepted Nord temperate profile. Summer is the
-original 68-triangle conifer; winter uses its approved 180-triangle snowy form.
-R13 starts OFF and is explicitly selected by its own finite launcher/profile.
-The new R13 rendered hardware/visual gate is OPEN, subject to its own automated QA.
-Detailed contract, package, limits and user procedure:
-**WORLD_DRIVE_BLOCK8_RENDERED_MANIC_R13.md**.
+R14 uses the already approved **preview-woodland** shape (44 triangles) on source-
+qualified **Laguna Seca** chunks. It is a THIRD fixed regional profile, not global
+activation. The NEW human checkpoint is its silhouette, late model changes and
+fluidity in a driven lap, subject to its own targeted automated QA first.
+**Summer only**: no dry-woodland winter counterpart was approved; requests for
+winter must fail before destroying a valid summer view. Conifer/temperate winter
+variants remain unchanged. Additional general model variety stays deferred.
 
-The earlier R12 report and ledgers retain historical implementation/recovery evidence;
-their old OPEN wording is superseded by the HUMAN PASS above. R12 was delivered at
-**32f91f30e99779dcc541fd81c936ea4014faa9ee** with all four exact-head workflows PASS:
-R12 **35392536553**, R1–R9/integration **35392536598**, R10 **35392536546**,
-R11/R11W **35392536535**. All 97 canonical integration exit codes were zero.
-Do not transfer those results to R13 or another documentation/ancestry SHA.
+R14 contract, source evidence, procedure and limitations:
+**WORLD_DRIVE_BLOCK8_RENDERED_LAGUNA_R14.md**.
+Final delivered SHA, exact-head run IDs and measured native results are recorded in
+live PR #14. Never present local tests or a previous SHA's PASS as its native result.
 
-## R13 implementation and boundaries
+## Accepted references and protected implementation boundary
 
-Two fixed profiles bind source revision, region, palette and seasonal asset IDs.
-Every chunk still needs all **1,744 exact R4 candidate positions** checked; no
-centre-point classification shortcut. Nord requires region **686 / biome 4 /
-Palearctic** and uses the generic temperate broadleaf. Manic requires **373 /
-Eastern Canadian forests / biome 6 / Nearctic** and uses the generic conifer.
-A source family is not actual species identification or current tree-cover mapping.
+R13 was accepted at **2d1d46b9372b9dc02f17955f22b96fb7594e0f11**, all FIVE workflows
+PASS: R13 **35402501194**, R1–R9/integration **35402501135**, R12 **35402501148**,
+R10 **35402501162**, R11/R11W **35402501097**. All 97 canonical command exit codes
+were zero, without required or tolerated failures. R12 was accepted at 32f91f.
+Detailed earlier recovery/evidence remains in the R12/R13 reports and Git history.
+Their human-gate OPEN wording is historical and superseded by the comments above.
 
-Manic route admission uses known endpoint neighborhoods, 170–230 km length and a
-finite regional bounding box; it permits live-router resampling, not arbitrary or
-reversed routes. This is not an exact road hash or source classification. All fine
-candidate coordinates still need their own source proof. Profile/revision checks
-prevent Nord proofs or data being applied under the Manic profile.
+Every substituted mesh still requires **all 1,744 exact original R4 candidate
+positions** to qualify, not its centre. Profiles bind revision, source identity,
+region/realm/palette and approved model. Nord: region 686/biome 4/Palearctic;
+Manic: region 373/biome 6/Nearctic; Laguna: **423 / California interior chaparral
+and woodlands / biome 12 / Nearctic**. The Laguna route check compares all 206
+committed circuit coordinates and the projection origin, not just its first point.
+This is a regional art-family pilot, not botanical species or current land cover.
 
-All existing positions, instance matrices/counts, materials, manual bounds,
-transforms, exclusions, R4 first-layer order, prefetch, budgets and scheduling stay
-unchanged. No new per-chunk mesh/material pass, core streamer change, extra runtime
-seam, dependency change or model-buffer edit. The strict R12 strip-and-compare guard
-remains intact. Missing/corrupt/incompatible chunks retain the original visible forest.
-Every owned geometry replacement is reversible; hidden cached routes remain protected.
+Only existing **InstancedMesh.geometry** changes. Placements, instance matrices,
+counts, materials, manual bounds, transforms, road/water/building exclusions,
+R4 first-layer order, visibility/prefetch, CPU budgets and scheduler stay unchanged.
+No new per-chunk meshes/material passes, core-streamer edits, extra src seams,
+dependency updates or model-buffer changes. The strict R12 runtime/source boundary
+remains enforced. Unknown/mixed/out-of-scope data retains the original forest,
+never a guessed homogeneous palette or a hole. Hidden cached routes are protected.
 
-The existing cooperative **0.8 ms** proof deadline is checked before each read;
-1,744-read cap, genuine idle admission, 120 ms polling and two requests per poll remain.
-Snapshot cache max 16 chunks/4 MiB accounted payload; original Worker limits remain.
-An indivisible read can overrun the deadline; no hard real-time promise is made.
-Only tree geometry changes. No winterized road/terrain, weather, automatic seasons,
-grip, physics, shrub/rock planting, within-chunk mixtures or global activation.
-General modeling variety stays deferred. Trusted regional altitude/datum and actual
-boundary distances remain prerequisites for the optional R11 policies.
+**Density is not adapted to the sparse Mediterranean woodland policy yet.** R14
+is a shape test using existing R4 density, not a claim to recreate the actual sparse
+vegetation around Laguna. Mixed boundary chunks are refused, not blended.
+No winter terrain/roads/weather/grip, automatic seasons, within-chunk mixtures,
+shrub/rock planting or altitude/boundary policies are introduced. The optional R11
+policies still require real regional boundary/elevation/datum evidence.
 
-## Exact-head gates and branch discipline
+## Bounded preparation and finite data
 
-Before this synchronization: dev **6e39ca5c55215c4bf8b1822ee9a166a964404d34**,
-canonical Dev Integration **35392505843 PASS**. The new dev advance is documentation
-only (this ledger and the R13 report); it does NOT integrate candidate code or PR #14.
-Every resulting dev HEAD needs its OWN canonical Dev Integration run.
+Nord and Laguna use the finite circuit source window **3,600 m ahead /2,600 m behind
+/2,800 m corridor**. Manic retains **2,400/700/900 m**, swapping ahead/behind for
+reverse vehicle travel. These are data windows, not the R4 draw radius.
 
-R13's complete candidate gate comprises FIVE exact-head workflows:
-R1–R9/integration, R10 long road, R11/R11W authoring, R12 rendered Nord, and NEW
-R13 rendered boreal Manic. Pure/packaging tests run locally, while the full Vite/Three
-and native Worker gates run in Actions. Require every final workflow to finish green,
-inspect its exact-head artifacts and actual screenshots before requesting a user test.
-Final candidate SHA, run IDs and measured outcomes are in the live PR checkpoint.
-Local tests, old PASS and software-rendered frame samples are not human GPU evidence.
+The unchanged limits remain: 128 proofs/modified meshes, two route-owner listeners,
+16 bridge snapshots/4 MiB accounted payload, 120 ms polling/two chunk requests,
+1,744-read ceiling, **0.8 ms cooperative deadline checked before EACH read**, and
+genuine idle admission. An indivisible operation may overrun the deadline. No hard
+real-time guarantee or total-browser/GPU-memory ceiling is claimed.
+OFF is inert; route change/pagehide stops pending work and restores owned geometry.
+Starting a rendered pilot stops the old diagnostic-only observer, avoiding duplicates.
 
-Main is **ad893a9d078df4a3d24d81b929bb2905a8bc57e1 / V21.33** and must remain
-untouched without explicit approval. No merge, release or global activation is approved.
-Block 8 remains ACTIVE candidate work, not integrated or DONE/CERTIFIED.
-
-## Accepted history and finite data
-
-R9 actual-loaded circuit PASS: **5729735550**. R10 extended Manic PASS:
-**5731692833**, telemetry **5731654953** (32 publications/16 evictions, 16 snapshots,
-567,808 accounted bytes at 10,680.923 m; later console 10,802.930 m is a different sample).
-R11 summer style/use approval: **5732527872**. R11W winter style: **5734183717**.
-All six summer/four winter buffers remain approved; temperate winter is bare AND snowy.
-The road-furniture profiling lead remains separate, not a reported R13 regression.
-Detailed historical R1–R12 reports and the ledger at 32f91f remain available.
-
-Pinned RESOLVE source archive:
+R14's separate package is **nine fine tiles /one manifest page**, generated from
+the unchanged pinned source and existing polygon builders. R9/R10/R12/R13 packages
+and directories are not replaced. Pinned RESOLVE source SHA-256:
 `be36d6209e443038d02e309f0447c6e7f2a62f5fe60c605ffe90d064952f2a60`.
-R9 unchanged: 30,321 bytes / `221689248d420b1fb1971723d951151e47d9a2d17202f925cf0c0e7796c4cf07`.
-R10 unchanged: 55,499 bytes / `560c91b174f9d24b091c03a214fd9bd70fd58fce5702a59565d871f3d56d669b`.
-R12 unchanged: 34,004 bytes / `62354936dadd3a6340061665ab4c62e1f77f1e23e427c8940bcc66be18b74451`.
-R13 repackages R10's **26 identical gzip tiles /two revision-bound manifest pages**,
-without added coverage or changed polygons. Separate directory `pilot-r13`.
-Reproducible local pack: 42,342 bytes /
-`1b9bed5cac9dc431c470182c6ec5a1bee35c29ac10ae6f30461b11ee01050bb1`;
-verify the final native workflow package agrees before delivery.
+Catalog SHA-256: `e35573844a53dbcf42b508e123649e62651f886d332bf1239ae97cf28d13e0e7`.
+Worldwide fine distribution, persistent caching and trusted-root retrieval remain later work.
 
-## R13 native fixture correction (failed evidence retained)
+## Validation and branch discipline
 
-Initial candidate **59c433cab7e55af8676520c382ed2b6cf00fe54f**, R13 run
-**35400496903**, FAILED before the vehicle picker: the test HTTP interceptor used
-Python `urlparse`, which moved the semicolon-separated destination to `.params`.
-The fixture therefore rejected BOTH real Manic routing URLs and the game correctly
-remained at "Trajet indisponible". No R13 in-game Worker/geometry activation occurred.
-The independent native source check had passed **383 chunks /667,952 exact points**;
-that is not a rendered PASS for this failed run.
+Before this docs synchronization dev is **b702b6bcf98cde676c478a8000385e2920565f82**,
+exact **Dev Integration 35402461513 PASS**. Dev documentation advances affect only
+this ledger and the R14 report, NOT candidate runtime or PR integration. Each newer
+dev HEAD requires its own exact Dev Integration. Main remains protected at
+**ad893a9d078df4a3d24d81b929bb2905a8bc57e1 / V21.33**.
 
-The QA-only correction uses a tested `urlsplit`-based finite route matcher, preserves
-the real captured response and records matched routing URLs. Nine pure network
-regressions cover both actual providers, literal/escaped separators and rejected
-routes/values. The original 1,497-point route, four rendered chunks, 120-second gate,
-1100x700/DPR1, runtime, data bytes and all earlier assertions remain unchanged.
-No synthetic fallback or timeout increase is used. Require the new exact-head
-workflows and inspect screenshots; never transfer partial evidence to the correction.
+R14's full candidate gate has SIX exact-head workflows: R1–R9/integration, R10,
+R11/R11W, R12, R13 and new **Rendered Laguna Woodland R14**. Local contract/package/
+real-byte checks are distinct from native Worker/full-game Actions results. Keep
+1100x700 /DPR1 /four rendered chunks /120 seconds; inspect final evidence and actual
+screenshots. Software rasterization and controlled geographic services do not
+certify the user's GPU, high-speed flow or an exact paired OFF/ON performance delta.
 
-## R13 finite-window correction (second failure retained)
-
-Candidate **c8b1bc03e734bed8608a7278ccf9c7398d1630a5**, R13 run **35401396068**,
-correctly admitted the real Manic route, but FAILED the unchanged four-chunk gate:
-zero proofs/substitutions, `missing-coverage`, no page/engine errors. The shared
-controller inherited Nord's 2,800 m source corridor, requesting undeclared southern
-tiles **1115-407 and 1116-407** from the intentionally unchanged R10 package.
-The independent native source oracle again passed 383 chunks/667,952 points, but
-this partial evidence is not a rendered PASS.
-
-The correction binds preparation windows to each reviewed profile: Manic uses
-R10's provisioned **2,400 m ahead /700 m behind /900 m corridor**, reversed when
-travel direction reverses. Nord's original window stays unchanged. This changes
-source-window selection only, NOT R4 visibility, density, placements, streaming or
-CPU/cache budgets. All exact-point eligibility checks remain; chunks outside the
-finite loaded coverage retain baseline conifers rather than a guessed snowy model.
-The 26 gzip payloads/package are unchanged. A permanent real-byte regression
-reproduces the old missing tiles, then verifies corrected startup, both directions,
-3,190 fine-spaced coverage windows, 44 real preparation windows and 6,976 exact
-startup positions. The native oracle now calls the same profile-window selector as
-the runtime, not a separately hardcoded lookalike. No timeout/gate relaxation.
+Local R14 source checks cover 48 chunks/83,712 points: 39 homogeneous eligible
+chunks, seven mixed and two wholly other-region chunks, correctly refused by policy.
+Native source agreement and actual rendered proof use must be checked separately.
+No merge, release, global activation or main movement is approved. Block 8 is ACTIVE,
+not integrated or DONE/CERTIFIED.
 
 ## Exact next action
 
-Finish/verify all FIVE final candidate workflows and the documentation-only dev run.
-On failure, use preserved evidence to fix the original case; do not ask for a human
-PASS on a failing candidate. Once green, provide the small R13 pack and same-branch
-pull instructions. The NEW user test is snowy conifers in driving on Manic: a few
-kilometers, summer/winter switching, late model changes and fluidity. No forced
-10 km diagnostic-only cache retest or repeated gallery acceptance.
-Keep the candidate opt-in/unmerged until the new R13 verdict. Afterwards widen the
-reviewed regional profiles using existing models, not a new general variety phase.
-Worldwide fine distribution, persistent caching and trusted-root retrieval remain later work.
+Finish/verify all SIX final candidate workflows and exact docs-only dev Integration.
+Use preserved evidence to correct failures rather than weaken gates. Once green,
+deliver ONLY the new R14 Laguna driving test and finite package; await its verdict.
+A driven lap should assess the approved dry-woodland shape, late changes and fluidity.
+No winter test on this profile, no repeated Manic/Nord/gallery acceptance. Keep OFF
+by default and unmerged. Afterwards expand reviewed profiles using existing assets,
+not a general-model-variety phase or an implicit terrain-snow change.
