@@ -5,6 +5,17 @@ R9/R10 diagnostic hardware checkpoints are accepted; do not repeat them.
 No production source, tree placement, palette activation, density, scheduling,
 route, terrain, hydro, physics, dependencies or main changes belong to this stage.
 
+## Style outcome and winter extension
+
+The user approved these first-pass summer silhouettes for use in the next candidate:
+« C'est bien comme premiere passe, tu peux les utiliser, on ajoutera de la variete plus tard ».
+HUMAN STYLE PASS is recorded in PR comment 5732527872. Do not request that same style
+verdict again. Geometry/policy details below describe the unchanged SUMMER baseline.
+The subsequently requested four winter variants are documented in
+**WORLD_DRIVE_BLOCK8_VEGETATION_R11_WINTER.md**, including the explicit leafless AND
+snowy temperate tree. Winter style is a separate pending gate. Production integration,
+regional eligibility and full-game performance are not established by either gallery.
+
 ## Why this stage
 
 The active loader `src/forest-water-assets.js` uses the same 68-triangle procedural
@@ -133,13 +144,13 @@ local syntax/pure tests. No local Three/native-browser run is claimed without ev
 After exact-head R11 + inherited R1–R10 QA are green, open under normal `npm run dev`:
 `http://localhost:5173/tools/biomes/vegetation-preview-r11.html`.
 No Python installation, data package or console activation is needed for the gallery.
-It does not launch the driving scene. Request a STYLE verdict before assigning the
-models to real regions; do not request another unchanged R9/R10 drive.
+It does not launch the driving scene. The summer STYLE verdict is now accepted;
+regional qualification remains before driving use. Do not repeat R9/R10 drives.
 
 ## Next integration gate
 
-Inspect the gallery first; adjust silhouettes/proportions only when supported by the
-review. Then qualify actual regional palette memberships, altitude and source-boundary
+Retain the accepted summer proportions and defer general variety. Complete the
+requested winter gallery/style checkpoint described in the companion report. Then qualify actual regional palette memberships, altitude and source-boundary
 inputs and design one opt-in multi-palette rendered pilot, without global replacement.
 Preserve R4 first-layer scheduling/full density/exclusions and conservative unavailable
 handling. Missing prepared data must never erase the accepted live forest mid-frame.
