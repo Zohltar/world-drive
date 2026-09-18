@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import {createRenderedBiomePilot} from '../tools/biomes/rendered-pilot-r12.mjs';
+import {createRenderedBiomePilot,scheduleR12} from '../tools/biomes/rendered-pilot-r12.mjs';
 import {R12_SOURCE,R12_CATALOG_SHA,R12_REGION,R12_LIMITS,r12Model,r12Season,r12ContextEligible,createR12Proof,sameR12Geometry,r12ChunkKey} from '../tools/biomes/rendered-pilot-policy-r12.mjs';
 import {BIOME_PROFILES} from '../src/scenery/biomes/biome-profiles.js';
 import {createForestCandidateAdapter,FOREST_LAYOUT_ID} from '../src/scenery/biomes/forest-candidate-adapter.js';
@@ -28,7 +28,7 @@ await test('whole original layout: every coordinate checked, not a centre assump
   const seen=[];const proof=createR12Proof(snapshot(0,0,(i,lon,lat)=>{
     const p=adapter.point(0,0,i);assert.equal(lon,p.lon);assert.equal(lat,p.lat);seen.push(i);return context;
   }),adapter,0,0);
-  let r;do{r=proof.step();assert.ok(r.checked<=64);}while(!r.done);
+  let r;do{r=proof.step();assert.ok(r.checked<=R12_LIMITS.checksPerSlice);}while(!r.done);
   assert.equal(r.eligible,true);assert.equal(proof.result().count,1744);
   assert.deepEqual(seen,Array.from({length:1744},(_,i)=>i));assert.equal(proof.step().checked,0);
 });
@@ -41,7 +41,7 @@ await test('one unresolved or incompatible last candidate refuses the entire sub
 await test('corrupt layout/address/source identity and unbounded slices are rejected',()=>{
   for(const patch of [{count:1743},{layoutId:'fake'},{cx:1},{projectionId:'old'},
     {identity:{...identity,catalogSha256:'0'.repeat(64)}}])assert.throws(()=>createR12Proof({...snapshot(),...patch},adapter,0,0));
-  for(const n of [0,65,NaN,Infinity,1.1])assert.throws(()=>createR12Proof(snapshot(),adapter,0,0).step(n));
+  for(const n of [0,R12_LIMITS.checksPerSlice+1,NaN,Infinity,1.1])assert.throws(()=>createR12Proof(snapshot(),adapter,0,0).step(n));
   assert.deepEqual(r12ChunkKey({name:'forest-chunk--2:3'}),{key:'-2:3',cx:-2,cz:3});
   for(const name of ['x','forest-chunk-NaN:3','forest-chunk-1.1:3','forest-chunk-999999999999999999999:0'])assert.equal(r12ChunkKey({name}),null);
 });
@@ -54,7 +54,7 @@ class Group{
   remove(child){const i=this.children.indexOf(child);if(i>=0){this.children.splice(i,1);child.parent=null;this.dispatch('childremoved',child);}}
 }
 function geometry(offset=0){return {attributes:Object.fromEntries(['position','normal','color'].map(k=>[k,{array:new Float32Array([offset,1,2]),count:1}])),index:{array:new Uint16Array([0,1,2]),count:3}};}
-function setup({bad=false,late=false,wrongRoute=false}={}){
+function setup({bad=false,late=false,wrongRoute=false,clock=null}={}){
   const base=geometry(),summer=geometry(1),winter=geometry(2),q=[],parent=new Group('forest'),rg=new Group('forest-route-cache-one');parent.add(rg);
   const state={gameStarted:true,origin:{...origin},absX:0,absZ:0};let generation=1,created=0,disposed=0,assetsDisposed=0,updates=0,fetches=0;
   const coordinates=JSON.parse(fs.readFileSync(new URL('../src/routing/circuits/nordschleife.json',import.meta.url)));
@@ -72,7 +72,7 @@ function setup({bad=false,late=false,wrongRoute=false}={}){
   const pilot=createRenderedBiomePilot({THREE:{},forestGroup:parent,getState:()=>state,getGeneration:()=>generation,getRoute:()=>route,
     clientFactory:()=>client,bridgeFactory:()=>bridge,assetFactory:()=>({summerAssets:[{parts:[{geometry:base}]}],
       assets:[{id:'preview-temperate',parts:[{geometry:summer}]},{id:'preview-temperate-winter',parts:[{geometry:winter}]}],dispose:()=>assetsDisposed++}),
-    now:()=>0,schedule:(cb,delay)=>{const v={cb,delay,cancelled:false};q.push(v);return ()=>v.cancelled=true;}});
+    now:clock??(()=>0),schedule:(cb,delay)=>{const v={cb,delay,cancelled:false};q.push(v);return ()=>v.cancelled=true;}});
   async function tick(ok=true){const v=q.shift();if(v&&!v.cancelled)void v.cb(ok);for(let i=0;i<15;i++)await Promise.resolve();}
   async function until(check,limit=500){for(let i=0;i<limit&&!check();i++)await tick();assert.ok(check(),'synthetic scheduler did not reach target');}
   const config={directory:identity,baseUrl:'http://example.invalid/data/',season:'summer'};
@@ -149,6 +149,43 @@ await test('all proof iterations and repeated source decisions stay deterministi
     assert.equal(p.result().ecoregionId,686);assert.equal(p.result().count,1744);
   }
 });
+
+await test('larger count cap retains the same per-read time deadline and denied-idle behavior',async()=>{
+  const fast=setup();fast.pilot.start(fast.config);
+  await fast.until(()=>fast.pilot.diagnostics().proofCandidates>0);
+  assert.equal(fast.pilot.diagnostics().proofCandidates,R12_LIMITS.checksPerSlice);
+  assert.equal(fast.pilot.diagnostics().proofsCompleted,0);fast.pilot.stop();
+  let time=0;const slow=setup({clock:()=>{time+=.2;return time;}});
+  slow.pilot.start(slow.config);await slow.until(()=>slow.pilot.diagnostics().proofCandidates>0);
+  let previous=slow.pilot.diagnostics().proofCandidates;
+  for(let i=0;i<20;i++){
+    await slow.tick();const next=slow.pilot.diagnostics().proofCandidates;
+    assert.ok(next>previous&&next-previous<=5,'deadline must cut work before the count cap');previous=next;
+  }
+  for(let i=0;i<8;i++)await slow.tick(false);
+  assert.equal(slow.pilot.diagnostics().proofCandidates,previous,'denied idle slot executed proof work');
+  assert.equal(slow.pilot.diagnostics().modifiedChunks,0);slow.pilot.stop();
+});
+await test('real scheduler never treats timeout as idle permission and cancellation stays effective',()=>{
+  const names=['setTimeout','clearTimeout','requestIdleCallback','cancelIdleCallback'];
+  const descriptors=names.map(n=>[n,Object.getOwnPropertyDescriptor(globalThis,n)]);
+  let timer,idle,delay,options;const cancels=[];
+  try{
+    globalThis.setTimeout=(fn,ms)=>{timer=fn;delay=ms;return 1;};
+    globalThis.clearTimeout=id=>cancels.push(['timer',id]);
+    globalThis.requestIdleCallback=(fn,opt)=>{idle=fn;options=opt;return 2;};
+    globalThis.cancelIdleCallback=id=>cancels.push(['idle',id]);
+    for(const remaining of [0,.5,.999,1,5]){
+      const seen=[];idle=null;const cancel=scheduleR12(ok=>seen.push(ok),120);
+      assert.equal(delay,120);assert.equal(idle,null);timer();assert.equal(options.timeout,1000);
+      idle({didTimeout:true,timeRemaining:()=>remaining});assert.deepEqual(seen,[remaining>=1]);cancel();
+    }
+    let count=0;idle=null;const early=scheduleR12(()=>count++);early();timer();assert.equal(idle,null);
+    const late=scheduleR12(()=>count++);timer();late();idle({didTimeout:false,timeRemaining:()=>10});
+    assert.equal(count,0);assert.ok(cancels.some(([kind,id])=>kind==='idle'&&id===2));
+  }finally{for(const [name,descriptor] of descriptors){if(descriptor)Object.defineProperty(globalThis,name,descriptor);else delete globalThis[name];}}
+});
+
 const report={status:'PASS',groups:tests,results,limits:R12_LIMITS,scope:'Pure contracts and deterministic scene/scheduler doubles; native Three/full-game validation is separate'};
 if(process.argv[2])fs.writeFileSync(process.argv[2],JSON.stringify(report,null,2)+'\n');
 console.log(JSON.stringify({status:'PASS',groups:tests}));

@@ -9,7 +9,11 @@ export const R12_SOURCE=Object.freeze({id:'RESOLVE-ECOREGIONS-2017',license:'CC-
   sha256:'be36d6209e443038d02e309f0447c6e7f2a62f5fe60c605ffe90d064952f2a60'});
 export const R12_CATALOG_SHA='e35573844a53dbcf42b508e123649e62651f886d332bf1239ae97cf28d13e0e7';
 export const R12_REGION=Object.freeze({id:686,biome:4,name:'Western European broadleaf forests',realm:'Palearctic'});
-export const R12_LIMITS=Object.freeze({proofs:128,meshes:128,groups:2,checksPerSlice:64,
+// Use the existing 0.8 ms cooperative CPU budget rather than abandoning a
+// genuine idle slot after only 64 cheap reads. Sparse native idle callbacks in
+// software rendering exposed that throughput ceiling. The hard count is still
+// finite, and the controller checks its unchanged time deadline before EACH read.
+export const R12_LIMITS=Object.freeze({proofs:128,meshes:128,groups:2,checksPerSlice:256,
   proofSliceMs:.8,pollMs:120,chunksPerPoll:2,snapshotChunks:16});
 const registry=createPaletteRegistry([{id:'preview-temperate',kind:'tree',reviewed:true,
   provenanceId:'original-R11-style-5732527872',weight:1,palettes:['temperate-broadleaf-mixed'],
