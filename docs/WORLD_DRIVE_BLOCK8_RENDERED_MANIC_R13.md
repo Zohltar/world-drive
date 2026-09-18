@@ -101,6 +101,24 @@ All FIVE exact-head workflows are mandatory: R1–R9/integration, R10, R11/R11W,
 R12 and R13. No old PASS transfers to a new candidate SHA. Local pure/package PASS
 is not a complete automated or human rendered PASS. The live PR records final results.
 
+## R13 native fixture correction (failed evidence retained)
+
+Initial candidate **59c433cab7e55af8676520c382ed2b6cf00fe54f**, R13 run
+**35400496903**, FAILED before the vehicle picker: the test HTTP interceptor used
+Python `urlparse`, which moved the semicolon-separated destination to `.params`.
+The fixture therefore rejected BOTH real Manic routing URLs and the game correctly
+remained at "Trajet indisponible". No R13 in-game Worker/geometry activation occurred.
+The independent native source check had passed **383 chunks /667,952 exact points**;
+that is not a rendered PASS for this failed run.
+
+The QA-only correction uses a tested `urlsplit`-based finite route matcher, preserves
+the real captured response and records matched routing URLs. Nine pure network
+regressions cover both actual providers, literal/escaped separators and rejected
+routes/values. The original 1,497-point route, four rendered chunks, 120-second gate,
+1100x700/DPR1, runtime, data bytes and all earlier assertions remain unchanged.
+No synthetic fallback or timeout increase is used. Require the new exact-head
+workflows and inspect screenshots; never transfer partial evidence to the correction.
+
 ## New human checkpoint after automated PASS
 
 Pull the candidate; install ONLY `public/local-data/biomes/pilot-r13/` from the
