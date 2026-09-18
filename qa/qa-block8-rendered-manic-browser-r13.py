@@ -27,7 +27,7 @@ ORACLE=r'''async ({directory,base,plan,expected})=>{
  const {createBiomeWorkerClient}=await import('/src/scenery/biomes/biome-worker-client.js');
  const {createBiomeChunkContextBridge}=await import('/src/scenery/biomes/chunk-context-bridge.js');
  const {createForestCandidateAdapter,FOREST_LAYOUT_ID}=await import('/src/scenery/biomes/forest-candidate-adapter.js');
- const {createR12Proof,R13_PROFILE}=await import('/tools/biomes/rendered-pilot-policy-r12.mjs');
+ const {createR12Proof,R13_PROFILE,renderedWindowOptions}=await import('/tools/biomes/rendered-pilot-policy-r12.mjs');
  const c=createBiomeWorkerClient(),a=createForestCandidateAdapter(plan),seen=new Set();let bridge,reads=0,eligible=0,refused=0;
  try{
   await c.initialize({directory,baseUrl:base});
@@ -35,7 +35,7 @@ ORACLE=r'''async ({directory,base,plan,expected})=>{
   if((await bridge.setRoute(plan.coordinates,{projectionId:a.projectionId})).status!=='route-ready')throw new Error('oracle route');
   for(const w of plan.windows){
    const todo=w.chunks.filter(x=>!seen.has(x.key));if(!todo.length)continue;
-   if((await bridge.update(w.position,w.options)).status!=='ready')throw new Error('oracle window '+w.position);
+   if((await bridge.update(w.position,renderedWindowOptions(R13_PROFILE,w.direction))).status!=='ready')throw new Error('oracle window '+w.position);
    for(const chunk of todo){
     const out=await bridge.prepareForestChunk({cx:chunk.cx,cz:chunk.cz,origin:plan.origin,routeId:plan.routeId});
     if(out.status!=='prepared')throw new Error('oracle prepare '+chunk.key);

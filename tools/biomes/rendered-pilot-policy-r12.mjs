@@ -52,6 +52,17 @@ export function renderedRouteMatches(id,plan,origin){
   return c.every(a=>Array.isArray(a)&&a.length===2&&a.every(Number.isFinite)
     &&a[0]>=-68.90&&a[0]<=-68.20&&a[1]>=49.25&&a[1]<=50.72);
 }
+// Windows are tied to the finite source package, not the forest draw radius.
+// R13 reuses R10's continuously provisioned 900 m corridor. The larger R12
+// circuit window asks for undeclared southern tiles at Manic startup.
+const nordWindow=Object.freeze({aheadMeters:3600,behindMeters:2600,corridorMeters:2800,maxTiles:8});
+const manicForward=Object.freeze({aheadMeters:2400,behindMeters:700,corridorMeters:900,maxTiles:8});
+const manicReverse=Object.freeze({aheadMeters:700,behindMeters:2400,corridorMeters:900,maxTiles:8});
+export function renderedWindowOptions(profileId=R12_PROFILE,direction=1){
+  const p=renderedProfile(profileId);
+  if(direction!==1&&direction!==-1)throw new TypeError('Rendered window direction');
+  return p.id===R12_PROFILE?nordWindow:direction===1?manicForward:manicReverse;
+}
 export function r12Season(value){
   if(value!=='summer'&&value!=='winter')throw new TypeError('Saison requise : summer ou winter');
   return value;

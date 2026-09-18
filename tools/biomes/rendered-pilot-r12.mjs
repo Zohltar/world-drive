@@ -9,7 +9,7 @@ import {createBiomeObserverPlan} from '../../src/scenery/biomes/route-observer-p
 import {FOREST_LAYOUT_ID} from '../../src/scenery/biomes/forest-candidate-adapter.js';
 import {snapshotIdentity} from '../../src/scenery/biomes/chunk-context-snapshot.js';
 import {buildSeasonalVegetationPrototypes} from './vegetation-seasonal-prototypes.mjs';
-import {R12_SOURCE,R12_CATALOG_SHA,R12_LIMITS,R12_PROFILE,renderedProfile,renderedRouteMatches,r12Season,r12Model,createR12Proof,r12ChunkKey,sameR12Geometry} from './rendered-pilot-policy-r12.mjs';
+import {R12_SOURCE,R12_CATALOG_SHA,R12_LIMITS,R12_PROFILE,renderedProfile,renderedRouteMatches,renderedWindowOptions,r12Season,r12Model,createR12Proof,r12ChunkKey,sameR12Geometry} from './rendered-pilot-policy-r12.mjs';
 
 export function validateR12Config(value){
   const text=JSON.stringify(value);if(!text||text.length>2*1024*1024)throw new RangeError('R12 config bound');
@@ -178,7 +178,7 @@ export function createRenderedBiomePilot({THREE,forestGroup,getState,getGenerati
     const todo=scan().filter(c=>!proofs.has(c.key)&&rejected.get(c.key)!==position.signature).slice(0,R12_LIMITS.chunksPerPoll);
     if(!todo.length){phase=records.size?'ready':'waiting-forest';return;}
     if(windowSignature!==position.signature){
-      const ready=await bridge.update(position.progress,{aheadMeters:3600,behindMeters:2600,corridorMeters:2800,maxTiles:8});
+      const ready=await bridge.update(position.progress,renderedWindowOptions(profileId,position.direction));
       if(!current(t))return;stats.windowUpdates++;
       if(ready.status!=='ready'){phase='missing-coverage';error=ready.reason??ready.status;return;}
       windowSignature=position.signature;rejected.clear();

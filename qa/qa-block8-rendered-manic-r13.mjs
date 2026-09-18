@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import {gunzipSync} from 'node:zlib';
 import {createRenderedBiomePilot,validateR12Config} from '../tools/biomes/rendered-pilot-r12.mjs';
 import {R12_PROFILE,R13_PROFILE,R12_REGION,R13_REGION,R12_SOURCE,R12_CATALOG_SHA,R12_LIMITS,
-  renderedProfile,renderedRouteMatches,r12Model,r12ContextEligible,createR12Proof} from '../tools/biomes/rendered-pilot-policy-r12.mjs';
+  renderedProfile,renderedRouteMatches,renderedWindowOptions,r12Model,r12ContextEligible,createR12Proof} from '../tools/biomes/rendered-pilot-policy-r12.mjs';
 import {createForestCandidateAdapter,FOREST_LAYOUT_ID} from '../src/scenery/biomes/forest-candidate-adapter.js';
 import {createBiomeObserverPlan} from '../src/scenery/biomes/route-observer-plan.js';
 import {BIOME_PROFILES} from '../src/scenery/biomes/biome-profiles.js';
@@ -76,7 +76,7 @@ class Group{
 }
 function geo(n=0){return {attributes:Object.fromEntries(['position','normal','color'].map(k=>[k,{array:new Float32Array([n,1,2]),count:3}])),index:{array:new Uint16Array([0,1,2]),count:3}};}
 function setup({bad=false,wrong=false,clock=()=>0}={}){
-  const q=[],base=geo(),summer=geo(),winter=geo(2),root=new Group('forest'),owner=new Group('forest-route-cache-manic');root.add(owner);
+  const windows=[],q=[],base=geo(),summer=geo(),winter=geo(2),root=new Group('forest'),owner=new Group('forest-route-cache-manic');root.add(owner);
   const state={gameStarted:true,origin:{...origin},absX:0,absZ:0};let generation=1,clients=0,disposed=0,builds=0;
   function add(parent=owner){const group=new Group('forest-chunk-0:0'),mesh=new Group('tree');mesh.isInstancedMesh=true;
     Object.assign(mesh,{geometry:base,material:{id:'original'},count:100,instanceMatrix:{array:new Float32Array(1744*16).fill(.5)},boundingSphere:{radius:379},
@@ -85,14 +85,14 @@ function setup({bad=false,wrong=false,clock=()=>0}={}){
   const pilot=createRenderedBiomePilot({THREE:{},forestGroup:root,getState:()=>state,getGeneration:()=>generation,
     getRoute:()=>wrong?route.slice(10):route,now:clock,
     clientFactory:()=>{clients++;return {initialize:async()=>({}),dispose:()=>disposed++,diagnostics:async()=>({ready:true,transport:{loaded:1,rejected:0}})};},
-    bridgeFactory:()=>({setRoute:async()=>({status:'route-ready'}),update:async()=>({status:'ready'}),get:()=>null,
+    bridgeFactory:()=>({setRoute:async()=>({status:'route-ready'}),update:async(position,options)=>{windows.push({position,options});return {status:'ready'};},get:()=>null,
       prepareForestChunk:async()=>({status:'prepared',snapshot:snap(0,0,i=>bad&&i===1743?null:context)}),dispose(){},diagnostics:()=>({maxChunks:16})}),
     assetFactory:()=>{builds++;return {summerAssets:[{parts:[{geometry:base}]}],assets:[
       {id:'preview-conifer',parts:[{geometry:summer}]},{id:'preview-conifer-winter',parts:[{geometry:winter}]}],dispose(){}};},
     schedule:(cb,delay)=>{const item={cb,delay,cancelled:false};q.push(item);return ()=>item.cancelled=true;}});
   async function tick(ok=true){const item=q.shift();if(item&&!item.cancelled)void item.cb(ok);for(let i=0;i<15;i++)await Promise.resolve();}
   async function until(check){for(let i=0;i<2000&&!check();i++)await tick();assert.ok(check(),JSON.stringify(pilot.diagnostics()));}
-  return {pilot,row,root,owner,add,state,q,base,summer,winter,tick,until,generation:v=>generation=v,counts:()=>({clients,disposed,builds})};
+  return {pilot,row,root,owner,add,state,windows,q,base,summer,winter,tick,until,generation:v=>generation=v,counts:()=>({clients,disposed,builds})};
 }
 await test('R13 remains fully inert before explicit activation',()=>{
   const h=setup();assert.equal(h.q.length,0);assert.deepEqual(h.counts(),{clients:0,disposed:0,builds:0});assert.equal(h.row.mesh.geometry,h.base);
@@ -137,6 +137,17 @@ await test('boreal proof keeps per-read time budget and never executes on denied
   await h.until(()=>h.pilot.diagnostics().proofCandidates>0);const before=h.pilot.diagnostics().proofCandidates;
   assert.ok(before<1744);for(let i=0;i<12;i++)await h.tick(false);assert.equal(h.pilot.diagnostics().proofCandidates,before);
   assert.equal(R12_LIMITS.proofSliceMs,.8);assert.equal(R12_LIMITS.snapshotChunks,16);h.pilot.stop();
+});
+await test('finite source windows match Manic forward/reverse coverage without changing Nord',async()=>{
+  const forward={aheadMeters:2400,behindMeters:700,corridorMeters:900,maxTiles:8};
+  const reverse={aheadMeters:700,behindMeters:2400,corridorMeters:900,maxTiles:8};
+  assert.deepEqual(renderedWindowOptions(R13_PROFILE,1),forward);
+  assert.deepEqual(renderedWindowOptions(R13_PROFILE,-1),reverse);
+  assert.deepEqual(renderedWindowOptions(),{aheadMeters:3600,behindMeters:2600,corridorMeters:2800,maxTiles:8});
+  assert.deepEqual(renderedWindowOptions(R12_PROFILE,-1),renderedWindowOptions());
+  assert.ok(Object.isFrozen(renderedWindowOptions(R13_PROFILE)));assert.throws(()=>renderedWindowOptions(R13_PROFILE,0));
+  const h=setup();h.pilot.start(config);await h.until(()=>h.pilot.diagnostics().modifiedChunks===1);
+  assert.deepEqual(h.windows[0].options,forward);h.pilot.stop();
 });
 await test('finite multi-chunk boreal decisions remain deterministic',()=>{
   for(let n=0;n<128;n++){const r=finish(proof(snap(-n,n)));assert.equal(r.count,1744);assert.equal(r.ecoregionId,373);assert.equal(r.modelId,'preview-conifer');}
