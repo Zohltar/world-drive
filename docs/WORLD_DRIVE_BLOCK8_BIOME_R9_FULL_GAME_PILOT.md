@@ -93,3 +93,36 @@ ZIP, negative input cases and an inert launcher with explicit error propagation.
 Full-game/native and current exact-head integration evidence must be read from
 this candidate's own CI run. Never transfer an R8 or earlier implementation PASS.
 The current result and next action are tracked in the active-candidate ledger/PR.
+
+
+## Diagnostic re-anchoring follow-up found in the full-game report
+
+The initial native full-game run `35288897447` on `215bbc344d74865c2a7295c96f5d13d5d9a42ad6`
+passed its original functional assertions. Manual review of its exact report exposed
+an insufficient progress assertion: after the Laguna 25% UI jump, a fresh current
+chunk coexisted with stale hinted-route progress **331.682 m instead of 900.201 m**.
+The reported distance from the hinted segment was **355.287 m**, despite the actual
+position lying on the authored track. This is an OBSERVER defect, not a change in
+vehicle placement or the actual routing/forest code. The earlier run stays a record
+of what it tested, not proof of the stronger progress contract.
+
+The diagnostic-only fix `5fe9da3ddf79abbaff2a94b7d53f13f0d8459bcf` trusts the old
+segment hint only below 120 m of movement; a local nearest segment more than 20 m
+away also causes a bounded full-route re-anchor. The separate 960 m Worker-reset
+threshold, local 65-segment window, 20,000-point input bound and direction rules
+remain. No authoritative game routing, physics, forest generation or budget changes.
+A full re-anchor is outside the frame loop, but is not a strict millisecond bound.
+
+The exact recorded position now returns 900.201 m with sub-micrometre numerical
+route distance in the local regression. Original circuit forward/reverse jump
+sequences and a densely sampled short-displacement case also pass. The new permanent
+R9 regression reproduces the old failure before the fix; it is not a moved fixture.
+The full-game gate now checks both expected route progress (25 m tolerance for the
+spherical/projected metric difference and stationary vehicle drift) and a <20 m
+route distance after every UI jump, rather than only freshness/timestamp.
+
+The refined harness additionally captures the activation interval, cancels its own
+rAF on normal completion/deadline, and separately rejects caught Frame/Startup/
+Vehicle-start/Audio-frame errors even if ordinary warning storage is full. Three
+local emulated-scheduler checks cover that measurement lifecycle; they are not
+native timing evidence. All changes require a new exact-head native/integration run.

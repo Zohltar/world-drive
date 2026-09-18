@@ -13,6 +13,7 @@ import functools
 import http.server
 import importlib.util
 import json
+import math
 from pathlib import Path
 import shutil
 import subprocess
@@ -25,21 +26,27 @@ PACK = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(PACK)
 PILOT_URL = '/local-data/biomes/pilot-r9/'
 SNAPSHOT = '() => WorldDriveDiagnostics.forest.biomes.snapshot()'
-FRAMES = r'''async duration => {
-  const before=WorldDriveFramePacing(), values=[];let previous=null,started=null;
-  await new Promise(resolve=>{
-    const end=setTimeout(()=>resolve(),duration+5000);
+FRAMES = r'''async options => {
+  const duration=typeof options==='number'?options:options.duration;
+  const before=WorldDriveFramePacing(), values=[];let previous=null,started=null,activation=null;
+  const measured=new Promise(resolve=>{
+    let done=false,id=null;
+    const finish=()=>{if(done)return;done=true;clearTimeout(end);if(id!==null)cancelAnimationFrame(id);resolve();};
+    const end=setTimeout(finish,duration+5000);
     function frame(t){
+      if(done)return;
       if(started===null)started=t;
       if(previous!==null)values.push(t-previous);
       previous=t;
-      if(t-started>=duration){clearTimeout(end);resolve();}else requestAnimationFrame(frame);
+      if(t-started>=duration)finish();else id=requestAnimationFrame(frame);
     }
-    requestAnimationFrame(frame);
+    id=requestAnimationFrame(frame);
   });
+  if(options.startPilot)activation=await (await import(options.startPilot)).start();
+  await measured;
   const after=WorldDriveFramePacing(),sorted=values.toSorted((a,b)=>a-b);
   const percentile=p=>sorted.length?sorted[Math.min(sorted.length-1,Math.floor((sorted.length-1)*p))]:null;
-  return {before,after,frames:values.length,p50Ms:percentile(.5),p95Ms:percentile(.95),maxMs:sorted.at(-1)??null,
+  return {before,after,activation,frames:values.length,p50Ms:percentile(.5),p95Ms:percentile(.95),maxMs:sorted.at(-1)??null,
     over50ms:values.filter(t=>t>50).length,hitchDelta:(after.hitchCount??0)-(before.hitchCount??0),
     biomes:WorldDriveDiagnostics.forest.biomes.snapshot()};
 }'''
@@ -70,7 +77,7 @@ def main(pilot: Path, output: Path):
         'bootstrap': 'SHORT SYNTHETIC network response, excluded from geographic validation',
         'upstreamGeography': '503 fixtures; unchanged application fallback paths',
         'performanceCertification': False, 'package': package, 'routes': []}
-    errors, console, pilot_requests = [], [], []
+    errors, console, pilot_requests, engine_errors = [], [], [], []
     upstream = Counter()
     with sync_playwright() as pw:
         browser = pw.chromium.launch(headless=True, args=['--use-angle=swiftshader', '--enable-unsafe-swiftshader'])
@@ -96,7 +103,14 @@ def main(pilot: Path, output: Path):
         page = context.new_page()
         page.set_default_timeout(90000)
         page.on('pageerror', lambda e: errors.append(str(e)))
-        page.on('console', lambda m: console.append({'type': m.type, 'text': m.text[:600]}) if m.type in ('error', 'warning') and len(console) < 100 else None)
+        def record_console(message):
+            text = message.text
+            if any(marker in text for marker in ('Frame error:', 'Startup error', 'Vehicle start failed', 'Audio frame error')):
+                if len(engine_errors) < 50:
+                    engine_errors.append(text[:1000])
+            if message.type in ('error', 'warning') and len(console) < 100:
+                console.append({'type': message.type, 'text': text[:600]})
+        page.on('console', record_console)
         try:
             page.goto(origin + '/', wait_until='domcontentloaded')
             page.wait_for_selector('.v21VehicleChoice')
@@ -119,6 +133,13 @@ def main(pilot: Path, output: Path):
                 coordinates = json.loads((ROOT / f'src/routing/circuits/{key}.json').read_text())
                 if isinstance(coordinates, dict):
                     coordinates = coordinates['coordinates']
+                # Independent spherical total: a fresh chunk alone cannot prove
+                # that the observer selected the right part of a winding track.
+                def segment_length(a, b):
+                    dy, dx = math.radians(b[1] - a[1]), math.radians(b[0] - a[0])
+                    h = math.sin(dy / 2) ** 2 + math.cos(math.radians(a[1])) * math.cos(math.radians(b[1])) * math.sin(dx / 2) ** 2
+                    return 2 * 6371008.8 * math.asin(math.sqrt(max(0, min(1, h))))
+                total_meters = sum(segment_length(a, b) for a, b in zip(coordinates, coordinates[1:]))
                 # Real UI handlers choose the unmodified authored preset.
                 page.evaluate('(id)=>document.getElementById(id).click()', button)
                 page.wait_for_function('''n => WorldDriveFramePacing().rendering.routeKind==='circuit'
@@ -128,8 +149,8 @@ def main(pilot: Path, output: Path):
                 off1 = page.evaluate(FRAMES, 6000)
                 assert off1['frames'] >= 3 and off1['after']['rendering']['drawCalls'] > 0
                 assert off1['after']['rendering']['triangles'] > 0
-                result = page.evaluate("async u => (await import(u)).start()", PILOT_URL + 'start.mjs')
-                assert result['status'] == 'enabled'
+                activation = page.evaluate(FRAMES, {'duration': 6000, 'startPilot': PILOT_URL + 'start.mjs'})
+                assert activation['activation']['status'] == 'enabled' and activation['frames'] >= 3
                 page.wait_for_function("() => { const d=WorldDriveDiagnostics.forest.biomes.snapshot(); return d.phase==='observed' && d.freshCurrentChunk; }")
                 on = page.evaluate(FRAMES, 6000)
                 assert on['frames'] >= 3
@@ -155,14 +176,21 @@ def main(pilot: Path, output: Path):
                       WorldDriveDiagnostics.forest.biomes.refresh();}''', fraction)
                     page.wait_for_function('''t=>{const d=WorldDriveDiagnostics.forest.biomes.snapshot();
                       return d.phase==='observed'&&d.freshCurrentChunk&&d.last.at>t;}''', arg=before)
-                    jumps.append(page.evaluate(SNAPSHOT))
+                    observed = page.evaluate(SNAPSHOT)
+                    expected_progress = total_meters * fraction / 100
+                    assert abs(observed['last']['progress'] - expected_progress) < 25, 'Observer followed a stale route segment after UI jump'
+                    assert observed['last']['distanceFromRoute'] < 20, 'Observer failed to re-anchor to the actual track'
+                    observed['testTargetPercent'] = fraction
+                    observed['testExpectedProgress'] = expected_progress
+                    jumps.append(observed)
                 page.screenshot(path=str(output / (key + '-on.png')))
                 page.evaluate('() => WorldDriveDiagnostics.forest.biomes.stop()')
                 workers = page.evaluate('() => __R9_WORKERS')
                 assert all(w['terminated'] for w in workers if 'biome-preparation' in w['url']), workers
                 report['routes'].append({'route': key, 'vertices': len(coordinates), 'offBefore': off1,
-                    'on': on, 'jumps': jumps, 'offAfter': off2, 'workers': workers})
+                    'activation': activation, 'on': on, 'jumps': jumps, 'offAfter': off2, 'workers': workers})
             assert not errors, errors
+            assert not engine_errors, engine_errors
             report['status'] = 'PASS'
         except Exception as error:
             report['status'] = 'FAIL'
@@ -176,7 +204,7 @@ def main(pilot: Path, output: Path):
                 report['captureError'] = str(capture_error)
             raise
         finally:
-            report.update(pageErrors=errors, console=console, upstreamRequests=dict(upstream), pilotRequests=pilot_requests,
+            report.update(pageErrors=errors, caughtEngineErrors=engine_errors, console=console, upstreamRequests=dict(upstream), pilotRequests=pilot_requests,
                 limitations=['Headless software-rendered CI, NOT GPU/FPS certification',
                     'OFF/ON/OFF parked samples plus UI teleports; NOT continuous high-speed driving',
                     'Upstream DEM/imagery/OSM use failure fixtures; not real visual terrain validation',
