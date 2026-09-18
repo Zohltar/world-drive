@@ -5,6 +5,27 @@ Read the canonical plan on dev and WORLD_DRIVE_BLOCK8_ACTIVE_CANDIDATE.md first.
 This stage follows the scoped R9 loaded hardware HUMAN PASS in PR comment 5729735550.
 Do not request that same circuit hardware test again. Forest R4 remains protected.
 
+## Accepted hardware checkpoint — 2026-09-18
+
+**Scoped HUMAN PASS: « tres fluide aucune saccade ».** PR comments 5731654953
+(technical evidence) and 5731692833 (explicit feel verdict) supersede the original
+request below. Do not repeat or extend the accepted Manic diagnostic passage.
+
+Complete JSON: progress 10,680.923 m, 32 publications, 16 snapshot evictions,
+16 resident snapshots /567,808 accounted bytes, no pending snapshots; current plus
+three forward chunks prepared (6,976 resolved candidates, noData/unavailable zero).
+Three successful tile loads, no transport/observer/bridge rejection. Separate later
+console capture: 10,802.930 m. Earlier approximate 220 km/h was reported only for the
+initial passage. This is actual loading plus bounded snapshot turnover and user feel,
+not a paired performance benchmark or literal zero in the cumulative hitch counters.
+Additional tile/page turnover, whole-forest readiness, full 191 km drive and real
+multi-biome transitions are not established. No new planting or merge approval.
+
+The R10 final candidate 82a5d492fd61fb3345aa397dfbe4f75345ed7d7c passed BOTH
+35347906519 (Manic) and 35347906708 (complete inherited matrix, 97 integration commands).
+Later authoring/documentation heads must pass their own checks. R11 continues in
+isolated tools with style prototypes and policy tests; the accepted R10 runtime is unchanged.
+
 ## Scope
 
 Extend fine source data to a real long road without changing any runtime module,
@@ -92,7 +113,7 @@ full visible-forest coverage, hardware frame pacing or a full-game Manic run. R9
 separate full-game circuit gate remains useful but does not remove these limitations.
 Source agreement is not present-day vegetation or a visual-biome HUMAN PASS.
 
-## Human long-road pilot after green QA
+## Original human test procedure — already accepted, retained for reference
 
 Keep R9 installed. Copy ONLY public/local-data/biomes/pilot-r10 into the candidate
 checkout, restart Vite after pulling, and select Manic-2 -> Manic-5 normally.
@@ -117,7 +138,7 @@ WorldDriveDiagnostics.forest.biomes.stop()
 
 No new trees should appear. Off-corridor live routes/detours remain explicitly
 unavailable instead of receiving a default biome. A useful first high-speed passage
-is 10-15 km, not a demand for a full 191 km human run. Broader long-road hardware
-acceptance remains OPEN until reported. Global distribution, persistent caching,
+is 10-15 km, not a demand for a full 191 km human run. This initial test request is now satisfied for the
+reported passage; broader coverage claims still need separate evidence. Global distribution, persistent caching,
 trusted-root retrieval, reviewed compatible assets and ecological transition/elevation
 policy are later work. No merge, runtime activation or main movement is authorized.
