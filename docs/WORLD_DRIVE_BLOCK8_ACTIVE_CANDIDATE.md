@@ -3,34 +3,63 @@
 Companion to the canonical evolution/correction plan. Updated 2026-09-18 (Toronto).
 Current restart ledger; earlier detailed reports remain historical/API references.
 
-## Current state — R9 Vite compatibility correction
+## Current state — loaded R9 hardware checkpoint accepted; R10 long-road preparation
 
 Existing branch `candidate/block8-biome-classifier-r1`, draft/unmerged PR #14.
-**Active correction: raw-gzip transport under Vite after the first hardware report.**
-Do not restart R1–R9 or proceed to palettes on the user's latest `pass` alone.
-Read live candidate HEAD, PR and its own complete exact-head QA before delivery.
+**The finite, successfully loaded R9 diagnostic pilot has a scoped HUMAN PASS.**
+The user's latest verdict is: « personnellement tout avait l'air ok ».
+PR comment 5729735550 records the evidence and supersedes the earlier retest request.
+Do NOT ask for the same successful-load circuit test again because the first report
+had zero publications. Do not restart the importer, classifier, transport, Worker,
+snapshots, forest coordinate adapter, observer or Vite fix.
 
-User verdict: `pass` for perceived fluidity. The accompanying telemetry nevertheless
-shows missing-coverage / window-not-ready, captures 0, published 0, transport
-started 10 / rejected 10 / loaded 0 and compressed/decoded bytes 0. A manifest page
-was verified. Retain a responsiveness HUMAN PASS for this unready path, NOT a loaded
-biome hardware PASS, completed R9 certification or permission to merge/activate.
-The capture reports 143.998 FPS, 6 cumulative gameplay hitches and maxFrame 83.3 ms;
-there is no matching OFF/ON measurement of a successfully prepared workload.
+Latest independently verified implementation:
+`e6ee0e223a814ae250bc8da7ea36d73bdcef920e`, exact-head **35306551976 PASS**,
+both complete jobs including real Vite/native Worker, separate full-game checks,
+97 canonical integration commands and protected forest R4 regressions.
+Later commits need their OWN exact-head QA; inspect live candidate HEAD and PR.
 
-Last fully verified candidate BEFORE this correction:
-`5de485643e00cd5296f1ba36b51f614532b1aca3`, exact-head **35290980665 PASS**.
-R9 implementation `b8dd4f3e464f9b66b0dce498ca26c3a60c0cd764` separately passed
-35290003608. Those static-server/full-game results remain valid for their original
-assertions; they did not cover the Vite gzip-serving incompatibility.
+Before this documentation checkpoint, dev was
+`bd268e40fb64d7dc075a752a44ca647b9c407644`, canonical
+**Dev Integration 35306587004 PASS**. This update changes only this Markdown ledger.
+No biome runtime, Vite fix or new candidate QA is integrated into dev.
+Read the resulting dev HEAD and its own canonical QA live.
+Gameplay remains the forest-R4-certified runtime from
+`45ab6bc770097239add81eeaca9c4d32de9968a2`, with documentation and the earlier
+strict C6 inventory QA correction. Stable main remains
+`ad893a9d078df4a3d24d81b929bb2905a8bc57e1` / v21.33, untouched.
+No PR merge, palette activation or main movement is authorized by this checkpoint.
 
-Before this docs checkpoint, dev was `3ceac5ceb30e524d61bfe4e11aad07c771c4b2f3`,
-canonical **Dev Integration 35290913521 PASS**. Only this Markdown ledger advances
-on dev for the current correction. No biome runtime, Vite fix or new QA is integrated.
-Verify the resulting dev HEAD and its own canonical QA live, not by this old PASS.
-Gameplay remains the forest-R4-certified runtime from `45ab6bc770097239add81eeaca9c4d32de9968a2`,
-with earlier documentation and strict C6 inventory QA changes only.
-Stable main: `ad893a9d078df4a3d24d81b929bb2905a8bc57e1` / v21.33, untouched.
+## Accepted human evidence and limits
+
+The three latest attached files contain the SAME parsed JSON: one ON-state
+observation, not three independent runs or an instrumented OFF/ON/OFF series.
+
+- `enabled:true`, `diagnosticOnly:true`, `phase:observed`, `error:null`,
+  `freshCurrentChunk:true`, `last.windowStatus:ready`.
+- Transport: started 1, **loaded 1, rejected 0**, aborted 0; 311 compressed bytes,
+  2,453 decoded bytes. One source tile can serve several forest diagnostic chunks.
+- **11 captures, 5 published snapshots**, 6 cache hits; observer failures/discarded
+  and bridge rejected/discarded all zero.
+- Current chunk (-1,-1), forward (-2,0), forward (-3,-1): each resolves 1,744
+  candidates, noData=0 and unavailable=0: **5,232 resolved candidates in this window**.
+- Peak accounted resident payload: five chunks /177,440 bytes; no pending chunks
+  or snapshot reservation at capture. This is not total browser heap usage.
+- Max measured observation 0.4 ms, planning 1.5 ms, receipt validation/copy 0.7 ms.
+  The 48.4 ms round trip is asynchronous elapsed time, NOT a main-thread stall.
+- Reported instantaneous FPS 143.9253; 1,068-point circuit/projection identifies
+  the previously examined Nordschleife context. Retained progress 243.638 m does
+  not establish total distance driven or speed. No client commit/GPU is recorded.
+
+Accept hardware/feel for this finite, actually loaded pilot and tested scenario.
+This is NOT Block 8 DONE/CERTIFIED, visual-biome acceptance, worldwide coverage,
+long-road/high-speed readiness, or merge permission. The 26 cumulative gameplay
+hitches, maxFrame 229.2 ms and 10,547 gameplay frames (10 >50 ms, 2 >100 ms) remain
+in the evidence. Without paired/reset intervals they cannot be attributed to the
+observer or compared causally with the earlier report's six hitches.
+Evidence: PR #14 comment 5729735550. First two files SHA-256
+`df766fe387574bd11fe227fea97850bb8c760e1cb731814deeba0984f26efcee`;
+third `80d080c6776e7ae0df8d80f0de02938b77009e17c29ebadbc0b4f65e08e9a77c`.
 
 ## Verified milestones (immutable historical evidence)
 
@@ -49,34 +78,33 @@ Stable main: `ad893a9d078df4a3d24d81b929bb2905a8bc57e1` / v21.33, untouched.
 | R7 final docs/ancestry | 2eccd01df3630ad47a34ad1284dff76fb7f4ea6d | 35276559316 | PASS |
 | R8 opt-in lifecycle diagnostics | b075cfe16bd2c3f552ddfbd35c72301db1ebef2f | 35286510364 | PASS |
 | R8 final docs/ancestry | c89e094e8120de30664d4211a41aae6b75fd7d31 | 35287102949 | PASS |
-| R9 full-game pilot + corrected diagnostic re-anchoring | b8dd4f3e464f9b66b0dce498ca26c3a60c0cd764 | 35290003608 | PASS |
+| R9 full-game pilot + diagnostic re-anchoring | b8dd4f3e464f9b66b0dce498ca26c3a60c0cd764 | 35290003608 | PASS |
 | R9 final documentation/ancestry | 5de485643e00cd5296f1ba36b51f614532b1aca3 | 35290980665 | PASS |
+| R9 Vite raw-gzip compatibility | e6ee0e223a814ae250bc8da7ea36d73bdcef920e | 35306551976 | PASS |
 
-## Current correction and regression gates
+## Historical first hardware report and resolved Vite defect
 
-Vite uses sirv, which labels direct .gz responses with HTTP Content-Encoding: gzip.
-The bounded Worker deliberately rejects non-identity encoding before reading the
-body, instead of risking double decompression or relaxing compressed-byte limits.
-Earlier full-game QA used a Python static server without that header.
+The first verdict `pass` described responsiveness, but its capture had
+missing-coverage/window-not-ready, captures=0, published=0, transport started=10,
+rejected=10, loaded=0, compressed/decoded bytes=0, and one verified manifest page.
+It reported 143.998 FPS, six cumulative hitches and maxFrame 83.3 ms. That earlier
+capture did not exercise a successfully prepared workload. Preserve it as history;
+the later successful-load capture above resolves that limitation for the finite pilot.
 
-`tools/biomes/vite-raw-gzip.mjs`, registered in vite.config.js, sets identity /
-application/octet-stream ONLY on GET/HEAD biome tile requests. It leaves file
-access, paths, length, status and streaming to Vite. No build hooks or client imports;
-no changes to source tiles, existing public pilot, dependencies, runtime or budgets.
-Other namespaces, scripts and ordinary JSON retain their existing behavior.
+Vite/sirv labeled direct .gz responses `Content-Encoding:gzip`. The strict Worker
+rejected non-identity HTTP encoding before body reads. Earlier full-game CI served
+dist with Python HTTP and missed npm run dev's headers. The scoped helper
+`tools/biomes/vite-raw-gzip.mjs` sets identity/application/octet-stream ONLY on
+GET/HEAD biome tile requests in Vite dev/preview, leaving file access, paths,
+length, status and streaming to Vite. No relaxed integrity/decompression budgets.
 
-New permanent header regression: 44 scoped requests across dev/preview hooks.
-Native regression uses the actual Vite config and installed lockfile version:
-a control removes ONLY the new plugin and must reproduce rejection; fixed dev must
-publish four chunks / 6,976 exact reads, including the reported Nordschleife origin,
-progress and current chunk. Preview checks all three exact raw gzip payloads.
-The browser uses the real dedicated Worker; main-page gzip/digest/tile I/O is trapped.
-This is a transport/Worker test, not hardware FPS or full-game evidence. The existing
-separate full-game R9, original source gates, forest R4 and all 97 maintained
-integration commands must also pass on the current exact SHA. Check live results.
-
-Current detailed report on candidate: `WORLD_DRIVE_BLOCK8_BIOME_R9_VITE_TRANSPORT.md`.
-R9 full-game history: `WORLD_DRIVE_BLOCK8_BIOME_R9_FULL_GAME_PILOT.md`.
+Permanent checks: 44 scoped header requests; actual locked Vite 7.3.6 with native
+Chromium control removing ONLY the helper reproduces rejection, while corrected
+dev publishes four snapshots and resolves 6,976 candidates with zero rejected loads.
+Preview/dev preserve all three original gzip payloads exactly. Separate full-game
+R9, all earlier source/Worker gates and 97 integration commands also pass at e6ee.
+Detailed reports: `WORLD_DRIVE_BLOCK8_BIOME_R9_VITE_TRANSPORT.md` and
+`WORLD_DRIVE_BLOCK8_BIOME_R9_FULL_GAME_PILOT.md` on the candidate.
 
 ## Protected boundaries
 
@@ -84,40 +112,37 @@ Diagnostic-only and disabled by default: no observer timer/Worker/I/O until expl
 start. Existing route/reset/origin/pagehide invalidation, stale-result rejection,
 finite admission and synchronous prepared reads remain. Current plus at most three
 forward diagnostic chunks is NOT the complete visible forest or route corridor.
-Bridge: 16 chunks / 4 MiB accounted resident payload, with separate transport/RPC
-budgets; these are not total-heap or frame-time guarantees. No planting authority.
-The actual palette asset registry remains EMPTY; no rendering activation is allowed.
+Bridge: 16 chunks /4 MiB accounted residency, with separate transport/RPC budgets;
+these are not total-heap or frame-time guarantees. No planting authority.
+Actual palette asset registry stays EMPTY. Forest R4 scheduler/density/exclusions,
+road/terrain/hydro/physics, ordinary startup route selection and main remain protected.
 
 Source SHA-256 `be36d6209e443038d02e309f0447c6e7f2a62f5fe60c605ffe90d064952f2a60`.
-Original 6,327 controls (4,846 records / 1,481 explicit no-data), Baffin/Yungas,
+Original 6,327 controls (4,846 records /1,481 explicit no-data), Baffin/Yungas,
 62,784 forest-coordinate/traversal comparisons and the 1,024-slot first layer stay
-protected. Geographic-source agreement is not current ecological field truth.
-
-The installed three-tile R9 ZIP is unchanged: 30,321 bytes, SHA-256
+protected. Geographic-source agreement is not present-day ecological field truth.
+The installed three-tile R9 ZIP remains 30,321 bytes, SHA-256
 `221689248d420b1fb1971723d951151e47d9a2d17202f925cf0c0e7796c4cf07`.
-It covers finite zones around Laguna Seca/Nordschleife, NOT Manic or worldwide.
-R9 full-game software-rendering measurements (SwiftShader, few frames/window) do
-not certify hardware FPS, absence of regression or continuous high-speed readiness.
+It covers finite circuit zones, NOT Manic or worldwide. Do not reinstall it for
+this documentation update. SwiftShader QA is not a hardware FPS certificate.
 
-## Exact next action — successful-load hardware retest
+## Exact next action — R10 real long-road pilot
 
-After complete exact-head QA, pull the same candidate, STOP and RESTART Vite, and
-keep the existing public/local-data/biomes/pilot-r9 files. No Python preprocessing
-or replacement archive is needed. Explicitly start on Nordschleife/Laguna as before.
-First confirm transport.loaded > 0, captures > 0, bridge.published > 0 and a fresh
-current chunk while stationary inside the pilot; then repeat comparable OFF/ON/OFF
-hardware driving and save the biome/frame snapshots BEFORE stop.
+Prepare finite fine-data coverage for the actual Manic-2 -> Manic-5 road using
+existing preset endpoints and real routed geometry with recorded provenance and
+hashes. Never substitute a straight or synthetic polyline while calling it real.
+Reuse the existing source-coordinate refinement, fixed-size batch manifests,
+Worker and exact forest adapter; keep build-time geospatial work out of gameplay.
+Cover continuous route segments and their bounded corridor, then compare prepared
+candidate results with the original source polygons and exercise successive windows,
+cache eviction, page changes and missing-data boundaries. Do not infer sustained
+high-speed readiness from awaited or accelerated replay; distinguish those results
+from real-time driving. Keep source/data and runtime QA tied to their exact commits.
 
-```js
-await (await import('/local-data/biomes/pilot-r9/start.mjs')).start()
-WorldDriveDiagnostics.forest.biomes.snapshot()
-WorldDriveFramePacing()
-WorldDriveDiagnostics.forest.biomes.stop()
-```
-
-The human responsiveness PASS remains recorded; the loaded-biome hardware gate is
-OPEN. Only after that gate, expand fine coverage to a REAL long-road pilot. Global
-publication, persistent caching, authenticated root retrieval, reviewed compatible
-assets and ecological transitions/elevation policy remain open. Do not merge PR #14,
-activate palettes or move main merely because tests are green. Forest R4 / Issue #12
-remains integrated/HUMAN PASS; biome R1–R9 remains candidate diagnostic work.
+The accepted circuit hardware checkpoint is complete for its stated scope. The next
+human request, once appropriate automated gates pass, must add long-road coverage,
+not repeat the already accepted circuit test. No Python preprocessing is required
+on the user's PC. Global publication, persistent caching, authenticated root
+retrieval, reviewed assets and ecological transitions/elevation remain later work.
+Keep PR #14 draft/unmerged; do not activate palettes or move main. Forest R4 /Issue
+#12 remains integrated/HUMAN PASS; biome work remains a candidate feature.
