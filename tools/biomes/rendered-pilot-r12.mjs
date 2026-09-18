@@ -66,6 +66,10 @@ export function createRenderedBiomePilot({THREE,forestGroup,getState,getGenerati
   function variant(){return kit.assets.find(a=>a.id===r12Model(season));}
   function apply(group,proof){
     if(!proof||!current()||proof.projectionId!==plan.adapter.projectionId)return;
+    // A hidden cached route may reuse numeric chunk addresses with a different
+    // geographic origin. Current-route proof must never paint that other owner.
+    const routeOwner=group?.parent;
+    if(!groups.has(routeOwner)||routeOwner.visible===false||!forestGroup.children.includes(routeOwner))return;
     const c=r12ChunkKey(group);if(!c||c.key!==proof.key)return;
     // Only the sole canonical R4 mesh. Other scenery is not a presentation target.
     if(group.children?.length!==1)return;
