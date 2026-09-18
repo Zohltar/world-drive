@@ -1,0 +1,49 @@
+name: Block 8 Vegetation Authoring R11 QA
+on:
+  push:
+    branches: [candidate/block8-biome-classifier-r1]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  authoring-and-policy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Preserve entire human-tested R10 runtime
+        run: git diff --exit-code 82a5d492fd61fb3345aa397dfbe4f75345ed7d7c HEAD -- src public server electron vite.config.js package.json package-lock.json .github/workflows/qa-dev-integration.yml
+      - name: Deterministic policy and original geometry contracts
+        run: |
+          mkdir -p "$RUNNER_TEMP/biome-r11"
+          node qa/qa-block8-vegetation-policy-r11.mjs "$RUNNER_TEMP/biome-r11/policy-qa.json"
+          node qa/qa-block8-biome-service-boundary-r3.mjs
+      - name: Existing rendering dependencies
+        run: npm ci
+      - name: Native gallery harness only
+        run: |
+          python -m pip install playwright==1.57.0
+          python -m playwright install --with-deps chromium
+      - name: Actual Three geometry, material, conifer parity and native preview
+        run: python qa/qa-block8-vegetation-browser-r11.py --output "$RUNNER_TEMP/biome-r11"
+      - name: Preserve exact authoring source and reports
+        if: always()
+        run: |
+          mkdir -p "$RUNNER_TEMP/biome-r11"
+          git rev-parse HEAD > "$RUNNER_TEMP/biome-r11/tested-commit.txt"
+          git archive --format=tar.gz HEAD tools/biomes/vegetation-policy.mjs tools/biomes/vegetation-prototype-data.mjs tools/biomes/vegetation-prototypes.mjs tools/biomes/vegetation-preview-r11.html qa/qa-block8-vegetation-policy-r11.mjs qa/qa-block8-vegetation-browser-r11.py docs/WORLD_DRIVE_BLOCK8_ACTIVE_CANDIDATE.md docs/WORLD_DRIVE_BLOCK8_BIOME_R10_MANIC_PILOT.md docs/WORLD_DRIVE_BLOCK8_VEGETATION_R11.md .github/workflows/qa-block8-vegetation-r11.yml > "$RUNNER_TEMP/biome-r11/authoring-source.tar.gz"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: biome-r11-authoring-${{ github.sha }}
+          path: ${{ runner.temp }}/biome-r11
+          if-no-files-found: error

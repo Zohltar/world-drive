@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>World Drive — galerie végétation R11</title>
+<style>
+:root{font:16px system-ui,sans-serif;color:#e7edf0;background:#17232c}body{margin:0 auto;max-width:1500px;padding:24px}h1{font-size:26px;margin:0 0 10px}.sub{max-width:950px;color:#b9cad4;line-height:1.55}canvas{width:100%;display:block;border:1px solid #50616e;border-radius:8px}#view{margin-top:22px}.labels{display:grid;grid-template-columns:repeat(6,1fr);gap:14px;margin:10px 0 22px;text-align:center}.labels strong{display:block;font-size:14px}.labels small{font-size:12px;color:#becad0}.toolbar{display:flex;align-items:center;gap:24px;flex-wrap:wrap;margin:20px 0}button{background:#dae8ee;color:#14202a;border:0;border-radius:4px;padding:9px 16px}input{vertical-align:middle}#state{padding:16px;background:#22323e;line-height:1.5;white-space:pre-wrap}.warning{color:#ffe3a1}a{color:#bedced}@media(max-width:800px){body{padding:12px}.labels{gap:5px}.labels strong{font-size:11px}.labels small{font-size:10px}h1{font-size:22px}}
+</style>
+</head>
+<body>
+<h1>World Drive · Végétation R11</h1>
+<p class="sub">Référence conifère R4 et cinq nouvelles silhouettes procédurales. Cette galerie ne charge ni route ni forêt du jeu. Les prototypes ne sont pas des espèces identifiées et ne sont pas activés en conduite.</p>
+<div class="toolbar"><label>Rotation <input id="rotation" type="range" min="-180" max="180" value="0"></label><label><input id="wire" type="checkbox"> Maillage</label><button id="light">Lumière rasante</button><span class="warning">Galerie d’auteur · validation visuelle ouverte</span></div>
+<div id="view"></div><div class="labels" id="labels"></div>
+<div id="state">Construction des modèles…</div>
+<script type="module">
+import * as THREE from '/node_modules/three/build/three.module.js';
+import {buildVegetationPrototypes} from '/tools/biomes/vegetation-prototypes.mjs';
+try {
+ const kit=buildVegetationPrototypes(THREE),scene=new THREE.Scene();scene.background=new THREE.Color(0x263945);
+ const renderer=new THREE.WebGLRenderer({antialias:true});renderer.setPixelRatio(Math.min(window.devicePixelRatio,2));
+ const host=document.querySelector('#view');host.append(renderer.domElement);
+ const camera=new THREE.OrthographicCamera(-10.5,10.5,3.5,-2.3,.1,100);camera.position.set(0,5.5,16);camera.lookAt(0,.6,0);
+ scene.add(new THREE.HemisphereLight(0xf4f7fa,0x425647,2.4));const sun=new THREE.DirectionalLight(0xfff0d4,2.5);sun.position.set(-8,12,7);scene.add(sun);
+ const baseGeo=new THREE.CylinderGeometry(.85,.85,.05,24),baseMat=new THREE.MeshLambertMaterial({color:0x607a70});
+ const meshes=[];
+ kit.assets.forEach((asset,i)=>{
+  const x=(i-2.5)*3.4,group=new THREE.Group();group.position.set(x,0,0);
+  for(const p of asset.parts)group.add(new THREE.Mesh(p.geometry,p.material));scene.add(group);meshes.push(group);
+  const base=new THREE.Mesh(baseGeo,baseMat);base.position.set(x,-.028,0);scene.add(base);
+  const label=document.createElement('div'),strong=document.createElement('strong'),small=document.createElement('small');
+  strong.textContent=asset.label;small.textContent=`${asset.triangles} triangles · ${asset.kind==='tree'?'arbre':asset.kind==='shrub'?'arbuste':'roche'}`;
+  label.append(strong,small);document.querySelector('#labels').append(label);
+ });
+ const draw=()=>renderer.render(scene,camera);
+ function resize(){const width=host.clientWidth;renderer.setSize(width,Math.round(width/3.62));draw();}
+ window.addEventListener('resize',resize);resize();
+ document.querySelector('#rotation').addEventListener('input',e=>{for(const m of meshes)m.rotation.y=Number(e.target.value)*Math.PI/180;draw();});
+ document.querySelector('#wire').addEventListener('change',e=>{for(const a of kit.assets)for(const p of a.parts)p.material.wireframe=e.target.checked;draw();});
+ let low=false;document.querySelector('#light').addEventListener('click',()=>{low=!low;sun.position.set(low?8:-8,low?1:12,7);draw();});
+ const stats=kit.assets.map(a=>({id:a.id,triangles:a.triangles,parts:a.parts.length,
+  materialCount:new Set(a.parts.map(p=>p.material)).size,textureCount:0,
+  geometryBytes:a.parts.reduce((sum,p)=>sum+Object.values(p.geometry.attributes).reduce((n,v)=>n+v.array.byteLength,0)+(p.geometry.index?.array.byteLength||0),0),
+  height:a.parts[0].geometry.boundingBox.max.y,productionApproved:a.productionApproved}));
+ document.querySelector('#state').textContent='6 silhouettes · 1 matériau opaque partagé · aucune texture · aucun changement au jeu\nLes nouvelles formes restent sous les 68 triangles de la référence. Cela ne garantit pas le coût de plusieurs palettes instanciées en conduite.';
+ window.__VEGETATION_PREVIEW__={ready:true,stats,assets:kit.assets,renderer,THREE,draw};
+ window.addEventListener('pagehide',()=>{window.removeEventListener('resize',resize);kit.dispose();baseGeo.dispose();baseMat.dispose();renderer.dispose();},{once:true});
+} catch(error){document.querySelector('#state').textContent=`Échec : ${error.message}`;window.__VEGETATION_PREVIEW__={ready:false,error:error.message};throw error;}
+</script>
+</body></html>
