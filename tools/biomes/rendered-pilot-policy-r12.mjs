@@ -4,16 +4,16 @@
  */
 import {FOREST_POINT_COUNT,FOREST_LAYOUT_ID} from '../../src/scenery/biomes/forest-candidate-adapter.js';
 import {createPaletteRegistry} from '../../src/scenery/biomes/palette-registry.js';
+import {MAX_CHUNK_CONTEXTS} from '../../src/scenery/biomes/chunk-context-snapshot.js';
 import {seasonalVegetationId} from './vegetation-winter-data.mjs';
 export const R12_SOURCE=Object.freeze({id:'RESOLVE-ECOREGIONS-2017',license:'CC-BY-4.0',
   sha256:'be36d6209e443038d02e309f0447c6e7f2a62f5fe60c605ffe90d064952f2a60'});
 export const R12_CATALOG_SHA='e35573844a53dbcf42b508e123649e62651f886d332bf1239ae97cf28d13e0e7';
 export const R12_REGION=Object.freeze({id:686,biome:4,name:'Western European broadleaf forests',realm:'Palearctic'});
-// Use the existing 0.8 ms cooperative CPU budget rather than abandoning a
-// genuine idle slot after only 64 cheap reads. Sparse native idle callbacks in
-// software rendering exposed that throughput ceiling. The hard count is still
-// finite, and the controller checks its unchanged time deadline before EACH read.
-export const R12_LIMITS=Object.freeze({proofs:128,meshes:128,groups:2,checksPerSlice:256,
+// Interned contexts make exact address checks cheap. Permit up to the known
+// finite chunk size in one genuine idle slot; the controller STILL checks its
+// unchanged 0.8 ms deadline before EACH read and never bypasses idle admission.
+export const R12_LIMITS=Object.freeze({proofs:128,meshes:128,groups:2,checksPerSlice:FOREST_POINT_COUNT,
   proofSliceMs:.8,pollMs:120,chunksPerPoll:2,snapshotChunks:16});
 const registry=createPaletteRegistry([{id:'preview-temperate',kind:'tree',reviewed:true,
   provenanceId:'original-R11-style-5732527872',weight:1,palettes:['temperate-broadleaf-mixed'],
@@ -38,19 +38,35 @@ export function createR12Proof(snapshot,adapter,cx,cz){
     ||snapshot.identity?.catalogSha256!==R12_CATALOG_SHA
     ||!Object.keys(R12_SOURCE).every(k=>snapshot.identity?.source?.[k]===R12_SOURCE[k])
     ||typeof snapshot.lookup!=='function')throw new TypeError('Invalid R12 exact-point snapshot');
-  let next=0,failed=false;
-  const point={};
+  let next=0,failed=false,contextChecks=0;
+  const point={},acceptedContexts=new Set();
+  // R6 snapshots already intern, validate and deeply freeze their context
+  // dictionary. Recheck every exact coordinate, but do not rerun the palette
+  // registry/hash 1,744 times for the SAME immutable dictionary entry.
+  // Mutable contexts or frozen objects with accessors are never memoized.
+  const fixedData=value=>!!value&&typeof value==='object'
+    &&Object.getPrototypeOf(value)===Object.prototype&&Object.isFrozen(value)
+    &&Object.values(Object.getOwnPropertyDescriptors(value)).every(d=>'value' in d);
+  function eligible(context){
+    if(acceptedContexts.has(context))return true;
+    contextChecks++;
+    if(!r12ContextEligible(context))return false;
+    if(acceptedContexts.size<MAX_CHUNK_CONTEXTS&&fixedData(context)
+      &&fixedData(context.source)&&fixedData(context.ecoregion))acceptedContexts.add(context);
+    return true;
+  }
   return Object.freeze({
     step(max=R12_LIMITS.checksPerSlice){
       if(!Number.isInteger(max)||max<1||max>R12_LIMITS.checksPerSlice)throw new RangeError('Proof slice bound');
       let checked=0;
       while(!failed&&next<FOREST_POINT_COUNT&&checked<max){
         adapter.point(cx,cz,next,point);
-        if(!r12ContextEligible(snapshot.lookup(next,point.lon,point.lat)))failed=true;
+        if(!eligible(snapshot.lookup(next,point.lon,point.lat)))failed=true;
         next++;checked++;
       }
       return {checked,done:failed||next===FOREST_POINT_COUNT,eligible:!failed&&next===FOREST_POINT_COUNT};
     },
+    diagnostics(){return {contextChecks,cachedContexts:acceptedContexts.size,maxCachedContexts:MAX_CHUNK_CONTEXTS};},
     result(){return !failed&&next===FOREST_POINT_COUNT?Object.freeze({key:`${cx}:${cz}`,cx,cz,
       projectionId:adapter.projectionId,count:next,ecoregionId:R12_REGION.id,
       modelId:'preview-temperate',sourceSha256:R12_SOURCE.sha256}):null;}

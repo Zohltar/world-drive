@@ -38,6 +38,31 @@ await test('one unresolved or incompatible last candidate refuses the entire sub
     let r;do{r=p.step();}while(!r.done);assert.equal(r.eligible,false);assert.equal(p.result(),null);
   }
 });
+await test('immutable dictionary memoization still checks ALL exact point addresses',()=>{
+  let reads=0;
+  const p=createR12Proof(snapshot(0,0,(i,lon,lat)=>{reads++;const at=adapter.point(0,0,i);
+    assert.equal(lon,at.lon);assert.equal(lat,at.lat);return context;}),adapter,0,0);
+  let r;do{r=p.step();}while(!r.done);
+  assert.equal(reads,1744);assert.equal(p.result().count,1744);
+  assert.equal(p.diagnostics().contextChecks,1);assert.equal(p.diagnostics().cachedContexts,1);
+});
+await test('context cache stays bounded and never trusts mutable records or accessors',()=>{
+  const many=Array.from({length:80},()=>Object.freeze({...context}));
+  const p=createR12Proof(snapshot(0,0,i=>many[i%many.length]),adapter,0,0);
+  let r;do{r=p.step();}while(!r.done);assert.ok(p.result());
+  assert.equal(p.diagnostics().cachedContexts,64);assert.ok(p.diagnostics().contextChecks>64);
+  for(const kind of ['record','source','accessor']){
+    const record={...R12_REGION},source={...R12_SOURCE};let id=686;
+    const changing=Object.freeze({...context,...(kind==='record'?{ecoregion:record}:kind==='source'?{source}:
+      {ecoregion:Object.freeze({...R12_REGION,get id(){return id;}})})});
+    const x=createR12Proof(snapshot(0,0,i=>{
+      if(i===1743){record.id=373;source.sha256='0'.repeat(64);id=373;}return changing;
+    }),adapter,0,0);
+    do{r=x.step();}while(!r.done);
+    assert.equal(x.result(),null,kind+' must be rechecked at the last position');
+    assert.equal(x.diagnostics().cachedContexts,0);assert.equal(x.diagnostics().contextChecks,1744);
+  }
+});
 await test('corrupt layout/address/source identity and unbounded slices are rejected',()=>{
   for(const patch of [{count:1743},{layoutId:'fake'},{cx:1},{projectionId:'old'},
     {identity:{...identity,catalogSha256:'0'.repeat(64)}}])assert.throws(()=>createR12Proof({...snapshot(),...patch},adapter,0,0));
@@ -118,7 +143,8 @@ await test('cancel during asynchronous initialization disposes owned resources, 
   for(let i=0;i<10;i++)await h.tick();assert.equal(h.row.m.geometry,h.base);assert.equal(h.counts().assetsDisposed,1);assert.equal(h.pilot.diagnostics().enabled,false);
 });
 await test('cancel partway through the proof resolves pending idle waits and preserves the original mesh',async()=>{
-  const h=setup();h.pilot.start(h.config);await h.until(()=>h.pilot.diagnostics().proofCandidates>0);h.pilot.stop();
+  let time=0;const h=setup({clock:()=>{time+=.2;return time;}});h.pilot.start(h.config);await h.until(()=>h.pilot.diagnostics().proofCandidates>0);
+  assert.equal(h.pilot.diagnostics().proofsCompleted,0);h.pilot.stop();
   for(let i=0;i<50;i++)await h.tick();assert.equal(h.row.m.geometry,h.base);assert.equal(h.pilot.diagnostics().modifiedChunks,0);
 });
 await test('foreign model geometry and other-owner replacements are never overwritten',async()=>{
@@ -140,7 +166,8 @@ await test('invalid configuration does not tear down a working presentation',asy
   assert.throws(()=>h.pilot.start({...h.config,directory:{...identity,catalogSha256:'0'.repeat(64)}}));assert.equal(h.row.m.geometry,h.summer);h.pilot.stop();
 });
 await test('route generation drift cannot publish or apply a stale prepared proof',async()=>{
-  const h=setup();h.pilot.start(h.config);await h.until(()=>h.pilot.diagnostics().proofCandidates>0);h.generation(2);
+  let time=0;const h=setup({clock:()=>{time+=.2;return time;}});h.pilot.start(h.config);await h.until(()=>h.pilot.diagnostics().proofCandidates>0);
+  assert.equal(h.pilot.diagnostics().proofsCompleted,0);h.generation(2);
   for(let i=0;i<80;i++)await h.tick();assert.equal(h.row.m.geometry,h.base);assert.equal(h.pilot.diagnostics().modifiedChunks,0);h.pilot.stop();
 });
 await test('all proof iterations and repeated source decisions stay deterministic',()=>{
@@ -154,7 +181,7 @@ await test('larger count cap retains the same per-read time deadline and denied-
   const fast=setup();fast.pilot.start(fast.config);
   await fast.until(()=>fast.pilot.diagnostics().proofCandidates>0);
   assert.equal(fast.pilot.diagnostics().proofCandidates,R12_LIMITS.checksPerSlice);
-  assert.equal(fast.pilot.diagnostics().proofsCompleted,0);fast.pilot.stop();
+  assert.equal(fast.pilot.diagnostics().proofsCompleted,1);fast.pilot.stop();
   let time=0;const slow=setup({clock:()=>{time+=.2;return time;}});
   slow.pilot.start(slow.config);await slow.until(()=>slow.pilot.diagnostics().proofCandidates>0);
   let previous=slow.pilot.diagnostics().proofCandidates;
