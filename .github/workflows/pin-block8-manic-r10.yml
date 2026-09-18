@@ -1,0 +1,53 @@
+name: Pin verified Manic R10 fixture
+on:
+  push:
+    branches: [candidate/block8-biome-classifier-r1]
+    paths: ['.github/workflows/pin-block8-manic-r10.yml']
+permissions:
+  contents: write
+  actions: read
+jobs:
+  pin:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: candidate/block8-biome-classifier-r1
+          fetch-depth: 0
+      - uses: actions/download-artifact@v4
+        with:
+          name: manic-route-source-6214c87f13ceac1774d7a264833db60f19639df1
+          run-id: 35345189578
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/manic-pinned
+      - name: Verify the reviewed response and receipt then preserve exact bytes
+        env:
+          SOURCE: ${{ runner.temp }}/manic-pinned
+        run: |
+          python - <<'PY'
+          import os, gzip, hashlib, shutil
+          from pathlib import Path
+          src=Path(os.environ['SOURCE'])
+          assert sorted(p.name for p in src.iterdir())==['receipt.json','response.json.gz']
+          receipt=(src/'receipt.json').read_bytes()
+          packed=(src/'response.json.gz').read_bytes()
+          assert len(packed)==11251
+          raw=gzip.decompress(packed)
+          assert len(raw)==34710
+          assert hashlib.sha256(raw).hexdigest()=='0d3378137bf9bc3a96ffd6185bb5aaf1a6f47261e31b28038969c03425ed8e0c'
+          assert hashlib.sha256(receipt).hexdigest()=='882039b3980d123daec53d452811c7973a37ad24aac1a6a4d26ae58d70a30724'
+          dest=Path('qa/fixtures/biomes/manic-r10')
+          assert not dest.exists()
+          shutil.copytree(src,dest)
+          (dest/'ATTRIBUTION.txt').write_text('Route: OpenStreetMap contributors, ODbL-1.0.\nhttps://www.openstreetmap.org/copyright\nhttps://opendatacommons.org/licenses/odbl/1-0/\nOriginal OSRM response; capture provenance is in receipt.json.\nNot an authoritative gameplay route or GPS trace.\n')
+          PY
+      - name: Commit only the verified fixture on the candidate
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add qa/fixtures/biomes/manic-r10
+          git rm .github/workflows/pin-block8-manic-r10.yml
+          git commit -m 'data(biomes): pin reviewed real Manic route response and provenance'
+          git push origin HEAD:candidate/block8-biome-classifier-r1
