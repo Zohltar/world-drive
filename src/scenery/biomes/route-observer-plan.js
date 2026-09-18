@@ -24,15 +24,19 @@ export function createBiomeObserverPlan(route,{origin,routeId}={}){
   }
   function locate(x,z){
     forestChunkAtAbsolute(x,z);let best=Infinity,index=-1,fraction=0,tests=0;
-    const teleport=Math.hypot(x-lastX,z-lastZ)>960;
+    const moved=Math.hypot(x-lastX,z-lastZ),teleport=moved>960;
+    // R9: a UI jump can skip many segments without reaching the independent
+    // 960 m Worker-reset threshold. Trust the hint only for genuinely local
+    // movement and re-anchor if its nearest segment is outside road proximity.
+    const localHint=hint>=0&&moved<120;
     function scan(first,last){for(let i=first;i<=last;i++){
       const ax=xy[i*2],az=xy[i*2+1],dx=xy[i*2+2]-ax,dz=xy[i*2+3]-az,den=dx*dx+dz*dz;
       const t=den?Math.max(0,Math.min(1,((x-ax)*dx+(z-az)*dz)/den)):0;
       const d=(x-ax-t*dx)**2+(z-az-t*dz)**2;tests++;
       if(d<best){best=d;index=i;fraction=t;}
     }}
-    if(hint<0||teleport)scan(0,coordinates.length-2);
-    else {scan(Math.max(0,hint-32),Math.min(coordinates.length-2,hint+32));if(best>480**2)scan(0,coordinates.length-2);}
+    if(!localHint)scan(0,coordinates.length-2);
+    else {scan(Math.max(0,hint-32),Math.min(coordinates.length-2,hint+32));if(best>20**2)scan(0,coordinates.length-2);}
     const progress=plan.distanceAtVertex(index)+(plan.distanceAtVertex(index+1)-plan.distanceAtVertex(index))*fraction;
     if(!teleport&&lastProgress!==null&&Math.abs(progress-lastProgress)>2)direction=progress>lastProgress?1:-1;
     if(teleport)direction=1;
