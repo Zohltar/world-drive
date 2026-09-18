@@ -119,6 +119,28 @@ routes/values. The original 1,497-point route, four rendered chunks, 120-second 
 No synthetic fallback or timeout increase is used. Require the new exact-head
 workflows and inspect screenshots; never transfer partial evidence to the correction.
 
+## R13 finite-window correction (second failure retained)
+
+Candidate **c8b1bc03e734bed8608a7278ccf9c7398d1630a5**, R13 run **35401396068**,
+correctly admitted the real Manic route, but FAILED the unchanged four-chunk gate:
+zero proofs/substitutions, `missing-coverage`, no page/engine errors. The shared
+controller inherited Nord's 2,800 m source corridor, requesting undeclared southern
+tiles **1115-407 and 1116-407** from the intentionally unchanged R10 package.
+The independent native source oracle again passed 383 chunks/667,952 points, but
+this partial evidence is not a rendered PASS.
+
+The correction binds preparation windows to each reviewed profile: Manic uses
+R10's provisioned **2,400 m ahead /700 m behind /900 m corridor**, reversed when
+travel direction reverses. Nord's original window stays unchanged. This changes
+source-window selection only, NOT R4 visibility, density, placements, streaming or
+CPU/cache budgets. All exact-point eligibility checks remain; chunks outside the
+finite loaded coverage retain baseline conifers rather than a guessed snowy model.
+The 26 gzip payloads/package are unchanged. A permanent real-byte regression
+reproduces the old missing tiles, then verifies corrected startup, both directions,
+3,190 fine-spaced coverage windows, 44 real preparation windows and 6,976 exact
+startup positions. The native oracle now calls the same profile-window selector as
+the runtime, not a separately hardcoded lookalike. No timeout/gate relaxation.
+
 ## New human checkpoint after automated PASS
 
 Pull the candidate; install ONLY `public/local-data/biomes/pilot-r13/` from the
