@@ -127,7 +127,16 @@ def main(pilot,output):
         report['offBefore']=page.evaluate(R9.FRAMES,3000)
         activation=page.evaluate("async u => (await import(u)).start({season:'summer'})",URL+'start.mjs')
         assert activation['status']=='enabled'
-        page.wait_for_function("()=>{const s=WorldDriveDiagnostics.forest.visualPilot.snapshot();if(s.phase==='fault')throw new Error(s.error);return s.modifiedChunks>=4 && s.proofsCompleted>=4;}")
+        try:
+            page.wait_for_function("()=>{const s=WorldDriveDiagnostics.forest.visualPilot.snapshot();if(s.phase==='fault')throw new Error(s.error);return s.modifiedChunks>=4 && s.proofsCompleted>=4;}")
+        except Exception:
+            # Capture before leaving Playwright's live event loop. Keep the original
+            # four-chunk/120-second gate; missing progress is never a visual PASS.
+            report['stalledPilot']=page.evaluate(SNAP)
+            report['stalledFrame']=page.evaluate('()=>WorldDriveFramePacing()')
+            print('R12 stalled pilot: '+json.dumps(report['stalledPilot']),flush=True)
+            page.screenshot(path=str(output/'stalled-pilot.png'))
+            raise
         report['summer']=page.evaluate(SNAP)
         assert report['summer']['error'] is None and report['summer']['failures']==0
         assert report['summer']['worker']['transport']['loaded']>0
