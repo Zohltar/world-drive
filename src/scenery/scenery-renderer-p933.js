@@ -1,3 +1,4 @@
+import {registerForestPilotScene} from '../app/forest-visual-pilot.js';
 import {createSceneryRenderer as createSceneryRendererP9} from './scenery-renderer-p9.js';
 import {FOREST_STREAMING_POLICY as FOREST} from '../forest-streaming-policy.js';
 import {ensureWorldDriveDiagnostics,installDiagnosticAlias} from '../diagnostics.js';
@@ -19,6 +20,7 @@ function finite(value,fallback=0){return Number.isFinite(value)?value:fallback;}
 
 export function createSceneryRenderer(options){
   const base=createSceneryRendererP9(options);
+  registerForestPilotScene(options); // R12: inert until explicit pilot start.
   let routeGeneration=0;
 
   function clearForestCache(...args){
