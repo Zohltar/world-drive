@@ -1,113 +1,94 @@
 # World Drive — Block 8 active candidate
 
-Canonical-plan companion. Updated 2026-09-18 (Toronto). Read the canonical plan on
-live dev, dev/main HEADs, exact Dev Integration and live PR #14 before any change.
-GitHub live state and the latest verified PR checkpoint override historical reports.
+Canonical-plan companion. Read the canonical plan on live dev, dev/main HEADs,
+exact Dev Integration and live PR #14 before changes. Live verified checkpoints
+supersede historical reports; candidate evidence is not integrated runtime.
 
-## Current state — R12/R13/R14 HUMAN PASS; R15 tropical Yungas implementation
+## Current state — four tree families accepted; R16 mixed temperate presentation
 
-Existing branch **candidate/block8-biome-classifier-r1**, PR #14 draft/unmerged.
-**R14 Laguna woodland HUMAN PASS: 5737712460**, user verdict **« pass »**, accepted
-at **95b463c26d056a821bb626736cc5ed6f3169ea7e**. R13 Manic **5737262854** and
-R12 Nord **5736150662** remain accepted. No new machine-readable frame trace
-accompanied these final verdicts. Do not repeat those driving tests, R9/R10 data
-pilots or R11/R11W gallery acceptance. General model variety remains deferred.
+Branch **candidate/block8-biome-classifier-r1**, PR #14 draft/open/unmerged.
+**R15 Yungas HUMAN PASS: 5738296675**, user **« tout est beau, pass »**, delivered at
+**7a002906529a56a0237d394c41a85589a9c28213**. This supersedes R15 OPEN wording.
+R12 Nord **5736150662**, R13 Manic **5737262854**, R14 Laguna **5737712460** remain
+accepted. No new numeric frame trace accompanied those final verdicts. Do not
+repeat their single-family driving tests, R9/R10 data pilots or R11/R11W galleries.
 
-R15 implements a fourth, summer-only profile using the approved **preview-tropical**
-shape on **Chuspipata → Yolosa / Yungas**, with the existing historic-road waypoint.
-Initial implementation **a595789448a9ffc01eb544b7e7230912dd4feea1** is published;
-its native/full-game gates and every later docs/ancestry head require their OWN
-exact QA. **Final verified SHA, seven workflow outcomes, artifacts and actual
-measurements are recorded in live PR #14.** Never infer PASS from publication or
-transfer the R14 verdict to R15. The NEW R15 human driving gate remains OPEN.
-Detailed contract and procedure: **WORLD_DRIVE_BLOCK8_RENDERED_YUNGAS_R15.md**.
+All four initial tree families now have scoped driving acceptance. R16 advances
+canonical Block 8 chunk integration: a FIRST deterministic mixture of the two
+already approved temperate/conifer models WITHIN a source-qualified Nord chunk.
+This is not a new general-modeling pass, worldwide activation or boundary blend.
+The **3:1 broadleaf/conifer weight is an artistic pilot choice**, not measured
+local species composition. Detailed contract: **WORLD_DRIVE_BLOCK8_MIXED_NORD_R16.md**.
+The NEW mixed-rendering appearance/performance gate is OPEN until separately tested.
 
-Tropical and dry woodland are summer-only. Unsupported winter requests must reject
-before disturbing a working summer presentation. Temperate winter is leafless AND
-snowy; conifer winter retains needles beneath snow. No terrain, road, weather or
-grip winterization: pale CI ground is fallback graphics, not snow.
+## Explicit R16 boundary
 
-## Real route and source evidence
+R12–R15 remain their accepted homogeneous modes. Only explicit configuration
+**presentation: mixed-r16**, with the R12 Nord profile and pinned R12 directory,
+enables the new **r16-nord-mixed** presentation. Other profiles cannot use it.
+All 1,744 exact R4 candidate positions must still pass the original region
+**686 / biome 4 / Palearctic** proof. No source/route/window/budget gate is weakened.
+Unknown or mixed source data continues to preserve the original visible forest.
 
-Authoring capture **35410409395 PASS**, head b9854257a28f4e3da1a5bf1e34957484fbd1dd7d,
-retains the real OSRM response through the three existing preset controls. The
-captured route has **1,754 vertices /28,153.43 m**, not a synthetic straight line.
-Original response SHA-256:
-`511da11b27aa74d91237f45f13c84170a57fb0653107a7d7ffc6374e2c871ddb`.
-Receipt SHA-256:
-`bb1863c7a1bb245bc4cdf43ff8826e3b872796c8faaa1730bb722e70b229debd`.
-The source's data_version was null; do not invent an OSM data timestamp.
-The fixture, original receipt and OSM/ODbL attribution are committed for deterministic
-QA only. Normal gameplay routing stays unchanged. The one-off object-preservation
-workflow created only verified Git blobs, moved no refs and was removed after use.
+After proof, the original R4 mesh is hidden, not destroyed or rewritten. At most
+two compact presentation meshes partition its SAME visible prefix. Original
+matrices, count, material, geometry, conservative bounds and group transform remain
+R4-owned. Stable horizontal chunk/position selection ignores height, input order
+and season. Height uploads and changing visible counts follow R4, including its
+first-layer/full replacements and cache detach/reattach. OFF restores visibility
+and removes/disposes only the owned instance buffers before releasing pilot assets.
+Hidden cached routes and foreign geometry remain protected.
 
-The original RESOLVE polygon oracle and local real-byte session agree on **265
-chunks /462,160 exact R4 candidates**, all region **444 / Bolivian Yungas /biome 1
-/Neotropic**. All **3,508** route-vertex windows in both directions fit the finite
-**15-tile /one-page** package. This source sampling is not a continuously rendered
-28 km drive, current forest cover, local species identification or altitude zoning.
-Native Worker parity is a separate required gate, measured in the final PR report.
+This mode costs up to **two visible mesh passes instead of one per proved chunk**.
+Additional matrices/indices/prefix arrays are bounded by 1,744 source instances
+and 128 changed chunks; accounted representation stays below 16 MiB. This is not
+a whole-browser/GPU-memory guarantee. Counters distinguish potential extra draws,
+accounted bytes and measured synchronization/build costs from actual GPU FPS.
+Synchronization occurs during Three world-matrix traversal, before instance-buffer
+uploads; steady-state count updates are constant-time and do not recopy matrices.
+No new per-frame global loop or R4 scheduling/budget change is introduced.
 
-R15 route admission binds known endpoint neighborhoods, historic waypoint, 10–45 km
-length and a finite regional envelope. It allows normal live-router resampling,
-not an exact road hash. ALL **1,744 exact original R4 candidate coordinates** must
-still qualify independently before any whole-mesh replacement. Missing, mixed or
-outside-region chunks keep their original visible trees; no guessed source fallback.
+Approved summer/winter model buffers are unchanged. Winter switches BOTH families:
+leafless AND snowy temperate branches, and conifers with needles beneath snow.
+Tropical/dry woodland remain summer-only. Terrain, road, weather, grip and physics
+remain unchanged. The old pale CI ground was fallback graphics, not snow.
 
-## Protected boundary and accepted predecessors
+## Data, acceptance and verification
 
-R14 exact workflows at 95b463: R14 **35406232341**, R1–R9/integration **35406232239**,
-R12 **35406232223**, R13 **35406232264**, R10 **35406232209**, R11/W **35406232231**,
-all PASS; 97/97 canonical commands exit zero. Detailed historical failures/evidence
-remain in earlier reports and Git history, not relabeled as new success.
+R16 reuses installed **public/local-data/biomes/pilot-r12/**. No new biome package,
+source coverage, revision, catalog or polygon data is introduced. The new launcher
+checks the exact directory SHA-256 before disturbing an active pilot:
+**7432f64a462563351b6c400f35ddda50307f1af109376ac8a76911929a644cf8**.
+The read is bounded to 128 KiB and canceled on stop/pagehide. Import remains inert.
+Keep all prior pilot directories. Missing/corrupt roots are errors, not guesses.
 
-Prior profiles remain Nord region 686/biome 4/Palearctic, Manic 373/biome 6/Nearctic,
-Laguna 423/biome 12/Nearctic. R15 adds region 444/biome 1/Neotropic, using the
-60-triangle approved tropical model. No approved model buffer is edited.
-Only existing InstancedMesh.geometry changes after proof. Preserve matrices/counts,
-positions, materials, manual bounds, transforms, road/water/building exclusions,
-R4 full density, first-layer order, prefetch/visibility, scheduler and CPU budgets.
-No extra per-chunk mesh/material pass, new src seam or dependency update. The strict
-R12 strip-and-compare guard is retained. Hidden cached route owners are protected.
+Accepted R15 exact workflows at 7a002: R15 **35411617841**, R1–R9/integration
+**35411617820**, R12 **35411617826**, R13 **35411617810**, R14 **35411617822**,
+R10 **35411617852**, R11/W **35411617831**, all PASS; all 97 integration commands
+exit zero. Do not transfer those PASS results to any R16 or docs/ancestry commit.
+R9 **5729735550**, R10 **5731692833**, R11 **5732527872** and R11W **5734183717**
+remain accepted. Earlier source/capture/failure evidence remains in Git history.
 
-Bounds remain 128 proofs/modified meshes, two route-owner listeners, 16 snapshots/
-4 MiB accounted payload, 120 ms polling/two requests, 1,744-read ceiling and a
-**0.8 ms cooperative deadline BEFORE EACH read** with genuine idle admission.
-An indivisible operation may overrun; no hard real-time or whole-browser/GPU-memory
-claim. R15 uses the existing 3,600/2,600/2,800 m source window; Manic retains its
-2,400/700/900 m window. These are source windows, not forest draw radii.
-OFF is inert; route change/pagehide stops Worker/pending work and restores owned
-geometry. Starting the visual pilot stops the older diagnostics observer.
+Before this docs checkpoint dev is **9b1b77aac98783d8de0654a2b43dca5bf5fbd6ca**,
+exact **Dev Integration 35411570167 PASS**. Only this ledger and the R16 report
+advance on dev; no candidate runtime is integrated. Each new dev HEAD requires its
+own exact Dev Integration. Main stays **ad893a9d078df4a3d24d81b929bb2905a8bc57e1**.
 
-No automatic seasons, terrain snow, weather/grip/physics change, shrub/rock planting,
-within-chunk model mixtures, altitude/boundary policy or global activation. Real
-regional elevation/datum and boundary inputs remain prerequisites for R11 policies.
-R9/R10/R12/R13/R14 packages remain unchanged. R15 uses a separate pilot-r15 directory.
-Pinned RESOLVE archive:
-`be36d6209e443038d02e309f0447c6e7f2a62f5fe60c605ffe90d064952f2a60`.
-Catalog: `e35573844a53dbcf42b508e123649e62651f886d332bf1239ae97cf28d13e0e7`.
-Worldwide fine distribution, persistent caching and trusted-root retrieval are later work.
+## Exact next action
 
-## Verification and exact next action
+Finish R16 tests, then require ALL EIGHT exact-head workflows: maintained R1–R9/
+integration, R10, R11/W, R12, R13, R14, R15 and new mixed R16. Preserve the strict
+R12 source/runtime guard, original model buffers and all previous assertions.
+Run pure partition/lifecycle tests, actual Three object tests and native full-game
+source/render tests; inspect final artifacts and summer/winter screenshots.
+Keep 1100x700/DPR1/four changed chunks/120 seconds. Fix failures, do not relax gates.
+Final exact SHA, runs and observed costs belong in the live PR checkpoint.
 
-The local R15 gates passed: **18 pure contract groups, 16 capture-input groups,
-17 HTTP matcher groups and six reproducible-package groups**, plus real-byte source
-checks and maintained R12/R13/R14/route-owner unit regressions. These do NOT replace
-native/full-game and full integration checks on the final published commit.
-
-Before this follow-up dev is **8861a6390eb2774af885ddde110977c9df6315a1**, exact
-**Dev Integration 35410348362 PASS**. This synchronization changes only this ledger
-and R15 report, never candidate runtime on dev. Require exact canonical Dev Integration
-for its new HEAD and ALL SEVEN final candidate workflows: R1–R9/integration, R10,
-R11/W, R12, R13, R14 and R15. No transfer of earlier SHA's PASS. Record their final
-IDs in the live PR; inspect exact artifacts, all 97 zero integration exit codes and
-actual native screenshots. Preserve 1100x700 /DPR1 /four rendered chunks /120 seconds.
-
-On failure fix the original case without weakening source proof or budgets. Once
-all gates pass, deliver ONLY the NEW R15 Yungas tropical driving test and the small
-final native package. Assess a few kilometers: silhouette, late model changes and
-fluidity. No winter or repeated accepted test. Software rendering and controlled
-upstream services are not the user's GPU/FPS or real satellite/elevation coverage.
-Main remains **ad893a9d078df4a3d24d81b929bb2905a8bc57e1 /v21.33**. No merge,
-release, global activation or main movement is authorized. Block 8 remains ACTIVE,
-not integrated or DONE/CERTIFIED.
+Once green, deliver ONLY the new Nord MIXTURE test: a short summer/winter passage
+assessing mixed silhouettes, switching and fluidity with two mesh passes. No need
+to repeat all four old profile acceptances. OFF by default, explicit launcher,
+unmerged until review/authorization. Block 8 is ACTIVE, not DONE/CERTIFIED.
+Biome density envelopes, true boundary/elevation policies, shrubs/rocks, worldwide
+fine distribution and persistent caching remain later work. No implicit snow-terrain
+project, automatic calendar or broad model-variety pass. Never move main without
+explicit user approval.
