@@ -4,6 +4,7 @@
  * Every one of a chunk's 1,744 exact candidates must pass the scoped proof.
  * R16 is a separate opt-in split presentation (two meshes, same original prefix).
  */
+import {buildNaturalForestStyle,R17_LOOK} from './natural-forest-look-r17.mjs';
 import {createMixedForestPresentation,R16_PRESENTATION} from './mixed-forest-presentation-r16.mjs';
 import {createBiomeWorkerClient} from '../../src/scenery/biomes/biome-worker-client.js';
 import {createBiomeChunkContextBridge} from '../../src/scenery/biomes/chunk-context-bridge.js';
@@ -21,6 +22,8 @@ export function validateR12Config(value){
     ||identity.revision!==profile.revision||typeof safe.baseUrl!=='string')throw new TypeError('R12 pinned source/configuration');
   if(safe.presentation!==undefined&&safe.presentation!==R16_PRESENTATION)throw new TypeError('Unknown forest presentation');
   if(safe.presentation===R16_PRESENTATION&&profile.id!==R12_PROFILE)throw new TypeError('R16 mixed presentation is Nord only');
+  if(safe.appearance!==undefined&&(safe.appearance!==R17_LOOK||safe.presentation!==R16_PRESENTATION||profile.id!==R12_PROFILE))
+    throw new TypeError('R17 natural appearance requires the mixed Nord presentation');
   return safe;
 }
 export function scheduleR12(callback,delay=0){
@@ -44,7 +47,7 @@ export function createRenderedBiomePilot({THREE,forestGroup,getState,getGenerati
   let enabled=false,token=0,cancel=null,busy=false,kit=null,client=null,bridge=null,plan=null;
   let config=null,origin=null,generation=null,season='summer',phase='disabled',error=null,worker=null;
   let previousPosition=null,windowSignature=null,knownGeometry=new WeakMap(),parentListening=false;
-  let profileId=R12_PROFILE,presentation=null;
+  let profileId=R12_PROFILE,presentation=null,appearance=null,naturalStyle=null;
   const waiters=new Set();
   const stats={polls:0,deferrals:0,proofsCompleted:0,proofsRefused:0,proofCandidates:0,swaps:0,restores:0,
     cancelledProofs:0,failures:0,foreignGeometry:0,ownerConflicts:0,proofEvictions:0,
@@ -66,7 +69,7 @@ export function createRenderedBiomePilot({THREE,forestGroup,getState,getGenerati
     if(parentListening){forestGroup.removeEventListener('childadded',parentAdded);forestGroup.removeEventListener('childremoved',parentRemoved);parentListening=false;}
     for(const [g,h] of groups){g.removeEventListener('childadded',h.add);g.removeEventListener('childremoved',h.remove);}
     groups.clear();for(const m of [...records.keys()])restore(m);
-    bridge?.dispose();client?.dispose();bridge=null;client=null;plan=null;kit?.dispose();kit=null;
+    bridge?.dispose();client?.dispose();bridge=null;client=null;plan=null;naturalStyle?.dispose();naturalStyle=null;kit?.dispose();kit=null;
     proofs.clear();rejected.clear();config=null;origin=null;generation=null;worker=null;
     previousPosition=null;windowSignature=null;knownGeometry=new WeakMap();phase='disabled';
   }
@@ -93,7 +96,7 @@ export function createRenderedBiomePilot({THREE,forestGroup,getState,getGenerati
     if(valid===undefined){valid=sameR12Geometry(original,kit.summerAssets[0].parts[0].geometry);knownGeometry.set(original,valid);}
     if(!valid){stats.foreignGeometry++;return;}
     if(presentation===R16_PRESENTATION){
-      const t=now(),mixed=createMixedForestPresentation({THREE,group,source:mesh,kit,proof,season,now});
+      const t=now(),mixed=createMixedForestPresentation({THREE,group,source:mesh,kit,proof,season,style:naturalStyle,now});
       records.set(mesh,{original,replacement:original,id:'mixed',key:c.key,group,proof,mixed});stats.swaps++;
       stats.maxSwapMs=Math.max(stats.maxSwapMs,now()-t);stats.peakMeshes=Math.max(stats.peakMeshes,records.size);return;
     }
@@ -171,7 +174,7 @@ export function createRenderedBiomePilot({THREE,forestGroup,getState,getGenerati
       // proof remains independent: no regional class is guessed from this envelope.
       if(!renderedRouteMatches(profileId,plan,origin))
         throw new Error('Pilote visuel : choisir '+renderedProfile(profileId).routeLabel+' avant de démarrer');
-      kit=assetFactory(THREE);client=clientFactory();phase='initializing';
+      kit=assetFactory(THREE);if(appearance===R17_LOOK)naturalStyle=buildNaturalForestStyle(THREE,kit);client=clientFactory();phase='initializing';
       const ownClient=client;await ownClient.initialize(config);if(!current(t))return;
       bridge=bridgeFactory({client:ownClient,identity:config.directory,layoutId:FOREST_LAYOUT_ID,maxChunks:R12_LIMITS.snapshotChunks});
       const r=await bridge.setRoute(plan.coordinates,{projectionId:plan.adapter.projectionId});if(!current(t))return;
@@ -220,8 +223,8 @@ export function createRenderedBiomePilot({THREE,forestGroup,getState,getGenerati
   }
   function start(value){
     const safe=validateR12Config(value);
-    stop();profileId=safe.profile??R12_PROFILE;presentation=safe.presentation??null;config={directory:safe.directory,baseUrl:safe.baseUrl};season=safe.season??'summer';enabled=true;phase='waiting-route';error=null;arm();
-    return Object.freeze({status:'enabled',pilot:presentation===R16_PRESENTATION?'r16-nord-mixed':profileId,season,placementAuthority:false});
+    stop();profileId=safe.profile??R12_PROFILE;presentation=safe.presentation??null;appearance=safe.appearance??null;config={directory:safe.directory,baseUrl:safe.baseUrl};season=safe.season??'summer';enabled=true;phase='waiting-route';error=null;arm();
+    return Object.freeze({status:'enabled',pilot:appearance===R17_LOOK?'r17-nord-natural':presentation===R16_PRESENTATION?'r16-nord-mixed':profileId,season,placementAuthority:false});
   }
   function setSeason(value){
     r12Model(value,profileId);if(!enabled)throw new Error('Pilote visuel arrêté');season=value;
@@ -236,8 +239,8 @@ export function createRenderedBiomePilot({THREE,forestGroup,getState,getGenerati
         for(const [id,n] of Object.entries(d.models))models[id]=(models[id]??0)+n;
       }else{if(r.group.parent?.visible===false)continue;instances+=m.count;models[r.id]=(models[r.id]??0)+m.count;}
     }
-    return {enabled,pilot:presentation===R16_PRESENTATION?'r16-nord-mixed':profileId,sourceProfile:profileId,
-      presentation,potentialAdditionalDrawCalls,presentationBytes,maxPresentationSyncMs,diagnosticOnly:false,placementAuthority:false,geometrySubstitution:true,
+    return {enabled,pilot:appearance===R17_LOOK?'r17-nord-natural':presentation===R16_PRESENTATION?'r16-nord-mixed':profileId,sourceProfile:profileId,
+      presentation,appearance,appearanceAssets:naturalStyle?.diagnostics()??null,potentialAdditionalDrawCalls,presentationBytes,maxPresentationSyncMs,diagnosticOnly:false,placementAuthority:false,geometrySubstitution:true,
       phase,error,season,...stats,modifiedChunks:records.size,modifiedInstances:instances,models,proofCache:proofs.size,
       limits:R12_LIMITS,worker,bridge:bridge?.diagnostics()??null,
       scope:renderedProfile(profileId).scope,
