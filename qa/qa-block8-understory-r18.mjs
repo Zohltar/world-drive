@@ -33,11 +33,25 @@ check('R18 owns a copied 256x256 atlas with an authored fern tile',()=>{
   let opaque=0;for(let y=128;y<256;y++)for(let x=128;x<256;x++)if(atlas.data[(y*256+x)*4+3]>0)opaque++;assert.ok(opaque>100);
 });
 const style=buildUnderstoryStyle(THREE);
+function fernBounds(asset){
+  const p=asset.geometry.attributes.position.array,uv=asset.geometry.attributes.uv.array;
+  let maxY=-Infinity,maxR=0,count=0;
+  for(let i=0;i<asset.geometry.attributes.position.count;i++){
+    if(uv[i*2]<130/256||uv[i*2+1]<130/256)continue;
+    const x=p[i*3],y=p[i*3+1],z=p[i*3+2];maxY=Math.max(maxY,y);maxR=Math.max(maxR,Math.hypot(x,z));count++;
+  }
+  return {count,maxY,maxR};
+}
 check('summer and winter clumps hit the exact triangle budgets with one shared material',()=>{
   const s=style.asset('summer'),w=style.asset('winter'),d=style.diagnostics();
   assert.equal(s.geometry.attributes.position.count/3,336);assert.equal(w.geometry.attributes.position.count/3,576);
   assert.equal(s.material,w.material);assert.equal(d.sharedMaterials,1);assert.equal(d.transparent,false);assert.equal(d.alphaTest,.34);
   assert.ok(d.maxScaledFootprintRadius<=3.1,d.maxScaledFootprintRadius);assert.equal(d.id,R18_UNDERSTORY);
+});
+check('fern cards remain visibly substantial without exceeding the R18 footprint budget',()=>{
+  const summer=fernBounds(style.asset('summer')),winter=fernBounds(style.asset('winter'));
+  assert.ok(summer.count>0&&summer.maxY>1.85&&summer.maxR>1.03,JSON.stringify(summer));
+  assert.ok(winter.count>0&&winter.maxY>1.32&&winter.maxR>.97,JSON.stringify(winter));
 });
 style.dispose();check('owned R18 assets dispose without touching R17 runtime assets',()=>assert.equal(style.diagnostics().disposed,true));
 const report={status:'PASS',groups:cases.length,cases,route:route.diagnostics(),atlasBytes:atlas.data.byteLength};
