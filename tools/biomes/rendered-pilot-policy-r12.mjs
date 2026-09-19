@@ -20,6 +20,8 @@ export const R12_LIMITS=Object.freeze({proofs:128,meshes:128,groups:2,checksPerS
 export const R12_PROFILE='r12-nord-rendered';
 export const R13_PROFILE='r13-manic-boreal';
 export const R14_PROFILE='r14-laguna-woodland';
+export const R15_PROFILE='r15-yungas-tropical';
+export const R15_REGION=Object.freeze({id:444,biome:1,name:'Bolivian Yungas',realm:'Neotropic'});
 export const R14_REGION=Object.freeze({id:423,biome:12,name:'California interior chaparral and woodlands',realm:'Nearctic'});
 export const R13_REGION=Object.freeze({id:373,biome:6,name:'Eastern Canadian forests',realm:'Nearctic'});
 // Fixed reviewed profiles only: callers cannot inject arbitrary ecological rules,
@@ -31,6 +33,9 @@ const profiles=Object.freeze({
   [R13_PROFILE]:Object.freeze({id:R13_PROFILE,region:R13_REGION,modelId:'preview-conifer',
     palette:'boreal-conifer',revision:'resolve2017-r13-manic-rendered',routeLabel:'Manic-2 → Manic-5',
     scope:'Only source-verified Eastern Canadian forest chunks along Manic-2 → Manic-5; existing R4 tree placements only'}),
+  [R15_PROFILE]:Object.freeze({id:R15_PROFILE,region:R15_REGION,modelId:'preview-tropical',
+    palette:'tropical-moist-broadleaf',revision:'resolve2017-r15-yungas-rendered',routeLabel:'Chuspipata → Yolosa · Yungas',
+    scope:'Only source-verified Bolivian Yungas forest chunks; existing R4 placements, not altitude or current land cover'}),
   [R14_PROFILE]:Object.freeze({id:R14_PROFILE,region:R14_REGION,modelId:'preview-woodland',
     palette:'mediterranean-woodland-scrub',revision:'resolve2017-r14-laguna-rendered',routeLabel:'Laguna Seca',
     scope:'Only source-verified homogeneous Laguna Seca woodland chunks; existing R4 placements and density, not current land cover'})
@@ -56,6 +61,19 @@ export function renderedRouteMatches(id,plan,origin){
       &&a[0]===lagunaCoordinates[i][0]&&a[1]===lagunaCoordinates[i][1]);
   const near=(a,b)=>Array.isArray(a)&&a.length===2&&a.every(Number.isFinite)
     &&Math.abs(a[0]-b[0])<=.012&&Math.abs(a[1]-b[1])<=.008;
+  if(p.id===R15_PROFILE){
+    // The normal live router can resample the old road. Admission binds the
+    // preset endpoints, historic waypoint, finite envelope and length, NOT
+    // an exact road hash; full source proof is still required for each tree chunk.
+    const close=(a,b)=>Array.isArray(a)&&a.length===2&&a.every(Number.isFinite)
+      &&Math.abs(a[0]-b[0])<=.0045&&Math.abs(a[1]-b[1])<=.0045;
+    return close(c[0],[-67.81891,-16.29911])&&close(c.at(-1),[-67.73975,-16.23312])
+      &&close([origin?.lon,origin?.lat],[-67.81891,-16.29911])
+      &&Number.isFinite(plan.totalMeters)&&plan.totalMeters>=10000&&plan.totalMeters<=45000
+      &&c.every(a=>Array.isArray(a)&&a.length===2&&a.every(Number.isFinite)
+        &&a[0]>=-67.95&&a[0]<=-67.60&&a[1]>=-16.40&&a[1]<=-16.10)
+      &&c.some(a=>close(a,[-67.7861,-16.2577]));
+  }
   if(!near(c[0],[-68.3467,49.3213])||!near(c.at(-1),[-68.7271214,50.6451065])
     ||!near([origin?.lon,origin?.lat],[-68.3467,49.3213])
     ||!Number.isFinite(plan.totalMeters)||plan.totalMeters<170000||plan.totalMeters>230000)return false;
