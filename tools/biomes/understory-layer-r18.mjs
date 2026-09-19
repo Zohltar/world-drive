@@ -117,11 +117,11 @@ function geometryData(season){
   if(season==='summer'){
     for(let i=0;i<96;i++){const a=(i*.61803398875%1)*TAU,r=.15+(i%11)/10*.62,y=.24+(i%13)/12*.58,w=.09+(i%5)*.017,h=.11+(i%7)*.012;card(a,r,y,w,h,leaf,[.20+(i%4)*.018,.34+(i%5)*.015,.12+(i%3)*.014],(i%3-1)*.12);}
     for(let i=0;i<32;i++){const a=i/32*TAU,r=.06+(i%5)*.055,y=.12+(i%8)*.075;card(a,r,y,.022,.20,bark,[.22,.15,.08],.05);}
-    for(let rosette=0;rosette<4;rosette++)for(let i=0;i<10;i++){const a=(i/10+rosette*.17)*TAU,r=.54+(rosette%2)*.22;card(a,r,.06+(i%3)*.018,.08,.34,fern,[.18,.31,.11],-.72);}
+    for(let rosette=0;rosette<4;rosette++)for(let i=0;i<10;i++){const a=(i/10+rosette*.17)*TAU,r=.60+(rosette%2)*.24,h=.46+(i%3)*.015;card(a,r,h,.11,h,fern,[.18,.31,.11],-.72);}
   }else{
     for(let i=0;i<160;i++){const a=(i*.754877666%1)*TAU,r=.08+(i%17)/16*.66,y=.12+(i%19)/18*.72;card(a,r,y,.014+(i%3)*.004,.18+(i%5)*.03,bark,[.22,.16,.105],(i%5-2)*.10);}
     for(let i=0;i<48;i++){const a=i/48*TAU,r=.20+(i%9)*.055,y=.15+(i%7)*.065;card(a,r,y,.020,.24,bark,[.28,.22,.13],(i%3-1)*.15);}
-    for(let rosette=0;rosette<4;rosette++)for(let i=0;i<10;i++){const a=(i/10+rosette*.13)*TAU,r=.50+(rosette%2)*.23;card(a,r,.025,.085,.30,fern,[.28,.22,.13],-.93);}
+    for(let rosette=0;rosette<4;rosette++)for(let i=0;i<10;i++){const a=(i/10+rosette*.13)*TAU,r=.58+(rosette%2)*.25,h=.34+(i%3)*.012;card(a,r,h*.72,.11,h,fern,[.28,.22,.13],-.93);}
     for(let i=0;i<40;i++){const a=i/40*TAU,r=.12+(i%8)*.075,y=.42+(i%6)*.06;card(a,r,y,.08,.035,leaf,[.88,.90,.91],-.18);}
   }
   const expected=season==='summer'?168:288;if(quads!==expected)throw new Error(`R18 geometry quad count ${quads}`);
