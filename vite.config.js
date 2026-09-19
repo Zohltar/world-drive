@@ -1,6 +1,7 @@
 import { defineConfig } from 'vite';
 import { access, cp, readdir } from 'node:fs/promises';
 import path from 'node:path';
+import { worldDriveBiomeRawGzip } from './tools/biomes/vite-raw-gzip.mjs';
 
 // World Drive keeps runtime samples such as assets/audio/*.mp3 in the repository
 // root. Vite serves them during development, but arbitrary root files are not
@@ -197,6 +198,7 @@ export default defineConfig({
   plugins:[
     copyWorldDriveStaticAssets(),
     desktopLocalDataBuildPolicy(),
+    worldDriveBiomeRawGzip(),
     worldDriveOverpassProxy()
   ],
   build:{
