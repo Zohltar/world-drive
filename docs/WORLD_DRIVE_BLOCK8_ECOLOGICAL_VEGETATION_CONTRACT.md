@@ -54,23 +54,33 @@ https://academic.oup.com/bioscience/article/67/6/534/3102935
 ### Nordschleife — ecoregion 686 / biome 4
 
 Eifel National Park describes the natural post-glacial forest as deciduous and
-beech-dominated. Spruce expanded mainly through historical reforestation and is
-explicitly described as non-native. R18 therefore remains broadleaf-dominant;
-conifers are secondary rather than the natural baseline. Shrubs/ferns are compatible
-understory forms but must not become a uniform hedge.
+beech-dominated. Its own species/habitat records support sessile oak and hornbeam
+in deciduous forest, with rowan widespread in forests and clearings. Spruce is common
+today but is explicitly documented as a historically introduced forestry tree rather
+than the indigenous baseline. R22 therefore uses a beech-dominant visual mixture
+with sessile oak, hornbeam and rowan associates plus secondary spruce. The
+55/15/10/5/15 family weights are deterministic art weights, not measured stand or
+species percentages. R18 remains the reviewed roadside shrub/fern layer and keeps
+its existing route-band/root policy unchanged.
 
 Sources:
 - https://www.nationalpark-eifel.de/en/nature-landscapes/habitats/forests/
+- https://www.nationalpark-eifel.de/de/natur-landschaft-arten/lebensraeume/laubwaelder/pflanzen-der-laubwaelder/
+- https://www.nationalpark-eifel.de/de/natur-landschaft-arten/artenliste/liste/272/
+- https://www.nationalpark-eifel.de/en/nature-landscapes/list-of-species/liste/57/
+- https://www.nationalpark-eifel.de/en/nature-landscapes/list-of-species/liste/295/
+- https://www.nationalpark-eifel.de/en/nature-landscapes/list-of-species/liste/251/
 - https://www.nationalpark-eifel.de/en/nature-landscapes/conservation/
 
 ### Manic — ecoregion 373 / biome 6
 
 Québec boreal references support conifer dominance with black spruce and balsam fir,
 plus white spruce/pine/larch and paper birch/aspen varying with domain, moisture and
-disturbance. Moss/lichen ground layers are characteristic in relevant domains.
-R13's conifer dominance is compatible at family level. A later diversity pass should
-separate spruce/fir silhouettes and occasional deciduous associates rather than claim
-that one generic conifer represents the complete local flora.
+disturbance. Moss/lichen ground layers are characteristic in relevant domains. R21
+now separates black-spruce, balsam-fir, paper-birch and trembling-aspen visual
+families on the existing R4 roots. Its 46/34/14/6 weights are artistic only and do
+not claim measured local species composition; ground moss/lichen remains outside
+this tree-family pass.
 
 Sources:
 - https://mrnf.gouv.qc.ca/documents/forest/boreal-forest.pdf
@@ -93,10 +103,9 @@ Sources:
 
 Regional sources describe humid montane/cloud evergreen forest with abundant
 epiphytic life; bromeliads/orchids, tree ferns and bamboo are characteristic cues.
-R15's single broad tropical silhouette is only coarse biome-family compatibility.
-Before default activation is called ecologically representative, Yungas requires a
-richer humid-montane presentation with layered broadleaf forms and at least
-tree-fern/bamboo/epiphyte cues, without inventing new placement authority.
+R20 now represents humid-montane broadleaf, epiphyte-bearing tree, tree-fern and
+bamboo-clump visual families on the accepted R4 roots. Its weights are artistic and
+no altitude zonation, current land-cover map or new placement authority is inferred.
 
 Sources:
 - https://www.oneearth.org/ecoregions/bolivian-yungas/
