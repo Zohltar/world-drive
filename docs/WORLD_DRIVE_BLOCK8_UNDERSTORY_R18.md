@@ -3,9 +3,14 @@
 ## Request and acceptance
 
 The user requested low shrubs/ferns along the forest edge to partially hide trunks,
-then explicitly authorized execution: **« vas y execute les modifications »**.
-R16 and R17 have no HUMAN PASS. R18 is the requested continuation of their visual
-rework, not a new regional pilot or an implicit acceptance of either predecessor.
+then explicitly authorized execution. Final candidate
+**c6fe5e563b9b67fc3bf4c292076f757fe4a73dbe** received **HUMAN PASS** with:
+**« pass on garde ca comme ca, je ne vois pas de difference, mais on y reviendra »**.
+
+Interpretation is intentionally narrow: keep R18 as-is and stop iterating now. The
+user still does not perceive a meaningful visual difference from the fern-size
+changes, so improved fern visibility/trunk screening is **not** claimed. That concern
+is deferred for a later art pass. R16 and R17 still have no separate HUMAN PASS.
 The four homogeneous R12–R15 tree-family verdicts remain accepted.
 
 ## Narrow first implementation
@@ -85,19 +90,19 @@ No new timer, Worker, renderer owner seam or persistent cache is added.
 
 ## Verification and delivery gates
 
-Run new asset/edge/prefix/ownership tests and a controller lifecycle test with real
-Three objects, then all maintained R12–R17 regressions and the strict R12 boundary.
-Native full-game QA retains 1100x700/DPR1/four proved chunks/120 seconds, source
-polygon/Worker agreement, actual R17-before/R18-after images, positive understory
-counts, exact root/prefix audits, 20 seasonal round trips, a SUMMER 50% UI jump,
-missing-data behavior and OFF/route-reset cleanup. The old tests remain unchanged.
+Final accepted SHA: **c6fe5e563b9b67fc3bf4c292076f757fe4a73dbe**.
 
-Require ALL TEN candidate exact-head workflows: R1–R9/integration, R10, R11/W,
-R12, R13, R14, R15, R16, R17 and new R18. Inspect all 97 integration exit codes,
-actual screenshots and native JSON. Record final SHA, run IDs, artifacts and
-observed costs in live PR #14; no earlier SHA's PASS transfers to this milestone.
-Software rendering and parked/jump samples do not certify the user's GPU or a
-continuous high-speed lap. Never present a generated image as a game screenshot.
+All ten exact-head workflows are PASS:
+R1–R9/integration **35474977891**, R10 **35474977921**, R11/W **35474977965**,
+R12 **35474977923**, R13 **35474977964**, R14 **35474977960**,
+R15 **35474977932**, R16 **35474977928** (retry), R17 **35474977941** and
+R18 **35474977901** (retry). The R18 fern-scale regression also checks the actual
+fern-tagged Three geometry while preserving the existing clump-footprint cap.
+
+Human result is PASS with a visible-effect caveat: the user elected to keep the
+current implementation despite not seeing a meaningful fern-size difference. Do not
+reinterpret that as proof of stronger trunk screening. No additional R18 test is
+required now.
 
 No new data ZIP is required. Keep **public/local-data/biomes/pilot-r12/**, whose
 root SHA-256 remains **7432f64a462563351b6c400f35ddda50307f1af109376ac8a76911929a644cf8**.
@@ -120,6 +125,7 @@ copy(JSON.stringify({visualPilot:WorldDriveDiagnostics.forest.visualPilot.snapsh
 WorldDriveDiagnostics.forest.visualPilot.stop()
 ```
 
-Await this combined visual/performance verdict. Do not repeat old homogeneous
-pilots or mark R16/R17/R18 accepted prematurely. No PR merge, dev runtime integration,
-worldwide activation or main movement is authorized. Block 8 remains ACTIVE.
+This human checkpoint is complete for R18. Preserve the accepted candidate and
+defer further fern art work. R16/R17 remain without separate HUMAN PASS. No PR merge,
+dev runtime integration, worldwide activation or main movement is authorized without
+explicit user approval. Block 8 remains ACTIVE candidate work.
