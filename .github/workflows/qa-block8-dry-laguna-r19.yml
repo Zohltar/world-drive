@@ -54,7 +54,7 @@ jobs:
         run: |
           mkdir -p "$RUNNER_TEMP/biome-r19"
           git rev-parse HEAD > "$RUNNER_TEMP/biome-r19/tested-commit.txt"
-          git archive --format=tar.gz HEAD tools/biomes/dry-climate-presentation-r19.mjs tools/biomes/dry-pilot-launcher-r19.mjs tools/biomes/rendered-pilot-r12.mjs qa/qa-block8-dry-laguna-r19.mjs qa/qa-block8-dry-laguna-browser-r19.py .github/workflows/qa-block8-dry-laguna-r19.yml > "$RUNNER_TEMP/biome-r19/r19-source.tar.gz"
+          git archive --format=tar.gz HEAD docs/WORLD_DRIVE_BLOCK8_ECOLOGICAL_VEGETATION_CONTRACT.md tools/biomes/dry-climate-presentation-r19.mjs tools/biomes/dry-pilot-launcher-r19.mjs tools/biomes/rendered-pilot-r12.mjs qa/qa-block8-dry-laguna-r19.mjs qa/qa-block8-dry-laguna-browser-r19.py .github/workflows/qa-block8-dry-laguna-r19.yml > "$RUNNER_TEMP/biome-r19/r19-source.tar.gz"
       - uses: actions/upload-artifact@v4
         if: always()
         with:

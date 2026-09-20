@@ -1,11 +1,12 @@
-/** R19: dry Mediterranean/chaparral presentation for the accepted Laguna R14
- * source proof. R4 keeps root placement and visible-prefix ownership. Existing
- * roots are repartitioned into sparse woodland, dry scrub and low prickly pear.
+/** R19: research-calibrated Fort Ord/Laguna Mediterranean presentation.
+ * R4 keeps root placement and visible-prefix ownership. Existing accepted roots
+ * are repartitioned into coast-live-oak-like woodland, maritime chaparral scrub
+ * and dry grass. Visual weights are not habitat-area or species percentages.
  */
 import {buildVegetationPrototypeData} from './vegetation-prototype-data.mjs';
 
 export const R19_PRESENTATION='dry-r19';
-export const R19_MODELS=Object.freeze(['dry-woodland','dry-scrub','prickly-pear']);
+export const R19_MODELS=Object.freeze(['coast-live-oak','maritime-chaparral','dry-grass']);
 export const R19_MAX_INSTANCES=1744;
 const TAU=Math.PI*2;
 
@@ -20,14 +21,14 @@ export function r19Family(cx,cz,x,z){
   if(!Number.isSafeInteger(cx)||!Number.isSafeInteger(cz))throw new TypeError('R19 chunk coordinates');
   finite(x,'x');finite(z,'z');
   const n=hash32(cx,cz,x,z,0x523139)%100;
-  return n<28?0:n<92?1:2; // 28% small woodland /64% scrub /8% low cactus.
+  return n<25?0:n<85?1:2; // 25% oak /60% chaparral /15% dry-grass visual allocation; not measured cover.
 }
 export function r19Transform(family,cx,cz,x,z){
   if(family!==1&&family!==2)throw new TypeError('R19 low family');
   const a=hash32(cx,cz,x,z,0x19a),b=hash32(cx,cz,x,z,0x19b),c=hash32(cx,cz,x,z,0x19c);
   const u=a/4294967296,v=b/4294967296,w=c/4294967296;
-  if(family===1)return Object.freeze({yaw:u*TAU,sx:1.55+v*.85,sy:1.25+w*.65,sz:1.45+(1-v)*.80});
-  return Object.freeze({yaw:u*TAU,sx:.95+v*.50,sy:1.10+w*.65,sz:.90+(1-v)*.45});
+  if(family===1)return Object.freeze({yaw:u*TAU,sx:1.45+v*.80,sy:1.20+w*.60,sz:1.40+(1-v)*.75});
+  return Object.freeze({yaw:u*TAU,sx:1.45+v*.80,sy:.72+w*.48,sz:1.40+(1-v)*.75});
 }
 export function partitionR19(array,cx,cz){
   if(!(array instanceof Float32Array)||array.length%16||array.length<16||array.length>R19_MAX_INSTANCES*16)
@@ -43,16 +44,16 @@ export function partitionR19(array,cx,cz){
 const cross=(a,b)=>[a[1]*b[2]-a[2]*b[1],a[2]*b[0]-a[0]*b[2],a[0]*b[1]-a[1]*b[0]];
 const norm=a=>{const l=Math.hypot(...a)||1;return a.map(v=>v/l);};
 
-function dryTreeData(){
+function coastLiveOakData(){
   const d=buildVegetationPrototypeData('preview-woodland'),colors=d.colors.slice();
   for(let i=0;i<colors.length;i+=3){
     const r=colors[i],g=colors[i+1],b=colors[i+2];
-    if(g>r*1.15){const shade=.86+((i/3)%7)*.018;colors[i]=.21*shade;colors[i+1]=.185*shade;colors[i+2]=.068*shade;}
-    else{colors[i]=r*1.08;colors[i+1]=g*.92;colors[i+2]=b*.85;}
+    if(g>r*1.15){const shade=.88+((i/3)%7)*.016;colors[i]=.075*shade;colors[i+1]=.150*shade;colors[i+2]=.048*shade;}
+    else{colors[i]=r*1.04;colors[i+1]=g*.93;colors[i+2]=b*.84;}
   }
   return {...d,colors};
 }
-function dryScrubData(){
+function maritimeChaparralData(){
   const p=[],n=[],c=[];
   function tri(a,b,d,color,normal=null){const no=normal??norm(cross(b.map((v,i)=>v-a[i]),d.map((v,i)=>v-a[i])));
     for(const q of [a,b,d]){p.push(...q);n.push(...no);c.push(...color);}}
@@ -69,24 +70,21 @@ function dryScrubData(){
     const a=i/18*TAU+i*.17,r=.18+(i%6)*.07,h=.22+(i%7)*.055,w=.028+(i%4)*.009;
     const x=Math.cos(a)*r,z=Math.sin(a)*r,side=[-Math.sin(a)*w,0,Math.cos(a)*w];
     const base=[x,0,z],top=[x*.94,h,z*.94],p0=base.map((v,j)=>v-side[j]),p1=base.map((v,j)=>v+side[j]),p2=top.map((v,j)=>v+side[j]),p3=top.map((v,j)=>v-side[j]);
-    const col=i%3===0?[.44,.33,.14]:[.36,.27,.12];tri(p0,p1,p2,col,[Math.cos(a),.12,Math.sin(a)]);tri(p0,p2,p3,col,[Math.cos(a),.12,Math.sin(a)]);
+    const col=i%3===0?[.12,.205,.060]:[.085,.165,.050];tri(p0,p1,p2,col,[Math.cos(a),.12,Math.sin(a)]);tri(p0,p2,p3,col,[Math.cos(a),.12,Math.sin(a)]);
   }
   return {positions:new Float32Array(p),normals:new Float32Array(n),colors:new Float32Array(c),triangles:p.length/9};
 }
-function pricklyPearData(){
+function dryGrassData(){
   const p=[],n=[],c=[];
   function tri(a,b,d,color,normal){for(const q of [a,b,d]){p.push(...q);n.push(...normal);c.push(...color);}}
-  function pad(cx,cy,cz,rx,ry,yaw,shade,segments=10){
-    const normal=[Math.sin(yaw),0,Math.cos(yaw)],u=[Math.cos(yaw)*rx,0,-Math.sin(yaw)*rx],center=[cx,cy,cz],ring=[];
-    for(let i=0;i<segments;i++){const a=i/segments*TAU;ring.push([cx+u[0]*Math.cos(a),cy+ry*Math.sin(a),cz+u[2]*Math.cos(a)]);}
-    const color=[.16*shade,.31*shade,.105*shade];
-    for(let i=0;i<segments;i++)tri(center,ring[i],ring[(i+1)%segments],color,normal);
+  for(let i=0;i<25;i++){
+    const a=i/25*TAU+i*.41,r=.12+(i%6)*.065,h=.24+(i%8)*.040,w=.010+(i%4)*.004,lean=.025+(i%5)*.010;
+    const x=Math.cos(a)*r,z=Math.sin(a)*r,side=[-Math.sin(a)*w,0,Math.cos(a)*w];
+    const base=[x,0,z],top=[x+Math.cos(a)*lean,h,z+Math.sin(a)*lean];
+    const p0=base.map((v,j)=>v-side[j]),p1=base.map((v,j)=>v+side[j]),p2=top.map((v,j)=>v+side[j]),p3=top.map((v,j)=>v-side[j]);
+    const col=i%3===0?[.46,.345,.135]:i%3===1?[.38,.285,.105]:[.50,.405,.175],normal=norm([Math.cos(a),.08,Math.sin(a)]);
+    tri(p0,p1,p2,col,normal);tri(p0,p2,p3,col,normal);
   }
-  pad(0,.30,0,.19,.30,.15,1.0);
-  pad(-.17,.54,.015,.17,.25,-.28,.94);
-  pad(.19,.57,-.025,.16,.24,.42,1.05);
-  pad(-.27,.77,.025,.14,.20,.18,.90);
-  pad(.29,.79,-.04,.13,.19,-.34,1.02);
   return {positions:new Float32Array(p),normals:new Float32Array(n),colors:new Float32Array(c),triangles:p.length/9};
 }
 function geometry(THREE,data,name){
@@ -99,7 +97,7 @@ function geometry(THREE,data,name){
 export function buildDryClimateStyle(THREE){
   const material=new THREE.MeshLambertMaterial({color:0xffffff,vertexColors:true,side:THREE.DoubleSide,fog:true,dithering:true});
   material.name='r19-dry-climate-vertex';
-  const owned=[],data=[dryTreeData(),dryScrubData(),pricklyPearData()];
+  const owned=[],data=[coastLiveOakData(),maritimeChaparralData(),dryGrassData()];
   const assets=data.map((d,i)=>{const g=geometry(THREE,d,'r19-'+R19_MODELS[i]);owned.push(g);return Object.freeze({id:R19_MODELS[i],geometry:g,material,triangles:d.triangles});});
   let disposed=false;
   return Object.freeze({id:R19_PRESENTATION,
@@ -107,7 +105,8 @@ export function buildDryClimateStyle(THREE){
     transform:r19Transform,
     dispose(){if(disposed)return;disposed=true;for(const g of owned)g.dispose();material.dispose();},
     diagnostics:()=>({id:R19_PRESENTATION,models:[...R19_MODELS],triangles:assets.map(a=>a.triangles),sharedMaterials:1,transparent:false,disposed,
-      mix:{woodlandPercent:28,scrubPercent:64,cactusPercent:8},scope:'Laguna R14 dry chaparral presentation; R4 roots unchanged'})
+      mix:{oakVisualWeight:25,chaparralVisualWeight:60,dryGrassVisualWeight:15,measuredHabitatPercent:false},
+      scope:'Laguna R14 / Fort Ord-compatible coast live oak + maritime chaparral + dry grass; R4 roots unchanged'})
   });
 }
 const hash=array=>{let h=2166136261;const b=new Uint8Array(array.buffer,array.byteOffset,array.byteLength);for(const x of b)h=Math.imul(h^x,16777619)>>>0;return h.toString(16);};

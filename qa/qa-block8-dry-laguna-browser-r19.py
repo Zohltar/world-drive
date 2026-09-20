@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Native full-game R14 versus R19 dry Laguna presentation.
+"""Native full-game R14 versus research-calibrated R19 Laguna presentation.
 Uses real Vite/Three game + native biome Worker. External geographic providers
 are controlled. This is visual/runtime evidence, not user-GPU certification.
 """
@@ -92,7 +92,8 @@ def main(pilot,output):
                 assert summer['error'] is None and summer['failures']==0 and summer['presentation']=='dry-r19'
                 assert summer['dryClimateAssets']['id']=='dry-r19' and summer['dryClimateAssets']['triangles']==[44,64,50]
                 assert summer['worker']['transport']['loaded']>0 and summer['worker']['transport']['rejected']==0
-                for key in ['dry-woodland','dry-scrub','prickly-pear']:assert summer['models'].get(key,0)>0,key
+                for key in ['coast-live-oak','maritime-chaparral','dry-grass']:assert summer['models'].get(key,0)>0,key
+                assert not any('cactus' in key or 'prickly' in key for key in summer['models'])
                 assert summer['potentialAdditionalDrawCalls']<=summer['modifiedChunks']*2
                 for m in audit['meshes']:
                     d=m.get('mixed');assert d and d['sourcePrefixExact'] and d['sourceHidden']
@@ -105,7 +106,7 @@ def main(pilot,output):
                 after_state=page.evaluate(SNAP);after_audit=page.evaluate('()=>WorldDriveDiagnostics.forest.visualPilot.audit()')
                 assert preserved and after_state['enabled'] and after_state['presentation']=='dry-r19'
                 assert after_state['failures']==before_state['failures'] and after_state['ownerConflicts']==before_state['ownerConflicts']
-                assert after_state['modifiedChunks']>0 and all(after_state['models'].get(k,0)>0 for k in ['dry-woodland','dry-scrub','prickly-pear'])
+                assert after_state['modifiedChunks']>0 and all(after_state['models'].get(k,0)>0 for k in ['coast-live-oak','maritime-chaparral','dry-grass'])
                 assert all(m.get('mixed',{}).get('sourcePrefixExact') for m in after_audit['meshes'])
                 # Actual game teleports exercise prefix/ownership turnover.
                 jumps=[]
@@ -137,7 +138,7 @@ def main(pilot,output):
         report.update(pageErrors=errors,engineErrors=engine,upstreamRequests=dict(upstream),
             limitations=['Software-rendered Chromium, not user GPU/high-speed certification',
                 'R19 changes vegetation presentation only; ground/road/weather are unchanged',
-                'Dry woodland/scrub/cactus ratios are artistic, not a measured Laguna species inventory',
+                'Oak/chaparral/grass visual weights are not measured habitat percentages; families are calibrated to Fort Ord/Laguna sources',
                 'Existing R4 roots are repartitioned; no new ecological placement authority'])
         (output/'dry-laguna-r19-qa.json').write_text(json.dumps(report,indent=2)+'\n')
         if server:
