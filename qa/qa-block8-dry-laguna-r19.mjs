@@ -8,7 +8,7 @@ const cases=[];function check(name,fn){fn();cases.push(name);}
 check('R19 family selection is deterministic and biased toward Fort Ord chaparral structure',()=>{
   const counts=[0,0,0];
   for(let i=0;i<10000;i++){const f=r19Family(2,-3,i*.137,i*.293);counts[f]++;assert.equal(f,r19Family(2,-3,i*.137,i*.293));}
-  assert.ok(counts[0]>2200&&counts[0]<2800,counts);assert.ok(counts[1]>5600&&counts[1]<6400,counts);assert.ok(counts[2]>1200&&counts[2]<1800,counts);
+  assert.ok(counts[0]>1500&&counts[0]<2100,counts);assert.ok(counts[1]>5800&&counts[1]<6600,counts);assert.ok(counts[2]>1700&&counts[2]<2300,counts);
 });
 check('low-family transforms are stable and bounded',()=>{
   for(const family of [1,2])for(let i=0;i<500;i++){
@@ -27,9 +27,10 @@ check('partition owns every original root exactly once with visible-prefix table
 });
 const style=buildDryClimateStyle(THREE);
 check('dry assets are bounded Fort Ord oak chaparral and grass with one material',()=>{
-  const d=style.diagnostics();assert.equal(d.id,R19_PRESENTATION);assert.deepEqual(d.models,[...R19_MODELS]);assert.deepEqual(d.triangles,[44,64,50]);
+  const d=style.diagnostics();assert.equal(d.id,R19_PRESENTATION);assert.deepEqual(d.models,[...R19_MODELS]);assert.deepEqual(d.triangles,[220,64,50]);
   assert.deepEqual(R19_MODELS,['coast-live-oak','maritime-chaparral','dry-grass']);
   const a=[0,1,2].map(f=>style.asset(f));assert.equal(new Set(a.map(x=>x.material)).size,1);assert.equal(d.sharedMaterials,1);assert.equal(d.transparent,false);
+  const oakBox=a[0].geometry.boundingBox;assert.ok(oakBox.max.x-oakBox.min.x>1.6);assert.ok(oakBox.max.y>1.8);
   assert.ok(a[1].geometry.boundingBox.max.y<.9);assert.ok(a[2].geometry.boundingBox.max.y<.7);assert.match(d.scope,/Fort Ord-compatible/);
 });
 const group=new THREE.Group(),base=new THREE.BufferGeometry();

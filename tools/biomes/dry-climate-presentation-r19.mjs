@@ -21,7 +21,7 @@ export function r19Family(cx,cz,x,z){
   if(!Number.isSafeInteger(cx)||!Number.isSafeInteger(cz))throw new TypeError('R19 chunk coordinates');
   finite(x,'x');finite(z,'z');
   const n=hash32(cx,cz,x,z,0x523139)%100;
-  return n<25?0:n<85?1:2; // 25% oak /60% chaparral /15% dry-grass visual allocation; not measured cover.
+  return n<18?0:n<80?1:2; // 18% oak /62% chaparral /20% dry-grass visual allocation; not measured cover.
 }
 export function r19Transform(family,cx,cz,x,z){
   if(family!==1&&family!==2)throw new TypeError('R19 low family');
@@ -45,13 +45,56 @@ const cross=(a,b)=>[a[1]*b[2]-a[2]*b[1],a[2]*b[0]-a[0]*b[2],a[0]*b[1]-a[1]*b[0]]
 const norm=a=>{const l=Math.hypot(...a)||1;return a.map(v=>v/l);};
 
 function coastLiveOakData(){
-  const d=buildVegetationPrototypeData('preview-woodland'),colors=d.colors.slice();
-  for(let i=0;i<colors.length;i+=3){
-    const r=colors[i],g=colors[i+1],b=colors[i+2];
-    if(g>r*1.15){const shade=.88+((i/3)%7)*.016;colors[i]=.075*shade;colors[i+1]=.150*shade;colors[i+2]=.048*shade;}
-    else{colors[i]=r*1.04;colors[i+1]=g*.93;colors[i+2]=b*.84;}
+  // A broad, low-branching evergreen oak silhouette rather than the old flat
+  // woodland disks. It is a regional physiognomy cue, not a species mesh claim.
+  const p=[],n=[],c=[],bark=[.105,.070,.038],leaf=[.070,.145,.047];
+  function tri(a,b,d,color,normal=null){
+    const no=normal??norm(cross(b.map((v,i)=>v-a[i]),d.map((v,i)=>v-a[i])));
+    for(const q of [a,b,d]){p.push(...q);n.push(...no);c.push(...color);}
   }
-  return {...d,colors};
+  function branch(a,b,r0,r1){
+    const axis=norm(b.map((v,i)=>v-a[i])),u=norm(cross(axis,Math.abs(axis[1])>.92?[1,0,0]:[0,1,0])),v=cross(axis,u),sides=5;
+    const ring=(point,r,i)=>{const t=i*TAU/sides,no=norm(u.map((x,j)=>x*Math.cos(t)+v[j]*Math.sin(t)));return {q:point.map((x,j)=>x+no[j]*r),no};};
+    for(let i=0;i<sides;i++){
+      const j=(i+1)%sides,A=ring(a,r0,i),B=ring(a,r0,j),C=ring(b,r1,i),D=ring(b,r1,j);
+      tri(A.q,C.q,B.q,bark,A.no);tri(B.q,C.q,D.q,bark,D.no);
+    }
+  }
+  function lobe(cx,cy,cz,rx,ry,rz,phase,shade){
+    const sides=8,top=[cx,cy+ry,cz],bottom=[cx,cy-ry*.72,cz],ring=[];
+    for(let i=0;i<sides;i++){
+      const a=i*TAU/sides+phase,w=1+.08*Math.sin(i*2.17+phase*3);
+      ring.push([cx+Math.cos(a)*rx*w,cy+Math.sin(i*1.71+phase)*ry*.10,cz+Math.sin(a)*rz*w]);
+    }
+    const color=leaf.map(v=>v*shade);
+    for(let i=0;i<sides;i++){
+      const j=(i+1)%sides;
+      const noTop=norm([(ring[i][0]-cx)/rx,.72,(ring[i][2]-cz)/rz]);
+      const noBottom=norm([(ring[i][0]-cx)/rx,-.42,(ring[i][2]-cz)/rz]);
+      tri(ring[i],top,ring[j],color,noTop);tri(ring[j],bottom,ring[i],color,noBottom);
+    }
+  }
+  branch([0,0,0],[.012,.46,-.010],.050,.035);
+  branch([.008,.34,-.006],[-.31,.61,.045],.034,.016);
+  branch([.008,.36,-.005],[.33,.60,-.030],.032,.015);
+  branch([.010,.45,-.008],[-.16,.76,-.20],.027,.012);
+  branch([.012,.46,-.008],[.18,.77,.21],.026,.012);
+  branch([-.12,.55,.025],[-.43,.68,.13],.017,.007);
+  const lobes=[
+    [-.36,.69,.10,.30,.18,.28,.20,.94],[-.13,.77,-.18,.31,.20,.29,.65,1.00],
+    [.14,.78,.17,.32,.20,.30,1.15,.97],[.38,.68,-.08,.29,.17,.27,1.70,.92],
+    [-.27,.86,-.08,.27,.18,.26,2.05,1.04],[.02,.91,-.04,.32,.20,.30,2.55,.98],
+    [.29,.86,.09,.26,.17,.25,3.10,1.03],[-.06,.65,.14,.34,.19,.31,3.65,.91],
+    [.10,.68,-.20,.31,.18,.29,4.20,.95],[-.43,.76,-.09,.23,.15,.22,4.80,.96]
+  ];
+  for(const x of lobes)lobe(...x);
+  const reference=buildVegetationPrototypeData('preview-woodland').positions;
+  let referenceTop=0,top=0;
+  for(let i=1;i<reference.length;i+=3)referenceTop=Math.max(referenceTop,reference[i]);
+  for(let i=1;i<p.length;i+=3)top=Math.max(top,p[i]);
+  const fit=referenceTop/top;
+  for(let i=0;i<p.length;i++)p[i]*=fit;
+  return {positions:new Float32Array(p),normals:new Float32Array(n),colors:new Float32Array(c),triangles:p.length/9};
 }
 function maritimeChaparralData(){
   const p=[],n=[],c=[];
@@ -105,7 +148,7 @@ export function buildDryClimateStyle(THREE){
     transform:r19Transform,
     dispose(){if(disposed)return;disposed=true;for(const g of owned)g.dispose();material.dispose();},
     diagnostics:()=>({id:R19_PRESENTATION,models:[...R19_MODELS],triangles:assets.map(a=>a.triangles),sharedMaterials:1,transparent:false,disposed,
-      mix:{oakVisualWeight:25,chaparralVisualWeight:60,dryGrassVisualWeight:15,measuredHabitatPercent:false},
+      mix:{oakVisualWeight:18,chaparralVisualWeight:62,dryGrassVisualWeight:20,measuredHabitatPercent:false},
       scope:'Laguna R14 / Fort Ord-compatible coast live oak + maritime chaparral + dry grass; R4 roots unchanged'})
   });
 }
