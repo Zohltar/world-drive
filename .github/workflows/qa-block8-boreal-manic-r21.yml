@@ -1,0 +1,64 @@
+name: Block 8 Ecological Manic R21 QA
+on:
+  push:
+    branches: [candidate/block8-biome-classifier-r1]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  ecological-manic:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      RESOLVE_SHA256: be36d6209e443038d02e309f0447c6e7f2a62f5fe60c605ffe90d064952f2a60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Preserve approved runtime, R4 and source boundary
+        run: node qa/qa-block8-rendered-pilot-boundary-r12.mjs
+      - name: Install locked project and native browser dependencies
+        run: |
+          npm ci
+          python -m pip install numpy==2.2.6 rasterio==1.4.3 pyshp==2.3.1 shapely==2.1.2 playwright==1.57.0
+          python -m playwright install --with-deps chromium
+      - name: New R21 boreal diversity presentation and accepted Manic contracts
+        run: |
+          mkdir -p "$RUNNER_TEMP/biome-r21"
+          node qa/qa-block8-boreal-manic-r21.mjs "$RUNNER_TEMP/biome-r21/unit-qa.json"
+          node qa/qa-block8-rendered-manic-r13.mjs
+          node qa/qa-block8-rendered-route-owner-r12.mjs
+          node qa/qa-block8-forest-progressive-layer-r4.mjs
+      - name: Rebuild exact accepted Manic geographic package
+        run: |
+          curl --fail --location --proto '=https' --proto-redir '=https' --retry 2 --connect-timeout 20 --max-time 180 --max-filesize 200000000 https://storage.googleapis.com/teow2016/Ecoregions2017.zip -o "$RUNNER_TEMP/Ecoregions2017.zip"
+          echo "$RESOLVE_SHA256  $RUNNER_TEMP/Ecoregions2017.zip" | sha256sum --check --strict
+          python tools/biomes/build-resolve-atlas.py --input "$RUNNER_TEMP/Ecoregions2017.zip" --output "$RUNNER_TEMP/atlas-r21" --cell-degrees 0.1 --expected-sha256 "$RESOLVE_SHA256"
+          python tools/biomes/build-long-road-pilot-r10.py --source "$RUNNER_TEMP/Ecoregions2017.zip" --atlas "$RUNNER_TEMP/atlas-r21" --fixture qa/fixtures/biomes/manic-r10 --output "$RUNNER_TEMP/r10-input"
+          python tools/biomes/build-rendered-manic-r13.py --r10-zip "$RUNNER_TEMP/r10-input/world-drive-biome-pilot-r10.zip" --output "$RUNNER_TEMP/biome-r21/pilot"
+          echo "a9cd32f9316c767a6554110c1e795fafef0195fe1ac54c8c84097c42fabe075d  $RUNNER_TEMP/biome-r21/pilot/public/local-data/biomes/pilot-r13/directory.json" | sha256sum --check --strict
+      - name: Preserve R13 package identity and finite source window
+        run: |
+          python qa/qa-block8-rendered-manic-builder-r13.py --r10-zip "$RUNNER_TEMP/r10-input/world-drive-biome-pilot-r10.zip" --output "$RUNNER_TEMP/biome-r21/package-qa.json"
+          node qa/qa-block8-rendered-manic-window-r13.mjs "$RUNNER_TEMP/biome-r21/pilot" "$RUNNER_TEMP/biome-r21/window-qa.json"
+      - name: Native full-game R13 versus R21 summer winter and cleanup
+        run: python qa/qa-block8-boreal-manic-browser-r21.py --pilot "$RUNNER_TEMP/biome-r21/pilot" --output "$RUNNER_TEMP/biome-r21/native"
+      - name: Preserve exact source and actual rendered evidence
+        if: always()
+        run: |
+          mkdir -p "$RUNNER_TEMP/biome-r21"
+          git rev-parse HEAD > "$RUNNER_TEMP/biome-r21/tested-commit.txt"
+          git archive --format=tar.gz HEAD docs/WORLD_DRIVE_BLOCK8_ECOLOGICAL_VEGETATION_CONTRACT.md tools/biomes/boreal-presentation-r21.mjs tools/biomes/boreal-pilot-launcher-r21.mjs tools/biomes/rendered-pilot-r12.mjs qa/qa-block8-boreal-manic-r21.mjs qa/qa-block8-boreal-manic-browser-r21.py .github/workflows/qa-block8-boreal-manic-r21.yml > "$RUNNER_TEMP/biome-r21/r21-source.tar.gz"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: biome-r21-ecological-manic-${{ github.sha }}
+          path: ${{ runner.temp }}/biome-r21
+          if-no-files-found: error
