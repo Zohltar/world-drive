@@ -108,13 +108,24 @@ def main(pilot,output):
                 assert after_state['failures']==before_state['failures'] and after_state['ownerConflicts']==before_state['ownerConflicts']
                 assert after_state['modifiedChunks']>0 and all(after_state['models'].get(k,0)>0 for k in ['coast-live-oak','maritime-chaparral','dry-grass'])
                 assert all(m.get('mixed',{}).get('sourcePrefixExact') for m in after_audit['meshes'])
-                # Actual game teleports exercise prefix/ownership turnover.
-                jumps=[]
+                # Actual game teleports must preserve exact source ownership. Under
+                # SwiftShader a second controller poll is not guaranteed when the
+                # destination is already covered by proved/cached chunks, so do not
+                # turn scheduler idleness into a visual failure. At least one jump
+                # must still exercise presentation turnover (new swap/restore).
+                jumps=[];turnover=False
                 for percent in [25,75]:
                     state=page.evaluate(SNAP)
                     page.evaluate("p=>{const i=document.getElementById('jump');i.value=p;i.dispatchEvent(new Event('input'));document.getElementById('jumpBtn').click();WorldDriveDiagnostics.forest.visualPilot.refresh();}",percent)
-                    page.wait_for_function("since=>{const s=WorldDriveDiagnostics.forest.visualPilot.snapshot();if(s.phase==='fault')throw new Error(s.error);return s.polls>=since.polls+2&&s.modifiedChunks>=4;}",arg=state)
-                    jumps.append({'percent':percent,'snapshot':page.evaluate(SNAP),'audit':page.evaluate('()=>WorldDriveDiagnostics.forest.visualPilot.audit()')})
+                    page.wait_for_timeout(3000)
+                    after=page.evaluate(SNAP);jump_audit=page.evaluate('()=>WorldDriveDiagnostics.forest.visualPilot.audit()')
+                    assert after['enabled'] and after['presentation']=='dry-r19' and after['error'] is None
+                    assert after['failures']==state['failures'] and after['ownerConflicts']==state['ownerConflicts']
+                    assert after['modifiedChunks']>0 and all(after['models'].get(k,0)>0 for k in ['coast-live-oak','maritime-chaparral','dry-grass'])
+                    assert all(m.get('mixed',{}).get('sourcePrefixExact') for m in jump_audit['meshes'])
+                    turnover = turnover or after['swaps']>state['swaps'] or after['restores']>state['restores']
+                    jumps.append({'percent':percent,'snapshot':after,'audit':jump_audit})
+                assert turnover,'UI jumps did not exercise any presentation turnover'
                 report['afterJumps']=jumps;page.screenshot(path=str(output/'laguna-r19-after-jump.png'))
                 page.evaluate('()=>WorldDriveDiagnostics.forest.visualPilot.stop()');page.wait_for_timeout(750)
                 report['offAfter']=page.evaluate(SNAP);assert report['offAfter']['modifiedChunks']==0
