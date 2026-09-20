@@ -5,6 +5,7 @@ are controlled. This is visual/runtime evidence, not user-GPU certification.
 """
 import argparse
 from collections import Counter
+import gzip
 import importlib.util
 import json
 from pathlib import Path
@@ -24,6 +25,8 @@ LAUNCHER='/tools/biomes/dry-pilot-launcher-r19.mjs'
 SNAP='()=>WorldDriveDiagnostics.forest.visualPilot.snapshot()'
 spec=importlib.util.spec_from_file_location('r19_r9',ROOT/'qa/qa-block8-biome-fullgame-r9.py')
 R9=importlib.util.module_from_spec(spec);spec.loader.exec_module(R9)
+network_spec=importlib.util.spec_from_file_location('r19_network',ROOT/'qa/qa-block8-rendered-manic-network-r13.py')
+NETWORK=importlib.util.module_from_spec(network_spec);network_spec.loader.exec_module(NETWORK)
 
 def main(pilot,output):
     output.mkdir(parents=True,exist_ok=False);destination=ROOT/INSTALL
@@ -46,6 +49,7 @@ def main(pilot,output):
                 if server.poll() is not None:raise RuntimeError('Vite failed')
                 time.sleep(.2)
         else:raise TimeoutError('Vite startup')
+        manic_fixture=gzip.decompress((ROOT/'qa/fixtures/biomes/manic-r10/response.json.gz').read_bytes())
         with sync_playwright() as pw:
             browser=pw.chromium.launch(headless=True,args=['--use-angle=swiftshader','--enable-unsafe-swiftshader'])
             context=browser.new_context(viewport={'width':1100,'height':700},device_scale_factor=1)
@@ -55,8 +59,9 @@ def main(pilot,output):
                 if url.startswith(origin+'/'):
                     if URL in url:requests.append(parsed.path)
                     return route.continue_()
-                upstream[parsed.netloc]+=1
-                return route.fulfill(status=503,content_type='text/plain',headers={'Access-Control-Allow-Origin':'*'},body='R19 controlled geographic fixture')
+                upstream[parsed.netloc]+=1;headers={'Access-Control-Allow-Origin':'*'}
+                if NETWORK.is_manic_route_request(url):return route.fulfill(status=200,content_type='application/json',headers=headers,body=manic_fixture)
+                return route.fulfill(status=503,content_type='text/plain',headers=headers,body='R19 controlled geographic fixture')
             context.route('**/*',network)
             page=context.new_page();page.set_default_timeout(120000)
             page.on('pageerror',lambda e:errors.append(str(e)))
