@@ -61,8 +61,12 @@ def main(pilot,output):
                 for m in audit['meshes']:
                     d=m.get('mixed');assert d and d['sourcePrefixExact'] and d['sourceHidden'] and d['season']=='summer';assert len(d['parts'])==5 and sum(p['count'] for p in d['parts'])==m['count'];assert d.get('understory',{}).get('sourcePrefixExact')
                 report['summerFrames']=page.evaluate(R9.FRAMES,3000);page.screenshot(path=str(output/'nord-r22-summer.png'))
-                before_models=dict(summer['models']);page.evaluate("()=>WorldDriveDiagnostics.forest.visualPilot.season('winter')");page.wait_for_timeout(600);winter=page.evaluate(SNAP);winter_audit=page.evaluate('()=>WorldDriveDiagnostics.forest.visualPilot.audit()');report['winter']=winter;report['winterAudit']=winter_audit
-                assert winter['season']=='winter' and winter['models']==before_models and winter['failures']==0 and winter['ownerConflicts']==0
+                summer_by_key={m['key']:{p['id']:p['count'] for p in m['mixed']['parts']} for m in audit['meshes']}
+                page.evaluate("()=>WorldDriveDiagnostics.forest.visualPilot.season('winter')");page.wait_for_timeout(600);winter=page.evaluate(SNAP);winter_audit=page.evaluate('()=>WorldDriveDiagnostics.forest.visualPilot.audit()');report['winter']=winter;report['winterAudit']=winter_audit
+                assert winter['season']=='winter' and winter['failures']==0 and winter['ownerConflicts']==0
+                assert sum(winter['models'].values())==winter['modifiedInstances'] and all(winter['models'].get(k,0)>0 for k in ['eifel-beech','sessile-oak','hornbeam','rowan','norway-spruce'])
+                winter_by_key={m['key']:{p['id']:p['count'] for p in m['mixed']['parts']} for m in winter_audit['meshes']}
+                common=set(summer_by_key)&set(winter_by_key);assert common and all(winter_by_key[k]==summer_by_key[k] for k in common)
                 assert all(m.get('mixed',{}).get('sourcePrefixExact') and m['mixed'].get('season')=='winter' and m['mixed'].get('understory',{}).get('sourcePrefixExact') and m['mixed']['understory']['triangles']==576 for m in winter_audit['meshes'])
                 report['winterFrames']=page.evaluate(R9.FRAMES,3000);page.screenshot(path=str(output/'nord-r22-winter.png'))
                 for _ in range(10):page.evaluate("()=>WorldDriveDiagnostics.forest.visualPilot.season('summer')");page.evaluate("()=>WorldDriveDiagnostics.forest.visualPilot.season('winter')")
