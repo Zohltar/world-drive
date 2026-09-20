@@ -1,0 +1,63 @@
+name: Block 8 Ecological Yungas R20 QA
+on:
+  push:
+    branches: [candidate/block8-biome-classifier-r1]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  ecological-yungas:
+    runs-on: ubuntu-latest
+    timeout-minutes: 22
+    env:
+      RESOLVE_SHA256: be36d6209e443038d02e309f0447c6e7f2a62f5fe60c605ffe90d064952f2a60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Preserve approved runtime, R4 and source boundary
+        run: node qa/qa-block8-rendered-pilot-boundary-r12.mjs
+      - name: Install locked project and native browser dependencies
+        run: |
+          npm ci
+          python -m pip install numpy==2.2.6 rasterio==1.4.3 pyshp==2.3.1 shapely==2.1.2 playwright==1.57.0
+          python -m playwright install --with-deps chromium
+      - name: New R20 humid-montane presentation and accepted R15 contracts
+        run: |
+          mkdir -p "$RUNNER_TEMP/biome-r20"
+          node qa/qa-block8-yungas-ecology-r20.mjs "$RUNNER_TEMP/biome-r20/unit-qa.json"
+          node qa/qa-block8-rendered-yungas-r15.mjs
+          node qa/qa-block8-rendered-route-owner-r12.mjs
+          node qa/qa-block8-forest-progressive-layer-r4.mjs
+      - name: Rebuild unchanged accepted R15 geographic package
+        run: |
+          curl --fail --location --proto '=https' --proto-redir '=https' --retry 2 --connect-timeout 20 --max-time 180 --max-filesize 200000000 https://storage.googleapis.com/teow2016/Ecoregions2017.zip -o "$RUNNER_TEMP/Ecoregions2017.zip"
+          echo "$RESOLVE_SHA256  $RUNNER_TEMP/Ecoregions2017.zip" | sha256sum --check --strict
+          python tools/biomes/build-resolve-atlas.py --input "$RUNNER_TEMP/Ecoregions2017.zip" --output "$RUNNER_TEMP/atlas-r20" --cell-degrees 0.1 --expected-sha256 "$RESOLVE_SHA256"
+          python tools/biomes/build-rendered-yungas-r15.py --source "$RUNNER_TEMP/Ecoregions2017.zip" --atlas "$RUNNER_TEMP/atlas-r20" --output "$RUNNER_TEMP/biome-r20/pilot"
+          echo "d40509469325de661a5f060d8e9509819fcc625950fe0d90677b8219977f0f6f  $RUNNER_TEMP/biome-r20/pilot/public/local-data/biomes/pilot-r15/directory.json" | sha256sum --check --strict
+      - name: Preserve R15 package identity and finite source coverage
+        run: |
+          python qa/qa-block8-rendered-yungas-builder-r15.py --source "$RUNNER_TEMP/Ecoregions2017.zip" --atlas "$RUNNER_TEMP/atlas-r20" --pilot "$RUNNER_TEMP/biome-r20/pilot" --output "$RUNNER_TEMP/biome-r20/package-qa.json"
+          node qa/qa-block8-rendered-yungas-data-r15.mjs "$RUNNER_TEMP/biome-r20/pilot" "$RUNNER_TEMP/biome-r20/data-qa.json"
+      - name: Native full-game R15 versus R20 humid-montane presentation and cleanup
+        run: python qa/qa-block8-yungas-browser-r20.py --pilot "$RUNNER_TEMP/biome-r20/pilot" --output "$RUNNER_TEMP/biome-r20/native"
+      - name: Preserve exact source and real rendered evidence
+        if: always()
+        run: |
+          mkdir -p "$RUNNER_TEMP/biome-r20"
+          git rev-parse HEAD > "$RUNNER_TEMP/biome-r20/tested-commit.txt"
+          git archive --format=tar.gz HEAD docs/WORLD_DRIVE_BLOCK8_ECOLOGICAL_VEGETATION_CONTRACT.md tools/biomes/humid-montane-presentation-r20.mjs tools/biomes/humid-montane-pilot-launcher-r20.mjs tools/biomes/rendered-pilot-r12.mjs qa/qa-block8-yungas-ecology-r20.mjs qa/qa-block8-yungas-browser-r20.py .github/workflows/qa-block8-yungas-ecology-r20.yml > "$RUNNER_TEMP/biome-r20/r20-source.tar.gz"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: biome-r20-ecological-yungas-${{ github.sha }}
+          path: ${{ runner.temp }}/biome-r20
+          if-no-files-found: error
