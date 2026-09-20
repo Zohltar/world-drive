@@ -4,20 +4,19 @@ Canonical-plan companion. Read the canonical plan from live dev, dev/main HEADs,
 exact Dev Integration and live PR #14 before changes. Live verified evidence
 supersedes historical reports; candidate QA is not integrated runtime.
 
-## Current priority — R18 roadside understory, not another promise or image
+## Current priority — R18 accepted with deferred fern-visibility caveat
 
-The user requests **shrubs/ferns along the mixed forest edge to partially hide tree
-trunks**, with summer/winter behavior, and explicitly authorizes execution:
-**« vas y execute les modifications »**. The earlier promises did not implement R18.
-This milestone makes the actual game change on **candidate/block8-biome-classifier-r1**,
-existing PR #14 draft/open/unmerged. It is a continuation of the requested Nord art
-rework, not another region or general model-variety project.
+R18 roadside understory is now **HUMAN PASS** on candidate
+**c6fe5e563b9b67fc3bf4c292076f757fe4a73dbe**. The user explicitly accepted the
+current result with **« pass on garde ca comme ca »**, while also stating that the
+fern-size iterations still produced no clearly perceived visual difference and that
+this can be revisited later. Treat that caveat as deferred art follow-up, not as
+evidence that fern screening materially improved.
 
-**R16 and R17 have NO HUMAN PASS.** Their green QA and the user's request for an
-additional layer are not acceptance. R18's combined visual/performance gate remains
-OPEN until the user tests it. Detailed contract, bounds and tests are in
-**WORLD_DRIVE_BLOCK8_UNDERSTORY_R18.md**. Final exact candidate SHA, TEN workflow
-outcomes, artifact identities and real screenshots belong in live PR #14.
+PR #14 remains draft/open/unmerged. **R16 and R17 still have NO separate HUMAN PASS**;
+R18 acceptance does not retroactively certify them. Preserve the current R18 runtime
+as-is until a future explicit art pass. No merge, dev runtime integration, global
+activation or main movement is authorized by the R18 PASS alone.
 
 ## Scope and protected behavior
 
@@ -70,22 +69,30 @@ These are historical reference results, NOT an R18 PASS or human acceptance.
 
 ## Exact next action
 
-Before this documentation checkpoint dev is **dd5f6a50454a73aa813d9e147c3c0cd8f69299cd**,
-exact **Dev Integration 35422279696 PASS**. Only this ledger and new R18 report
-advance on dev. No biome runtime is integrated there. Verify the new dev docs HEAD
-and its own canonical Dev Integration live. Main remains
-**ad893a9d078df4a3d24d81b929bb2905a8bc57e1 /v21.33**, untouched without explicit approval.
+Final accepted R18 candidate is
+**c6fe5e563b9b67fc3bf4c292076f757fe4a73dbe**. All TEN exact-head Block 8 workflows
+are PASS on that SHA:
 
-Finish R18 and require all TEN exact-head workflows: R1–R9/integration, R10, R11/W,
-R12–R18. Keep all previous assertions and the strict R12 runtime/model boundary.
-Run new edge/asset/actual-Three prefix/ownership and controller tests, then native
-full-game R17/R18 comparison with 1100x700/DPR1/four chunks/120-second gates, source
-oracle, winter round trips, summer teleport and cleanup. Inspect final artifacts,
-all 97 integration exit codes and actual game screenshots. Fix rather than relax.
-Record final exact-head outcomes in PR #14 without a self-referential docs-QA loop.
+- R1–R9/integration **35474977891**
+- R10 **35474977921**
+- R11/R11W **35474977965**
+- R12 **35474977923**
+- R13 **35474977964**
+- R14 **35474977960**
+- R15 **35474977932**
+- R16 **35474977928** (PASS on retry)
+- R17 **35474977941**
+- R18 **35474977901** (PASS on retry)
 
-Once green, deliver ONLY the new R18 Nord understory test, summer and winter,
-with no additional data download. Ask for trunk-screening appearance and fluidity,
-not repeats of the old homogeneous routes. R17 alone remains available for A/B.
-Block 8 stays ACTIVE candidate work: not integrated, globally activated,
-DONE/CERTIFIED or merge-authorized. Never move main without explicit approval.
+The user then gave R18 HUMAN PASS with the fern-visibility caveat recorded above and
+in PR comment **5746636909**. Do not repeat the R18 visual test now.
+
+The next certified lifecycle step would be candidate runtime integration to `dev`,
+followed by exact-head Dev Integration and canonical-plan certification. However,
+PR #14 must not be merged and its runtime must not be integrated without the user's
+explicit authorization. Until that authorization exists, preserve the candidate and
+stop advancing Block 8 runtime scope. Documentation-only checkpointing on `dev`
+is allowed.
+
+Main remains **ad893a9d078df4a3d24d81b929bb2905a8bc57e1 / v21.33** and must not move
+without explicit approval.
