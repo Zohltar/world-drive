@@ -8,13 +8,14 @@ import {buildNaturalForestStyle,R17_LOOK} from './natural-forest-look-r17.mjs';
 import {buildR18RouteIndex,buildUnderstoryStyle,R18_UNDERSTORY} from './understory-layer-r18.mjs';
 import {createMixedForestPresentation,R16_PRESENTATION} from './mixed-forest-presentation-r16.mjs';
 import {buildDryClimateStyle,createDryClimatePresentation,R19_PRESENTATION} from './dry-climate-presentation-r19.mjs';
+import {buildHumidMontaneStyle,createHumidMontanePresentation,R20_PRESENTATION} from './humid-montane-presentation-r20.mjs';
 import {createBiomeWorkerClient} from '../../src/scenery/biomes/biome-worker-client.js';
 import {createBiomeChunkContextBridge} from '../../src/scenery/biomes/chunk-context-bridge.js';
 import {createBiomeObserverPlan} from '../../src/scenery/biomes/route-observer-plan.js';
 import {FOREST_LAYOUT_ID} from '../../src/scenery/biomes/forest-candidate-adapter.js';
 import {snapshotIdentity} from '../../src/scenery/biomes/chunk-context-snapshot.js';
 import {buildSeasonalVegetationPrototypes} from './vegetation-seasonal-prototypes.mjs';
-import {R12_SOURCE,R12_CATALOG_SHA,R12_LIMITS,R12_PROFILE,R14_PROFILE,renderedProfile,renderedRouteMatches,renderedWindowOptions,r12Season,r12Model,createR12Proof,r12ChunkKey,sameR12Geometry} from './rendered-pilot-policy-r12.mjs';
+import {R12_SOURCE,R12_CATALOG_SHA,R12_LIMITS,R12_PROFILE,R14_PROFILE,R15_PROFILE,renderedProfile,renderedRouteMatches,renderedWindowOptions,r12Season,r12Model,createR12Proof,r12ChunkKey,sameR12Geometry} from './rendered-pilot-policy-r12.mjs';
 
 export function validateR12Config(value){
   const text=JSON.stringify(value);if(!text||text.length>2*1024*1024)throw new RangeError('R12 config bound');
@@ -22,9 +23,10 @@ export function validateR12Config(value){
   const profile=renderedProfile(safe.profile??R12_PROFILE);r12Model(safe.season??'summer',profile.id);
   if(!Object.keys(R12_SOURCE).every(k=>identity.source[k]===R12_SOURCE[k])||identity.catalogSha256!==R12_CATALOG_SHA
     ||identity.revision!==profile.revision||typeof safe.baseUrl!=='string')throw new TypeError('R12 pinned source/configuration');
-  if(safe.presentation!==undefined&&safe.presentation!==R16_PRESENTATION&&safe.presentation!==R19_PRESENTATION)throw new TypeError('Unknown forest presentation');
+  if(safe.presentation!==undefined&&safe.presentation!==R16_PRESENTATION&&safe.presentation!==R19_PRESENTATION&&safe.presentation!==R20_PRESENTATION)throw new TypeError('Unknown forest presentation');
   if(safe.presentation===R16_PRESENTATION&&profile.id!==R12_PROFILE)throw new TypeError('R16 mixed presentation is Nord only');
   if(safe.presentation===R19_PRESENTATION&&profile.id!==R14_PROFILE)throw new TypeError('R19 dry presentation is Laguna only');
+  if(safe.presentation===R20_PRESENTATION&&profile.id!==R15_PROFILE)throw new TypeError('R20 humid-montane presentation is Yungas only');
   if(safe.appearance!==undefined&&(safe.appearance!==R17_LOOK||safe.presentation!==R16_PRESENTATION||profile.id!==R12_PROFILE))
     throw new TypeError('R17 natural appearance requires the mixed Nord presentation');
   if(safe.understory!==undefined&&(safe.understory!==R18_UNDERSTORY||safe.appearance!==R17_LOOK||safe.presentation!==R16_PRESENTATION||profile.id!==R12_PROFILE))
@@ -52,7 +54,7 @@ export function createRenderedBiomePilot({THREE,forestGroup,getState,getGenerati
   let enabled=false,token=0,cancel=null,busy=false,kit=null,client=null,bridge=null,plan=null;
   let config=null,origin=null,generation=null,season='summer',phase='disabled',error=null,worker=null;
   let previousPosition=null,windowSignature=null,knownGeometry=new WeakMap(),parentListening=false;
-  let profileId=R12_PROFILE,presentation=null,appearance=null,understory=null,naturalStyle=null,understoryStyle=null,dryStyle=null,routeIndex=null;
+  let profileId=R12_PROFILE,presentation=null,appearance=null,understory=null,naturalStyle=null,understoryStyle=null,dryStyle=null,humidStyle=null,routeIndex=null;
   const waiters=new Set();
   const stats={polls:0,deferrals:0,proofsCompleted:0,proofsRefused:0,proofCandidates:0,swaps:0,restores:0,
     cancelledProofs:0,failures:0,foreignGeometry:0,ownerConflicts:0,proofEvictions:0,
@@ -75,7 +77,7 @@ export function createRenderedBiomePilot({THREE,forestGroup,getState,getGenerati
     for(const [g,h] of groups){g.removeEventListener('childadded',h.add);g.removeEventListener('childremoved',h.remove);}
     groups.clear();for(const m of [...records.keys()])restore(m);
     bridge?.dispose();client?.dispose();bridge=null;client=null;plan=null;
-    understoryStyle?.dispose();understoryStyle=null;routeIndex=null;naturalStyle?.dispose();naturalStyle=null;dryStyle?.dispose();dryStyle=null;kit?.dispose();kit=null;
+    understoryStyle?.dispose();understoryStyle=null;routeIndex=null;naturalStyle?.dispose();naturalStyle=null;dryStyle?.dispose();dryStyle=null;humidStyle?.dispose();humidStyle=null;kit?.dispose();kit=null;
     proofs.clear();rejected.clear();config=null;origin=null;generation=null;worker=null;
     previousPosition=null;windowSignature=null;knownGeometry=new WeakMap();phase='disabled';
   }
@@ -101,11 +103,12 @@ export function createRenderedBiomePilot({THREE,forestGroup,getState,getGenerati
     let valid=knownGeometry.get(original);
     if(valid===undefined){valid=sameR12Geometry(original,kit.summerAssets[0].parts[0].geometry);knownGeometry.set(original,valid);}
     if(!valid){stats.foreignGeometry++;return;}
-    if(presentation===R16_PRESENTATION||presentation===R19_PRESENTATION){
-      const t=now(),mixed=presentation===R16_PRESENTATION
-        ?createMixedForestPresentation({THREE,group,source:mesh,kit,proof,season,style:naturalStyle,understory:understoryStyle,routeIndex,now})
-        :createDryClimatePresentation({THREE,group,source:mesh,proof,style:dryStyle,now});
-      records.set(mesh,{original,replacement:original,id:presentation===R16_PRESENTATION?'mixed':'dry',key:c.key,group,proof,mixed});stats.swaps++;
+    if(presentation===R16_PRESENTATION||presentation===R19_PRESENTATION||presentation===R20_PRESENTATION){
+      const t=now();let mixed,id;
+      if(presentation===R16_PRESENTATION){mixed=createMixedForestPresentation({THREE,group,source:mesh,kit,proof,season,style:naturalStyle,understory:understoryStyle,routeIndex,now});id='mixed';}
+      else if(presentation===R19_PRESENTATION){mixed=createDryClimatePresentation({THREE,group,source:mesh,proof,style:dryStyle,now});id='dry';}
+      else{mixed=createHumidMontanePresentation({THREE,group,source:mesh,proof,style:humidStyle,now});id='humid-montane';}
+      records.set(mesh,{original,replacement:original,id,key:c.key,group,proof,mixed});stats.swaps++;
       stats.maxSwapMs=Math.max(stats.maxSwapMs,now()-t);stats.peakMeshes=Math.max(stats.peakMeshes,records.size);return;
     }
     const asset=variant(),replacement=asset.parts[0].geometry;
@@ -184,6 +187,7 @@ export function createRenderedBiomePilot({THREE,forestGroup,getState,getGenerati
         throw new Error('Pilote visuel : choisir '+renderedProfile(profileId).routeLabel+' avant de démarrer');
       kit=assetFactory(THREE);if(appearance===R17_LOOK)naturalStyle=buildNaturalForestStyle(THREE,kit);
       if(presentation===R19_PRESENTATION)dryStyle=buildDryClimateStyle(THREE);
+      if(presentation===R20_PRESENTATION)humidStyle=buildHumidMontaneStyle(THREE);
       if(understory===R18_UNDERSTORY){routeIndex=buildR18RouteIndex({coordinates:plan.coordinates,origin:plan.adapter.origin});understoryStyle=buildUnderstoryStyle(THREE);}
       client=clientFactory();phase='initializing';
       const ownClient=client;await ownClient.initialize(config);if(!current(t))return;
@@ -232,7 +236,7 @@ export function createRenderedBiomePilot({THREE,forestGroup,getState,getGenerati
       finally{if(t===token){busy=false;arm();}}
     },R12_LIMITS.pollMs);
   }
-  function pilotId(){return presentation===R19_PRESENTATION?'r19-laguna-dry':understory===R18_UNDERSTORY?'r18-nord-understory':appearance===R17_LOOK?'r17-nord-natural':presentation===R16_PRESENTATION?'r16-nord-mixed':profileId;}
+  function pilotId(){return presentation===R20_PRESENTATION?'r20-yungas-humid-montane':presentation===R19_PRESENTATION?'r19-laguna-dry':understory===R18_UNDERSTORY?'r18-nord-understory':appearance===R17_LOOK?'r17-nord-natural':presentation===R16_PRESENTATION?'r16-nord-mixed':profileId;}
   function start(value){
     const safe=validateR12Config(value);
     stop();profileId=safe.profile??R12_PROFILE;presentation=safe.presentation??null;appearance=safe.appearance??null;understory=safe.understory??null;
@@ -254,12 +258,12 @@ export function createRenderedBiomePilot({THREE,forestGroup,getState,getGenerati
       }else{if(r.group.parent?.visible===false)continue;instances+=m.count;models[r.id]=(models[r.id]??0)+m.count;}
     }
     return {enabled,pilot:pilotId(),sourceProfile:profileId,presentation,appearance,understory,
-      appearanceAssets:naturalStyle?.diagnostics()??null,understoryAssets:understoryStyle?.diagnostics()??null,dryClimateAssets:dryStyle?.diagnostics()??null,routeIndex:routeIndex?.diagnostics()??null,
+      appearanceAssets:naturalStyle?.diagnostics()??null,understoryAssets:understoryStyle?.diagnostics()??null,dryClimateAssets:dryStyle?.diagnostics()??null,humidMontaneAssets:humidStyle?.diagnostics()??null,routeIndex:routeIndex?.diagnostics()??null,
       understoryInstances,understoryChunks,potentialAdditionalDrawCalls,presentationBytes,maxPresentationSyncMs,diagnosticOnly:false,placementAuthority:false,geometrySubstitution:true,
       phase,error,season,...stats,modifiedChunks:records.size,modifiedInstances:instances,models,proofCache:proofs.size,
       limits:R12_LIMITS,worker,bridge:bridge?.diagnostics()??null,
       scope:renderedProfile(profileId).scope,
-      seasonScope:presentation===R19_PRESENTATION?'Dry chaparral vegetation presentation only; terrain, road, grip, weather and automatic seasons unchanged':understory===R18_UNDERSTORY?'Tree models + explicit roadside understory only; terrain, road, grip, weather and automatic seasons unchanged':'Tree models only; terrain, road, grip, weather and automatic seasons unchanged'};
+      seasonScope:presentation===R20_PRESENTATION?'Humid montane Yungas vegetation presentation only; no altitude zonation, terrain, road, grip, weather or automatic seasons changed':presentation===R19_PRESENTATION?'Dry chaparral vegetation presentation only; terrain, road, grip, weather and automatic seasons unchanged':understory===R18_UNDERSTORY?'Tree models + explicit roadside understory only; terrain, road, grip, weather and automatic seasons unchanged':'Tree models only; terrain, road, grip, weather and automatic seasons unchanged'};
   }
   function audit(){
     // Explicit test/console call, never a frame. No engine references escape.
