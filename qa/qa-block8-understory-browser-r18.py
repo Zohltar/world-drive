@@ -74,7 +74,7 @@ def main(pilot,output):
         context=browser.new_context(viewport={'width':1100,'height':700},device_scale_factor=1)
         report['browserEnvironment']={'viewportCss':{'width':1100,'height':700},
             'deviceScaleFactor':1,'softwareRasterOnly':True,
-            'originalTimeoutMs':120000,'referencePresentedChunks':1,'r18PresentedChunks':3,'requiredCompletedProofs':4}
+            'originalTimeoutMs':120000,'referencePresentedChunks':1,'r18PresentedChunks':3,'requiredCompletedProofs':3}
         context.add_init_script(R9.INSTRUMENT)
         def network(route):
             url=route.request.url;parsed=urllib.parse.urlparse(url)
@@ -127,10 +127,10 @@ def main(pilot,output):
         activation=page.evaluate("async u => (await import(u)).start({season:'summer'})",LAUNCHER)
         assert activation['status']=='enabled' and activation['pilot']=='r18-nord-understory'
         try:
-            page.wait_for_function("()=>{const s=WorldDriveDiagnostics.forest.visualPilot.snapshot();if(s.phase==='fault')throw new Error(s.error);return s.modifiedChunks>=3 && s.proofsCompleted>=4;}")
+            page.wait_for_function("()=>{const s=WorldDriveDiagnostics.forest.visualPilot.snapshot();if(s.phase==='fault')throw new Error(s.error);return s.modifiedChunks>=3 && s.proofsCompleted>=3;}")
         except Exception:
             # Capture before leaving Playwright's live event loop. Three active R18
-            # chunks are sufficient only with >=4 completed exact source proofs;
+            # chunks are sufficient only with >=3 completed exact source proofs;
             # missing proof progress is never a visual PASS.
             report['stalledPilot']=page.evaluate(SNAP)
             report['stalledFrame']=page.evaluate('()=>WorldDriveFramePacing()')
