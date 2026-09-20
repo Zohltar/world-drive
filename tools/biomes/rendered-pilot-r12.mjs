@@ -10,6 +10,7 @@ import {createMixedForestPresentation,R16_PRESENTATION} from './mixed-forest-pre
 import {buildDryClimateStyle,createDryClimatePresentation,R19_PRESENTATION} from './dry-climate-presentation-r19.mjs';
 import {buildHumidMontaneStyle,createHumidMontanePresentation,R20_PRESENTATION} from './humid-montane-presentation-r20.mjs';
 import {buildBorealDiversityStyle,createBorealDiversityPresentation,R21_PRESENTATION} from './boreal-presentation-r21.mjs';
+import {buildEifelTemperateStyle,createEifelTemperatePresentation,R22_PRESENTATION} from './eifel-temperate-presentation-r22.mjs';
 import {createBiomeWorkerClient} from '../../src/scenery/biomes/biome-worker-client.js';
 import {createBiomeChunkContextBridge} from '../../src/scenery/biomes/chunk-context-bridge.js';
 import {createBiomeObserverPlan} from '../../src/scenery/biomes/route-observer-plan.js';
@@ -24,15 +25,17 @@ export function validateR12Config(value){
   const profile=renderedProfile(safe.profile??R12_PROFILE);r12Model(safe.season??'summer',profile.id);
   if(!Object.keys(R12_SOURCE).every(k=>identity.source[k]===R12_SOURCE[k])||identity.catalogSha256!==R12_CATALOG_SHA
     ||identity.revision!==profile.revision||typeof safe.baseUrl!=='string')throw new TypeError('R12 pinned source/configuration');
-  if(safe.presentation!==undefined&&safe.presentation!==R16_PRESENTATION&&safe.presentation!==R19_PRESENTATION&&safe.presentation!==R20_PRESENTATION&&safe.presentation!==R21_PRESENTATION)throw new TypeError('Unknown forest presentation');
+  if(safe.presentation!==undefined&&safe.presentation!==R16_PRESENTATION&&safe.presentation!==R19_PRESENTATION&&safe.presentation!==R20_PRESENTATION&&safe.presentation!==R21_PRESENTATION&&safe.presentation!==R22_PRESENTATION)throw new TypeError('Unknown forest presentation');
   if(safe.presentation===R16_PRESENTATION&&profile.id!==R12_PROFILE)throw new TypeError('R16 mixed presentation is Nord only');
   if(safe.presentation===R19_PRESENTATION&&profile.id!==R14_PROFILE)throw new TypeError('R19 dry presentation is Laguna only');
   if(safe.presentation===R20_PRESENTATION&&profile.id!==R15_PROFILE)throw new TypeError('R20 humid-montane presentation is Yungas only');
   if(safe.presentation===R21_PRESENTATION&&profile.id!==R13_PROFILE)throw new TypeError('R21 boreal diversity presentation is Manic only');
+  if(safe.presentation===R22_PRESENTATION&&profile.id!==R12_PROFILE)throw new TypeError('R22 Eifel presentation is Nord only');
   if(safe.appearance!==undefined&&(safe.appearance!==R17_LOOK||safe.presentation!==R16_PRESENTATION||profile.id!==R12_PROFILE))
     throw new TypeError('R17 natural appearance requires the mixed Nord presentation');
-  if(safe.understory!==undefined&&(safe.understory!==R18_UNDERSTORY||safe.appearance!==R17_LOOK||safe.presentation!==R16_PRESENTATION||profile.id!==R12_PROFILE))
-    throw new TypeError('R18 understory requires the R17 natural mixed Nord presentation');
+  if(safe.understory!==undefined&&(safe.understory!==R18_UNDERSTORY||profile.id!==R12_PROFILE
+    ||!((safe.presentation===R16_PRESENTATION&&safe.appearance===R17_LOOK)||safe.presentation===R22_PRESENTATION)))
+    throw new TypeError('R18 understory requires an approved Nord presentation');
   return safe;
 }
 export function scheduleR12(callback,delay=0){
@@ -56,7 +59,7 @@ export function createRenderedBiomePilot({THREE,forestGroup,getState,getGenerati
   let enabled=false,token=0,cancel=null,busy=false,kit=null,client=null,bridge=null,plan=null;
   let config=null,origin=null,generation=null,season='summer',phase='disabled',error=null,worker=null;
   let previousPosition=null,windowSignature=null,knownGeometry=new WeakMap(),parentListening=false;
-  let profileId=R12_PROFILE,presentation=null,appearance=null,understory=null,naturalStyle=null,understoryStyle=null,dryStyle=null,humidStyle=null,borealStyle=null,routeIndex=null;
+  let profileId=R12_PROFILE,presentation=null,appearance=null,understory=null,naturalStyle=null,understoryStyle=null,dryStyle=null,humidStyle=null,borealStyle=null,eifelStyle=null,routeIndex=null;
   const waiters=new Set();
   const stats={polls:0,deferrals:0,proofsCompleted:0,proofsRefused:0,proofCandidates:0,swaps:0,restores:0,
     cancelledProofs:0,failures:0,foreignGeometry:0,ownerConflicts:0,proofEvictions:0,
@@ -79,7 +82,7 @@ export function createRenderedBiomePilot({THREE,forestGroup,getState,getGenerati
     for(const [g,h] of groups){g.removeEventListener('childadded',h.add);g.removeEventListener('childremoved',h.remove);}
     groups.clear();for(const m of [...records.keys()])restore(m);
     bridge?.dispose();client?.dispose();bridge=null;client=null;plan=null;
-    understoryStyle?.dispose();understoryStyle=null;routeIndex=null;naturalStyle?.dispose();naturalStyle=null;dryStyle?.dispose();dryStyle=null;humidStyle?.dispose();humidStyle=null;borealStyle?.dispose();borealStyle=null;kit?.dispose();kit=null;
+    understoryStyle?.dispose();understoryStyle=null;routeIndex=null;naturalStyle?.dispose();naturalStyle=null;dryStyle?.dispose();dryStyle=null;humidStyle?.dispose();humidStyle=null;borealStyle?.dispose();borealStyle=null;eifelStyle?.dispose();eifelStyle=null;kit?.dispose();kit=null;
     proofs.clear();rejected.clear();config=null;origin=null;generation=null;worker=null;
     previousPosition=null;windowSignature=null;knownGeometry=new WeakMap();phase='disabled';
   }
@@ -105,12 +108,13 @@ export function createRenderedBiomePilot({THREE,forestGroup,getState,getGenerati
     let valid=knownGeometry.get(original);
     if(valid===undefined){valid=sameR12Geometry(original,kit.summerAssets[0].parts[0].geometry);knownGeometry.set(original,valid);}
     if(!valid){stats.foreignGeometry++;return;}
-    if(presentation===R16_PRESENTATION||presentation===R19_PRESENTATION||presentation===R20_PRESENTATION||presentation===R21_PRESENTATION){
+    if(presentation===R16_PRESENTATION||presentation===R19_PRESENTATION||presentation===R20_PRESENTATION||presentation===R21_PRESENTATION||presentation===R22_PRESENTATION){
       const t=now();let mixed,id;
       if(presentation===R16_PRESENTATION){mixed=createMixedForestPresentation({THREE,group,source:mesh,kit,proof,season,style:naturalStyle,understory:understoryStyle,routeIndex,now});id='mixed';}
       else if(presentation===R19_PRESENTATION){mixed=createDryClimatePresentation({THREE,group,source:mesh,proof,style:dryStyle,now});id='dry';}
       else if(presentation===R20_PRESENTATION){mixed=createHumidMontanePresentation({THREE,group,source:mesh,proof,style:humidStyle,now});id='humid-montane';}
-      else{mixed=createBorealDiversityPresentation({THREE,group,source:mesh,proof,style:borealStyle,season,now});id='boreal-diversity';}
+      else if(presentation===R21_PRESENTATION){mixed=createBorealDiversityPresentation({THREE,group,source:mesh,proof,style:borealStyle,season,now});id='boreal-diversity';}
+      else{mixed=createEifelTemperatePresentation({THREE,group,source:mesh,proof,style:eifelStyle,season,understory:understoryStyle,routeIndex,now});id='eifel-temperate';}
       records.set(mesh,{original,replacement:original,id,key:c.key,group,proof,mixed});stats.swaps++;
       stats.maxSwapMs=Math.max(stats.maxSwapMs,now()-t);stats.peakMeshes=Math.max(stats.peakMeshes,records.size);return;
     }
@@ -192,6 +196,7 @@ export function createRenderedBiomePilot({THREE,forestGroup,getState,getGenerati
       if(presentation===R19_PRESENTATION)dryStyle=buildDryClimateStyle(THREE);
       if(presentation===R20_PRESENTATION)humidStyle=buildHumidMontaneStyle(THREE);
       if(presentation===R21_PRESENTATION)borealStyle=buildBorealDiversityStyle(THREE);
+      if(presentation===R22_PRESENTATION)eifelStyle=buildEifelTemperateStyle(THREE,kit);
       if(understory===R18_UNDERSTORY){routeIndex=buildR18RouteIndex({coordinates:plan.coordinates,origin:plan.adapter.origin});understoryStyle=buildUnderstoryStyle(THREE);}
       client=clientFactory();phase='initializing';
       const ownClient=client;await ownClient.initialize(config);if(!current(t))return;
@@ -240,7 +245,7 @@ export function createRenderedBiomePilot({THREE,forestGroup,getState,getGenerati
       finally{if(t===token){busy=false;arm();}}
     },R12_LIMITS.pollMs);
   }
-  function pilotId(){return presentation===R21_PRESENTATION?'r21-manic-boreal-diversity':presentation===R20_PRESENTATION?'r20-yungas-humid-montane':presentation===R19_PRESENTATION?'r19-laguna-dry':understory===R18_UNDERSTORY?'r18-nord-understory':appearance===R17_LOOK?'r17-nord-natural':presentation===R16_PRESENTATION?'r16-nord-mixed':profileId;}
+  function pilotId(){return presentation===R22_PRESENTATION?'r22-nord-eifel':presentation===R21_PRESENTATION?'r21-manic-boreal-diversity':presentation===R20_PRESENTATION?'r20-yungas-humid-montane':presentation===R19_PRESENTATION?'r19-laguna-dry':understory===R18_UNDERSTORY?'r18-nord-understory':appearance===R17_LOOK?'r17-nord-natural':presentation===R16_PRESENTATION?'r16-nord-mixed':profileId;}
   function start(value){
     const safe=validateR12Config(value);
     stop();profileId=safe.profile??R12_PROFILE;presentation=safe.presentation??null;appearance=safe.appearance??null;understory=safe.understory??null;
@@ -262,12 +267,12 @@ export function createRenderedBiomePilot({THREE,forestGroup,getState,getGenerati
       }else{if(r.group.parent?.visible===false)continue;instances+=m.count;models[r.id]=(models[r.id]??0)+m.count;}
     }
     return {enabled,pilot:pilotId(),sourceProfile:profileId,presentation,appearance,understory,
-      appearanceAssets:naturalStyle?.diagnostics()??null,understoryAssets:understoryStyle?.diagnostics()??null,dryClimateAssets:dryStyle?.diagnostics()??null,humidMontaneAssets:humidStyle?.diagnostics()??null,borealAssets:borealStyle?.diagnostics()??null,routeIndex:routeIndex?.diagnostics()??null,
+      appearanceAssets:naturalStyle?.diagnostics()??null,understoryAssets:understoryStyle?.diagnostics()??null,dryClimateAssets:dryStyle?.diagnostics()??null,humidMontaneAssets:humidStyle?.diagnostics()??null,borealAssets:borealStyle?.diagnostics()??null,eifelAssets:eifelStyle?.diagnostics()??null,routeIndex:routeIndex?.diagnostics()??null,
       understoryInstances,understoryChunks,potentialAdditionalDrawCalls,presentationBytes,maxPresentationSyncMs,diagnosticOnly:false,placementAuthority:false,geometrySubstitution:true,
       phase,error,season,...stats,modifiedChunks:records.size,modifiedInstances:instances,models,proofCache:proofs.size,
       limits:R12_LIMITS,worker,bridge:bridge?.diagnostics()??null,
       scope:renderedProfile(profileId).scope,
-      seasonScope:presentation===R21_PRESENTATION?'Boreal Manic tree-family presentation only; roots, terrain, road, grip, weather and automatic seasons unchanged':presentation===R20_PRESENTATION?'Humid montane Yungas vegetation presentation only; no altitude zonation, terrain, road, grip, weather or automatic seasons changed':presentation===R19_PRESENTATION?'Dry chaparral vegetation presentation only; terrain, road, grip, weather and automatic seasons unchanged':understory===R18_UNDERSTORY?'Tree models + explicit roadside understory only; terrain, road, grip, weather and automatic seasons unchanged':'Tree models only; terrain, road, grip, weather and automatic seasons unchanged'};
+      seasonScope:presentation===R22_PRESENTATION?'Eifel temperate tree-family presentation + accepted R18 roadside understory; R4 roots, terrain, road, grip, weather and automatic seasons unchanged':presentation===R21_PRESENTATION?'Boreal Manic tree-family presentation only; roots, terrain, road, grip, weather and automatic seasons unchanged':presentation===R20_PRESENTATION?'Humid montane Yungas vegetation presentation only; no altitude zonation, terrain, road, grip, weather or automatic seasons changed':presentation===R19_PRESENTATION?'Dry chaparral vegetation presentation only; terrain, road, grip, weather and automatic seasons unchanged':understory===R18_UNDERSTORY?'Tree models + explicit roadside understory only; terrain, road, grip, weather and automatic seasons unchanged':'Tree models only; terrain, road, grip, weather and automatic seasons unchanged'};
   }
   function audit(){
     // Explicit test/console call, never a frame. No engine references escape.
