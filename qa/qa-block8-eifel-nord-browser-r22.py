@@ -83,11 +83,11 @@ def main(pilot,output):
                 page.evaluate("()=>{const i=document.getElementById('jump');i.value=50;i.dispatchEvent(new Event('input'));document.getElementById('jumpBtn').click();WorldDriveDiagnostics.forest.visualPilot.refresh();}")
                 # A UI teleport may transiently clear R4/rendered ownership while the
                 # world recenters. Do not capture that blank transition as success:
-                # require both base scenery forest and at least one proved R22 chunk
+                # require both base scenery forest and at least two proved R22 chunks
                 # to recover, with the normal 60 s software-rendered allowance.
-                page.wait_for_function("""()=>{const s=WorldDriveDiagnostics.forest.visualPilot.snapshot();if(s.phase==='fault')throw new Error(s.error);const g=WorldDriveFramePacing().rendering.groups.sceneryForest;return s.enabled&&s.presentation==='eifel-temperate-r22'&&s.error===null&&s.modifiedChunks>=1&&s.modifiedInstances>0&&g.instancedMeshes>=1;}""",timeout=60000)
+                page.wait_for_function("""()=>{const s=WorldDriveDiagnostics.forest.visualPilot.snapshot();if(s.phase==='fault')throw new Error(s.error);const g=WorldDriveFramePacing().rendering.groups.sceneryForest;const ids=['eifel-beech','sessile-oak','hornbeam','rowan','norway-spruce'];return s.enabled&&s.presentation==='eifel-temperate-r22'&&s.error===null&&s.modifiedChunks>=2&&s.proofsCompleted>=3&&s.modifiedInstances>=1000&&ids.every(id=>(s.models[id]??0)>0)&&g.instancedMeshes>=2;}""",timeout=120000)
                 after=page.evaluate(SNAP);after_audit=page.evaluate('()=>WorldDriveDiagnostics.forest.visualPilot.audit()');report['afterJump']={'snapshot':after,'audit':after_audit,'framePacing':page.evaluate('()=>WorldDriveFramePacing()')}
-                assert after['failures']==state['failures'] and after['ownerConflicts']==state['ownerConflicts'] and after['modifiedChunks']>0
+                assert after['failures']==state['failures'] and after['ownerConflicts']==state['ownerConflicts'] and after['modifiedChunks']>=2 and after['modifiedInstances']>=1000
                 assert after_audit['meshes'] and all(m.get('mixed',{}).get('sourcePrefixExact') for m in after_audit['meshes'])
                 page.screenshot(path=str(output/'nord-r22-after-jump.png'))
                 page.evaluate('()=>WorldDriveDiagnostics.forest.visualPilot.stop()');page.wait_for_timeout(750);report['offAfter']=page.evaluate(SNAP);assert report['offAfter']['modifiedChunks']==0 and all(w['terminated'] for w in page.evaluate('()=>__R9_WORKERS') if 'biome-preparation' in w['url'])
