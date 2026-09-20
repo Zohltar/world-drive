@@ -100,8 +100,14 @@ def main(pilot,output):
                 jumps=[]
                 for percent in [25,75]:
                     state=page.evaluate(SNAP);page.evaluate("p=>{const i=document.getElementById('jump');i.value=p;i.dispatchEvent(new Event('input'));document.getElementById('jumpBtn').click();WorldDriveDiagnostics.forest.visualPilot.refresh();}",percent)
-                    page.wait_for_function("since=>{const s=WorldDriveDiagnostics.forest.visualPilot.snapshot();if(s.phase==='fault')throw new Error(s.error);return s.polls>=since.polls+2&&s.modifiedChunks>=4;}",arg=state)
-                    jumps.append({'percent':percent,'snapshot':page.evaluate(SNAP),'audit':page.evaluate('()=>WorldDriveDiagnostics.forest.visualPilot.audit()')})
+                    # Cached/proved destinations do not guarantee two fresh controller
+                    # polls or four simultaneously resident chunks under SwiftShader.
+                    # Require a substantial ecological presentation to be visible.
+                    page.wait_for_function("""()=>{const s=WorldDriveDiagnostics.forest.visualPilot.snapshot();if(s.phase==='fault')throw new Error(s.error);const ids=['humid-montane-broadleaf','epiphyte-cloud-tree','tree-fern','bamboo-clump'];return s.enabled&&s.presentation==='humid-montane-r20'&&s.error===null&&s.modifiedChunks>=2&&s.modifiedInstances>=1000&&ids.every(id=>(s.models[id]??0)>0);}""")
+                    after=page.evaluate(SNAP);jump_audit=page.evaluate('()=>WorldDriveDiagnostics.forest.visualPilot.audit()')
+                    assert after['failures']==state['failures'] and after['ownerConflicts']==state['ownerConflicts'] and after['modifiedChunks']>=2 and after['modifiedInstances']>=1000
+                    assert jump_audit['meshes'] and all(m.get('mixed',{}).get('sourcePrefixExact') for m in jump_audit['meshes'])
+                    jumps.append({'percent':percent,'snapshot':after,'audit':jump_audit})
                 report['afterJumps']=jumps;page.screenshot(path=str(output/'yungas-r20-after-jump.png'))
                 page.evaluate('()=>WorldDriveDiagnostics.forest.visualPilot.stop()');page.wait_for_timeout(750);report['offAfter']=page.evaluate(SNAP);assert report['offAfter']['modifiedChunks']==0
                 assert all(w['terminated'] for w in page.evaluate('()=>__R9_WORKERS') if 'biome-preparation' in w['url'])

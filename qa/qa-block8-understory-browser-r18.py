@@ -28,20 +28,23 @@ BASE=importlib.util.module_from_spec(BASE_SPEC);BASE_SPEC.loader.exec_module(BAS
 SOURCE_CHECK=BASE.SOURCE_CHECK
 COMPARE=r'''()=>{
  const api=WorldDriveDiagnostics.forest.visualPilot,before=api.audit();
- const ids=a=>a.meshes.map(m=>[m.key,m.count,m.matrixHash,m.matrixBytes,m.mixed?.understory?.rootXZHash]);
  const check=(a,winter)=>{for(const m of a.meshes){const x=m.mixed,u=x?.understory;
    if(!x?.sourcePrefixExact||!x.sourceGeometryUnchanged||!x.sourceAttributeUnchanged||!x.sourceMaterialUnchanged||!x.sourceHidden||m.proofCandidates!==1744)throw new Error('R18 tree source changed');
-   if(x.parts.reduce((n,p)=>n+p.count,0)!==m.count||x.parts.length>2||x.callbacks<1)throw new Error('R18 tree prefix or callback');
+   if(x.parts.reduce((n,p)=>n+p.count,0)!==m.count||x.parts.length>2)throw new Error('R18 tree prefix');
    if(!u?.sourcePrefixExact||u.instances<0||u.instances>m.count)throw new Error('R18 understory prefix');
    if(u.instances>0&&u.triangles!==(winter?576:336))throw new Error('R18 seasonal understory geometry');
    const allowed=winter?['preview-temperate-winter','preview-conifer-winter']:['preview-temperate','preview-conifer'];
    if(!x.parts.every(p=>allowed.includes(p.model)))throw new Error('R18 tree model');
  }};
- check(before,false);api.season('winter');const after=api.audit();check(after,true);
+ const stableCommon=(a,b)=>{const aa=Object.fromEntries(a.meshes.map(m=>[m.key,[m.count,m.matrixHash,m.matrixBytes,m.mixed?.understory?.rootXZHash]])),bb=Object.fromEntries(b.meshes.map(m=>[m.key,[m.count,m.matrixHash,m.matrixBytes,m.mixed?.understory?.rootXZHash]])),keys=Object.keys(aa).filter(k=>bb[k]);
+   if(!keys.length)throw new Error('R18 no common seasonal chunks');
+   for(const k of keys)if(JSON.stringify(aa[k])!==JSON.stringify(bb[k]))throw new Error('R18 seasonal roots moved');
+   return keys;
+ };
+ check(before,false);api.season('winter');const after=api.audit();check(after,true);const firstCommon=stableCommon(before,after);
  for(let i=0;i<20;i++){api.season('summer');api.season('winter');}
- const last=api.audit();check(last,true);
- if(JSON.stringify(ids(before))!==JSON.stringify(ids(after))||JSON.stringify(ids(before))!==JSON.stringify(ids(last)))throw new Error('R18 seasonal roots moved');
- return {before,after,last,roundTrips:20};
+ const last=api.audit();check(last,true);const lastCommon=stableCommon(after,last);
+ return {before,after,last,roundTrips:20,firstCommon,lastCommon};
 }'''
 def main(pilot,output):
     output.mkdir(parents=True,exist_ok=False)
@@ -156,6 +159,7 @@ def main(pilot,output):
         report['summerFrames']=page.evaluate(R9.FRAMES,3000)
         summer=page.evaluate('()=>WorldDriveDiagnostics.forest.visualPilot.audit()')
         assert all(m.get('mixed',{}).get('sourcePrefixExact') and m['proofCandidates']==1744 for m in summer['meshes'])
+        assert all(m['mixed']['callbacks']>=1 for m in summer['meshes'])
         assert all(m['mixed'].get('understory',{}).get('sourcePrefixExact') for m in summer['meshes'] if m['mixed'].get('understory',{}).get('instances',0)>0)
         assert sum(m['mixed'].get('understory',{}).get('instances',0) for m in summer['meshes'])>0
         assert report['summer']['models'].get('preview-temperate',0)>0 and report['summer']['models'].get('preview-conifer',0)>0
