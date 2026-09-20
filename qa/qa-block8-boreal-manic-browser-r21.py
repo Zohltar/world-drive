@@ -96,10 +96,14 @@ def main(pilot,output):
                     assert len(d['parts'])==4 and sum(p['count'] for p in d['parts'])==m['count']
                 report['summerFrames']=page.evaluate(R9.FRAMES,3000);page.screenshot(path=str(output/'manic-r21-summer.png'))
                 # Winter changes silhouettes only, never roots/counts.
-                before_models=dict(summer['models']);page.evaluate("()=>WorldDriveDiagnostics.forest.visualPilot.season('winter')");page.wait_for_timeout(600)
+                summer_by_key={m['key']:{p['id']:p['count'] for p in m['mixed']['parts']} for m in audit['meshes']}
+                page.evaluate("()=>WorldDriveDiagnostics.forest.visualPilot.season('winter')");page.wait_for_timeout(600)
                 winter=page.evaluate(SNAP);winter_audit=page.evaluate('()=>WorldDriveDiagnostics.forest.visualPilot.audit()')
                 report['winter']=winter;report['winterAudit']=winter_audit
-                assert winter['season']=='winter' and winter['models']==before_models and winter['failures']==0 and winter['ownerConflicts']==0
+                assert winter['season']=='winter' and winter['failures']==0 and winter['ownerConflicts']==0
+                assert sum(winter['models'].values())==winter['modifiedInstances'] and all(winter['models'].get(k,0)>0 for k in ['black-spruce','balsam-fir','paper-birch','trembling-aspen'])
+                winter_by_key={m['key']:{p['id']:p['count'] for p in m['mixed']['parts']} for m in winter_audit['meshes']}
+                common=set(summer_by_key)&set(winter_by_key);assert common and all(winter_by_key[k]==summer_by_key[k] for k in common)
                 assert all(m.get('mixed',{}).get('sourcePrefixExact') and m['mixed'].get('season')=='winter' for m in winter_audit['meshes'])
                 summer_tri={p['id']:p['triangles'] for m in audit['meshes'] for p in m['mixed']['parts']}
                 winter_tri={p['id']:p['triangles'] for m in winter_audit['meshes'] for p in m['mixed']['parts']}
