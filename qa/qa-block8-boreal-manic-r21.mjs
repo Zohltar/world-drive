@@ -41,7 +41,7 @@ const presentation=createBorealDiversityPresentation({THREE,group,source,proof:{
 group.updateMatrixWorld(true);
 check('actual Three presentation preserves source matrices and splits one pass into four researched boreal families',()=>{
   const d=presentation.diagnostics(),a=presentation.audit();assert.equal(source.visible,false);assert.equal(group.children.length,5);assert.deepEqual(source.instanceMatrix.array,before);assert.equal(d.instances,700);
-  assert.equal(Object.values(d.models).reduce((s,n)=>s+o½,0),700);for(const id of R21_MODELS)assert.ok(d.models[id]>0,id);assert.equal(d.potentialAdditionalDrawCalls,3);assert.ok(a.sourcePrefixExact&&a.sourceHidden);assert.equal(a.parts.length,4);
+  assert.equal(Object.values(d.models).reduce((s,n)=>s+n,0),700);for(const id of R21_MODELS)assert.ok(d.models[id]>0,id);assert.equal(d.potentialAdditionalDrawCalls,3);assert.ok(a.sourcePrefixExact&&a.sourceHidden);assert.equal(a.parts.length,4);
 });
 check('visible prefix controls all families without adding or moving roots',()=>{for(const n of [0,1,37,128,299,700]){source.count=n;group.updateMatrixWorld(true);const a=presentation.audit();assert.ok(a.sourcePrefixExact);assert.equal(a.instances,n);}});
 check('summer winter switches preserve counts and exact source matrices through repeated round trips',()=>{
