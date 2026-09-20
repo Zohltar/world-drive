@@ -90,7 +90,7 @@ def main(pilot,output):
                 summer=page.evaluate(SNAP);audit=page.evaluate('()=>WorldDriveDiagnostics.forest.visualPilot.audit()')
                 report['summer']=summer;report['summerAudit']=audit
                 assert summer['error'] is None and summer['failures']==0 and summer['presentation']=='dry-r19'
-                assert summer['dryClimateAssets']['id']=='dry-r19' and summer['dryClimateAssets']['triangles']==[44,64,50]
+                assert summer['dryClimateAssets']['id']=='dry-r19' and summer['dryClimateAssets']['triangles']==[220,64,50]
                 assert summer['worker']['transport']['loaded']>0 and summer['worker']['transport']['rejected']==0
                 for key in ['coast-live-oak','maritime-chaparral','dry-grass']:assert summer['models'].get(key,0)>0,key
                 assert not any('cactus' in key or 'prickly' in key for key in summer['models'])
