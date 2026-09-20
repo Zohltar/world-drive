@@ -1,0 +1,63 @@
+name: Block 8 Dry Laguna R19 QA
+on:
+  push:
+    branches: [candidate/block8-biome-classifier-r1]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  dry-laguna:
+    runs-on: ubuntu-latest
+    timeout-minutes: 22
+    env:
+      RESOLVE_SHA256: be36d6209e443038d02e309f0447c6e7f2a62f5fe60c605ffe90d064952f2a60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Preserve approved runtime, R4 and source boundary
+        run: node qa/qa-block8-rendered-pilot-boundary-r12.mjs
+      - name: Install locked project and native browser dependencies
+        run: |
+          npm ci
+          python -m pip install numpy==2.2.6 rasterio==1.4.3 pyshp==2.3.1 shapely==2.1.2 playwright==1.57.0
+          python -m playwright install --with-deps chromium
+      - name: New R19 dry presentation and accepted R14 contracts
+        run: |
+          mkdir -p "$RUNNER_TEMP/biome-r19"
+          node qa/qa-block8-dry-laguna-r19.mjs "$RUNNER_TEMP/biome-r19/unit-qa.json"
+          node qa/qa-block8-rendered-laguna-r14.mjs
+          node qa/qa-block8-rendered-route-owner-r12.mjs
+          node qa/qa-block8-forest-progressive-layer-r4.mjs
+      - name: Rebuild unchanged accepted R14 geographic package
+        run: |
+          curl --fail --location --proto '=https' --proto-redir '=https' --retry 2 --connect-timeout 20 --max-time 180 --max-filesize 200000000 https://storage.googleapis.com/teow2016/Ecoregions2017.zip -o "$RUNNER_TEMP/Ecoregions2017.zip"
+          echo "$RESOLVE_SHA256  $RUNNER_TEMP/Ecoregions2017.zip" | sha256sum --check --strict
+          python tools/biomes/build-resolve-atlas.py --input "$RUNNER_TEMP/Ecoregions2017.zip" --output "$RUNNER_TEMP/atlas-r19" --cell-degrees 0.1 --expected-sha256 "$RESOLVE_SHA256"
+          python tools/biomes/build-rendered-laguna-r14.py --source "$RUNNER_TEMP/Ecoregions2017.zip" --atlas "$RUNNER_TEMP/atlas-r19" --output "$RUNNER_TEMP/biome-r19/pilot"
+          echo "23ece19d72201808d4edb3f904e2dc0ec6dea23f5cdf64f5be341a33ccf73c31  $RUNNER_TEMP/biome-r19/pilot/public/local-data/biomes/pilot-r14/directory.json" | sha256sum --check --strict
+      - name: Preserve R14 package identity and finite source coverage
+        run: |
+          python qa/qa-block8-rendered-laguna-builder-r14.py --source "$RUNNER_TEMP/Ecoregions2017.zip" --atlas "$RUNNER_TEMP/atlas-r19" --pilot "$RUNNER_TEMP/biome-r19/pilot" --output "$RUNNER_TEMP/biome-r19/package-qa.json"
+          node qa/qa-block8-rendered-laguna-data-r14.mjs "$RUNNER_TEMP/biome-r19/pilot" "$RUNNER_TEMP/biome-r19/data-qa.json"
+      - name: Native full-game R14 versus R19 dry presentation and cleanup
+        run: python qa/qa-block8-dry-laguna-browser-r19.py --pilot "$RUNNER_TEMP/biome-r19/pilot" --output "$RUNNER_TEMP/biome-r19/native"
+      - name: Preserve exact source and real rendered evidence
+        if: always()
+        run: |
+          mkdir -p "$RUNNER_TEMP/biome-r19"
+          git rev-parse HEAD > "$RUNNER_TEMP/biome-r19/tested-commit.txt"
+          git archive --format=tar.gz HEAD tools/biomes/dry-climate-presentation-r19.mjs tools/biomes/dry-pilot-launcher-r19.mjs tools/biomes/rendered-pilot-r12.mjs src/app/default-biome-runtime.js qa/qa-block8-dry-laguna-r19.mjs qa/qa-block8-dry-laguna-browser-r19.py .github/workflows/qa-block8-dry-laguna-r19.yml > "$RUNNER_TEMP/biome-r19/r19-source.tar.gz"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: biome-r19-dry-laguna-${{ github.sha }}
+          path: ${{ runner.temp }}/biome-r19
+          if-no-files-found: error
