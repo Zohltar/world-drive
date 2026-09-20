@@ -67,14 +67,14 @@ def main(pilot,output):
       else:raise TimeoutError('Vite did not start')
       with sync_playwright() as pw:
         browser=pw.chromium.launch(headless=True,args=['--use-angle=swiftshader','--enable-unsafe-swiftshader'])
-        # R17 reference keeps the original four-chunk/120-second gate. R18 may
-        # lose one active presented chunk to normal background R4 turnover while
-        # its exact source proofs remain valid. Require three active R18 chunks
-        # plus at least four completed proofs; the R4 scheduler is unchanged.
+        # R17 reference and R18 may each lose one active presented chunk to normal
+        # background R4 turnover while their exact source proofs remain valid.
+        # Require three active presented chunks plus at least four completed proofs;
+        # the 120-second timeout and certified R4 scheduler remain unchanged.
         context=browser.new_context(viewport={'width':1100,'height':700},device_scale_factor=1)
         report['browserEnvironment']={'viewportCss':{'width':1100,'height':700},
             'deviceScaleFactor':1,'softwareRasterOnly':True,
-            'originalTimeoutMs':120000,'referenceRenderedChunks':4,'r18PresentedChunks':3}
+            'originalTimeoutMs':120000,'referencePresentedChunks':3,'r18PresentedChunks':3,'requiredCompletedProofs':4}
         context.add_init_script(R9.INSTRUMENT)
         def network(route):
             url=route.request.url;parsed=urllib.parse.urlparse(url)
@@ -113,7 +113,7 @@ def main(pilot,output):
         report['offBefore']=page.evaluate(R9.FRAMES,3000)
         # Same camera/light/game state: R17 is the actual in-game A/B reference.
         page.evaluate("async u=> (await import(u)).start({season:'summer'})",REFERENCE)
-        page.wait_for_function("()=>{const s=WorldDriveDiagnostics.forest.visualPilot.snapshot();return s.pilot==='r17-nord-natural'&&s.modifiedChunks>=4;}")
+        page.wait_for_function("()=>{const s=WorldDriveDiagnostics.forest.visualPilot.snapshot();if(s.phase==='fault')throw new Error(s.error);return s.pilot==='r17-nord-natural'&&s.modifiedChunks>=3&&s.proofsCompleted>=4;}")
         report['referenceR17']=page.evaluate(SNAP)
         report['referenceR17Frames']=page.evaluate(R9.FRAMES,3000)
         page.screenshot(path=str(output/'nord-natural-r17-reference.png'))
