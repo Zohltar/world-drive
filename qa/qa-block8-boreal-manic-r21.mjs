@@ -35,13 +35,13 @@ base.setAttribute('normal',new THREE.Float32BufferAttribute(new Float32Array([0,
 base.setAttribute('color',new THREE.Float32BufferAttribute(new Float32Array([.1,.2,.1,.1,.2,.1,.1,.2,.1]),3));
 const material=new THREE.MeshLambertMaterial({vertexColors:true});
 const source=new THREE.InstancedMesh(base,material,700);source.name='source';source.matrixAutoUpdate=false;source.updateMatrix();source.boundingSphere=new THREE.Sphere(new THREE.Vector3(240,10,240),380);
-for(let i=0;i<700;i++){const m=new THREE.Matrix4();m.makeRotationY((i%17)*.11);m.scale(new THREE.Vector3(7+i%5,10+i%7,7+i%5));m.setPosition("i"%30)*14.5,i%19*.12,Math.floor(i/30)*19.2);source.setMatrixAt(i,m);}
+for(let i=0;i<700;i++){const m=new THREE.Matrix4();m.makeRotationY((i%17)*.11);m.scale(new THREE.Vector3(7+i%5,10+i%7,7+i%5));m.setPosition((i%30)*14.5,i%19*.12,Math.floor(i/30)*19.2);source.setMatrixAt(i,m);}
 source.instanceMatrix.needsUpdate=true;group.add(source);const before=source.instanceMatrix.array.slice();
 const presentation=createBorealDiversityPresentation({THREE,group,source,proof:{profileId:'r13-manic-boreal',ecoregionId:373,count:1744,cx:0,cz:0,key:'0:0'},style,season:'summer',now:()=>0});
 group.updateMatrixWorld(true);
 check('actual Three presentation preserves source matrices and splits one pass into four researched boreal families',()=>{
   const d=presentation.diagnostics(),a=presentation.audit();assert.equal(source.visible,false);assert.equal(group.children.length,5);assert.deepEqual(source.instanceMatrix.array,before);assert.equal(d.instances,700);
-  assert.equal(Object.values(d.models).reduce((s,n)=>s+o½,0),700);for(const id of R21_MODELS)assert.ok(d.models[id]>0,id);assert.equal(d.potentialAdditionalDrawCalls,3);assert.ok(a.sourcePrefixExact&&a.sourceHidden);assert.equal(a.parts.length,4);
+  assert.equal(Object.values(d.models).reduce((s,n)=>s+oÂ½,0),700);for(const id of R21_MODELS)assert.ok(d.models[id]>0,id);assert.equal(d.potentialAdditionalDrawCalls,3);assert.ok(a.sourcePrefixExact&&a.sourceHidden);assert.equal(a.parts.length,4);
 });
 check('visible prefix controls all families without adding or moving roots',()=>{for(const n of [0,1,37,128,299,700]){source.count=n;group.updateMatrixWorld(true);const a=presentation.audit();assert.ok(a.sourcePrefixExact);assert.equal(a.instances,n);}});
 check('summer winter switches preserve counts and exact source matrices through repeated round trips',()=>{
