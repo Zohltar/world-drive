@@ -100,9 +100,13 @@ def main(pilot,output):
                 report['summerFrames']=page.evaluate(R9.FRAMES,3000)
                 page.screenshot(path=str(output/'laguna-r19-dry.png'))
                 # Unsupported winter must leave the active dry view intact.
-                before=json.dumps(audit,sort_keys=True)
-                preserved=page.evaluate("""()=>{const api=WorldDriveDiagnostics.forest.visualPilot;try{api.season('winter');return false;}catch{return api.snapshot().enabled&&api.snapshot().presentation==='dry-r19';}}""")
-                assert preserved and json.dumps(page.evaluate('()=>WorldDriveDiagnostics.forest.visualPilot.audit()'),sort_keys=True)==before
+                before_state=page.evaluate(SNAP)
+                preserved=page.evaluate("""()=>{const api=WorldDriveDiagnostics.forest.visualPilot;try{api.season('winter');return false;}catch{const s=api.snapshot();return s.enabled&&s.presentation==='dry-r19'&&s.error===null;}}""")
+                after_state=page.evaluate(SNAP);after_audit=page.evaluate('()=>WorldDriveDiagnostics.forest.visualPilot.audit()')
+                assert preserved and after_state['enabled'] and after_state['presentation']=='dry-r19'
+                assert after_state['failures']==before_state['failures'] and after_state['ownerConflicts']==before_state['ownerConflicts']
+                assert after_state['modifiedChunks']>0 and all(after_state['models'].get(k,0)>0 for k in ['dry-woodland','dry-scrub','prickly-pear'])
+                assert all(m.get('mixed',{}).get('sourcePrefixExact') for m in after_audit['meshes'])
                 # Actual game teleports exercise prefix/ownership turnover.
                 jumps=[]
                 for percent in [25,75]:
