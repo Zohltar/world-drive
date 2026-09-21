@@ -19,10 +19,10 @@ check('partition owns every original root exactly once with visible-prefix table
 });
 const style=buildHumidMontaneStyle(THREE);
 check('humid montane assets expose Yungas broadleaf epiphyte tree-fern and bamboo cues with one material',()=>{
-  const d=style.diagnostics();assert.equal(d.id,R20_PRESENTATION);assert.deepEqual(d.models,[...R20_MODELS]);assert.deepEqual(d.triangles,[196,252,220,96]);
+  const d=style.diagnostics();assert.equal(d.id,R20_PRESENTATION);assert.deepEqual(d.models,[...R20_MODELS]);assert.deepEqual(d.triangles,[196,252,652,96]);
   assert.deepEqual(R20_MODELS,['humid-montane-broadleaf','epiphyte-cloud-tree','tree-fern','bamboo-clump']);assert.equal(d.sharedMaterials,1);assert.equal(d.transparent,false);
   const a=[0,1,2,3].map(f=>style.asset(f));assert.equal(new Set(a.map(x=>x.material)).size,1);assert.ok(a[0].geometry.boundingBox.max.y>1);assert.ok(a[1].geometry.boundingBox.max.y>1);
-  assert.ok(a[2].geometry.boundingBox.max.y>=1.0);assert.ok(d.treeFernSilhouette.height>=1.0);assert.ok(d.treeFernSilhouette.diameterX>=1.2&&d.treeFernSilhouette.diameterZ>=1.2);assert.ok(a[3].geometry.boundingBox.max.y>.75);assert.match(d.scope,/prominent tree ferns/);assert.equal(d.mix.treeFernVisualWeight,20);assert.equal(d.mix.measuredHabitatPercent,false);assert.equal(d.mix.altitudeZonation,false);
+  assert.ok(a[2].geometry.boundingBox.max.y>=1.03);assert.ok(d.treeFernSilhouette.height>=1.03);assert.ok(d.treeFernSilhouette.diameterX>=1.6&&d.treeFernSilhouette.diameterZ>=1.6);assert.ok(a[3].geometry.boundingBox.max.y>.75);assert.match(d.scope,/prominent tree ferns/);assert.equal(d.mix.treeFernVisualWeight,20);assert.equal(d.mix.measuredHabitatPercent,false);assert.equal(d.mix.altitudeZonation,false);
 });
 const group=new THREE.Group(),base=new THREE.BufferGeometry();
 base.setAttribute('position',new THREE.Float32BufferAttribute(new Float32Array([0,0,0,1,0,0,0,1,0]),3));

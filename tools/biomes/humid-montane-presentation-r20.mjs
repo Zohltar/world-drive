@@ -78,7 +78,7 @@ function treeFernData(){
   // Tree-fern silhouette: short fibrous trunk + broad crown of arching fronds.
   // Each frond carries paired pinnae, so it reads as a fern from the road rather
   // than as a palm or a single flat ribbon. Root ownership remains exactly R4.
-  const b=meshBuilder(),bark=[.145,.090,.045],crownY=.63;
+  const b=meshBuilder(),bark=[.145,.090,.045],crownY=.82;
   b.branch([0,0,0],[0,crownY,0],.052,.032,bark,8);
   const frondCount=16,segments=7;
   for(let i=0;i<frondCount;i++){
