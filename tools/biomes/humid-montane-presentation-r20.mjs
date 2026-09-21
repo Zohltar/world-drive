@@ -21,7 +21,7 @@ export function r20Family(cx,cz,x,z){
   if(!Number.isSafeInteger(cx)||!Number.isSafeInteger(cz))throw new TypeError('R20 chunk coordinates');
   finite(x,'x');finite(z,'z');
   const n=hash32(cx,cz,x,z,0x523230)%100;
-  return n<54?0:n<78?1:n<89?2:3; // 54/24/11/11 visual allocation; not measured cover.
+  return n<48?0:n<70?1:n<90?2:3; // 48/22/20/10 visual allocation; not measured cover.
 }
 export function partitionR20(array,cx,cz){
   if(!(array instanceof Float32Array)||array.length%16||array.length<16||array.length>R20_MAX_INSTANCES*16)
@@ -75,17 +75,30 @@ function humidBroadleafData(epiphytes=false){
   return b.data();
 }
 function treeFernData(){
-  const b=meshBuilder(),bark=[.14,.095,.045];b.branch([0,0,0],[0,.68,0],.040,.025,bark,7);
-  for(let i=0;i<12;i++){
-    const a=i/12*TAU+(i%2)*.08,base=[0,.67,0],bend=[Math.cos(a)*.26,.72,Math.sin(a)*.26],tip=[Math.cos(a)*.48,.62+(i%3)*.025,Math.sin(a)*.48];
-    const side=norm([-Math.sin(a),0,Math.cos(a)]).map(v=>v*.025),col=i%2?[.055,.22,.075]:[.07,.27,.085];
-    const p0=base.map((v,j)=>v-side[j]),p1=base.map((v,j)=>v+side[j]),p2=bend.map((v,j)=>v+side[j]),p3=bend.map((v,j)=>v-side[j]),p4=tip.map((v,j)=>v+side[j]),p5=tip.map((v,j)=>v-side[j]),no=norm([Math.cos(a),.25,Math.sin(a)]);
+  // Deliberately legible from the road: a tall slender trunk and a wide radial
+  // crown. This is still geometry-only substitution on an existing R4 root.
+  const b=meshBuilder(),bark=[.16,.105,.050],crownY=.86;
+  b.branch([0,0,0],[0,crownY,0],.043,.022,bark,7);
+  for(let i=0;i<14;i++){
+    const a=i/14*TAU+(i%2)*.055,len=.62+(i%3)*.035,base=[0,crownY-.01,0];
+    const bend=[Math.cos(a)*len*.44,crownY+.035+(i%2)*.018,Math.sin(a)*len*.44];
+    const tip=[Math.cos(a)*len,crownY-.16-(i%3)*.018,Math.sin(a)*len];
+    const side=norm([-Math.sin(a),0,Math.cos(a)]).map(v=>v*.035),col=i%2?[.070,.285,.090]:[.090,.360,.115];
+    const p0=base.map((v,j)=>v-side[j]),p1=base.map((v,j)=>v+side[j]),p2=bend.map((v,j)=>v+side[j]),p3=bend.map((v,j)=>v-side[j]),p4=tip.map((v,j)=>v+side[j]),p5=tip.map((v,j)=>v-side[j]),no=norm([Math.cos(a),.30,Math.sin(a)]);
     b.tri(p0,p1,p2,col,no);b.tri(p0,p2,p3,col,no);b.tri(p3,p2,p4,col,no);b.tri(p3,p4,p5,col,no);
-    for(const at of [.40,.56,.72]){
-      const cx=Math.cos(a)*.48*at,cy=.67+(.62-.67)*at+.08*Math.sin(Math.PI*at),cz=Math.sin(a)*.48*at,leaf=.075*(1-Math.abs(at-.56));
-      const tangent=norm([-Math.sin(a),0,Math.cos(a)]),s=tangent.map(v=>v*leaf),front=[cx+Math.cos(a)*.035,cy+.012,cz+Math.sin(a)*.035],back=[cx-Math.cos(a)*.025,cy-.005,cz-Math.sin(a)*.025];
+    for(const at of [.30,.44,.58,.72,.86]){
+      const cx=Math.cos(a)*len*at,cy=crownY+(tip[1]-crownY)*at+.11*Math.sin(Math.PI*at),cz=Math.sin(a)*len*at;
+      const leaf=.105*(1-Math.abs(at-.58)*.55),tangent=norm([-Math.sin(a),0,Math.cos(a)]),s=tangent.map(v=>v*leaf);
+      const front=[cx+Math.cos(a)*.045,cy+.014,cz+Math.sin(a)*.045],back=[cx-Math.cos(a)*.032,cy-.008,cz-Math.sin(a)*.032];
       b.tri(back.map((v,j)=>v-s[j]),back.map((v,j)=>v+s[j]),front.map((v,j)=>v+s[j]),col,no);b.tri(back.map((v,j)=>v-s[j]),front.map((v,j)=>v+s[j]),front.map((v,j)=>v-s[j]),col,no);
     }
+  }
+  // Young upright fronds make the crown read as a tree fern rather than a flat shrub.
+  for(let i=0;i<5;i++){
+    const a=i/5*TAU+.31,base=[0,crownY-.01,0],tip=[Math.cos(a)*.24,1.02,Math.sin(a)*.24],w=.024;
+    const side=[-Math.sin(a)*w,0,Math.cos(a)*w],col=[.105,.335,.105],no=norm([Math.cos(a),.45,Math.sin(a)]);
+    const p0=base.map((v,j)=>v-side[j]),p1=base.map((v,j)=>v+side[j]),p2=tip.map((v,j)=>v+side[j]),p3=tip.map((v,j)=>v-side[j]);
+    b.tri(p0,p1,p2,col,no);b.tri(p0,p2,p3,col,no);
   }
   return b.data();
 }
@@ -109,9 +122,9 @@ export function buildHumidMontaneStyle(THREE){
   let disposed=false;
   return Object.freeze({id:R20_PRESENTATION,asset(family){if(disposed)throw new Error('R20 style disposed');if(!Number.isInteger(family)||family<0||family>3)throw new TypeError('R20 family');return assets[family];},
     dispose(){if(disposed)return;disposed=true;for(const g of owned)g.dispose();material.dispose();},
-    diagnostics:()=>({id:R20_PRESENTATION,models:[...R20_MODELS],triangles:assets.map(a=>a.triangles),sharedMaterials:1,transparent:false,disposed,
-      mix:{humidBroadleafVisualWeight:54,epiphyteCloudTreeVisualWeight:24,treeFernVisualWeight:11,bambooVisualWeight:11,measuredHabitatPercent:false,altitudeZonation:false},
-      scope:'Bolivian Yungas humid montane/cloud forest cues: evergreen broadleaf, epiphytes, tree ferns and bamboo; existing R4 roots unchanged'})});
+    diagnostics:()=>{const box=assets[2].geometry.boundingBox;return {id:R20_PRESENTATION,models:[...R20_MODELS],triangles:assets.map(a=>a.triangles),sharedMaterials:1,transparent:false,disposed,treeFernSilhouette:{height:box.max.y-box.min.y,diameterX:box.max.x-box.min.x,diameterZ:box.max.z-box.min.z},
+      mix:{humidBroadleafVisualWeight:48,epiphyteCloudTreeVisualWeight:22,treeFernVisualWeight:20,bambooVisualWeight:10,measuredHabitatPercent:false,altitudeZonation:false},
+      scope:'Bolivian Yungas humid montane/cloud forest cues: evergreen broadleaf, epiphytes, prominent tree ferns and bamboo; existing R4 roots unchanged'}};}
 }
 const hash=array=>{let h=2166136261;const b=new Uint8Array(array.buffer,array.byteOffset,array.byteLength);for(const x of b)h=Math.imul(h^x,16777619)>>>0;return h.toString(16);};
 export function createHumidMontanePresentation({THREE,group,source,proof,style,now=()=>performance.now()}){
