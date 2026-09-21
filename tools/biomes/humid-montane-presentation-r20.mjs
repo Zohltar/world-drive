@@ -75,30 +75,54 @@ function humidBroadleafData(epiphytes=false){
   return b.data();
 }
 function treeFernData(){
-  // Deliberately legible from the road: a tall slender trunk and a wide radial
-  // crown. This is still geometry-only substitution on an existing R4 root.
-  const b=meshBuilder(),bark=[.16,.105,.050],crownY=.86;
-  b.branch([0,0,0],[0,crownY,0],.043,.022,bark,7);
-  for(let i=0;i<14;i++){
-    const a=i/14*TAU+(i%2)*.055,len=.62+(i%3)*.035,base=[0,crownY-.01,0];
-    const bend=[Math.cos(a)*len*.44,crownY+.035+(i%2)*.018,Math.sin(a)*len*.44];
-    const tip=[Math.cos(a)*len,crownY-.16-(i%3)*.018,Math.sin(a)*len];
-    const side=norm([-Math.sin(a),0,Math.cos(a)]).map(v=>v*.035),col=i%2?[.070,.285,.090]:[.090,.360,.115];
-    const p0=base.map((v,j)=>v-side[j]),p1=base.map((v,j)=>v+side[j]),p2=bend.map((v,j)=>v+side[j]),p3=bend.map((v,j)=>v-side[j]),p4=tip.map((v,j)=>v+side[j]),p5=tip.map((v,j)=>v-side[j]),no=norm([Math.cos(a),.30,Math.sin(a)]);
-    b.tri(p0,p1,p2,col,no);b.tri(p0,p2,p3,col,no);b.tri(p3,p2,p4,col,no);b.tri(p3,p4,p5,col,no);
-    for(const at of [.30,.44,.58,.72,.86]){
-      const cx=Math.cos(a)*len*at,cy=crownY+(tip[1]-crownY)*at+.11*Math.sin(Math.PI*at),cz=Math.sin(a)*len*at;
-      const leaf=.105*(1-Math.abs(at-.58)*.55),tangent=norm([-Math.sin(a),0,Math.cos(a)]),s=tangent.map(v=>v*leaf);
-      const front=[cx+Math.cos(a)*.045,cy+.014,cz+Math.sin(a)*.045],back=[cx-Math.cos(a)*.032,cy-.008,cz-Math.sin(a)*.032];
-      b.tri(back.map((v,j)=>v-s[j]),back.map((v,j)=>v+s[j]),front.map((v,j)=>v+s[j]),col,no);b.tri(back.map((v,j)=>v-s[j]),front.map((v,j)=>v+s[j]),front.map((v,j)=>v-s[j]),col,no);
+  // Tree-fern silhouette: short fibrous trunk + broad crown of arching fronds.
+  // Each frond carries paired pinnae, so it reads as a fern from the road rather
+  // than as a palm or a single flat ribbon. Root ownership remains exactly R4.
+  const b=meshBuilder(),bark=[.145,.090,.045],crownY=.63;
+  b.branch([0,0,0],[0,crownY,0],.052,.032,bark,8);
+  const frondCount=16,segments=7;
+  for(let i=0;i<frondCount;i++){
+    const a=i/frondCount*TAU+(i%2)*.045,len=.78+(i%4)*.035;
+    let prev=[0,crownY,0];
+    for(let s=1;s<=segments;s++){
+      const t=s/segments;
+      const radial=len*t;
+      // Pronounced arch: slight rise near crown, then droop toward tip.
+      const y=crownY+.16*Math.sin(Math.PI*t)-.25*t*t;
+      const cur=[Math.cos(a)*radial,y,Math.sin(a)*radial];
+      const tangent=norm([-Math.sin(a),0,Math.cos(a)]);
+      const rachisW=.020*(1-.45*t),side=tangent.map(v=>v*rachisW);
+      const col=i%2?[.060,.305,.080]:[.085,.385,.105],no=norm([Math.cos(a),.42,Math.sin(a)]);
+      const p0=prev.map((v,j)=>v-side[j]),p1=prev.map((v,j)=>v+side[j]),p2=cur.map((v,j)=>v+side[j]),p3=cur.map((v,j)=>v-side[j]);
+      b.tri(p0,p1,p2,col,no);b.tri(p0,p2,p3,col,no);
+      // Paired pinnae along both sides of the rachis. Broad enough to remain
+      // legible after the existing R4 instance scale is applied.
+      if(s<segments){
+        const pinLen=.16*(1-.48*t)+.035;
+        const pinW=.026*(1-.30*t);
+        for(const sign of [-1,1]){
+          const centre=[
+            prev[0]+(cur[0]-prev[0])*.72,
+            prev[1]+(cur[1]-prev[1])*.72,
+            prev[2]+(cur[2]-prev[2])*.72
+          ];
+          const out=tangent.map(v=>v*pinLen*sign);
+          const forward=[Math.cos(a)*pinW,0,Math.sin(a)*pinW];
+          const base=centre.map((v,j)=>v-forward[j]);
+          const tip=centre.map((v,j)=>v+out[j]+forward[j]*.35);
+          const q0=base.map((v,j)=>v-out[j]*.08),q1=base.map((v,j)=>v+out[j]*.08),q2=tip.map((v,j)=>v+forward[j]),q3=tip.map((v,j)=>v-forward[j]);
+          b.tri(q0,q1,q2,col,no);b.tri(q0,q2,q3,col,no);
+        }
+      }
+      prev=cur;
     }
   }
-  // Young upright fronds make the crown read as a tree fern rather than a flat shrub.
-  for(let i=0;i<5;i++){
-    const a=i/5*TAU+.31,base=[0,crownY-.01,0],tip=[Math.cos(a)*.24,1.02,Math.sin(a)*.24],w=.024;
-    const side=[-Math.sin(a)*w,0,Math.cos(a)*w],col=[.105,.335,.105],no=norm([Math.cos(a),.45,Math.sin(a)]);
-    const p0=base.map((v,j)=>v-side[j]),p1=base.map((v,j)=>v+side[j]),p2=tip.map((v,j)=>v+side[j]),p3=tip.map((v,j)=>v-side[j]);
-    b.tri(p0,p1,p2,col,no);b.tri(p0,p2,p3,col,no);
+  // Upright croziers / young fronds in the crown reinforce the fern identity.
+  for(let i=0;i<7;i++){
+    const a=i/7*TAU+.23,base=[0,crownY-.01,0],mid=[Math.cos(a)*.12,crownY+.22,Math.sin(a)*.12],tip=[Math.cos(a)*.28,crownY+.18,Math.sin(a)*.28],w=.022;
+    const side=[-Math.sin(a)*w,0,Math.cos(a)*w],col=[.11,.39,.115],no=norm([Math.cos(a),.55,Math.sin(a)]);
+    const q0=base.map((v,j)=>v-side[j]),q1=base.map((v,j)=>v+side[j]),q2=mid.map((v,j)=>v+side[j]),q3=mid.map((v,j)=>v-side[j]),q4=tip.map((v,j)=>v+side[j]),q5=tip.map((v,j)=>v-side[j]);
+    b.tri(q0,q1,q2,col,no);b.tri(q0,q2,q3,col,no);b.tri(q3,q2,q4,col,no);b.tri(q3,q4,q5,col,no);
   }
   return b.data();
 }
