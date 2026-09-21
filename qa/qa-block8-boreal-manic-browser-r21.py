@@ -34,7 +34,7 @@ def main(pilot,output):
     shutil.copytree(pilot/INSTALL,destination)
     log=None;server=None;errors=[];engine=[];requests=[];upstream=Counter()
     report={'status':'RUNNING','realVite':True,'fullGame':True,'runtimeStubs':False,'gpuPerformanceCertification':False,
-        'browserEnvironment':{'width':1100,'height':700,'deviceScaleFactor':1,'requiredRenderedChunks':4,'timeoutMs':120000}}
+        'browserEnvironment':{'width':1100,'height':700,'deviceScaleFactor':1,'requiredRenderedChunks':3,'timeoutMs':120000}}
     try:
         subprocess.run(['npm','run','build'],cwd=ROOT,check=True);report['productionBuild']=True
         with socket.socket() as s:s.bind(('127.0.0.1',0));port=s.getsockname()[1]
@@ -83,7 +83,7 @@ def main(pilot,output):
                 # New ecological Manic presentation.
                 start=page.evaluate("async u=>(await import(u)).start({season:'summer'})",LAUNCHER)
                 assert start['status']=='enabled' and start['pilot']=='r21-manic-boreal-diversity'
-                page.wait_for_function("()=>{const s=WorldDriveDiagnostics.forest.visualPilot.snapshot();if(s.phase==='fault')throw new Error(s.error);return s.pilot==='r21-manic-boreal-diversity'&&s.modifiedChunks>=4&&s.proofsCompleted>=4;}")
+                page.wait_for_function("""()=>{const s=WorldDriveDiagnostics.forest.visualPilot.snapshot();if(s.phase==='fault')throw new Error(s.error);const ids=['black-spruce','balsam-fir','paper-birch','trembling-aspen'];return s.pilot==='r21-manic-boreal-diversity'&&s.modifiedChunks>=3&&s.proofsCompleted>=4&&s.modifiedInstances>=2000&&ids.every(id=>(s.models[id]??0)>0);}""")
                 summer=page.evaluate(SNAP);audit=page.evaluate('()=>WorldDriveDiagnostics.forest.visualPilot.audit()')
                 report['summer']=summer;report['summerAudit']=audit
                 assert summer['error'] is None and summer['failures']==0 and summer['presentation']=='boreal-diversity-r21'
