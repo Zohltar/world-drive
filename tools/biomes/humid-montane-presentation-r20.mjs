@@ -124,7 +124,7 @@ export function buildHumidMontaneStyle(THREE){
     dispose(){if(disposed)return;disposed=true;for(const g of owned)g.dispose();material.dispose();},
     diagnostics:()=>{const box=assets[2].geometry.boundingBox;return {id:R20_PRESENTATION,models:[...R20_MODELS],triangles:assets.map(a=>a.triangles),sharedMaterials:1,transparent:false,disposed,treeFernSilhouette:{height:box.max.y-box.min.y,diameterX:box.max.x-box.min.x,diameterZ:box.max.z-box.min.z},
       mix:{humidBroadleafVisualWeight:48,epiphyteCloudTreeVisualWeight:22,treeFernVisualWeight:20,bambooVisualWeight:10,measuredHabitatPercent:false,altitudeZonation:false},
-      scope:'Bolivian Yungas humid montane/cloud forest cues: evergreen broadleaf, epiphytes, prominent tree ferns and bamboo; existing R4 roots unchanged'}};}
+      scope:'Bolivian Yungas humid montane/cloud forest cues: evergreen broadleaf, epiphytes, prominent tree ferns and bamboo; existing R4 roots unchanged'};}});
 }
 const hash=array=>{let h=2166136261;const b=new Uint8Array(array.buffer,array.byteOffset,array.byteLength);for(const x of b)h=Math.imul(h^x,16777619)>>>0;return h.toString(16);};
 export function createHumidMontanePresentation({THREE,group,source,proof,style,now=()=>performance.now()}){
