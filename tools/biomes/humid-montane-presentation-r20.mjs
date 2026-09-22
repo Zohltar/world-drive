@@ -152,7 +152,12 @@ export function buildHumidMontaneStyle(THREE){
   const data=[humidBroadleafData(false),humidBroadleafData(true),treeFernData(),bambooData()],owned=[];
   // Geometry-space scale only: source R4 matrices stay byte-exact. This widens
   // visible tree-height range while keeping ferns clearly below the canopy.
-  const visualScales=Object.freeze([[.88,.86,.88],[1.10,1.18,1.10],[.56,.56,.56],[.80,.78,.80]]);
+const visualScales = Object.freeze([
+  [1.15, 1.00, 1.15], // humid-montane-broadleaf
+  [1.30, 1.32, 1.30], // epiphyte-cloud-tree
+  [0.28, 0.28, 0.28], // tree-fern
+  [0.90, 0.82, 0.90]  // bamboo-clump
+]);
   const assets=data.map((d,i)=>{const g=geometry(THREE,d,'r20-'+R20_MODELS[i],visualScales[i]);owned.push(g);return Object.freeze({id:R20_MODELS[i],geometry:g,material,triangles:d.triangles,visualScale:visualScales[i]});});
   let disposed=false;
   return Object.freeze({id:R20_PRESENTATION,asset(family){if(disposed)throw new Error('R20 style disposed');if(!Number.isInteger(family)||family<0||family>3)throw new TypeError('R20 family');return assets[family];},
