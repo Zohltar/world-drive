@@ -101,19 +101,24 @@ function treeFernData(){
           prev[1]+(cur[1]-prev[1])*.68,
           prev[2]+(cur[2]-prev[2])*.68
         ];
-        const pinLen=.24*(1-.48*t)+.075;
-        const pinHalfW=.050*(1-.28*t)+.020;
+        const pinLen=.27*(1-.38*t)+.105;
+        // Full width near the crown is ~0.25 normalized units: deliberately
+        // broad enough that adjacent pinnae overlap into a readable fern blade.
+        const pinHalfW=.095*(1-.22*t)+.035;
         const radialDir=[Math.cos(a),0,Math.sin(a)];
         for(const sign of [-1,1]){
           const lateral=tangent.map(v=>v*pinLen*sign);
           const half=radialDir.map(v=>v*pinHalfW);
-          const root=centre.map((v,j)=>v+lateral[j]*.05);
+          const root=centre.map((v,j)=>v+lateral[j]*.035);
           const tip=centre.map((v,j)=>v+lateral[j]);
-          // Tapered but deliberately broad leaflet card.
-          const q0=root.map((v,j)=>v-half[j]*.65);
-          const q1=root.map((v,j)=>v+half[j]*.65);
-          const q2=tip.map((v,j)=>v+half[j]*.28);
-          const q3=tip.map((v,j)=>v-half[j]*.28);
+          tip[1]-=.035+.025*t;
+          // Broad tapered leaflet card with a shallow fold so the surface stays
+          // visible from both the elevated viewer and road-height cameras.
+          const q0=root.map((v,j)=>v-half[j]*.92);
+          const q1=root.map((v,j)=>v+half[j]*.92);
+          const q2=tip.map((v,j)=>v+half[j]*.38);
+          const q3=tip.map((v,j)=>v-half[j]*.38);
+          q0[1]+=.012;q1[1]-=.012;q2[1]-=.006;q3[1]+=.006;
           b.tri(q0,q1,q2,col,no);b.tri(q0,q2,q3,col,no);
         }
       }
@@ -149,7 +154,7 @@ export function buildHumidMontaneStyle(THREE){
   let disposed=false;
   return Object.freeze({id:R20_PRESENTATION,asset(family){if(disposed)throw new Error('R20 style disposed');if(!Number.isInteger(family)||family<0||family>3)throw new TypeError('R20 family');return assets[family];},
     dispose(){if(disposed)return;disposed=true;for(const g of owned)g.dispose();material.dispose();},
-    diagnostics:()=>{const box=assets[2].geometry.boundingBox;return {id:R20_PRESENTATION,models:[...R20_MODELS],triangles:assets.map(a=>a.triangles),sharedMaterials:1,transparent:false,disposed,treeFernSilhouette:{height:box.max.y-box.min.y,diameterX:box.max.x-box.min.x,diameterZ:box.max.z-box.min.z,fronds:20,segments:9,pinnae:320},
+    diagnostics:()=>{const box=assets[2].geometry.boundingBox;return {id:R20_PRESENTATION,models:[...R20_MODELS],triangles:assets.map(a=>a.triangles),sharedMaterials:1,transparent:false,disposed,treeFernSilhouette:{height:box.max.y-box.min.y,diameterX:box.max.x-box.min.x,diameterZ:box.max.z-box.min.z,fronds:20,segments:9,pinnae:320,pinnaNearCrownFullWidth:.248,pinnaOuterFullWidth:.218},
       mix:{humidBroadleafVisualWeight:48,epiphyteCloudTreeVisualWeight:22,treeFernVisualWeight:20,bambooVisualWeight:10,measuredHabitatPercent:false,altitudeZonation:false},
       scope:'Bolivian Yungas humid montane/cloud forest cues: evergreen broadleaf, epiphytes, prominent tree ferns and bamboo; existing R4 roots unchanged'};}});
 }
