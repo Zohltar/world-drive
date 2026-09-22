@@ -83,9 +83,9 @@ def main(pilot,output):
                 page.wait_for_function("()=>{const s=WorldDriveDiagnostics.forest.visualPilot.snapshot();if(s.phase==='fault')throw new Error(s.error);return s.pilot==='r20-yungas-humid-montane'&&s.modifiedChunks>=4&&s.proofsCompleted>=4;}")
                 summer=page.evaluate(SNAP);audit=page.evaluate('()=>WorldDriveDiagnostics.forest.visualPilot.audit()');report['summer']=summer;report['summerAudit']=audit
                 assert summer['error'] is None and summer['failures']==0 and summer['presentation']=='humid-montane-r20'
-                assert summer['humidMontaneAssets']['id']=='humid-montane-r20' and summer['humidMontaneAssets']['triangles']==[196,252,220,96]
+                assert summer['humidMontaneAssets']['id']=='humid-montane-r20' and summer['humidMontaneAssets']['triangles']==[196,252,1052,96]
                 assert summer['humidMontaneAssets']['mix']['measuredHabitatPercent'] is False and summer['humidMontaneAssets']['mix']['altitudeZonation'] is False and summer['humidMontaneAssets']['mix']['treeFernVisualWeight']==20
-                assert summer['humidMontaneAssets']['treeFernSilhouette']['height']>=1.0 and summer['humidMontaneAssets']['treeFernSilhouette']['diameterX']>=1.2 and summer['humidMontaneAssets']['treeFernSilhouette']['diameterZ']>=1.2
+                assert summer['humidMontaneAssets']['treeFernSilhouette']['height']>=1.03 and summer['humidMontaneAssets']['treeFernSilhouette']['diameterX']>=1.9 and summer['humidMontaneAssets']['treeFernSilhouette']['diameterZ']>=1.9 and summer['humidMontaneAssets']['treeFernSilhouette']['fronds']==20 and summer['humidMontaneAssets']['treeFernSilhouette']['segments']==9 and summer['humidMontaneAssets']['treeFernSilhouette']['pinnae']==320
                 assert summer['worker']['transport']['loaded']>0 and summer['worker']['transport']['rejected']==0
                 for key in ['humid-montane-broadleaf','epiphyte-cloud-tree','tree-fern','bamboo-clump']:assert summer['models'].get(key,0)>0,key
                 assert summer['models']['tree-fern']>=max(150,int(summer['modifiedInstances']*.14))

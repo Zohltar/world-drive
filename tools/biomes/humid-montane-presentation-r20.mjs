@@ -75,52 +75,55 @@ function humidBroadleafData(epiphytes=false){
   return b.data();
 }
 function treeFernData(){
-  // Tree-fern silhouette: short fibrous trunk + broad crown of arching fronds.
-  // Each frond carries paired pinnae, so it reads as a fern from the road rather
-  // than as a palm or a single flat ribbon. Root ownership remains exactly R4.
+  // Dense tree-fern silhouette for roadside legibility. The crown uses broad
+  // paired pinnae on every inner frond segment so it cannot read as a palm.
+  // Geometry-only substitution: every instance keeps its exact R4 root/matrix.
   const b=meshBuilder(),bark=[.145,.090,.045],crownY=.82;
-  b.branch([0,0,0],[0,crownY,0],.052,.032,bark,8);
-  const frondCount=16,segments=7;
+  b.branch([0,0,0],[0,crownY,0],.055,.034,bark,8);
+  const frondCount=20,segments=9;
   for(let i=0;i<frondCount;i++){
-    const a=i/frondCount*TAU+(i%2)*.045,len=.78+(i%4)*.035;
+    const a=i/frondCount*TAU+(i%2)*.035,len=.90+(i%4)*.035;
     let prev=[0,crownY,0];
     for(let s=1;s<=segments;s++){
-      const t=s/segments;
-      const radial=len*t;
-      // Pronounced arch: slight rise near crown, then droop toward tip.
-      const y=crownY+.16*Math.sin(Math.PI*t)-.25*t*t;
+      const t=s/segments,radial=len*t;
+      const y=crownY+.17*Math.sin(Math.PI*t)-.24*t*t;
       const cur=[Math.cos(a)*radial,y,Math.sin(a)*radial];
       const tangent=norm([-Math.sin(a),0,Math.cos(a)]);
-      const rachisW=.020*(1-.45*t),side=tangent.map(v=>v*rachisW);
-      const col=i%2?[.060,.305,.080]:[.085,.385,.105],no=norm([Math.cos(a),.42,Math.sin(a)]);
+      const rachisW=.025*(1-.40*t),side=tangent.map(v=>v*rachisW);
+      const col=i%2?[.055,.315,.080]:[.085,.405,.115],no=norm([Math.cos(a),.42,Math.sin(a)]);
       const p0=prev.map((v,j)=>v-side[j]),p1=prev.map((v,j)=>v+side[j]),p2=cur.map((v,j)=>v+side[j]),p3=cur.map((v,j)=>v-side[j]);
       b.tri(p0,p1,p2,col,no);b.tri(p0,p2,p3,col,no);
-      // Paired pinnae along both sides of the rachis. Broad enough to remain
-      // legible after the existing R4 instance scale is applied.
+
       if(s<segments){
-        const pinLen=.16*(1-.48*t)+.035;
-        const pinW=.026*(1-.30*t);
+        // One broad pinna on each side of every inner segment: 20*8*2 = 320.
+        const centre=[
+          prev[0]+(cur[0]-prev[0])*.68,
+          prev[1]+(cur[1]-prev[1])*.68,
+          prev[2]+(cur[2]-prev[2])*.68
+        ];
+        const pinLen=.24*(1-.48*t)+.075;
+        const pinHalfW=.050*(1-.28*t)+.020;
+        const radialDir=[Math.cos(a),0,Math.sin(a)];
         for(const sign of [-1,1]){
-          const centre=[
-            prev[0]+(cur[0]-prev[0])*.72,
-            prev[1]+(cur[1]-prev[1])*.72,
-            prev[2]+(cur[2]-prev[2])*.72
-          ];
-          const out=tangent.map(v=>v*pinLen*sign);
-          const forward=[Math.cos(a)*pinW,0,Math.sin(a)*pinW];
-          const base=centre.map((v,j)=>v-forward[j]);
-          const tip=centre.map((v,j)=>v+out[j]+forward[j]*.35);
-          const q0=base.map((v,j)=>v-out[j]*.08),q1=base.map((v,j)=>v+out[j]*.08),q2=tip.map((v,j)=>v+forward[j]),q3=tip.map((v,j)=>v-forward[j]);
+          const lateral=tangent.map(v=>v*pinLen*sign);
+          const half=radialDir.map(v=>v*pinHalfW);
+          const root=centre.map((v,j)=>v+lateral[j]*.05);
+          const tip=centre.map((v,j)=>v+lateral[j]);
+          // Tapered but deliberately broad leaflet card.
+          const q0=root.map((v,j)=>v-half[j]*.65);
+          const q1=root.map((v,j)=>v+half[j]*.65);
+          const q2=tip.map((v,j)=>v+half[j]*.28);
+          const q3=tip.map((v,j)=>v-half[j]*.28);
           b.tri(q0,q1,q2,col,no);b.tri(q0,q2,q3,col,no);
         }
       }
       prev=cur;
     }
   }
-  // Upright croziers / young fronds in the crown reinforce the fern identity.
-  for(let i=0;i<7;i++){
-    const a=i/7*TAU+.23,base=[0,crownY-.01,0],mid=[Math.cos(a)*.12,crownY+.22,Math.sin(a)*.12],tip=[Math.cos(a)*.28,crownY+.18,Math.sin(a)*.28],w=.022;
-    const side=[-Math.sin(a)*w,0,Math.cos(a)*w],col=[.11,.39,.115],no=norm([Math.cos(a),.55,Math.sin(a)]);
+  // Dense crown centre with upright croziers / young fronds.
+  for(let i=0;i<9;i++){
+    const a=i/9*TAU+.19,base=[0,crownY-.01,0],mid=[Math.cos(a)*.15,crownY+.26,Math.sin(a)*.15],tip=[Math.cos(a)*.36,crownY+.21,Math.sin(a)*.36],w=.030;
+    const side=[-Math.sin(a)*w,0,Math.cos(a)*w],col=[.11,.41,.12],no=norm([Math.cos(a),.55,Math.sin(a)]);
     const q0=base.map((v,j)=>v-side[j]),q1=base.map((v,j)=>v+side[j]),q2=mid.map((v,j)=>v+side[j]),q3=mid.map((v,j)=>v-side[j]),q4=tip.map((v,j)=>v+side[j]),q5=tip.map((v,j)=>v-side[j]);
     b.tri(q0,q1,q2,col,no);b.tri(q0,q2,q3,col,no);b.tri(q3,q2,q4,col,no);b.tri(q3,q4,q5,col,no);
   }
@@ -146,7 +149,7 @@ export function buildHumidMontaneStyle(THREE){
   let disposed=false;
   return Object.freeze({id:R20_PRESENTATION,asset(family){if(disposed)throw new Error('R20 style disposed');if(!Number.isInteger(family)||family<0||family>3)throw new TypeError('R20 family');return assets[family];},
     dispose(){if(disposed)return;disposed=true;for(const g of owned)g.dispose();material.dispose();},
-    diagnostics:()=>{const box=assets[2].geometry.boundingBox;return {id:R20_PRESENTATION,models:[...R20_MODELS],triangles:assets.map(a=>a.triangles),sharedMaterials:1,transparent:false,disposed,treeFernSilhouette:{height:box.max.y-box.min.y,diameterX:box.max.x-box.min.x,diameterZ:box.max.z-box.min.z},
+    diagnostics:()=>{const box=assets[2].geometry.boundingBox;return {id:R20_PRESENTATION,models:[...R20_MODELS],triangles:assets.map(a=>a.triangles),sharedMaterials:1,transparent:false,disposed,treeFernSilhouette:{height:box.max.y-box.min.y,diameterX:box.max.x-box.min.x,diameterZ:box.max.z-box.min.z,fronds:20,segments:9,pinnae:320},
       mix:{humidBroadleafVisualWeight:48,epiphyteCloudTreeVisualWeight:22,treeFernVisualWeight:20,bambooVisualWeight:10,measuredHabitatPercent:false,altitudeZonation:false},
       scope:'Bolivian Yungas humid montane/cloud forest cues: evergreen broadleaf, epiphytes, prominent tree ferns and bamboo; existing R4 roots unchanged'};}});
 }
