@@ -146,15 +146,18 @@ function bambooData(){
   }
   return b.data();
 }
-function geometry(THREE,data,name){const g=new THREE.BufferGeometry();g.name=name;g.setAttribute('position',new THREE.Float32BufferAttribute(data.positions,3));g.setAttribute('normal',new THREE.Float32BufferAttribute(data.normals,3));g.setAttribute('color',new THREE.Float32BufferAttribute(data.colors,3));g.computeBoundingBox();g.computeBoundingSphere();return g;}
+function geometry(THREE,data,name,scale=[1,1,1]){const g=new THREE.BufferGeometry();g.name=name;g.setAttribute('position',new THREE.Float32BufferAttribute(data.positions,3));g.setAttribute('normal',new THREE.Float32BufferAttribute(data.normals,3));g.setAttribute('color',new THREE.Float32BufferAttribute(data.colors,3));g.scale(scale[0],scale[1],scale[2]);g.computeBoundingBox();g.computeBoundingSphere();return g;}
 export function buildHumidMontaneStyle(THREE){
   const material=new THREE.MeshLambertMaterial({color:0xffffff,vertexColors:true,side:THREE.DoubleSide,fog:true,dithering:true});material.name='r20-yungas-humid-montane';
   const data=[humidBroadleafData(false),humidBroadleafData(true),treeFernData(),bambooData()],owned=[];
-  const assets=data.map((d,i)=>{const g=geometry(THREE,d,'r20-'+R20_MODELS[i]);owned.push(g);return Object.freeze({id:R20_MODELS[i],geometry:g,material,triangles:d.triangles});});
+  // Geometry-space scale only: source R4 matrices stay byte-exact. This widens
+  // visible tree-height range while keeping ferns clearly below the canopy.
+  const visualScales=Object.freeze([[.88,.86,.88],[1.10,1.18,1.10],[.56,.56,.56],[.80,.78,.80]]);
+  const assets=data.map((d,i)=>{const g=geometry(THREE,d,'r20-'+R20_MODELS[i],visualScales[i]);owned.push(g);return Object.freeze({id:R20_MODELS[i],geometry:g,material,triangles:d.triangles,visualScale:visualScales[i]});});
   let disposed=false;
   return Object.freeze({id:R20_PRESENTATION,asset(family){if(disposed)throw new Error('R20 style disposed');if(!Number.isInteger(family)||family<0||family>3)throw new TypeError('R20 family');return assets[family];},
     dispose(){if(disposed)return;disposed=true;for(const g of owned)g.dispose();material.dispose();},
-    diagnostics:()=>{const box=assets[2].geometry.boundingBox;return {id:R20_PRESENTATION,models:[...R20_MODELS],triangles:assets.map(a=>a.triangles),sharedMaterials:1,transparent:false,disposed,treeFernSilhouette:{height:box.max.y-box.min.y,diameterX:box.max.x-box.min.x,diameterZ:box.max.z-box.min.z,fronds:20,segments:9,pinnae:320,pinnaNearCrownFullWidth:.248,pinnaOuterFullWidth:.218},
+    diagnostics:()=>{const box=assets[2].geometry.boundingBox;return {id:R20_PRESENTATION,models:[...R20_MODELS],triangles:assets.map(a=>a.triangles),sharedMaterials:1,transparent:false,disposed,treeFernSilhouette:{height:box.max.y-box.min.y,diameterX:box.max.x-box.min.x,diameterZ:box.max.z-box.min.z,fronds:20,segments:9,pinnae:320,pinnaNearCrownFullWidth:.248*.56,pinnaOuterFullWidth:.218*.56},visualScales:assets.map(a=>[...a.visualScale]),
       mix:{humidBroadleafVisualWeight:48,epiphyteCloudTreeVisualWeight:22,treeFernVisualWeight:20,bambooVisualWeight:10,measuredHabitatPercent:false,altitudeZonation:false},
       scope:'Bolivian Yungas humid montane/cloud forest cues: evergreen broadleaf, epiphytes, prominent tree ferns and bamboo; existing R4 roots unchanged'};}});
 }
