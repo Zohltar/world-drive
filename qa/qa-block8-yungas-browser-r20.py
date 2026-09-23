@@ -80,19 +80,30 @@ def main(pilot,output):
                 assert set(report['referenceR15']['models'])=={'preview-tropical'};page.screenshot(path=str(output/'yungas-r15-reference.png'))
                 page.evaluate('()=>WorldDriveDiagnostics.forest.visualPilot.stop()');page.wait_for_timeout(400)
                 start=page.evaluate("async u=>(await import(u)).start()",LAUNCHER);assert start['status']=='enabled' and start['pilot']=='r20-yungas-humid-montane'
-                page.wait_for_function("()=>{const s=WorldDriveDiagnostics.forest.visualPilot.snapshot();if(s.phase==='fault')throw new Error(s.error);return s.pilot==='r20-yungas-humid-montane'&&s.modifiedChunks>=4&&s.proofsCompleted>=4;}")
+                page.wait_for_function("()=>{const a=WorldDriveDiagnostics.forest.visualPilot,s=a.snapshot(),q=a.audit();if(s.phase==='fault')throw new Error(s.error);return s.pilot==='r20-yungas-humid-montane'&&s.modifiedChunks>=4&&s.proofsCompleted>=4&&(s.tropicalDensity?.qualifiedChunks??0)>=4&&q.meshes.filter(m=>m.forestCandidatesPerCell===150).length>=2;}")
                 summer=page.evaluate(SNAP);audit=page.evaluate('()=>WorldDriveDiagnostics.forest.visualPilot.audit()');report['summer']=summer;report['summerAudit']=audit
                 assert summer['error'] is None and summer['failures']==0 and summer['presentation']=='humid-montane-r20'
                 assert summer['humidMontaneAssets']['id']=='humid-montane-r20' and summer['humidMontaneAssets']['triangles']==[196,252,1052,96]
+                assert summer['humidMontaneAssets']['density']['baseCandidatesPerCell']==109 and summer['humidMontaneAssets']['density']['denseCandidatesPerCell']==150 and summer['humidMontaneAssets']['density']['firstLayerCandidatesPerCell']==64
+                assert summer['tropicalDensity']['baseCandidatesPerCell']==109 and summer['tropicalDensity']['denseCandidatesPerCell']==150 and summer['tropicalDensity']['qualifiedChunks']>=4
                 assert summer['humidMontaneAssets']['mix']['measuredHabitatPercent'] is False and summer['humidMontaneAssets']['mix']['altitudeZonation'] is False and summer['humidMontaneAssets']['mix']['treeFernVisualWeight']==20
                 assert summer['humidMontaneAssets']['treeFernSilhouette']['height']>=.29 and summer['humidMontaneAssets']['treeFernSilhouette']['height']<=.33 and summer['humidMontaneAssets']['treeFernSilhouette']['diameterX']>=.52 and summer['humidMontaneAssets']['treeFernSilhouette']['diameterX']<=.58 and summer['humidMontaneAssets']['treeFernSilhouette']['diameterZ']>=.52 and summer['humidMontaneAssets']['treeFernSilhouette']['diameterZ']<=.58 and summer['humidMontaneAssets']['treeFernSilhouette']['fronds']==20 and summer['humidMontaneAssets']['treeFernSilhouette']['segments']==9 and summer['humidMontaneAssets']['treeFernSilhouette']['pinnae']==320 and summer['humidMontaneAssets']['visualScales']==[[1.15,1.00,1.15],[1.30,1.32,1.30],[.28,.28,.28],[.90,.82,.90]]
                 assert summer['worker']['transport']['loaded']>0 and summer['worker']['transport']['rejected']==0
                 for key in ['humid-montane-broadleaf','epiphyte-cloud-tree','tree-fern','bamboo-clump']:assert summer['models'].get(key,0)>0,key
                 assert summer['models']['tree-fern']>=max(150,int(summer['modifiedInstances']*.14))
                 assert summer['potentialAdditionalDrawCalls']<=summer['modifiedChunks']*3
+                dense_meshes=[]
+                reference_by_key={m['key']:m for m in report['referenceR15Audit']['meshes']}
+                grown_common=[]
                 for m in audit['meshes']:
                     d=m.get('mixed');assert d and d['sourcePrefixExact'] and d['sourceHidden'] and m['proofCandidates']==1744 and m['ecoregion']==444
+                    assert m['forestCandidatesPerCell'] in [109,150] and d['candidatesPerCell']==m['forestCandidatesPerCell']
                     assert len(d['parts'])==4 and sum(p['count'] for p in d['parts'])==m['count']
+                    if m['forestCandidatesPerCell']==150:
+                        dense_meshes.append(m)
+                        old=reference_by_key.get(m['key'])
+                        if old and m['matrixBytes']>old['matrixBytes']:grown_common.append(m['key'])
+                assert len(dense_meshes)>=2 and len(grown_common)>=2,(len(dense_meshes),grown_common)
                 report['summerFrames']=page.evaluate(R9.FRAMES,3000);page.screenshot(path=str(output/'yungas-r20-humid-montane.png'))
                 before_state=page.evaluate(SNAP)
                 preserved=page.evaluate("""()=>{const api=WorldDriveDiagnostics.forest.visualPilot;try{api.season('winter');return false;}catch{const s=api.snapshot();return s.enabled&&s.presentation==='humid-montane-r20'&&s.error===null;}}""")
@@ -111,9 +122,12 @@ def main(pilot,output):
                     assert jump_audit['meshes'] and all(m.get('mixed',{}).get('sourcePrefixExact') for m in jump_audit['meshes'])
                     jumps.append({'percent':percent,'snapshot':after,'audit':jump_audit})
                 report['afterJumps']=jumps;page.screenshot(path=str(output/'yungas-r20-after-jump.png'))
-                page.evaluate('()=>WorldDriveDiagnostics.forest.visualPilot.stop()');page.wait_for_timeout(750);report['offAfter']=page.evaluate(SNAP);assert report['offAfter']['modifiedChunks']==0
+                page.evaluate('()=>WorldDriveDiagnostics.forest.visualPilot.stop()')
+                page.wait_for_function("()=>WorldDriveFramePacing().forest?.regionalDensity?.overrides===0")
+                page.wait_for_timeout(750);report['offAfter']=page.evaluate(SNAP);report['densityAfterStop']=page.evaluate("()=>WorldDriveFramePacing().forest.regionalDensity")
+                assert report['offAfter']['modifiedChunks']==0 and report['densityAfterStop']=={'baseCandidatesPerCell':109,'maxCandidatesPerCell':160,'overrides':0}
                 assert all(w['terminated'] for w in page.evaluate('()=>__R9_WORKERS') if 'biome-preparation' in w['url'])
-                page.evaluate("async u=>(await import(u)).start()",LAUNCHER);page.wait_for_function("WorldDriveDiagnostics.forest.visualPilot.snapshot().modifiedChunks>=2")
+                page.evaluate("async u=>(await import(u)).start()",LAUNCHER);page.wait_for_function("()=>WorldDriveDiagnostics.forest.visualPilot.snapshot().modifiedChunks>=2&&WorldDriveDiagnostics.forest.visualPilot.audit().meshes.some(m=>m.forestCandidatesPerCell===150)")
                 report['routeReset']=page.evaluate("()=>{document.getElementById('presetNordschleifeBtn').click();return WorldDriveDiagnostics.forest.visualPilot.snapshot();}")
                 assert report['routeReset']['enabled'] is False and report['routeReset']['modifiedChunks']==0
                 assert not errors and not engine,(errors,engine);report.update(status='PASS',browser=browser.version,workers=page.evaluate('()=>__R9_WORKERS'),pilotRequests=requests)
@@ -128,7 +142,8 @@ def main(pilot,output):
             'Software-rendered Chromium, not user GPU/high-speed certification',
             'R20 is regional humid-montane physiognomy, not exact species abundance or present-day land cover',
             'No altitude zonation is claimed; broadleaf, epiphyte, tree-fern and bamboo cues are all supported in Bolivian Yungas sources',
-            'Existing R4 roots/transforms are repartitioned; no new ecological placement authority'])
+            'R23 raises the candidate tail only inside chunks whose complete legacy 1,744-point proof resolves to Yungas; the tail does not claim a separate current-land-cover source',
+            'R4 still owns deterministic candidate generation, road/water/building exclusions, terrain anchoring and streaming; non-Yungas chunks remain at the 109/cell baseline'])
         (output/'yungas-r20-qa.json').write_text(json.dumps(report,indent=2)+'\n')
         if server:
             server.terminate()
