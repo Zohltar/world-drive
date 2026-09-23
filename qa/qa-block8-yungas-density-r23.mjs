@@ -49,7 +49,7 @@ const streamer=createForestChunkStreamer({
   blocksForest:()=>false
 });
 const assets={trees:[{name:'proxy-mid',parts:[{geometry:{},material:{}}]}]};
-const pumpUntil=(predicate,label,max=1200)=>{
+const pumpUntil=(predicate,label,max=6000)=>{
   for(let i=0;i<max;i++){
     if(predicate())return i;
     assert.ok(idle.length, label+' stopped scheduling');
@@ -67,14 +67,14 @@ const chunk=(cx=null,cz=null)=>{
 
 try{
   streamer.setAssets(assets);
-  pumpUntil(()=>streamer.stats().chunksBuilt>=1&&!!chunk(),'base R4 full chunk');
+  pumpUntil(()=>streamer.stats().firstLayerChunksCommitted>=1&&!!chunk(),'base R4 first layer');
   let current=chunk();
   assert.ok(current?.mesh,'base chunk missing');
   const target={cx:current.cx,cz:current.cz};
   assert.equal(current.mesh.userData.forestCandidatesPerCell,109);
   const baseCapacity=current.mesh.instanceMatrix.array.length/16;
   const baseStats=streamer.stats();
-  assert.equal(baseStats.firstLayerCandidateTarget,1024);
+  assert.equal(baseStats.firstLayerCandidateTarget,1024);assert.ok(baseStats.progressiveInProgressChunks>=1);
   assert.equal(baseStats.baseCandidatesPerCell,109);
   assert.equal(baseStats.maxCandidatesPerCell,160);
   assert.equal(baseStats.candidateOverrides,0);
