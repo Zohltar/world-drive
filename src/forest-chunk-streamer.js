@@ -338,6 +338,7 @@ export function createForestChunkStreamer(options){
     switchRouteCache,
     requestUpdate:(...args)=>activeBase().requestUpdate(...args),
     refreshVisibleHeights:(...args)=>activeBase().refreshVisibleHeights(...args),
+    setChunkCandidateLimit:(...args)=>activeBase().setChunkCandidateLimit(...args),
     clearAll:(...args)=>{
       for(const entry of entries){
         entry.core.setAssets(null);entry.core.clearAll(...args);entry.group.visible=false;resetSeed(entry);entry.key=null;

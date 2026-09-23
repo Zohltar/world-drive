@@ -44,7 +44,7 @@ function owner(target){
 }
 export function registerForestPilotScene(options,target=globalThis){
   if(!target.document)return;
-  owner(target).scene({THREE:options.THREE,forestGroup:options.forestGroup});
+  owner(target).scene({THREE:options.THREE,forestGroup:options.forestGroup,setForestChunkCandidateLimit:options.setForestChunkCandidateLimit});
 }
 export function registerForestPilotRoute(options,target=globalThis){
   if(!target.document)return Object.freeze({invalidate(){}});

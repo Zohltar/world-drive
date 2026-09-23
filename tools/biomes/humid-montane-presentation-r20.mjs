@@ -1,13 +1,15 @@
 /** R20: research-calibrated Bolivian Yungas humid-montane presentation.
- * R4 retains all root placement, exclusions, density, transforms and visible-prefix
- * ownership. Existing accepted roots are repartitioned into regional physiognomy
- * families. Visual weights are not measured habitat or species percentages and
- * this first pass deliberately does not invent altitude zonation.
+ * R23 may extend a fully source-proved Yungas R4 chunk with deterministic tail
+ * candidates. R4 still owns candidate generation, route/water/building exclusions,
+ * terrain anchoring and streaming; this module only repartitions the resulting
+ * accepted matrices into regional physiognomy families.
  */
 
 export const R20_PRESENTATION='humid-montane-r20';
 export const R20_MODELS=Object.freeze(['humid-montane-broadleaf','epiphyte-cloud-tree','tree-fern','bamboo-clump']);
-export const R20_MAX_INSTANCES=1744;
+export const R20_BASE_CANDIDATES_PER_CELL=109;
+export const R20_DENSE_CANDIDATES_PER_CELL=150;
+export const R20_MAX_INSTANCES=16*R20_DENSE_CANDIDATES_PER_CELL;
 const TAU=Math.PI*2;
 
 function finite(v,name){if(!Number.isFinite(v))throw new TypeError('R20 '+name);return v;}
@@ -164,7 +166,8 @@ const visualScales = Object.freeze([
     dispose(){if(disposed)return;disposed=true;for(const g of owned)g.dispose();material.dispose();},
     diagnostics:()=>{const box=assets[2].geometry.boundingBox;return {id:R20_PRESENTATION,models:[...R20_MODELS],triangles:assets.map(a=>a.triangles),sharedMaterials:1,transparent:false,disposed,treeFernSilhouette:{height:box.max.y-box.min.y,diameterX:box.max.x-box.min.x,diameterZ:box.max.z-box.min.z,fronds:20,segments:9,pinnae:320,pinnaNearCrownFullWidth:.248*.56,pinnaOuterFullWidth:.218*.56},visualScales:assets.map(a=>[...a.visualScale]),
       mix:{humidBroadleafVisualWeight:48,epiphyteCloudTreeVisualWeight:22,treeFernVisualWeight:20,bambooVisualWeight:10,measuredHabitatPercent:false,altitudeZonation:false},
-      scope:'Bolivian Yungas humid montane/cloud forest cues: evergreen broadleaf, epiphytes, prominent tree ferns and bamboo; existing R4 roots unchanged'};}});
+      density:{id:'r23-yungas-r4-density',baseCandidatesPerCell:R20_BASE_CANDIDATES_PER_CELL,denseCandidatesPerCell:R20_DENSE_CANDIDATES_PER_CELL,increaseFraction:R20_DENSE_CANDIDATES_PER_CELL/R20_BASE_CANDIDATES_PER_CELL-1,firstLayerCandidatesPerCell:64},
+      scope:'Bolivian Yungas humid montane/cloud forest cues on source-proved R4 chunks; R23 adds only the deterministic R4 candidate tail while preserving the accepted R20 model scales'};}});
 }
 const hash=array=>{let h=2166136261;const b=new Uint8Array(array.buffer,array.byteOffset,array.byteLength);for(const x of b)h=Math.imul(h^x,16777619)>>>0;return h.toString(16);};
 export function createHumidMontanePresentation({THREE,group,source,proof,style,now=()=>performance.now()}){
@@ -173,8 +176,10 @@ export function createHumidMontanePresentation({THREE,group,source,proof,style,n
   if(group.children?.length!==1||group.children[0]!==source||source.visible!==true||source.instanceColor||source.morphTexture||source.matrixAutoUpdate!==false||!source.boundingSphere||!source.matrix)
     throw new TypeError('R20 canonical source mesh required');
   const attribute=source.instanceMatrix,array=attribute.array,geometry0=source.geometry,material0=source.material,matrix=source.matrix;
+  const candidatesPerCell=source.userData?.forestCandidatesPerCell??R20_BASE_CANDIDATES_PER_CELL;
+  if(![R20_BASE_CANDIDATES_PER_CELL,R20_DENSE_CANDIDATES_PER_CELL].includes(candidatesPerCell))throw new TypeError('R20 candidate density');
   const map=partitionR20(array,proof.cx,proof.cz),parts=[];let disposed=false,failed=false,version=-1,installed=false,syncs=0,maxSyncMs=0,currentSeason='summer';
-  function sourceValid(){return source.parent===group&&source.instanceMatrix===attribute&&attribute.array===array&&source.geometry===geometry0&&source.material===material0&&source.matrix===matrix&&!source.instanceColor&&!source.morphTexture&&source.visible===false&&source.matrixAutoUpdate===false&&group.children[0]===source&&group.children.length===(installed?1+parts.length:1)&&(!installed||parts.every((p,i)=>group.children[i+1]===p.mesh))&&Number.isInteger(source.count)&&source.count>=0&&source.count<=map.capacity;}
+  function sourceValid(){return source.parent===group&&source.instanceMatrix===attribute&&attribute.array===array&&source.geometry===geometry0&&source.material===material0&&source.matrix===matrix&&source.userData?.forestCandidatesPerCell===candidatesPerCell&&!source.instanceColor&&!source.morphTexture&&source.visible===false&&source.matrixAutoUpdate===false&&group.children[0]===source&&group.children.length===(installed?1+parts.length:1)&&(!installed||parts.every((p,i)=>group.children[i+1]===p.mesh))&&Number.isInteger(source.count)&&source.count>=0&&source.count<=map.capacity;}
   function restore(){if(disposed)return false;disposed=true;for(const p of parts){p.mesh.onBeforeRender=()=>{};p.mesh.updateMatrixWorld=THREE.InstancedMesh.prototype.updateMatrixWorld;p.mesh.parent?.remove(p.mesh);p.mesh.dispose();}if(source.visible===false)source.visible=true;return true;}
   function sync(){
     if(disposed||failed)return false;if(!sourceValid()){failed=true;for(const p of parts)p.mesh.count=0;if(source.visible===false)source.visible=true;return false;}
@@ -191,7 +196,7 @@ export function createHumidMontanePresentation({THREE,group,source,proof,style,n
     for(const p of parts)group.add(p.mesh);source.visible=false;installed=true;if(!sync())throw new Error('R20 initial sync failed');
   }catch(error){restore();throw error;}
   function setSeason(value){if(value!=='summer')return false;currentSeason=value;return sync();}
-  function diagnostics(){const models={},instances=parts.reduce((sum,p)=>{models[p.id]=p.mesh.count;return sum+p.mesh.count;},0),accountedBytes=parts.reduce((sum,p)=>sum+p.mesh.instanceMatrix.array.byteLength+p.indices.byteLength+map.prefix[p.family].byteLength,0);return {id:R20_PRESENTATION,season:currentSeason,instances,models,parts:parts.length,potentialAdditionalDrawCalls:Math.max(0,parts.length-1),accountedBytes,syncs,maxSyncMs,sourceHidden:source.visible===false,failed};}
-  function audit(){let exact=true;const list=[];for(const p of parts){const dst=p.mesh.instanceMatrix.array,count=p.mesh.count;if(count!==map.prefix[p.family][source.count])exact=false;for(let j=0;j<count;j++){const i=p.indices[j],s=i*16,d=j*16;for(let k=0;k<16;k++)if(dst[d+k]!==array[s+k]){exact=false;break;}if(!exact)break;}list.push({id:p.id,family:p.family,count,capacity:p.indices.length,triangles:p.triangles,matrixHash:hash(dst)});}return {sourcePrefixExact:exact,sourceHidden:source.visible===false,parts:list,models:Object.fromEntries(list.map(p=>[p.id,p.count])),instances:list.reduce((s,p)=>s+p.count,0)};}
+  function diagnostics(){const models={},instances=parts.reduce((sum,p)=>{models[p.id]=p.mesh.count;return sum+p.mesh.count;},0),accountedBytes=parts.reduce((sum,p)=>sum+p.mesh.instanceMatrix.array.byteLength+p.indices.byteLength+map.prefix[p.family].byteLength,0);return {id:R20_PRESENTATION,season:currentSeason,candidatesPerCell,instances,models,parts:parts.length,potentialAdditionalDrawCalls:Math.max(0,parts.length-1),accountedBytes,syncs,maxSyncMs,sourceHidden:source.visible===false,failed};}
+  function audit(){let exact=true;const list=[];for(const p of parts){const dst=p.mesh.instanceMatrix.array,count=p.mesh.count;if(count!==map.prefix[p.family][source.count])exact=false;for(let j=0;j<count;j++){const i=p.indices[j],s=i*16,d=j*16;for(let k=0;k<16;k++)if(dst[d+k]!==array[s+k]){exact=false;break;}if(!exact)break;}list.push({id:p.id,family:p.family,count,capacity:p.indices.length,triangles:p.triangles,matrixHash:hash(dst)});}return {sourcePrefixExact:exact,sourceHidden:source.visible===false,candidatesPerCell,parts:list,models:Object.fromEntries(list.map(p=>[p.id,p.count])),instances:list.reduce((s,p)=>s+p.count,0)};}
   return Object.freeze({restore,setSeason,diagnostics,audit});
 }

@@ -52,13 +52,16 @@ export function createForestChunkStreamer({
   const catchupSliceBudgetMs=Math.max(sliceBudgetMs,FOREST.forestCatchupSliceBudgetMs||1.55);
   const catchupCandidateBatchSize=Math.max(candidateBatchSize,FOREST.forestCatchupCandidatesPerSlice||20);
   const catchupMinIdleMs=Math.max(1.5,FOREST.forestCatchupMinIdleMs||3.2);
+  const baseCandidatesPerCell=Math.max(1,Math.floor(FOREST.candidatesPerCell||1));
+  const maxCandidatesPerCell=Math.max(baseCandidatesPerCell,Math.floor(FOREST.maxCandidatesPerCell||baseCandidatesPerCell));
+  const chunkCandidateLimits=new Map();
   const firstLayerCandidatesPerCell=Math.min(
     Math.max(1,Math.floor(FOREST.firstLayerCandidatesPerCell||64)),
-    Math.max(1,FOREST.candidatesPerCell||1)
+    baseCandidatesPerCell
   );
   const firstLayerCandidateTarget=totalCells*firstLayerCandidatesPerCell;
-  const firstLayerCoverageFraction=firstLayerCandidatesPerCell/Math.max(1,FOREST.candidatesPerCell||1);
-  const progressiveFirstLayer=firstLayerCandidatesPerCell<FOREST.candidatesPerCell;
+  const firstLayerCoverageFraction=firstLayerCandidatesPerCell/baseCandidatesPerCell;
+  const progressiveFirstLayer=firstLayerCandidatesPerCell<baseCandidatesPerCell;
 
   let assets=null;
   let active=new Map();
@@ -189,6 +192,7 @@ export function createForestChunkStreamer({
   }
 
   function keyFor(cx,cz){return `${cx}:${cz}`;}
+  function candidateLimitFor(key){return chunkCandidateLimits.get(key)??baseCandidatesPerCell;}
 
   function chunkDescriptor(cx,cz){
     return {
@@ -426,8 +430,10 @@ export function createForestChunkStreamer({
   }
 
   function createBuilder(desc,buildSerial){
+    const candidatesPerCell=candidateLimitFor(desc.key);
     return {
-      desc,buildSerial,phase:0,cellIndex:0,candidateIndex:0,cell:null,
+      desc,buildSerial,phase:0,cellIndex:0,candidateIndex:0,cell:null,candidatesPerCell,
+      firstLayerCoverageFraction:firstLayerCandidatesPerCell/candidatesPerCell,
       firstLayerReady:false,accepted:0,buckets:Array.from({length:densityBuckets},()=>[])
     };
   }
@@ -444,7 +450,7 @@ export function createForestChunkStreamer({
   }
 
   function advanceBuilderCandidate(builder){
-    const phaseLimit=builder.phase===0?firstLayerCandidatesPerCell:FOREST.candidatesPerCell;
+    const phaseLimit=builder.phase===0?firstLayerCandidatesPerCell:builder.candidatesPerCell;
     builder.candidateIndex++;
     if(builder.candidateIndex>=phaseLimit){
       builder.cellIndex++;
@@ -494,7 +500,7 @@ export function createForestChunkStreamer({
     const matrices=new Float32Array(floats);
     let cursor=0;
     for(const bucket of builder.buckets){if(bucket.length){matrices.set(bucket,cursor);cursor+=bucket.length;}}
-    return {...builder.desc,matrices,maxCount:Math.floor(floats/16),accepted:builder.accepted,coverageFraction,lastUsed:performance.now(),mesh:null,group:null,visibleCount:0,state:null,prefetched:false,cacheTerrainRevision};
+    return {...builder.desc,matrices,maxCount:Math.floor(floats/16),accepted:builder.accepted,candidatesPerCell:builder.candidatesPerCell,coverageFraction,lastUsed:performance.now(),mesh:null,group:null,visibleCount:0,state:null,prefetched:false,cacheTerrainRevision};
   }
 
   function reprojectChunkHeights(data){
@@ -569,6 +575,7 @@ export function createForestChunkStreamer({
       const mesh=new THREE.InstancedMesh(part.geometry,part.material,capacity);
       mesh.userData.sharedForestGeometry=true;
       mesh.userData.forestChunk=data.key;
+      mesh.userData.forestCandidatesPerCell=data.candidatesPerCell??baseCandidatesPerCell;
       mesh.castShadow=false;mesh.receiveShadow=false;mesh.frustumCulled=true;
       mesh.instanceMatrix.setUsage(THREE.StaticDrawUsage);
       if(data.matrices.length)mesh.instanceMatrix.array.set(data.matrices,0);
@@ -754,7 +761,7 @@ export function createForestChunkStreamer({
 
   function commitFirstLayer(job){
     if(job.replace||job.firstLayerCommitted||!job.builder?.firstLayerReady)return false;
-    const data=finalizeBuilder(job.builder,{coverageFraction:firstLayerCoverageFraction});
+    const data=finalizeBuilder(job.builder,{coverageFraction:job.builder.firstLayerCoverageFraction});
     const wanted=wantedKeys.has(job.key),visible=visibleKeys.has(job.key);
     if(visible)attach(data,lastCenter);
     else{cache.set(job.key,data);if(wanted)preparePrefetchMesh(data,lastCenter);}
@@ -927,8 +934,32 @@ export function createForestChunkStreamer({
     queuePriorityDirty=true;sortQueueByPriority(center,true);runQueue();return replacements;
   }
 
+  function setChunkCandidateLimit(cx,cz,perCell=null){
+    if(!Number.isSafeInteger(cx)||!Number.isSafeInteger(cz))throw new TypeError('Forest candidate-limit chunk');
+    const key=keyFor(cx,cz);
+    const limit=perCell===null?baseCandidatesPerCell:Number(perCell);
+    if(!Number.isSafeInteger(limit)||limit<baseCandidatesPerCell||limit>maxCandidatesPerCell)
+      throw new RangeError('Forest candidate-limit bound');
+    const previous=candidateLimitFor(key);
+    if(previous===limit)return false;
+    if(limit===baseCandidatesPerCell)chunkCandidateLimits.delete(key);else chunkCandidateLimits.set(key,limit);
+    const old=active.get(key)||cache.get(key)||null;
+    const job=queued.get(key);
+    if(job){
+      if(job.builder)resetQueuedBuilder(job,'candidate-limit-change');
+      job.readyToCommit=false;
+      if(old||job.firstLayerCommitted)job.replace=true;
+    }else if(old||wantedKeys.has(key)){
+      queueJob(chunkDescriptor(cx,cz),{replace:!!old});
+    }
+    queuePriorityDirty=true;
+    if(Number.isFinite(lastCenter.x))sortQueueByPriority(lastCenter,true);
+    runQueue();report(true);return true;
+  }
+
   function clearAll(){
     serial++;
+    chunkCandidateLimits.clear();
     for(const job of queue)abandonJob(job,'clear-all');
     queue=[];queued.clear();queueRunning=false;queuePriorityDirty=true;
     visibleKeys.clear();prefetchKeys.clear();wantedKeys.clear();
@@ -944,6 +975,7 @@ export function createForestChunkStreamer({
     requestUpdate,
     rebaseCachedTerrainHeights,
     refreshVisibleHeights,
+    setChunkCandidateLimit,
     clearAll,
     whenInitialReady:()=>initialReady,
     stats:()=>({
@@ -959,6 +991,7 @@ export function createForestChunkStreamer({
       oldestBuilderAgeMs:queue.reduce((max,job)=>Math.max(max,job.startedAt?performance.now()-job.startedAt:0),0),
       pollingActive:!!pollTimer,
       cacheTerrainRevision,
+      baseCandidatesPerCell,maxCandidatesPerCell,candidateOverrides:chunkCandidateLimits.size,
       ...perf,
       abandonReasons:{...perf.abandonReasons},
       lastAbandonedJob:perf.lastAbandonedJob?{...perf.lastAbandonedJob}:null,

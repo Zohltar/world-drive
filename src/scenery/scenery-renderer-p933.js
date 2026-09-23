@@ -20,7 +20,7 @@ function finite(value,fallback=0){return Number.isFinite(value)?value:fallback;}
 
 export function createSceneryRenderer(options){
   const base=createSceneryRendererP9(options);
-  registerForestPilotScene(options); // R12: inert until explicit pilot start.
+  registerForestPilotScene({...options,setForestChunkCandidateLimit:base.setForestChunkCandidateLimit}); // R23: still inert until explicit pilot start.
   let routeGeneration=0;
 
   function clearForestCache(...args){

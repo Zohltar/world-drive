@@ -8,7 +8,7 @@ import {buildNaturalForestStyle,R17_LOOK} from './natural-forest-look-r17.mjs';
 import {buildR18RouteIndex,buildUnderstoryStyle,R18_UNDERSTORY} from './understory-layer-r18.mjs';
 import {createMixedForestPresentation,R16_PRESENTATION} from './mixed-forest-presentation-r16.mjs';
 import {buildDryClimateStyle,createDryClimatePresentation,R19_PRESENTATION} from './dry-climate-presentation-r19.mjs';
-import {buildHumidMontaneStyle,createHumidMontanePresentation,R20_PRESENTATION} from './humid-montane-presentation-r20.mjs';
+import {buildHumidMontaneStyle,createHumidMontanePresentation,R20_PRESENTATION,R20_BASE_CANDIDATES_PER_CELL,R20_DENSE_CANDIDATES_PER_CELL,R20_MAX_INSTANCES} from './humid-montane-presentation-r20.mjs';
 import {buildBorealDiversityStyle,createBorealDiversityPresentation,R21_PRESENTATION} from './boreal-presentation-r21.mjs';
 import {buildEifelTemperateStyle,createEifelTemperatePresentation,R22_PRESENTATION} from './eifel-temperate-presentation-r22.mjs';
 import {createBiomeWorkerClient} from '../../src/scenery/biomes/biome-worker-client.js';
@@ -51,11 +51,13 @@ export function scheduleR12(callback,delay=0){
 }
 export function createRenderedBiomePilot({THREE,forestGroup,getState,getGeneration,getRoute,
   isRouteReady=()=>true,clientFactory=createBiomeWorkerClient,bridgeFactory=createBiomeChunkContextBridge,
-  assetFactory=buildSeasonalVegetationPrototypes,schedule=scheduleR12,now=()=>performance.now()}={}){
+  assetFactory=buildSeasonalVegetationPrototypes,schedule=scheduleR12,now=()=>performance.now(),
+  setForestChunkCandidateLimit=null}={}){
   for(const f of [getState,getGeneration,getRoute,isRouteReady,clientFactory,bridgeFactory,assetFactory,schedule,now])
     if(typeof f!=='function')throw new TypeError('R12 owner required');
   if(!forestGroup?.addEventListener)throw new TypeError('R12 forest scene required');
-  const records=new Map(),proofs=new Map(),rejected=new Map(),groups=new Map();
+  if(setForestChunkCandidateLimit!==null&&typeof setForestChunkCandidateLimit!=='function')throw new TypeError('R23 forest density owner');
+  const records=new Map(),proofs=new Map(),rejected=new Map(),groups=new Map(),denseChunks=new Map();
   let enabled=false,token=0,cancel=null,busy=false,kit=null,client=null,bridge=null,plan=null;
   let config=null,origin=null,generation=null,season='summer',phase='disabled',error=null,worker=null;
   let previousPosition=null,windowSignature=null,knownGeometry=new WeakMap(),parentListening=false;
@@ -63,6 +65,7 @@ export function createRenderedBiomePilot({THREE,forestGroup,getState,getGenerati
   const waiters=new Set();
   const stats={polls:0,deferrals:0,proofsCompleted:0,proofsRefused:0,proofCandidates:0,swaps:0,restores:0,
     cancelledProofs:0,failures:0,foreignGeometry:0,ownerConflicts:0,proofEvictions:0,
+    densityRequests:0,densityResets:0,peakDenseChunks:0,
     peakProofs:0,peakMeshes:0,peakGroups:0,maxProofSliceMs:0,maxSceneScanMs:0,maxSwapMs:0,windowUpdates:0};
   function current(t=token){
     if(!enabled||t!==token||!isRouteReady()||getGeneration()!==generation)return false;
@@ -81,6 +84,8 @@ export function createRenderedBiomePilot({THREE,forestGroup,getState,getGenerati
     if(parentListening){forestGroup.removeEventListener('childadded',parentAdded);forestGroup.removeEventListener('childremoved',parentRemoved);parentListening=false;}
     for(const [g,h] of groups){g.removeEventListener('childadded',h.add);g.removeEventListener('childremoved',h.remove);}
     groups.clear();for(const m of [...records.keys()])restore(m);
+    for(const d of denseChunks.values())try{if(setForestChunkCandidateLimit?.(d.cx,d.cz,null))stats.densityResets++;}catch{}
+    denseChunks.clear();
     bridge?.dispose();client?.dispose();bridge=null;client=null;plan=null;
     understoryStyle?.dispose();understoryStyle=null;routeIndex=null;naturalStyle?.dispose();naturalStyle=null;dryStyle?.dispose();dryStyle=null;humidStyle?.dispose();humidStyle=null;borealStyle?.dispose();borealStyle=null;eifelStyle?.dispose();eifelStyle=null;kit?.dispose();kit=null;
     proofs.clear();rejected.clear();config=null;origin=null;generation=null;worker=null;
@@ -99,9 +104,13 @@ export function createRenderedBiomePilot({THREE,forestGroup,getState,getGenerati
     const old=records.get(mesh);
     if(group.children.length!==1&&!old?.mixed)return;
     if(old?.mixed){if(!old.mixed.setSeason(season)){restore(mesh);stats.ownerConflicts++;}return;}
+    const candidatesPerCell=Number.isInteger(mesh.userData?.forestCandidatesPerCell)?mesh.userData.forestCandidatesPerCell:R20_BASE_CANDIDATES_PER_CELL;
+    const r20Source=presentation===R20_PRESENTATION;
+    const maxSource=r20Source?R20_MAX_INSTANCES:1744;
     if(mesh.isInstancedMesh!==true||mesh.userData?.sharedForestGeometry!==true||mesh.userData.forestChunk!==c.key
-      ||!mesh.instanceMatrix?.array||mesh.instanceMatrix.array.length>1744*16||!Number.isInteger(mesh.count)
-      ||mesh.count<0||mesh.count>1744)return;
+      ||!mesh.instanceMatrix?.array||mesh.instanceMatrix.array.length>maxSource*16||!Number.isInteger(mesh.count)
+      ||mesh.count<0||mesh.count>maxSource
+      ||(r20Source?![R20_BASE_CANDIDATES_PER_CELL,R20_DENSE_CANDIDATES_PER_CELL].includes(candidatesPerCell):candidatesPerCell!==R20_BASE_CANDIDATES_PER_CELL))return;
     if(!old&&records.size>=R12_LIMITS.meshes)return;
     if(old&&mesh.geometry!==old.replacement){stats.ownerConflicts++;return;}
     const original=old?.original??mesh.geometry;
@@ -229,7 +238,14 @@ export function createRenderedBiomePilot({THREE,forestGroup,getState,getGenerati
       if(!current(t))return;
       const proof=result.status==='prepared'?await certify(result.snapshot,c,t):null;
       if(!current(t))return;
-      if(proof){remember(proof);stats.proofsCompleted++;for(const g of groups.keys())for(const child of g.children)if(r12ChunkKey(child)?.key===c.key)apply(child,proof);}
+      if(proof){
+        remember(proof);stats.proofsCompleted++;
+        if(presentation===R20_PRESENTATION&&setForestChunkCandidateLimit&&!denseChunks.has(proof.key)){
+          if(setForestChunkCandidateLimit(proof.cx,proof.cz,R20_DENSE_CANDIDATES_PER_CELL))stats.densityRequests++;
+          denseChunks.set(proof.key,{cx:proof.cx,cz:proof.cz});stats.peakDenseChunks=Math.max(stats.peakDenseChunks,denseChunks.size);
+        }
+        for(const g of groups.keys())for(const child of g.children)if(r12ChunkKey(child)?.key===c.key)apply(child,proof);
+      }
       else{stats.proofsRefused++;if(rejected.size>=R12_LIMITS.proofs)rejected.delete(rejected.keys().next().value);rejected.set(c.key,position.signature);}
     }
     const d=await client.diagnostics();if(!current(t))return;
@@ -249,6 +265,7 @@ export function createRenderedBiomePilot({THREE,forestGroup,getState,getGenerati
   function start(value){
     const safe=validateR12Config(value);
     stop();profileId=safe.profile??R12_PROFILE;presentation=safe.presentation??null;appearance=safe.appearance??null;understory=safe.understory??null;
+    if(presentation===R20_PRESENTATION&&typeof setForestChunkCandidateLimit!=='function')throw new Error('R23 Yungas density control unavailable');
     config={directory:safe.directory,baseUrl:safe.baseUrl};season=safe.season??'summer';enabled=true;phase='waiting-route';error=null;arm();
     return Object.freeze({status:'enabled',pilot:pilotId(),season,placementAuthority:false});
   }
@@ -269,10 +286,11 @@ export function createRenderedBiomePilot({THREE,forestGroup,getState,getGenerati
     return {enabled,pilot:pilotId(),sourceProfile:profileId,presentation,appearance,understory,
       appearanceAssets:naturalStyle?.diagnostics()??null,understoryAssets:understoryStyle?.diagnostics()??null,dryClimateAssets:dryStyle?.diagnostics()??null,humidMontaneAssets:humidStyle?.diagnostics()??null,borealAssets:borealStyle?.diagnostics()??null,eifelAssets:eifelStyle?.diagnostics()??null,routeIndex:routeIndex?.diagnostics()??null,
       understoryInstances,understoryChunks,potentialAdditionalDrawCalls,presentationBytes,maxPresentationSyncMs,diagnosticOnly:false,placementAuthority:false,geometrySubstitution:true,
+      tropicalDensity:presentation===R20_PRESENTATION?{id:'r23-yungas-r4-density',baseCandidatesPerCell:R20_BASE_CANDIDATES_PER_CELL,denseCandidatesPerCell:R20_DENSE_CANDIDATES_PER_CELL,qualifiedChunks:denseChunks.size}:null,
       phase,error,season,...stats,modifiedChunks:records.size,modifiedInstances:instances,models,proofCache:proofs.size,
       limits:R12_LIMITS,worker,bridge:bridge?.diagnostics()??null,
       scope:renderedProfile(profileId).scope,
-      seasonScope:presentation===R22_PRESENTATION?'Eifel temperate tree-family presentation + accepted R18 roadside understory; R4 roots, terrain, road, grip, weather and automatic seasons unchanged':presentation===R21_PRESENTATION?'Boreal Manic tree-family presentation only; roots, terrain, road, grip, weather and automatic seasons unchanged':presentation===R20_PRESENTATION?'Humid montane Yungas vegetation presentation only; no altitude zonation, terrain, road, grip, weather or automatic seasons changed':presentation===R19_PRESENTATION?'Dry chaparral vegetation presentation only; terrain, road, grip, weather and automatic seasons unchanged':understory===R18_UNDERSTORY?'Tree models + explicit roadside understory only; terrain, road, grip, weather and automatic seasons unchanged':'Tree models only; terrain, road, grip, weather and automatic seasons unchanged'};
+      seasonScope:presentation===R22_PRESENTATION?'Eifel temperate tree-family presentation + accepted R18 roadside understory; R4 roots, terrain, road, grip, weather and automatic seasons unchanged':presentation===R21_PRESENTATION?'Boreal Manic tree-family presentation only; roots, terrain, road, grip, weather and automatic seasons unchanged':presentation===R20_PRESENTATION?'Humid montane Yungas presentation plus R23 source-proved R4 candidate tail; first layer and road/water/building exclusions remain authoritative':presentation===R19_PRESENTATION?'Dry chaparral vegetation presentation only; terrain, road, grip, weather and automatic seasons unchanged':understory===R18_UNDERSTORY?'Tree models + explicit roadside understory only; terrain, road, grip, weather and automatic seasons unchanged':'Tree models only; terrain, road, grip, weather and automatic seasons unchanged'};
   }
   function audit(){
     // Explicit test/console call, never a frame. No engine references escape.
@@ -281,7 +299,7 @@ export function createRenderedBiomePilot({THREE,forestGroup,getState,getGenerati
       matrixBytes:m.instanceMatrix.array.byteLength,matrixHash:hash(m.instanceMatrix.array),
       baseTriangles:(r.original.index?.count??r.original.attributes.position.count)/3,
       triangles:(m.geometry.index?.count??m.geometry.attributes.position.count)/3,
-      geometryOnly:!r.mixed&&m.geometry===r.replacement,...(r.mixed?{mixed:r.mixed.audit()}:{}),proofCandidates:r.proof.count,ecoregion:r.proof.ecoregionId}))};
+      geometryOnly:!r.mixed&&m.geometry===r.replacement,forestCandidatesPerCell:m.userData?.forestCandidatesPerCell??R20_BASE_CANDIDATES_PER_CELL,...(r.mixed?{mixed:r.mixed.audit()}:{}),proofCandidates:r.proof.count,ecoregion:r.proof.ecoregionId}))};
   }
   return Object.freeze({start,stop,season:setSeason,refresh(){windowSignature=null;rejected.clear();arm();},diagnostics,audit});
 }
