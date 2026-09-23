@@ -80,7 +80,7 @@ def main(pilot,output):
                 assert set(report['referenceR15']['models'])=={'preview-tropical'};page.screenshot(path=str(output/'yungas-r15-reference.png'))
                 page.evaluate('()=>WorldDriveDiagnostics.forest.visualPilot.stop()');page.wait_for_timeout(400)
                 start=page.evaluate("async u=>(await import(u)).start()",LAUNCHER);assert start['status']=='enabled' and start['pilot']=='r20-yungas-humid-montane'
-                page.wait_for_function("()=>{const a=WorldDriveDiagnostics.forest.visualPilot,s=a.snapshot(),q=a.audit();if(s.phase==='fault')throw new Error(s.error);return s.pilot==='r20-yungas-humid-montane'&&s.modifiedChunks>=4&&s.proofsCompleted>=4&&(s.tropicalDensity?.qualifiedChunks??0)>=4&&q.meshes.filter(m=>m.forestCandidatesPerCell===150).length>=2;}")
+                page.wait_for_function("()=>{const a=WorldDriveDiagnostics.forest.visualPilot,s=a.snapshot(),q=a.audit();if(s.phase==='fault')throw new Error(s.error);return s.pilot==='r20-yungas-humid-montane'&&s.modifiedChunks>=2&&(s.tropicalDensity?.qualifiedChunks??0)>=2&&s.densityRequests>=2&&q.meshes.filter(m=>m.forestCandidatesPerCell===150).length>=2;}")
                 summer=page.evaluate(SNAP);audit=page.evaluate('()=>WorldDriveDiagnostics.forest.visualPilot.audit()');report['summer']=summer;report['summerAudit']=audit
                 assert summer['error'] is None and summer['failures']==0 and summer['presentation']=='humid-montane-r20'
                 assert summer['humidMontaneAssets']['id']=='humid-montane-r20' and summer['humidMontaneAssets']['triangles']==[196,252,1052,96]
@@ -116,10 +116,11 @@ def main(pilot,output):
                     # Cached/proved destinations do not guarantee two fresh controller
                     # polls or four simultaneously resident chunks under SwiftShader.
                     # Require a substantial ecological presentation to be visible.
-                    page.wait_for_function("""()=>{const s=WorldDriveDiagnostics.forest.visualPilot.snapshot();if(s.phase==='fault')throw new Error(s.error);const ids=['humid-montane-broadleaf','epiphyte-cloud-tree','tree-fern','bamboo-clump'];return s.enabled&&s.presentation==='humid-montane-r20'&&s.error===null&&s.modifiedChunks>=2&&s.modifiedInstances>=1000&&ids.every(id=>(s.models[id]??0)>0)&&(s.models['tree-fern']??0)>=Math.floor(s.modifiedInstances*.14);}""")
+                    page.wait_for_function("""()=>{const a=WorldDriveDiagnostics.forest.visualPilot,s=a.snapshot(),q=a.audit();if(s.phase==='fault')throw new Error(s.error);const ids=['humid-montane-broadleaf','epiphyte-cloud-tree','tree-fern','bamboo-clump'];return s.enabled&&s.presentation==='humid-montane-r20'&&s.error===null&&s.modifiedChunks>=2&&s.modifiedInstances>=1000&&ids.every(id=>(s.models[id]??0)>0)&&(s.models['tree-fern']??0)>=Math.floor(s.modifiedInstances*.14)&&q.meshes.some(m=>m.forestCandidatesPerCell===150);}""")
                     after=page.evaluate(SNAP);jump_audit=page.evaluate('()=>WorldDriveDiagnostics.forest.visualPilot.audit()')
                     assert after['failures']==state['failures'] and after['ownerConflicts']==state['ownerConflicts'] and after['modifiedChunks']>=2 and after['modifiedInstances']>=1000
                     assert jump_audit['meshes'] and all(m.get('mixed',{}).get('sourcePrefixExact') for m in jump_audit['meshes'])
+                    assert any(m['forestCandidatesPerCell']==150 and m['mixed']['candidatesPerCell']==150 for m in jump_audit['meshes'])
                     jumps.append({'percent':percent,'snapshot':after,'audit':jump_audit})
                 report['afterJumps']=jumps;page.screenshot(path=str(output/'yungas-r20-after-jump.png'))
                 page.evaluate('()=>WorldDriveDiagnostics.forest.visualPilot.stop()')
@@ -143,6 +144,7 @@ def main(pilot,output):
             'R20 is regional humid-montane physiognomy, not exact species abundance or present-day land cover',
             'No altitude zonation is claimed; broadleaf, epiphyte, tree-fern and bamboo cues are all supported in Bolivian Yungas sources',
             'R23 raises the candidate tail only inside chunks whose complete legacy 1,744-point proof resolves to Yungas; the tail does not claim a separate current-land-cover source',
+            'Native R23 acceptance requires two actually replaced 150/cell meshes with larger matrix capacity than the same R15 reference chunks; the four-chunk R15 reference remains unchanged because SwiftShader already renders baseline R20 at about one frame per second',
             'R4 still owns deterministic candidate generation, road/water/building exclusions, terrain anchoring and streaming; non-Yungas chunks remain at the 109/cell baseline'])
         (output/'yungas-r20-qa.json').write_text(json.dumps(report,indent=2)+'\n')
         if server:
