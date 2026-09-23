@@ -167,7 +167,7 @@ const visualScales = Object.freeze([
     diagnostics:()=>{const box=assets[2].geometry.boundingBox;return {id:R20_PRESENTATION,models:[...R20_MODELS],triangles:assets.map(a=>a.triangles),sharedMaterials:1,transparent:false,disposed,treeFernSilhouette:{height:box.max.y-box.min.y,diameterX:box.max.x-box.min.x,diameterZ:box.max.z-box.min.z,fronds:20,segments:9,pinnae:320,pinnaNearCrownFullWidth:.248*.56,pinnaOuterFullWidth:.218*.56},visualScales:assets.map(a=>[...a.visualScale]),
       mix:{humidBroadleafVisualWeight:48,epiphyteCloudTreeVisualWeight:22,treeFernVisualWeight:20,bambooVisualWeight:10,measuredHabitatPercent:false,altitudeZonation:false},
       density:{id:'r23-yungas-r4-density',baseCandidatesPerCell:R20_BASE_CANDIDATES_PER_CELL,denseCandidatesPerCell:R20_DENSE_CANDIDATES_PER_CELL,increaseFraction:R20_DENSE_CANDIDATES_PER_CELL/R20_BASE_CANDIDATES_PER_CELL-1,firstLayerCandidatesPerCell:64},
-      scope:'Bolivian Yungas humid montane/cloud forest cues on source-proved R4 chunks; R23 adds only the deterministic R4 candidate tail while preserving the accepted R20 model scales'};}});
+      scope:'Bolivian Yungas humid montane/cloud forest cues: evergreen broadleaf, epiphytes, prominent tree ferns and bamboo on source-proved R4 chunks; R23 adds only the deterministic R4 candidate tail while preserving the accepted R20 model scales'};}});
 }
 const hash=array=>{let h=2166136261;const b=new Uint8Array(array.buffer,array.byteOffset,array.byteLength);for(const x of b)h=Math.imul(h^x,16777619)>>>0;return h.toString(16);};
 export function createHumidMontanePresentation({THREE,group,source,proof,style,now=()=>performance.now()}){

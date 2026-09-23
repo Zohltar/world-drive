@@ -55,7 +55,7 @@ jobs:
         run: |
           mkdir -p "$RUNNER_TEMP/biome-r20"
           git rev-parse HEAD > "$RUNNER_TEMP/biome-r20/tested-commit.txt"
-          git archive --format=tar.gz HEAD docs/WORLD_DRIVE_BLOCK8_ECOLOGICAL_VEGETATION_CONTRACT.md tools/biomes/humid-montane-presentation-r20.mjs tools/biomes/humid-montane-pilot-launcher-r20.mjs tools/biomes/rendered-pilot-r12.mjs qa/qa-block8-yungas-ecology-r20.mjs qa/qa-block8-yungas-browser-r20.py .github/workflows/qa-block8-yungas-ecology-r20.yml > "$RUNNER_TEMP/biome-r20/r20-source.tar.gz"
+          git archive --format=tar.gz HEAD docs/WORLD_DRIVE_BLOCK8_ECOLOGICAL_VEGETATION_CONTRACT.md src/forest-streaming-policy.js src/forest-chunk-streamer-core.js src/forest-chunk-streamer.js src/scenery/scenery-renderer-p9.js src/scenery/scenery-renderer-p933.js src/app/forest-visual-pilot.js tools/biomes/humid-montane-presentation-r20.mjs tools/biomes/humid-montane-pilot-launcher-r20.mjs tools/biomes/rendered-pilot-r12.mjs qa/qa-block8-rendered-pilot-boundary-r12.mjs qa/qa-block8-yungas-ecology-r20.mjs qa/qa-block8-yungas-density-r23.mjs qa/qa-block8-yungas-browser-r20.py .github/workflows/qa-block8-yungas-ecology-r20.yml > "$RUNNER_TEMP/biome-r20/r20-source.tar.gz"
       - uses: actions/upload-artifact@v4
         if: always()
         with:

@@ -19,8 +19,9 @@ assert.equal((body.match(/function /g)||[]).length,4,'Unexpected actual builder 
 function observe(cx,cz,source=body){
   const factory=new Function('FOREST','forestHash',`
     const chunkCells=FOREST.chunkCells,totalCells=chunkCells*chunkCells,densityBuckets=32,serial=7;
+    const baseCandidatesPerCell=FOREST.candidatesPerCell,candidateLimitFor=()=>baseCandidatesPerCell;
     const firstLayerCandidatesPerCell=FOREST.firstLayerCandidatesPerCell;
-    const progressiveFirstLayer=firstLayerCandidatesPerCell<FOREST.candidatesPerCell;
+    const progressiveFirstLayer=firstLayerCandidatesPerCell<baseCandidatesPerCell;
     const cellNearRoad=()=>false,densityAt=()=>1,rows=[];let builder;
     const terrainSlope=(x,z)=>{rows.push({x,z,cellIndex:builder.cellIndex,candidateIndex:builder.candidateIndex});return FOREST.maxSlope+1;};
     ${source}
