@@ -1,13 +1,15 @@
-// Authorizes ONLY two reviewed additive owner seams and one inert lazy port.
-// All other runtime, R4 code/budgets, assets, source/Worker domain and dependencies
-// stay byte-identical to the human-accepted R11W checkpoint.
+// R12 preserves the original human-accepted runtime except its reviewed inert visual
+// pilot seams. R23 adds one separately bounded regional-density control on top of
+// that already-reviewed candidate. No other runtime or approved asset change passes.
 import assert from 'node:assert/strict';
 import {execFileSync} from 'node:child_process';
 import {readFileSync} from 'node:fs';
-const BASE='c7bb678d290c8e275c79b134a23cc6897d1e26f7';
+
+const R12_BASE='c7bb678d290c8e275c79b134a23cc6897d1e26f7';
+const R23_BASE='7df21bd23f3f73f78a706e8290c45bc6c80772b6';
 const scopes=['src','public','server','electron','vite.config.js','package.json','package-lock.json','.github/workflows/qa-dev-integration.yml'];
 const port='src/app/forest-visual-pilot.js';
-const edits=new Map([
+const r12Edits=new Map([
  ['src/app/biome-diagnostics.js',[
   ["import {registerForestPilotRoute} from './forest-visual-pilot.js';\n",''],
   ["  const visualPilot=registerForestPilotRoute({getState:options.getState,\n    getGeneration:()=>lifecycle.worldDrive.route.generation,getRoute:()=>options.route,\n    isRouteReady:()=>routeReady},target);\n",''],
@@ -16,18 +18,59 @@ const edits=new Map([
   ["import {registerForestPilotScene} from '../app/forest-visual-pilot.js';\n",''],
   ['  registerForestPilotScene(options); // R12: inert until explicit pilot start.\n','']]]
 ]);
+const r23Runtime=[
+ 'src/app/forest-visual-pilot.js',
+ 'src/forest-chunk-streamer-core.js',
+ 'src/forest-chunk-streamer.js',
+ 'src/forest-streaming-policy.js',
+ 'src/scenery/scenery-renderer-p9.js',
+ 'src/scenery/scenery-renderer-p933.js'
+];
+const r23Blob=new Map([
+ ['src/app/forest-visual-pilot.js','94691738d666af523e62c8d19401a006398256ef'],
+ ['src/forest-chunk-streamer-core.js','af13f1d8b259049e1939ab3720e834f0368f4c8d'],
+ ['src/forest-chunk-streamer.js','1c9d3cb4a89f0cde4e12271e0be45f5fe5531773'],
+ ['src/forest-streaming-policy.js','61c50dc256f46cea9b43b57a574ba2ad17ed0256'],
+ ['src/scenery/scenery-renderer-p9.js','133db0ca8ef8c6c57347e1d6a0f4a41bdffdb656'],
+ ['src/scenery/scenery-renderer-p933.js','44240e5bed6df9b565c2a41a31887961ce483700']
+]);
 const git=(...args)=>execFileSync('git',args,{encoding:'utf8',maxBuffer:16*1024*1024});
-const changed=git('diff','--name-only',BASE,'HEAD','--',...scopes).trim().split('\n').filter(Boolean);
-assert.deepEqual(changed.toSorted(),[port,...edits.keys()].toSorted(),'Unexpected runtime addition/deletion/change');
-for(const [path,replacements] of edits){
- let text=readFileSync(path,'utf8');
- for(const [from,to] of replacements){assert.equal(text.split(from).length,2,`Exact seam missing/duplicated: ${path}`);text=text.replace(from,to);}
- assert.equal(text,git('show',`${BASE}:${path}`),`Runtime changed beyond the explicit seam: ${path}`);
+const show=(ref,path)=>git('show',`${ref}:${path}`);
+const changed=(base,head='HEAD')=>git('diff','--name-only',base,head,'--',...scopes).trim().split('\n').filter(Boolean);
+
+// First re-prove the original R12 seam at the exact pre-R23 checkpoint.
+const historical=changed(R12_BASE,R23_BASE);
+assert.deepEqual(historical.toSorted(),[port,...r12Edits.keys()].toSorted(),'Pre-R23 runtime drifted outside reviewed R12 seams');
+for(const [path,replacements] of r12Edits){
+ let text=show(R23_BASE,path);
+ for(const [from,to] of replacements){assert.equal(text.split(from).length,2,`Historical R12 seam missing/duplicated: ${path}`);text=text.replace(from,to);}
+ assert.equal(text,show(R12_BASE,path),`Pre-R23 runtime changed beyond the R12 seam: ${path}`);
 }
-const source=readFileSync(port,'utf8');
-assert.ok(source.includes("import('../../tools/biomes/rendered-pilot-r12.mjs')"));
-assert.doesNotMatch(source,/\b(?:fetch|setTimeout|setInterval|requestAnimationFrame|requestIdleCallback)\s*\(|new\s+(?:Worker|THREE\.)/);
-for(const path of ['tools/biomes/vegetation-prototypes.mjs','tools/biomes/vegetation-prototype-data.mjs',
+const historicalPort=show(R23_BASE,port);
+assert.ok(historicalPort.includes("import('../../tools/biomes/rendered-pilot-r12.mjs')"));
+assert.doesNotMatch(historicalPort,/\b(?:fetch|setTimeout|setInterval|requestAnimationFrame|requestIdleCallback)\s*\(|new\s+(?:Worker|THREE\.)/);
+
+// Then authorize exactly the six R23 runtime owners, byte-for-byte.
+assert.deepEqual(changed(R23_BASE).toSorted(),r23Runtime.toSorted(),'Unexpected R23 runtime addition/deletion/change');
+for(const [path,sha] of r23Blob)assert.equal(git('hash-object',path).trim(),sha,`R23 runtime blob drifted: ${path}`);
+
+const policy=readFileSync('src/forest-streaming-policy.js','utf8');
+assert.match(policy,/candidatesPerCell:109,/);
+assert.match(policy,/maxCandidatesPerCell:160,/);
+assert.match(policy,/firstLayerCandidatesPerCell:64,/);
+const core=readFileSync('src/forest-chunk-streamer-core.js','utf8');
+for(const marker of ['const chunkCandidateLimits=new Map();','function setChunkCandidateLimit(cx,cz,perCell=null)','candidateOverrides:chunkCandidateLimits.size'])
+ assert.ok(core.includes(marker),'R23 bounded density owner missing: '+marker);
+assert.ok(core.includes("resetQueuedBuilder(job,'candidate-limit-change')"));
+const wrapper=readFileSync('src/forest-chunk-streamer.js','utf8');
+assert.ok(wrapper.includes('setChunkCandidateLimit:(...args)=>activeBase().setChunkCandidateLimit(...args)'));
+assert.ok(wrapper.includes('regionalDensity:{baseCandidatesPerCell:finite(raw.baseCandidatesPerCell),maxCandidatesPerCell:finite(raw.maxCandidatesPerCell),overrides:finite(raw.candidateOverrides)}'));
+const currentPort=readFileSync(port,'utf8');
+assert.ok(currentPort.includes('setForestChunkCandidateLimit:options.setForestChunkCandidateLimit'));
+assert.doesNotMatch(currentPort,/\b(?:fetch|setTimeout|setInterval|requestAnimationFrame|requestIdleCallback)\s*\(|new\s+(?:Worker|THREE\.)/);
+
+for(const asset of ['tools/biomes/vegetation-prototypes.mjs','tools/biomes/vegetation-prototype-data.mjs',
  'tools/biomes/vegetation-winter-data.mjs','tools/biomes/vegetation-seasonal-prototypes.mjs'])
- assert.equal(readFileSync(path,'utf8'),git('show',`${BASE}:${path}`),'Approved asset changed: '+path);
-console.log('PASS R12 exact owner seams only; entire remaining runtime and approved models preserved');
+ assert.equal(readFileSync(asset,'utf8'),show(R12_BASE,asset),'Approved asset changed: '+asset);
+
+console.log('PASS R12 seams + exact bounded R23 regional-density runtime');
