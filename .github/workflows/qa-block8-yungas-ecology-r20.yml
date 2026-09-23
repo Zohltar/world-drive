@@ -33,6 +33,7 @@ jobs:
         run: |
           mkdir -p "$RUNNER_TEMP/biome-r20"
           node qa/qa-block8-yungas-ecology-r20.mjs "$RUNNER_TEMP/biome-r20/unit-qa.json"
+          node qa/qa-block8-yungas-density-r23.mjs
           node qa/qa-block8-rendered-yungas-r15.mjs
           node qa/qa-block8-rendered-route-owner-r12.mjs
           node qa/qa-block8-forest-progressive-layer-r4.mjs
