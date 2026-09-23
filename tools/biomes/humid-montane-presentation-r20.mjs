@@ -59,6 +59,17 @@ function humidBroadleafData(epiphytes=false){
   const leaf1=[.055,.19,.075],leaf2=[.07,.24,.09],leaf3=[.045,.155,.065];
   const lobes=[[-.27,.70,.08,.28,.18,.27,.1,leaf2],[-.09,.82,-.19,.30,.19,.29,.6,leaf1],[.17,.80,.16,.31,.19,.30,1.1,leaf2],[.32,.68,-.08,.27,.17,.26,1.6,leaf3],[-.30,.86,-.07,.24,.16,.23,2.0,leaf1],[0,.91,-.02,.30,.19,.29,2.5,leaf2],[.27,.87,.08,.24,.16,.23,3.0,leaf1],[-.05,.66,.18,.31,.18,.30,3.6,leaf3],[.08,.68,-.20,.29,.17,.28,4.2,leaf1]];
   for(const x of lobes)lobe(b,...x);
+  // Tropical density pass: keep every accepted R4 root exactly where it is, but
+  // add a broad low-canopy/understory ring inside each broadleaf instance. This
+  // closes the large visual holes between trunks without creating off-root trees,
+  // new terrain queries, new draw calls or biome-wide R4 density changes.
+  const underfill=[
+    [-.34,.33,-.13,.25,.14,.24,.15,leaf3],[-.19,.40,.26,.24,.14,.23,.72,leaf1],
+    [.07,.31,-.31,.26,.15,.25,1.28,leaf3],[.31,.38,-.18,.24,.14,.23,1.86,leaf2],
+    [.35,.32,.18,.25,.14,.24,2.43,leaf3],[.12,.41,.31,.24,.14,.23,3.02,leaf1],
+    [-.24,.31,.30,.25,.15,.24,3.64,leaf3],[-.37,.39,.08,.24,.14,.23,4.25,leaf2]
+  ];
+  for(const x of underfill)lobe(b,...x);
   if(epiphytes){
     // Visible bromeliad/fern-like rosettes attached to trunks and lower branches.
     const centres=[[-.05,.49,.045],[.13,.58,-.02],[-.18,.60,.07],[.05,.72,.10]];
@@ -153,10 +164,10 @@ export function buildHumidMontaneStyle(THREE){
   // Geometry-space scale only: source R4 matrices stay byte-exact. This widens
   // visible tree-height range while keeping ferns clearly below the canopy.
 const visualScales = Object.freeze([
-  [1.15, 1.00, 1.15], // humid-montane-broadleaf
-  [1.30, 1.32, 1.30], // epiphyte-cloud-tree
-  [0.28, 0.28, 0.28], // tree-fern
-  [0.90, 0.82, 0.90]  // bamboo-clump
+  [1.38, 1.00, 1.38], // humid-montane-broadleaf: wider canopy, same height
+  [1.55, 1.32, 1.55], // epiphyte-cloud-tree: wider canopy, same height
+  [0.28, 0.28, 0.28], // tree-fern: preserve accepted reduced scale
+  [1.08, 0.82, 1.08]  // bamboo-clump: denser lateral screen, same height
 ]);
   const assets=data.map((d,i)=>{const g=geometry(THREE,d,'r20-'+R20_MODELS[i],visualScales[i]);owned.push(g);return Object.freeze({id:R20_MODELS[i],geometry:g,material,triangles:d.triangles,visualScale:visualScales[i]});});
   let disposed=false;
@@ -164,6 +175,7 @@ const visualScales = Object.freeze([
     dispose(){if(disposed)return;disposed=true;for(const g of owned)g.dispose();material.dispose();},
     diagnostics:()=>{const box=assets[2].geometry.boundingBox;return {id:R20_PRESENTATION,models:[...R20_MODELS],triangles:assets.map(a=>a.triangles),sharedMaterials:1,transparent:false,disposed,treeFernSilhouette:{height:box.max.y-box.min.y,diameterX:box.max.x-box.min.x,diameterZ:box.max.z-box.min.z,fronds:20,segments:9,pinnae:320,pinnaNearCrownFullWidth:.248*.56,pinnaOuterFullWidth:.218*.56},visualScales:assets.map(a=>[...a.visualScale]),
       mix:{humidBroadleafVisualWeight:48,epiphyteCloudTreeVisualWeight:22,treeFernVisualWeight:20,bambooVisualWeight:10,measuredHabitatPercent:false,altitudeZonation:false},
+      densityTreatment:{strategy:'clustered-root-underfill',addedLowCanopyLobesPerBroadleaf:8,widerCanopy:true,sourceRootsUnchanged:true,newDrawCalls:0},
       scope:'Bolivian Yungas humid montane/cloud forest cues: evergreen broadleaf, epiphytes, prominent tree ferns and bamboo; existing R4 roots unchanged'};}});
 }
 const hash=array=>{let h=2166136261;const b=new Uint8Array(array.buffer,array.byteOffset,array.byteLength);for(const x of b)h=Math.imul(h^x,16777619)>>>0;return h.toString(16);};
