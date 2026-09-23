@@ -267,12 +267,13 @@ export function createForestChunkStreamer({
     if(chunk.firstLayerCommitted){
       return {band:4,score:nearDistance,nearDistance,forward};
     }
-    // R23: a source-proved visible Yungas density replacement must not wait
-    // behind every non-near first-layer job. Road-critical near coverage (band 0)
-    // still wins; this bounded regional replacement then runs before ordinary
-    // visible coverage (band 1), generic replacements (2) and prefetch (3).
+    // R23: once a visible Yungas chunk has a complete source proof, its dense
+    // replacement already has a valid visible baseline beneath it. Promote that
+    // bounded replacement ahead of new coverage so a teleport cannot leave the
+    // proved tropical chunk at 109/cell for minutes. Per-slice CPU/candidate
+    // budgets remain unchanged; this only changes queue ordering.
     if(chunk.regionalDensity&&chunk.replace&&visibleKeys.has(chunk.key)){
-      return {band:.5,score:nearDistance,nearDistance,forward};
+      return {band:-1,score:nearDistance,nearDistance,forward};
     }
     if(chunk.replace){
       return {band:2,score:nearDistance,nearDistance,forward};
