@@ -57,8 +57,9 @@ const pumpUntil=(predicate,label,max=1200)=>{
   }
   assert.fail(label+' exceeded idle-slice bound');
 };
-const chunk=()=>{
-  const g=forestGroup.children.find(x=>/^forest-chunk-/.test(x.name));
+const chunk=(cx=null,cz=null)=>{
+  const target=Number.isSafeInteger(cx)&&Number.isSafeInteger(cz)?`forest-chunk-${cx}:${cz}`:null;
+  const g=forestGroup.children.find(x=>target?x.name===target:/^forest-chunk-/.test(x.name));
   if(!g)return null;
   const m=/^forest-chunk-(-?\d+):(-?\d+)$/.exec(g.name);
   return m?{group:g,mesh:g.children[0],cx:Number(m[1]),cz:Number(m[2])}:null;
@@ -69,6 +70,7 @@ try{
   pumpUntil(()=>streamer.stats().chunksBuilt>=1&&!!chunk(),'base R4 full chunk');
   let current=chunk();
   assert.ok(current?.mesh,'base chunk missing');
+  const target={cx:current.cx,cz:current.cz};
   assert.equal(current.mesh.userData.forestCandidatesPerCell,109);
   const baseCapacity=current.mesh.instanceMatrix.array.length/16;
   const baseStats=streamer.stats();
@@ -81,11 +83,10 @@ try{
   assert.equal(streamer.stats().candidateOverrides,1);
   const baseMesh=current.mesh;
   pumpUntil(()=>{
-    const next=chunk();
-    return next&&next.cx===current.cx&&next.cz===current.cz&&next.mesh!==baseMesh
-      &&next.mesh.userData.forestCandidatesPerCell===150;
+    const next=chunk(target.cx,target.cz);
+    return next&&next.mesh!==baseMesh&&next.mesh.userData.forestCandidatesPerCell===150;
   },'dense Yungas replacement');
-  current=chunk();
+  current=chunk(target.cx,target.cz);
   const denseCapacity=current.mesh.instanceMatrix.array.length/16;
   assert.equal(current.mesh.userData.forestCandidatesPerCell,150);
   assert.ok(denseCapacity>baseCapacity,{baseCapacity,denseCapacity});
@@ -96,11 +97,10 @@ try{
   assert.equal(streamer.stats().candidateOverrides,0);
   const denseMesh=current.mesh;
   pumpUntil(()=>{
-    const next=chunk();
-    return next&&next.cx===current.cx&&next.cz===current.cz&&next.mesh!==denseMesh
-      &&next.mesh.userData.forestCandidatesPerCell===109;
+    const next=chunk(target.cx,target.cz);
+    return next&&next.mesh!==denseMesh&&next.mesh.userData.forestCandidatesPerCell===109;
   },'baseline density restoration');
-  current=chunk();
+  current=chunk(target.cx,target.cz);
   assert.equal(current.mesh.userData.forestCandidatesPerCell,109);
   assert.ok(current.mesh.instanceMatrix.array.length/16<=denseCapacity);
   assert.equal(streamer.stats().candidateOverrides,0);
