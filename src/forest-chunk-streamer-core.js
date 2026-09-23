@@ -267,6 +267,13 @@ export function createForestChunkStreamer({
     if(chunk.firstLayerCommitted){
       return {band:4,score:nearDistance,nearDistance,forward};
     }
+    // R23: a source-proved visible Yungas density replacement must not wait
+    // behind every non-near first-layer job. Road-critical near coverage (band 0)
+    // still wins; this bounded regional replacement then runs before ordinary
+    // visible coverage (band 1), generic replacements (2) and prefetch (3).
+    if(chunk.regionalDensity&&chunk.replace&&visibleKeys.has(chunk.key)){
+      return {band:.5,score:nearDistance,nearDistance,forward};
+    }
     if(chunk.replace){
       return {band:2,score:nearDistance,nearDistance,forward};
     }
@@ -665,11 +672,11 @@ export function createForestChunkStreamer({
     else setTimeout(()=>callback({didTimeout:true,timeRemaining:()=>5}),0);
   }
 
-  function queueJob(desc,{replace=false}={}){
+  function queueJob(desc,{replace=false,regionalDensity=false}={}){
     const existing=queued.get(desc.key);
-    if(existing){if(replace)existing.replace=true;return existing;}
+    if(existing){if(replace)existing.replace=true;if(regionalDensity)existing.regionalDensity=true;return existing;}
     const job={
-      ...desc,replace,builder:null,readyToCommit:false,firstLayerCommitted:false,firstLayerCommittedAt:0,
+      ...desc,replace,regionalDensity:!!regionalDensity,builder:null,readyToCommit:false,firstLayerCommitted:false,firstLayerCommittedAt:0,
       id:nextJobId++,queuedAt:performance.now(),startedAt:0,lastWorkedAt:0,
       slices:0,candidatesProcessed:0,startedBand:null,
       queuedBand:visibleKeys.has(desc.key)?'visible':(prefetchKeys.has(desc.key)?'prefetch':'other')
@@ -947,10 +954,10 @@ export function createForestChunkStreamer({
     const job=queued.get(key);
     if(job){
       if(job.builder)resetQueuedBuilder(job,'candidate-limit-change');
-      job.readyToCommit=false;
+      job.readyToCommit=false;job.regionalDensity=true;
       if(old||job.firstLayerCommitted){job.replace=true;job.firstLayerCommitted=false;}
     }else if(old||wantedKeys.has(key)){
-      queueJob(chunkDescriptor(cx,cz),{replace:!!old});
+      queueJob(chunkDescriptor(cx,cz),{replace:!!old,regionalDensity:true});
     }
     queuePriorityDirty=true;
     if(Number.isFinite(lastCenter.x))sortQueueByPriority(lastCenter,true);

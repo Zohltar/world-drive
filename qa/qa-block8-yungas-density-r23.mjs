@@ -87,8 +87,12 @@ try{
     return next&&next.mesh!==baseMesh&&next.mesh.userData.forestCandidatesPerCell===150;
   },'dense Yungas replacement');
   current=chunk(target.cx,target.cz);
+  const denseStats=streamer.stats();
   const denseCapacity=current.mesh.instanceMatrix.array.length/16;
   assert.equal(current.mesh.userData.forestCandidatesPerCell,150);
+  assert.ok(denseStats.firstLayerChunksCommitted<denseStats.visibleWantedChunks,
+    {firstLayers:denseStats.firstLayerChunksCommitted,visibleWanted:denseStats.visibleWantedChunks});
+  assert.equal(denseStats.densificationChunksCompleted,0,'R23 density waited behind ordinary background densification');
   assert.ok(denseCapacity>baseCapacity,{baseCapacity,denseCapacity});
   assert.equal(streamer.stats().firstLayerCandidateTarget,1024,'regional density changed first-layer readiness');
   assert.equal(streamer.stats().candidateOverrides,1);
@@ -111,7 +115,8 @@ try{
   console.log(JSON.stringify({
     status:'PASS',baseCandidatesPerCell:109,denseCandidatesPerCell:150,
     firstLayerCandidatesPerCell:64,firstLayerCandidateTarget:1024,
-    baseCapacity,denseCapacity,restoredCandidatesPerCell:current.mesh.userData.forestCandidatesPerCell
+    baseCapacity,denseCapacity,denseFirstLayers:denseStats.firstLayerChunksCommitted,
+    visibleWantedAtDense:denseStats.visibleWantedChunks,restoredCandidatesPerCell:current.mesh.userData.forestCandidatesPerCell
   }));
 }finally{
   streamer.setAssets(null);streamer.clearAll();

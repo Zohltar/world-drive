@@ -28,7 +28,7 @@ const r23Runtime=[
 ];
 const r23Blob=new Map([
  ['src/app/forest-visual-pilot.js','94691738d666af523e62c8d19401a006398256ef'],
- ['src/forest-chunk-streamer-core.js','af13f1d8b259049e1939ab3720e834f0368f4c8d'],
+ ['src/forest-chunk-streamer-core.js','57284380a1a4e7ee489469973d9d6d1ae27dd7f1'],
  ['src/forest-chunk-streamer.js','1c9d3cb4a89f0cde4e12271e0be45f5fe5531773'],
  ['src/forest-streaming-policy.js','61c50dc256f46cea9b43b57a574ba2ad17ed0256'],
  ['src/scenery/scenery-renderer-p9.js','133db0ca8ef8c6c57347e1d6a0f4a41bdffdb656'],
@@ -59,7 +59,7 @@ assert.match(policy,/candidatesPerCell:109,/);
 assert.match(policy,/maxCandidatesPerCell:160,/);
 assert.match(policy,/firstLayerCandidatesPerCell:64,/);
 const core=readFileSync('src/forest-chunk-streamer-core.js','utf8');
-for(const marker of ['const chunkCandidateLimits=new Map();','function setChunkCandidateLimit(cx,cz,perCell=null)','candidateOverrides:chunkCandidateLimits.size'])
+for(const marker of ['const chunkCandidateLimits=new Map();','function setChunkCandidateLimit(cx,cz,perCell=null)','candidateOverrides:chunkCandidateLimits.size',"if(chunk.regionalDensity&&chunk.replace&&visibleKeys.has(chunk.key))"])
  assert.ok(core.includes(marker),'R23 bounded density owner missing: '+marker);
 assert.ok(core.includes("resetQueuedBuilder(job,'candidate-limit-change')"));
 const wrapper=readFileSync('src/forest-chunk-streamer.js','utf8');
