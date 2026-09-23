@@ -948,7 +948,7 @@ export function createForestChunkStreamer({
     if(job){
       if(job.builder)resetQueuedBuilder(job,'candidate-limit-change');
       job.readyToCommit=false;
-      if(old||job.firstLayerCommitted)job.replace=true;
+      if(old||job.firstLayerCommitted){job.replace=true;job.firstLayerCommitted=false;}
     }else if(old||wantedKeys.has(key)){
       queueJob(chunkDescriptor(cx,cz),{replace:!!old});
     }
