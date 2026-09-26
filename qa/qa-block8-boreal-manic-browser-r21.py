@@ -66,12 +66,15 @@ def main(pilot,output):
             page.on('pageerror',lambda e:errors.append(str(e)))
             page.on('console',lambda m:engine.append(m.text[:1000]) if any(x in m.text for x in ['Frame error:','Startup error','Vehicle start failed','Audio frame error','THREE.WebGLProgram','GL_INVALID_OPERATION']) else None)
             try:
-                page.goto(origin,wait_until='domcontentloaded');page.wait_for_selector('.v21VehicleChoice')
+                page.goto(origin+'/?r24AutoBiomes=1',wait_until='domcontentloaded');page.wait_for_selector('.v21VehicleChoice')
                 page.locator('.v21VehicleChoice').first.click();page.locator('#v21StartButton').click()
                 page.wait_for_function("document.getElementById('v21Startup').classList.contains('hidden')")
                 page.wait_for_function("WorldDriveFramePacing().rendering.routeKind==='road' && WorldDriveFramePacing().rendering.routePoints===1497 && document.getElementById('loading').classList.contains('hidden')")
                 page.wait_for_function('WorldDriveFramePacing().rendering.groups.sceneryForest.instancedMeshes>=4')
-                assert page.evaluate(SNAP)['enabled'] is False and not requests
+                page.wait_for_function("()=>{const s=WorldDriveDiagnostics.forest.visualPilot.snapshot();return s.enabled&&s.pilot==='r21-manic-boreal-diversity'&&s.error===null&&s.modifiedChunks>=1;}")
+                report['r24Auto']=page.evaluate(SNAP);report['r24AutoController']=page.evaluate("()=>WorldDriveDiagnostics.forest.defaultBiomes.snapshot()")
+                assert report['r24AutoController']['phase']=='active' and report['r24AutoController']['routeId']=='manic' and report['r24AutoController']['pilot']=='r21-manic-boreal-diversity'
+                page.evaluate("()=>{globalThis.__WORLD_DRIVE_DISABLE_DEFAULT_BIOMES__=true;WorldDriveDiagnostics.forest.visualPilot.stop();}");page.wait_for_timeout(400);requests.clear()
                 report['offBefore']=page.evaluate(R9.FRAMES,3000)
                 # Exact accepted R13 is the in-game reference.
                 ref=page.evaluate("async u=>(await import(u)).start({season:'summer'})",REFERENCE);assert ref['pilot']=='r13-manic-boreal'

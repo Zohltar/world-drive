@@ -68,13 +68,16 @@ def main(pilot,output):
             page.on('console',lambda m:engine.append(m.text[:1000]) if any(x in m.text for x in
                 ['Frame error:','Startup error','Vehicle start failed','Audio frame error','THREE.WebGLProgram','GL_INVALID_OPERATION']) else None)
             try:
-                page.goto(origin,wait_until='domcontentloaded')
+                page.goto(origin+'/?r24AutoBiomes=1',wait_until='domcontentloaded')
                 page.wait_for_selector('.v21VehicleChoice');page.locator('.v21VehicleChoice').first.click();page.locator('#v21StartButton').click()
                 page.wait_for_function("document.getElementById('v21Startup').classList.contains('hidden')")
-                assert page.evaluate(SNAP)['enabled'] is False
                 page.evaluate("()=>document.getElementById('presetLagunaSecaBtn').click()")
                 page.wait_for_function("WorldDriveFramePacing().rendering.routeKind==='circuit' && WorldDriveFramePacing().rendering.routePoints===206 && document.getElementById('loading').classList.contains('hidden')")
                 page.wait_for_function("WorldDriveFramePacing().rendering.groups.sceneryForest.instancedMeshes>=4")
+                page.wait_for_function("()=>{const s=WorldDriveDiagnostics.forest.visualPilot.snapshot();return s.enabled&&s.pilot==='r19-laguna-dry'&&s.error===null&&s.modifiedChunks>=1;}")
+                report['r24Auto']=page.evaluate(SNAP);report['r24AutoController']=page.evaluate("()=>WorldDriveDiagnostics.forest.defaultBiomes.snapshot()")
+                assert report['r24AutoController']['phase']=='active' and report['r24AutoController']['routeId']=='laguna' and report['r24AutoController']['pilot']=='r19-laguna-dry'
+                page.evaluate("()=>{globalThis.__WORLD_DRIVE_DISABLE_DEFAULT_BIOMES__=true;WorldDriveDiagnostics.forest.visualPilot.stop();}");page.wait_for_timeout(400)
                 report['offBefore']=page.evaluate(R9.FRAMES,3000)
                 # Accepted R14 is the same-game reference.
                 ref=page.evaluate("async u=>(await import(u)).start()",REFERENCE);assert ref['pilot']=='r14-laguna-woodland'

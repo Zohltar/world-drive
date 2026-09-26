@@ -47,8 +47,12 @@ def main(pilot,output):
             oracle=context.new_page();oracle.goto(origin+'/tools/biomes/vegetation-preview-r11.html',wait_until='networkidle');report['sourceOracle']=oracle.evaluate(SOURCE_CHECK,{'directory':json.loads((destination/'directory.json').read_text()),'base':origin+URL,'plan':json.loads((pilot/'oracle-plan.json').read_text()),'expected':json.loads((pilot/'source-expectations.json').read_text())});oracle.close();requests.clear()
             page=context.new_page();page.set_default_timeout(120000);page.on('pageerror',lambda e:errors.append(str(e)));page.on('console',lambda m:engine.append(m.text[:1000]) if any(x in m.text for x in ['Frame error:','Startup error','Vehicle start failed','Audio frame error','THREE.WebGLProgram','GL_INVALID_OPERATION']) else None)
             try:
-                page.goto(origin,wait_until='domcontentloaded');page.wait_for_selector('.v21VehicleChoice');page.locator('.v21VehicleChoice').first.click();page.locator('#v21StartButton').click();page.wait_for_function("document.getElementById('v21Startup').classList.contains('hidden')")
+                page.goto(origin+'/?r24AutoBiomes=1',wait_until='domcontentloaded');page.wait_for_selector('.v21VehicleChoice');page.locator('.v21VehicleChoice').first.click();page.locator('#v21StartButton').click();page.wait_for_function("document.getElementById('v21Startup').classList.contains('hidden')")
                 page.evaluate("()=>document.getElementById('presetNordschleifeBtn').click()");page.wait_for_function("WorldDriveFramePacing().rendering.routeKind==='circuit'&&WorldDriveFramePacing().rendering.routePoints===1068&&document.getElementById('loading').classList.contains('hidden')");page.wait_for_function("WorldDriveFramePacing().rendering.groups.sceneryForest.instancedMeshes>=4")
+                page.wait_for_function("()=>{const s=WorldDriveDiagnostics.forest.visualPilot.snapshot();return s.enabled&&s.pilot==='r22-nord-eifel'&&s.error===null&&s.modifiedChunks>=1&&s.understory==='edge-r18';}",timeout=120000)
+                report['r24Auto']=page.evaluate(SNAP);report['r24AutoController']=page.evaluate("()=>WorldDriveDiagnostics.forest.defaultBiomes.snapshot()")
+                assert report['r24AutoController']['phase']=='active' and report['r24AutoController']['routeId']=='nord' and report['r24AutoController']['pilot']=='r22-nord-eifel'
+                page.evaluate("()=>{globalThis.__WORLD_DRIVE_DISABLE_DEFAULT_BIOMES__=true;WorldDriveDiagnostics.forest.visualPilot.stop();}");page.wait_for_timeout(400)
                 report['offBefore']=page.evaluate(R9.FRAMES,3000)
                 ref=page.evaluate("async u=>(await import(u)).start({season:'summer'})",REFERENCE);assert ref['pilot']=='r18-nord-understory'
                 try:

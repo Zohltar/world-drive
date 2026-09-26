@@ -51,6 +51,8 @@ FRAMES = r'''async options => {
     biomes:WorldDriveDiagnostics.forest.biomes.snapshot()};
 }'''
 INSTRUMENT = r'''(() => {
+  globalThis.__WORLD_DRIVE_DISABLE_DEFAULT_BIOMES__=
+    !new URLSearchParams(globalThis.location?.search??'').has('r24AutoBiomes');
   const NativeWorker=globalThis.Worker,events=[];
   globalThis.Worker=class extends NativeWorker {
     constructor(...args){super(...args);const row={url:String(args[0]),terminated:false};events.push(row);

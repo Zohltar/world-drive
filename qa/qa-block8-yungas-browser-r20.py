@@ -68,11 +68,16 @@ def main(pilot,output):
             page.on('pageerror',lambda e:errors.append(str(e)))
             page.on('console',lambda m:engine.append(m.text[:1000]) if any(x in m.text for x in ['Frame error:','Startup error','Vehicle start failed','Audio frame error','THREE.WebGLProgram','GL_INVALID_OPERATION']) else None)
             try:
-                page.goto(origin,wait_until='domcontentloaded');page.wait_for_selector('.v21VehicleChoice');page.locator('.v21VehicleChoice').first.click();page.locator('#v21StartButton').click()
-                page.wait_for_function("document.getElementById('v21Startup').classList.contains('hidden')");assert page.evaluate(SNAP)['enabled'] is False
+                page.goto(origin+'/?r24AutoBiomes=1',wait_until='domcontentloaded');page.wait_for_selector('.v21VehicleChoice');page.locator('.v21VehicleChoice').first.click();page.locator('#v21StartButton').click()
+                page.wait_for_function("document.getElementById('v21Startup').classList.contains('hidden')")
                 page.evaluate("()=>document.getElementById('presetYungasBtn').click()")
                 page.wait_for_function("WorldDriveFramePacing().rendering.routeKind==='road' && WorldDriveFramePacing().rendering.routePoints===1754 && document.getElementById('loading').classList.contains('hidden')")
-                page.wait_for_function('WorldDriveFramePacing().rendering.groups.sceneryForest.instancedMeshes>=4');report['offBefore']=page.evaluate(R9.FRAMES,3000)
+                page.wait_for_function('WorldDriveFramePacing().rendering.groups.sceneryForest.instancedMeshes>=4')
+                page.wait_for_function("()=>{const s=WorldDriveDiagnostics.forest.visualPilot.snapshot();return s.enabled&&s.pilot==='r20-yungas-humid-montane'&&s.error===null&&s.modifiedChunks>=1&&s.tropicalDensity?.denseCandidatesPerCell===150;}")
+                report['r24Auto']=page.evaluate(SNAP);report['r24AutoController']=page.evaluate("()=>WorldDriveDiagnostics.forest.defaultBiomes.snapshot()")
+                assert report['r24AutoController']['phase']=='active' and report['r24AutoController']['routeId']=='yungas' and report['r24AutoController']['pilot']=='r20-yungas-humid-montane'
+                page.evaluate("()=>{globalThis.__WORLD_DRIVE_DISABLE_DEFAULT_BIOMES__=true;WorldDriveDiagnostics.forest.visualPilot.stop();}");page.wait_for_timeout(400)
+                report['offBefore']=page.evaluate(R9.FRAMES,3000)
                 # R15 is the same-route accepted broad tropical reference.
                 ref=page.evaluate("async u=>(await import(u)).start()",REFERENCE);assert ref['pilot']=='r15-yungas-tropical'
                 ready_ref="()=>{const s=WorldDriveDiagnostics.forest.visualPilot.snapshot();if(s.phase==='fault')throw new Error(s.error);return s.modifiedChunks>=4&&s.proofsCompleted>=4;}"
