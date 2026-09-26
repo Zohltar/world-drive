@@ -17,7 +17,8 @@ R9=load('r22_r9',ROOT/'qa/qa-block8-biome-fullgame-r9.py');BASE=load('r22_source
 def main(pilot,output):
     output.mkdir(parents=True,exist_ok=False);destination=ROOT/INSTALL;bundled=destination.exists()
     if bundled:assert (destination/'directory.json').read_bytes()==(pilot/INSTALL/'directory.json').read_bytes()
-    else:shutil.copytree(pilot/INSTALL,destination);log=None;server=None;errors=[];engine=[];requests=[];upstream=Counter()
+    else:shutil.copytree(pilot/INSTALL,destination)
+    log=None;server=None;errors=[];engine=[];requests=[];upstream=Counter()
     report={'status':'RUNNING','realVite':True,'fullGame':True,'runtimeStubs':False,'gpuPerformanceCertification':False,'browserEnvironment':{'width':1100,'height':700,'deviceScaleFactor':1,'presentedChunks':2,'requiredProofs':3,'timeoutMs':120000}}
     try:
         subprocess.run(['npm','run','build'],cwd=ROOT,check=True);report['productionBuild']=True
