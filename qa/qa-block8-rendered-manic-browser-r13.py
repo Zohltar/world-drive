@@ -68,9 +68,9 @@ SEASONS=r'''()=>{
  return {before,winter,after,roundTrips:20};
 }'''
 def main(pilot,r10,output):
-    output.mkdir(parents=True,exist_ok=False);destination=ROOT/INSTALL
-    if destination.exists():raise FileExistsError('Do not overwrite installed R13 data')
-    shutil.copytree(pilot/INSTALL,destination)
+    output.mkdir(parents=True,exist_ok=False);destination=ROOT/INSTALL;bundled=destination.exists()
+    if bundled:assert (destination/'directory.json').read_bytes()==(pilot/INSTALL/'directory.json').read_bytes()
+    else:shutil.copytree(pilot/INSTALL,destination)
     log=None;server=None
     report={'status':'RUNNING','realVite':True,'fullGame':True,'runtimeStubs':False,'gpuPerformanceCertification':False,
         'browserEnvironment':{'viewportCss':{'width':1100,'height':700},'deviceScaleFactor':1,'requiredRenderedChunks':4,'timeoutMs':120000}}
@@ -167,7 +167,7 @@ def main(pilot,r10,output):
             try:server.wait(timeout=10)
             except subprocess.TimeoutExpired:server.kill();server.wait()
         if log:log.close()
-        shutil.rmtree(destination)
+        (None if bundled else shutil.rmtree(destination))
     print(json.dumps({'status':report['status'],'oracleReads':report['sourceOracle']['exactReads'],'summerChunks':report['summer']['modifiedChunks']}))
 if __name__=='__main__':
     p=argparse.ArgumentParser(description=__doc__)

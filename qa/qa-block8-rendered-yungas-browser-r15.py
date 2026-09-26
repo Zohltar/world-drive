@@ -71,9 +71,9 @@ CHECK=r'''()=>{
  return {before,after:api.audit(),unsupportedWinterRejections:rejected};
 }'''
 def main(pilot,output):
-    output.mkdir(parents=True,exist_ok=False);destination=ROOT/INSTALL
-    if destination.exists():raise FileExistsError('Do not overwrite installed R15 data')
-    shutil.copytree(pilot/INSTALL,destination)
+    output.mkdir(parents=True,exist_ok=False);destination=ROOT/INSTALL;bundled=destination.exists()
+    if bundled:assert (destination/'directory.json').read_bytes()==(pilot/INSTALL/'directory.json').read_bytes()
+    else:shutil.copytree(pilot/INSTALL,destination)
     log=None;server=None;errors=[];engine=[];requests=[];upstream=Counter()
     report={'status':'RUNNING','realVite':True,'fullGame':True,'runtimeStubs':False,'gpuPerformanceCertification':False,
         'browserEnvironment':{'width':1100,'height':700,'deviceScaleFactor':1,'requiredRenderedChunks':4,'timeoutMs':120000}}
@@ -171,7 +171,7 @@ def main(pilot,output):
             try:server.wait(timeout=10)
             except subprocess.TimeoutExpired:server.kill();server.wait()
         if log:log.close()
-        shutil.rmtree(destination)
+        (None if bundled else shutil.rmtree(destination))
     print(json.dumps({'status':report['status'],'oracleReads':report['sourceOracle']['reads'],'summerChunks':report['summer']['modifiedChunks']}))
 if __name__=='__main__':
     p=argparse.ArgumentParser(description=__doc__)

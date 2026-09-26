@@ -48,9 +48,9 @@ COMPARE=r'''()=>{
 }'''
 def main(pilot,output):
     output.mkdir(parents=True,exist_ok=False)
-    destination=ROOT/INSTALL
-    if destination.exists():raise FileExistsError('Do not overwrite installed R18 data')
-    shutil.copytree(pilot/INSTALL,destination)
+    destination=ROOT/INSTALL;bundled=destination.exists()
+    if bundled:assert (destination/'directory.json').read_bytes()==(pilot/INSTALL/'directory.json').read_bytes()
+    else:shutil.copytree(pilot/INSTALL,destination)
     # Confirm the opt-in source graph also compiles in the actual production build.
     subprocess.run(['npm','run','build'],cwd=ROOT,check=True)
     with socket.socket() as s:s.bind(('127.0.0.1',0));port=s.getsockname()[1]
@@ -214,7 +214,7 @@ def main(pilot,output):
         server.terminate()
         try:server.wait(timeout=10)
         except subprocess.TimeoutExpired:server.kill();server.wait()
-        log.close();shutil.rmtree(destination)
+        log.close();(None if bundled else shutil.rmtree(destination))
     print(json.dumps({'status':report['status'],'oracle':report['sourceOracle']['reads'],'renderedChunks':report['summer']['modifiedChunks'],'understoryInstances':report['summer']['understoryInstances']}))
 if __name__=='__main__':
     p=argparse.ArgumentParser(description=__doc__);p.add_argument('--pilot',type=Path,required=True);p.add_argument('--output',type=Path,required=True)

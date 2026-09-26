@@ -15,9 +15,9 @@ def load(name,path):
 R9=load('r22_r9',ROOT/'qa/qa-block8-biome-fullgame-r9.py');BASE=load('r22_source',ROOT/'qa/qa-block8-rendered-pilot-browser-r12.py');SOURCE_CHECK=BASE.SOURCE_CHECK
 
 def main(pilot,output):
-    output.mkdir(parents=True,exist_ok=False);destination=ROOT/INSTALL
-    if destination.exists():raise FileExistsError('Do not overwrite installed R12 data')
-    shutil.copytree(pilot/INSTALL,destination);log=None;server=None;errors=[];engine=[];requests=[];upstream=Counter()
+    output.mkdir(parents=True,exist_ok=False);destination=ROOT/INSTALL;bundled=destination.exists()
+    if bundled:assert (destination/'directory.json').read_bytes()==(pilot/INSTALL/'directory.json').read_bytes()
+    else:shutil.copytree(pilot/INSTALL,destination);log=None;server=None;errors=[];engine=[];requests=[];upstream=Counter()
     report={'status':'RUNNING','realVite':True,'fullGame':True,'runtimeStubs':False,'gpuPerformanceCertification':False,'browserEnvironment':{'width':1100,'height':700,'deviceScaleFactor':1,'presentedChunks':2,'requiredProofs':3,'timeoutMs':120000}}
     try:
         subprocess.run(['npm','run','build'],cwd=ROOT,check=True);report['productionBuild']=True
@@ -111,7 +111,7 @@ def main(pilot,output):
             try:server.wait(timeout=10)
             except subprocess.TimeoutExpired:server.kill();server.wait()
         if log:log.close()
-        shutil.rmtree(destination)
+        (None if bundled else shutil.rmtree(destination))
     print(json.dumps({'status':report['status'],'summerChunks':report['summer']['modifiedChunks'],'models':report['summer']['models']}))
 if __name__=='__main__':
     p=argparse.ArgumentParser(description=__doc__);p.add_argument('--pilot',type=Path,required=True);p.add_argument('--output',type=Path,required=True);a=p.parse_args();main(a.pilot.resolve(),a.output.resolve())
