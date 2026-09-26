@@ -53,7 +53,12 @@ assert.doesNotMatch(historicalPort,/\b(?:fetch|setTimeout|setInterval|requestAni
 assert.deepEqual(changed(R23_BASE,R24_BASE).toSorted(),r23Runtime.toSorted(),'Historical R23 runtime drifted');
 for(const [path,sha] of r23Blob)assert.equal(git('rev-parse',`${R24_BASE}:${path}`).trim(),sha,`Historical R23 blob drifted: ${path}`);
 
-assert.deepEqual(changed(R24_BASE).toSorted(),['src/app/biome-diagnostics.js'],'Unexpected R24 runtime addition/deletion/change');
+const r24Changes=changed(R24_BASE);
+const bundledPrefix='public/local-data/biomes/';
+const r24RuntimeChanges=r24Changes.filter(path=>!path.startsWith(bundledPrefix));
+assert.deepEqual(r24RuntimeChanges.toSorted(),['src/app/biome-diagnostics.js'],'Unexpected R24 runtime addition/deletion/change');
+for(const path of r24Changes.filter(path=>path.startsWith(bundledPrefix)))
+  assert.match(path,/^public\/local-data\/biomes\/pilot-r1[2-5]\/(?:\d+-\d+\.json\.gz|batch-\d+-\d+\.json|directory\.json|pilot-manifest\.json|start\.mjs|ATTRIBUTION\.txt)$/,'Unexpected bundled biome data path');
 assert.equal(git('hash-object','src/app/biome-diagnostics.js').trim(),'0ee68e7d0eebc5212b6b36f672bfcc4c5d799290','R24 route-ready owner drifted');
 assert.equal(git('hash-object','tools/biomes/default-biome-activation-r24.mjs').trim(),'8e43127add2738ae416a6e8d8b0e6963f1590930','R24 selector drifted');
 const r24=readFileSync('src/app/biome-diagnostics.js','utf8');

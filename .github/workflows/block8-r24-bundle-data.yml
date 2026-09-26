@@ -1,0 +1,57 @@
+name: Block 8 R24 Bundle Accepted Biome Data
+on:
+  push:
+    branches: [candidate/block8-biome-classifier-r1]
+    paths:
+      - .github/workflows/block8-r24-bundle-data.yml
+permissions:
+  contents: write
+  actions: read
+jobs:
+  bundle:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      GH_TOKEN: ${{ github.token }}
+      R12_SHA: 7432f64a462563351b6c400f35ddda50307f1af109376ac8a76911929a644cf8
+      R13_SHA: a9cd32f9316c767a6554110c1e795fafef0195fe1ac54c8c84097c42fabe075d
+      R14_SHA: 23ece19d72201808d4edb3f904e2dc0ec6dea23f5cdf64f5be341a33ccf73c31
+      R15_SHA: d40509469325de661a5f060d8e9509819fcc625950fe0d90677b8219977f0f6f
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: candidate/block8-biome-classifier-r1
+      - name: Download exact previously accepted finite packages
+        run: |
+          gh run download 35916974610 --repo "$GITHUB_REPOSITORY" --name "biome-r22-ecological-eifel-01b8065736bf9e5f2dc8179180229c4ebeed8794" --dir "$RUNNER_TEMP/r22"
+          gh run download 35916974618 --repo "$GITHUB_REPOSITORY" --name "biome-r21-ecological-manic-01b8065736bf9e5f2dc8179180229c4ebeed8794" --dir "$RUNNER_TEMP/r21"
+          gh run download 35916974719 --repo "$GITHUB_REPOSITORY" --name "biome-r19-dry-laguna-01b8065736bf9e5f2dc8179180229c4ebeed8794" --dir "$RUNNER_TEMP/r19"
+          gh run download 35916974686 --repo "$GITHUB_REPOSITORY" --name "biome-r20-ecological-yungas-01b8065736bf9e5f2dc8179180229c4ebeed8794" --dir "$RUNNER_TEMP/r20"
+      - name: Install the accepted finite packages into public runtime data
+        run: |
+          mkdir -p public/local-data/biomes
+          rm -rf public/local-data/biomes/pilot-r12 public/local-data/biomes/pilot-r13 public/local-data/biomes/pilot-r14 public/local-data/biomes/pilot-r15
+          cp -a "$RUNNER_TEMP/r22/pilot/public/local-data/biomes/pilot-r12" public/local-data/biomes/
+          cp -a "$RUNNER_TEMP/r21/pilot/public/local-data/biomes/pilot-r13" public/local-data/biomes/
+          cp -a "$RUNNER_TEMP/r19/pilot/public/local-data/biomes/pilot-r14" public/local-data/biomes/
+          cp -a "$RUNNER_TEMP/r20/pilot/public/local-data/biomes/pilot-r15" public/local-data/biomes/
+          echo "$R12_SHA  public/local-data/biomes/pilot-r12/directory.json" | sha256sum --check --strict
+          echo "$R13_SHA  public/local-data/biomes/pilot-r13/directory.json" | sha256sum --check --strict
+          echo "$R14_SHA  public/local-data/biomes/pilot-r14/directory.json" | sha256sum --check --strict
+          echo "$R15_SHA  public/local-data/biomes/pilot-r15/directory.json" | sha256sum --check --strict
+          test -s public/local-data/biomes/pilot-r12/ATTRIBUTION.txt
+          test -s public/local-data/biomes/pilot-r13/ATTRIBUTION.txt
+          test -s public/local-data/biomes/pilot-r14/ATTRIBUTION.txt
+          test -s public/local-data/biomes/pilot-r15/ATTRIBUTION.txt
+      - name: Commit exact runtime data to candidate
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add public/local-data/biomes/pilot-r12 public/local-data/biomes/pilot-r13 public/local-data/biomes/pilot-r14 public/local-data/biomes/pilot-r15
+          if git diff --cached --quiet; then
+            echo "Accepted biome packages already bundled"
+            exit 0
+          fi
+          git commit -m "Block8 R24: bundle accepted finite biome data"
+          git push origin HEAD:candidate/block8-biome-classifier-r1
