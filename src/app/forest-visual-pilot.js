@@ -38,7 +38,13 @@ function owner(target){
     audit:()=>pilot?.audit()??{enabled:false,meshes:[]}});
   ensureWorldDriveDiagnostics(target).forest.visualPilot=api;
   entry={invalidate,
-    scene(value){stop();pilot=null;scene=value;},
+    scene(value){
+      stop();pilot=null;scene=value;
+      // R24: a world/scenery rebuild can replace the forest scene after the
+      // route-ready activation already ran. Notify the route owner so the
+      // accepted biome presentation is rebound to the new scene immediately.
+      route?.onSceneReady?.();
+    },
     route(value){stop();pilot=null;route=value;}};
   owners.set(target,entry);return entry;
 }

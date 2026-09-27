@@ -59,10 +59,11 @@ const r24RuntimeChanges=r24Changes.filter(path=>!path.startsWith(bundledPrefix))
 assert.deepEqual(r24RuntimeChanges.toSorted(),['src/app/biome-diagnostics.js'],'Unexpected R24 runtime addition/deletion/change');
 for(const path of r24Changes.filter(path=>path.startsWith(bundledPrefix)))
   assert.match(path,/^public\/local-data\/biomes\/pilot-r1[2-5]\/(?:\d+-\d+\.json\.gz|batch-\d+-\d+\.json|directory\.json|pilot-manifest\.json|start\.mjs|ATTRIBUTION\.txt)$/,'Unexpected bundled biome data path');
-assert.equal(git('hash-object','src/app/biome-diagnostics.js').trim(),'0ee68e7d0eebc5212b6b36f672bfcc4c5d799290','R24 route-ready owner drifted');
+assert.equal(git('hash-object','src/app/biome-diagnostics.js').trim(),'96bc82f329ff8e4d57dc54dc35a0f24c972d0def','R24 route-ready owner drifted');
+assert.equal(git('hash-object','src/app/forest-visual-pilot.js').trim(),'30cd893f8bc4f955693143cc692782e93086a9d5','R24 scene-rebind owner drifted');
 assert.equal(git('hash-object','tools/biomes/default-biome-activation-r24.mjs').trim(),'8e43127add2738ae416a6e8d8b0e6963f1590930','R24 selector drifted');
 const r24=readFileSync('src/app/biome-diagnostics.js','utf8');
-for(const marker of ["default-biome-activation-r24.mjs","eifel-pilot-launcher-r22.mjs","boreal-pilot-launcher-r21.mjs","dry-pilot-launcher-r19.mjs","humid-montane-pilot-launcher-r20.mjs","fallback-generic-r4"])
+for(const marker of ["default-biome-activation-r24.mjs","eifel-pilot-launcher-r22.mjs","boreal-pilot-launcher-r21.mjs","dry-pilot-launcher-r19.mjs","humid-montane-pilot-launcher-r20.mjs","fallback-generic-r4","onSceneReady:()=>{if(routeReady)void activateDefaultBiome(request,{sceneRebind:true});}"])
   assert.ok(r24.includes(marker),'R24 activation seam missing: '+marker);
 assert.doesNotMatch(readFileSync('tools/biomes/default-biome-activation-r24.mjs','utf8'),/\b(?:fetch|setTimeout|setInterval|requestAnimationFrame|requestIdleCallback|Worker)\b/);
 
@@ -77,6 +78,7 @@ assert.ok(wrapper.includes('setChunkCandidateLimit:(...args)=>activeBase().setCh
 assert.ok(wrapper.includes('regionalDensity:{baseCandidatesPerCell:finite(raw.baseCandidatesPerCell),maxCandidatesPerCell:finite(raw.maxCandidatesPerCell),overrides:finite(raw.candidateOverrides)}'));
 const currentPort=readFileSync(port,'utf8');
 assert.ok(currentPort.includes('setForestChunkCandidateLimit:options.setForestChunkCandidateLimit'));
+assert.ok(currentPort.includes('route?.onSceneReady?.();'));
 assert.doesNotMatch(currentPort,/\b(?:fetch|setTimeout|setInterval|requestAnimationFrame|requestIdleCallback)\s*\(|new\s+(?:Worker|THREE\.)/);
 for(const asset of ['tools/biomes/vegetation-prototypes.mjs','tools/biomes/vegetation-prototype-data.mjs',
  'tools/biomes/vegetation-winter-data.mjs','tools/biomes/vegetation-seasonal-prototypes.mjs'])

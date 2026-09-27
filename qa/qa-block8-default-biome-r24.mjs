@@ -16,3 +16,10 @@ assert.equal(selectDefaultBiomeR24(state({lat:48.4,lon:-71.6},{lat:48.6,lon:-72.
 assert.equal(selectDefaultBiomeR24({}),null);
 assert.deepEqual(Object.keys(R24_DEFAULT_BIOMES).sort(),['laguna','manic','nord','yungas']);
 console.log(JSON.stringify({status:'PASS',routes:Object.fromEntries(Object.entries(R24_DEFAULT_BIOMES).map(([k,v])=>[k,v.pilot])),fallback:'generic-r4'}));
+
+import {readFileSync} from 'node:fs';
+const forestPort=readFileSync(new URL('../src/app/forest-visual-pilot.js',import.meta.url),'utf8');
+const biomeRuntime=readFileSync(new URL('../src/app/biome-diagnostics.js',import.meta.url),'utf8');
+assert.ok(forestPort.includes('route?.onSceneReady?.();'),'R24 must rebind after forest scene replacement');
+assert.ok(biomeRuntime.includes('onSceneReady:()=>{if(routeReady)void activateDefaultBiome(request,{sceneRebind:true});}'),'R24 route owner must react to scene readiness');
+assert.ok(biomeRuntime.includes('sceneRebinds'),'R24 scene rebind diagnostics missing');

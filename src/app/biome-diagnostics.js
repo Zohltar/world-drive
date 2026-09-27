@@ -10,11 +10,12 @@ export function attachBiomeRouteDiagnostics(lifecycle,options,{target=globalThis
   if(!target.document)return lifecycle;
   let observer=null,loadEpoch=0,request=0,routeReady=!!options.route?.length,lastError=null;
   let listening=false,defaultEpoch=0,defaultLauncher=null;
-  let defaultState={enabled:true,phase:'waiting-route',routeId:null,pilot:null,error:null,activations:0,fallbacks:0};
+  let defaultState={enabled:true,phase:'waiting-route',routeId:null,pilot:null,error:null,activations:0,fallbacks:0,sceneRebinds:0};
   const diagnostics=ensureWorldDriveDiagnostics(target);
   const visualPilot=registerForestPilotRoute({getState:options.getState,
     getGeneration:()=>lifecycle.worldDrive.route.generation,getRoute:()=>options.route,
-    isRouteReady:()=>routeReady},target);
+    isRouteReady:()=>routeReady,
+    onSceneReady:()=>{if(routeReady)void activateDefaultBiome(request,{sceneRebind:true});}},target);
 
   function defaultSnapshot(){return {...defaultState};}
   function defaultDisabled(){return target.__WORLD_DRIVE_DISABLE_DEFAULT_BIOMES__===true;}
@@ -31,8 +32,9 @@ export function attachBiomeRouteDiagnostics(lifecycle,options,{target=globalThis
     if(id==='humid-r20')return import('../../tools/biomes/humid-montane-pilot-launcher-r20.mjs');
     throw new TypeError('Unknown R24 default biome launcher');
   }
-  async function activateDefaultBiome(token=request){
+  async function activateDefaultBiome(token=request,{sceneRebind=false}={}){
     const epoch=++defaultEpoch;
+    if(sceneRebind)setDefaultState({sceneRebinds:defaultState.sceneRebinds+1});
     if(token!==request||!routeReady)return {status:'discarded'};
     if(defaultDisabled()){
       setDefaultState({enabled:false,phase:'manual-test-mode',routeId:null,pilot:null,error:null});
