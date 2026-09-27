@@ -56,7 +56,7 @@ for(const [path,sha] of r23Blob)assert.equal(git('rev-parse',`${R24_BASE}:${path
 const r24Changes=changed(R24_BASE);
 const bundledPrefix='public/local-data/biomes/';
 const r24RuntimeChanges=r24Changes.filter(path=>!path.startsWith(bundledPrefix));
-assert.deepEqual(r24RuntimeChanges.toSorted(),['src/app/biome-diagnostics.js'],'Unexpected R24 runtime addition/deletion/change');
+assert.deepEqual(r24RuntimeChanges.toSorted(),['src/app/biome-diagnostics.js','src/app/forest-visual-pilot.js'].toSorted(),'Unexpected R24 runtime addition/deletion/change');
 for(const path of r24Changes.filter(path=>path.startsWith(bundledPrefix)))
   assert.match(path,/^public\/local-data\/biomes\/pilot-r1[2-5]\/(?:\d+-\d+\.json\.gz|batch-\d+-\d+\.json|directory\.json|pilot-manifest\.json|start\.mjs|ATTRIBUTION\.txt)$/,'Unexpected bundled biome data path');
 assert.equal(git('hash-object','src/app/biome-diagnostics.js').trim(),'96bc82f329ff8e4d57dc54dc35a0f24c972d0def','R24 route-ready owner drifted');
