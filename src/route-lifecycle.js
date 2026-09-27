@@ -1,8 +1,10 @@
 export * from './routing/route-lifecycle.js';
-import {createRouteLifecycle as createMaintainedRouteLifecycle} from './routing/route-lifecycle.js';
+import {createRouteLifecycle as createMaintainedRouteLifecycleImpl} from './routing/route-lifecycle.js';
 import {attachBiomeRouteDiagnostics} from './app/biome-diagnostics.js';
 
-// Optional diagnostic observer. Routing, terrain and forest ownership stay below.
+// Stable routing facade. The raw maintained lifecycle is exported separately so
+// main can install R24 explicitly without bypassing the public routing boundary.
+export const createMaintainedRouteLifecycle=createMaintainedRouteLifecycleImpl;
 export function createRouteLifecycle(options){
-  return attachBiomeRouteDiagnostics(createMaintainedRouteLifecycle(options),options);
+  return attachBiomeRouteDiagnostics(createMaintainedRouteLifecycleImpl(options),options);
 }

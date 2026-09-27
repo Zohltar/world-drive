@@ -25,6 +25,6 @@ assert.ok(biomeRuntime.includes('onSceneReady:()=>{if(routeReady)void activateDe
 assert.ok(biomeRuntime.includes('sceneRebinds'),'R24 scene rebind diagnostics missing');
 
 const mainRuntime=readFileSync(new URL('../src/main.js',import.meta.url),'utf8');
-assert.ok(mainRuntime.includes("import { createRouteLifecycle as createMaintainedRouteLifecycle } from './routing/route-lifecycle.js';"),'main must use maintained lifecycle directly');
+assert.ok(mainRuntime.includes("import { createMaintainedRouteLifecycle } from './route-lifecycle.js';"),'main must use maintained lifecycle through stable root facade');
 assert.ok(mainRuntime.includes("import { attachBiomeRouteDiagnostics } from './app/biome-diagnostics.js';"),'main must import R24 attachment explicitly');
 assert.ok(mainRuntime.includes('routeLifecycle=attachBiomeRouteDiagnostics('),'main must install R24 controller explicitly');

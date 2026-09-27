@@ -20,7 +20,7 @@ import {
 } from './route-presets.js';
 import { createRouteChallenge } from './route-challenge.js';
 import { createRoutePlannerUi } from './route-planner-ui.js';
-import { createRouteLifecycle as createMaintainedRouteLifecycle } from './routing/route-lifecycle.js';
+import { createMaintainedRouteLifecycle } from './route-lifecycle.js';
 import { attachBiomeRouteDiagnostics } from './app/biome-diagnostics.js';
 import { createInstrumentCluster } from './instrument-cluster.js';
 import { createMinimapSystem } from './minimap.js';
