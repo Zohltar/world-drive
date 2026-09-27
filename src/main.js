@@ -20,7 +20,8 @@ import {
 } from './route-presets.js';
 import { createRouteChallenge } from './route-challenge.js';
 import { createRoutePlannerUi } from './route-planner-ui.js';
-import { createRouteLifecycle } from './route-lifecycle.js';
+import { createRouteLifecycle as createMaintainedRouteLifecycle } from './routing/route-lifecycle.js';
+import { attachBiomeRouteDiagnostics } from './app/biome-diagnostics.js';
 import { createInstrumentCluster } from './instrument-cluster.js';
 import { createMinimapSystem } from './minimap.js';
 import { createRoadFurnitureSystem } from './road-furniture.js';
@@ -1291,7 +1292,7 @@ async function createRequestedRoute(start,end,waypoints=[],options={}){
 function bumpRouteGeneration(){return routeLifecycle.bumpRouteGeneration();}
 async function loadRoute(){return routeLifecycle.loadRoute();}
 
-routeLifecycle=createRouteLifecycle({
+const routeLifecycleOptions={
   version:WORLD_DRIVE_VERSION,
   getState:()=>({
     autopilot,
@@ -1399,7 +1400,11 @@ routeLifecycle=createRouteLifecycle({
   onSceneryUnavailable:()=>{sceneryStatus.textContent='Indisponible';},
   loadRoadMetadataAround:(x,z)=>loadRoadMetadataAround(x,z),
   loadGeographicSignsAround:(x,z)=>loadGeographicSignsAround(x,z)
-});
+};
+routeLifecycle=attachBiomeRouteDiagnostics(
+  createMaintainedRouteLifecycle(routeLifecycleOptions),
+  routeLifecycleOptions
+);
 const WorldDrive=routeLifecycle.worldDrive;
 
 // ---------- Driving ----------

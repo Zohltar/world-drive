@@ -56,11 +56,12 @@ for(const [path,sha] of r23Blob)assert.equal(git('rev-parse',`${R24_BASE}:${path
 const r24Changes=changed(R24_BASE);
 const bundledPrefix='public/local-data/biomes/';
 const r24RuntimeChanges=r24Changes.filter(path=>!path.startsWith(bundledPrefix));
-assert.deepEqual(r24RuntimeChanges.toSorted(),['src/app/biome-diagnostics.js','src/app/forest-visual-pilot.js'].toSorted(),'Unexpected R24 runtime addition/deletion/change');
+assert.deepEqual(r24RuntimeChanges.toSorted(),['src/app/biome-diagnostics.js','src/app/forest-visual-pilot.js','src/main.js'].toSorted(),'Unexpected R24 runtime addition/deletion/change');
 for(const path of r24Changes.filter(path=>path.startsWith(bundledPrefix)))
   assert.match(path,/^public\/local-data\/biomes\/pilot-r1[2-5]\/(?:\d+-\d+\.json\.gz|batch-\d+-\d+\.json|directory\.json|pilot-manifest\.json|start\.mjs|ATTRIBUTION\.txt)$/,'Unexpected bundled biome data path');
 assert.equal(git('hash-object','src/app/biome-diagnostics.js').trim(),'96bc82f329ff8e4d57dc54dc35a0f24c972d0def','R24 route-ready owner drifted');
 assert.equal(git('hash-object','src/app/forest-visual-pilot.js').trim(),'30cd893f8bc4f955693143cc692782e93086a9d5','R24 scene-rebind owner drifted');
+assert.equal(git('hash-object','src/main.js').trim(),'7d2f1372cd5fa17ce9f64471aa8a7d80014b7da6','R24 main integration owner drifted');
 assert.equal(git('hash-object','tools/biomes/default-biome-activation-r24.mjs').trim(),'8e43127add2738ae416a6e8d8b0e6963f1590930','R24 selector drifted');
 const r24=readFileSync('src/app/biome-diagnostics.js','utf8');
 for(const marker of ["default-biome-activation-r24.mjs","eifel-pilot-launcher-r22.mjs","boreal-pilot-launcher-r21.mjs","dry-pilot-launcher-r19.mjs","humid-montane-pilot-launcher-r20.mjs","fallback-generic-r4","onSceneReady:()=>{if(routeReady)void activateDefaultBiome(request,{sceneRebind:true});}"])
