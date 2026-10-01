@@ -1,7 +1,6 @@
 # World Drive — Block 8 R24 default biome activation
 
-Status: candidate-only; automatic activation implemented; exact-head QA and human
-gate required before integration to dev. Main remains untouched.
+Status: **HUMAN PASS + exact-head candidate PASS.** Automatic activation is accepted in the normal game. Candidate is being synchronized/revalidated immediately before integration to `dev`. Main remains untouched.
 
 ## Goal
 
@@ -63,6 +62,4 @@ R24 must preserve:
 - generic R4 fallback for unreviewed routes;
 - no automatic movement of dev or main.
 
-Human gate: load the normal game with no console launcher and verify that the four
-reviewed presets visibly select their accepted forest automatically, with no obvious
-route-change leak, pop-in regression or fluidity regression.
+Human gate: **PASS.** Normal-game retest confirmed automatic biome presentation without a DevTools launcher after correcting runtime attachment and forest-scene rebind handling. Preserve this behavior during synchronization and `dev` integration.
