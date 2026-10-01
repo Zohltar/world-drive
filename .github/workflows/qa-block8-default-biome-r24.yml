@@ -1,0 +1,31 @@
+name: Block 8 Default Biome Activation R24 QA
+on:
+  push:
+    branches: [candidate/block8-biome-classifier-r1]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  default-biomes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Preserve R12 R23 runtime and authorize only R24 seam
+        run: node qa/qa-block8-rendered-pilot-boundary-r12.mjs
+      - name: Four reviewed presets select their accepted default biome
+        run: node qa/qa-block8-default-biome-r24.mjs
+      - name: Preserve R4 progressive streaming and Yungas density lifecycle
+        run: |
+          node qa/qa-block8-forest-progressive-layer-r4.mjs
+          node qa/qa-block8-yungas-density-r23.mjs
+      - name: Production build
+        run: |
+          npm ci
+          npm run build

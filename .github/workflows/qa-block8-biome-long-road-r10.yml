@@ -1,0 +1,60 @@
+name: Block 8 Real Manic Long Road R10 QA
+on:
+  push:
+    branches: [candidate/block8-biome-classifier-r1]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  real-road-pilot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      RESOLVE_SHA256: be36d6209e443038d02e309f0447c6e7f2a62f5fe60c605ffe90d064952f2a60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Preserve accepted runtime except exact R12 inert owner seams
+        run: node qa/qa-block8-rendered-pilot-boundary-r12.mjs
+      - name: Pinned real route and continuous diagnostic chunk plan
+        run: node qa/qa-block8-biome-long-road-plan-r10.mjs
+      - name: Install authoring-only dependencies
+        run: python -m pip install numpy==2.2.6 rasterio==1.4.3 pyshp==2.3.1 shapely==2.1.2 playwright==1.57.0
+      - name: Source oracle and negative input contracts
+        run: python qa/qa-block8-biome-long-road-builder-r10.py
+      - name: Retrieve and verify existing pinned ecoregion source
+        run: |
+          curl --fail --location --proto '=https' --proto-redir '=https' --retry 2 --connect-timeout 20 --max-time 180 --max-filesize 200000000 https://storage.googleapis.com/teow2016/Ecoregions2017.zip -o "$RUNNER_TEMP/Ecoregions2017.zip"
+          echo "$RESOLVE_SHA256  $RUNNER_TEMP/Ecoregions2017.zip" | sha256sum --check --strict
+          python tools/biomes/build-resolve-atlas.py --input "$RUNNER_TEMP/Ecoregions2017.zip" --output "$RUNNER_TEMP/atlas-r10" --cell-degrees 0.1 --expected-sha256 "$RESOLVE_SHA256"
+      - name: Build pinned finite pilot without live routing or synthetic fallback
+        run: python tools/biomes/build-long-road-pilot-r10.py --source "$RUNNER_TEMP/Ecoregions2017.zip" --atlas "$RUNNER_TEMP/atlas-r10" --fixture qa/fixtures/biomes/manic-r10 --output "$RUNNER_TEMP/biome-r10"
+      - name: Package integrity and reproducibility
+        run: |
+          python qa/qa-block8-biome-long-road-builder-r10.py --pilot "$RUNNER_TEMP/biome-r10"
+          python tools/biomes/build-long-road-pilot-r10.py --source "$RUNNER_TEMP/Ecoregions2017.zip" --atlas "$RUNNER_TEMP/atlas-r10" --fixture qa/fixtures/biomes/manic-r10 --output "$RUNNER_TEMP/biome-r10-repeat"
+          cmp "$RUNNER_TEMP/biome-r10/world-drive-biome-pilot-r10.zip" "$RUNNER_TEMP/biome-r10-repeat/world-drive-biome-pilot-r10.zip"
+      - name: Install native Chromium test harness
+        run: python -m playwright install --with-deps chromium
+      - name: Native Worker all 800 real-route windows and source parity
+        run: python qa/qa-block8-biome-long-road-r10.py --pilot "$RUNNER_TEMP/biome-r10" --output "$RUNNER_TEMP/biome-r10/native-replay.json"
+      - name: Preserve source and exact code evidence
+        if: always()
+        run: |
+          mkdir -p "$RUNNER_TEMP/biome-r10"
+          git rev-parse HEAD > "$RUNNER_TEMP/biome-r10/tested-commit.txt"
+          git archive --format=tar.gz HEAD tools/biomes src/scenery/biomes qa/fixtures/biomes/manic-r10 qa/qa-block8-biome-long-road-plan-r10.mjs qa/qa-block8-biome-long-road-builder-r10.py qa/qa-block8-biome-long-road-r10.py qa/qa-block8-biome-source-parity-r1.py docs/WORLD_DRIVE_BLOCK8_ACTIVE_CANDIDATE.md docs/WORLD_DRIVE_BLOCK8_BIOME_R10_MANIC_PILOT.md .github/workflows/qa-block8-biome-long-road-r10.yml > "$RUNNER_TEMP/biome-r10/r10-source.tar.gz"
+      - name: Retain installable pilot and measured native evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: biome-r10-manic-${{ github.sha }}
+          path: ${{ runner.temp }}/biome-r10
+          if-no-files-found: error

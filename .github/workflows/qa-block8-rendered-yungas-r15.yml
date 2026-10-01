@@ -1,0 +1,66 @@
+name: Block 8 Rendered Tropical Yungas R15 QA
+on:
+  push:
+    branches: [candidate/block8-biome-classifier-r1]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  rendered-tropical:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      RESOLVE_SHA256: be36d6209e443038d02e309f0447c6e7f2a62f5fe60c605ffe90d064952f2a60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Preserve exact approved runtime and asset boundaries
+        run: node qa/qa-block8-rendered-pilot-boundary-r12.mjs
+      - name: Summer-only tropical contracts and prior profiles
+        run: |
+          mkdir -p "$RUNNER_TEMP/biome-r15"
+          python qa/qa-block8-yungas-capture-r15.py
+          python qa/qa-block8-rendered-yungas-network-r15.py
+          node qa/qa-block8-rendered-laguna-r14.mjs
+          node qa/qa-block8-rendered-yungas-r15.mjs "$RUNNER_TEMP/biome-r15/unit-qa.json"
+          node qa/qa-block8-rendered-pilot-r12.mjs
+          node qa/qa-block8-rendered-manic-r13.mjs
+          node qa/qa-block8-rendered-route-owner-r12.mjs
+          node qa/qa-block8-forest-progressive-layer-r4.mjs
+      - name: Existing project and build-only geographic dependencies
+        run: |
+          npm ci
+          python -m pip install numpy==2.2.6 rasterio==1.4.3 pyshp==2.3.1 shapely==2.1.2 playwright==1.57.0
+          python -m playwright install --with-deps chromium
+      - name: Retrieve pinned source and prepare finite route data
+        run: |
+          curl --fail --location --proto '=https' --proto-redir '=https' --retry 2 --connect-timeout 20 --max-time 180 --max-filesize 200000000 https://storage.googleapis.com/teow2016/Ecoregions2017.zip -o "$RUNNER_TEMP/Ecoregions2017.zip"
+          echo "$RESOLVE_SHA256  $RUNNER_TEMP/Ecoregions2017.zip" | sha256sum --check --strict
+          python tools/biomes/build-resolve-atlas.py --input "$RUNNER_TEMP/Ecoregions2017.zip" --output "$RUNNER_TEMP/atlas-r15" --cell-degrees 0.1 --expected-sha256 "$RESOLVE_SHA256"
+          python tools/biomes/build-rendered-yungas-r15.py --source "$RUNNER_TEMP/Ecoregions2017.zip" --atlas "$RUNNER_TEMP/atlas-r15" --output "$RUNNER_TEMP/biome-r15/pilot"
+      - name: Reproducible package, negative inputs and finite real-byte coverage
+        run: |
+          python qa/qa-block8-rendered-yungas-builder-r15.py --source "$RUNNER_TEMP/Ecoregions2017.zip" --atlas "$RUNNER_TEMP/atlas-r15" --pilot "$RUNNER_TEMP/biome-r15/pilot" --output "$RUNNER_TEMP/biome-r15/package-qa.json"
+          node qa/qa-block8-rendered-yungas-data-r15.mjs "$RUNNER_TEMP/biome-r15/pilot" "$RUNNER_TEMP/biome-r15/data-qa.json"
+      - name: Original polygons, native Worker and full Vite game tropical OFF ON OFF
+        run: python qa/qa-block8-rendered-yungas-browser-r15.py --pilot "$RUNNER_TEMP/biome-r15/pilot" --output "$RUNNER_TEMP/biome-r15/native"
+      - name: Preserve exact candidate and measured evidence
+        if: always()
+        run: |
+          mkdir -p "$RUNNER_TEMP/biome-r15"
+          git rev-parse HEAD > "$RUNNER_TEMP/biome-r15/tested-commit.txt"
+          git archive --format=tar.gz HEAD tools/biomes src/scenery/biomes src/app/forest-visual-pilot.js src/app/biome-diagnostics.js src/scenery/scenery-renderer-p933.js src/routing/circuits src/forest-streaming-policy.js src/forest-proxy-assets.js qa/fixtures/biomes/manic-r10 qa/fixtures/biomes/yungas-r15 qa/qa-block8-yungas-capture-r15.py qa/qa-block8-rendered-yungas-network-r15.py qa/qa-block8-rendered-yungas-r15.mjs qa/qa-block8-rendered-yungas-data-r15.mjs qa/qa-block8-rendered-yungas-builder-r15.py qa/qa-block8-rendered-yungas-browser-r15.py qa/qa-block8-rendered-manic-network-r13.py .github/workflows/qa-block8-rendered-yungas-r15.yml docs/WORLD_DRIVE_BLOCK8_ACTIVE_CANDIDATE.md docs/WORLD_DRIVE_BLOCK8_RENDERED_YUNGAS_R15.md > "$RUNNER_TEMP/biome-r15/r15-source.tar.gz"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: biome-r15-rendered-${{ github.sha }}
+          path: ${{ runner.temp }}/biome-r15
+          if-no-files-found: error

@@ -6,6 +6,11 @@ export const FOREST_STREAMING_POLICY=Object.freeze({
   // 136 -> 109 candidates per 120 m cell (~19.9% reduction).
   candidatesPerCell:109,
 
+  // R23: baseline stays 109/cell. A source-proved regional pilot may request
+  // a bounded per-chunk tail without changing the certified first 64 candidates.
+  // 150/cell is the reviewed Yungas target; 160 is a hard generic safety ceiling.
+  maxCandidatesPerCell:160,
+
   // Block 8 R4: commit a uniform 64/109 candidate layer across every cell
   // before background densification completes the remaining candidates.
   firstLayerCandidatesPerCell:64,

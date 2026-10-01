@@ -1,0 +1,33 @@
+name: Block 8 Yungas R15 authoring route capture
+on:
+  push:
+    branches: [candidate/block8-biome-classifier-r1]
+    paths:
+      - tools/biomes/capture-yungas-route-r15.py
+      - .github/workflows/capture-block8-yungas-route-r15.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  capture:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Capture actual existing preset through its historic-road waypoint
+        run: python tools/biomes/capture-yungas-route-r15.py --output "$RUNNER_TEMP/yungas-r15/route"
+      - name: Retain exact authoring source for review, not automatic trust
+        if: always()
+        run: |
+          mkdir -p "$RUNNER_TEMP/yungas-r15"
+          git rev-parse HEAD > "$RUNNER_TEMP/yungas-r15/tested-commit.txt"
+          git archive --format=tar.gz HEAD src qa tools/biomes .github/workflows package.json package-lock.json > "$RUNNER_TEMP/yungas-r15/authoring-source.tar.gz"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: yungas-route-capture-r15-${{ github.sha }}
+          path: ${{ runner.temp }}/yungas-r15
+          if-no-files-found: error

@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>World Drive — R20 Yungas model viewer</title>
+<style>
+:root{font:16px system-ui,sans-serif;color:#e7edf0;background:#17232c}
+body{margin:0 auto;max-width:1200px;padding:24px}
+h1{font-size:26px;margin:0 0 8px}.sub{color:#b9cad4;line-height:1.5;max-width:900px}
+.toolbar{display:flex;gap:18px;align-items:center;flex-wrap:wrap;margin:18px 0}
+select,input,button{font:inherit}
+select,button{background:#dae8ee;color:#14202a;border:0;border-radius:4px;padding:8px 12px}
+canvas{width:100%;display:block;border:1px solid #50616e;border-radius:8px;background:#263945}
+#state{margin-top:12px;padding:12px;background:#22323e;white-space:pre-wrap;line-height:1.45}
+</style>
+</head>
+<body>
+<h1>World Drive · R20 Yungas · Galerie des modèles</h1>
+<p class="sub">Viewer isolé du jeu. Il affiche directement les quatre géométries procédurales R20. Le modèle <strong>tree-fern</strong> est sélectionné par défaut pour vérifier sa silhouette, ses frondes et ses pennes.</p>
+<div class="toolbar">
+<label>Modèle
+<select id="model">
+<option value="tree-fern">Tree fern</option>
+<option value="humid-montane-broadleaf">Humid broadleaf</option>
+<option value="epiphyte-cloud-tree">Epiphyte cloud tree</option>
+<option value="bamboo-clump">Bamboo clump</option>
+</select>
+</label>
+<label>Rotation <input id="rotation" type="range" min="-180" max="180" value="25"></label>
+<label>Zoom <input id="zoom" type="range" min="70" max="180" value="115"></label>
+<label><input id="wire" type="checkbox"> Wireframe</label>
+<button id="light">Lumière rasante</button>
+</div>
+<div id="view"></div>
+<div id="state">Construction du modèle R20…</div>
+<script type="module">
+import * as THREE from '/node_modules/three/build/three.module.js';
+import {buildHumidMontaneStyle,R20_MODELS} from '/tools/biomes/humid-montane-presentation-r20.mjs';
+
+const labels={
+  'humid-montane-broadleaf':'Humid montane broadleaf',
+  'epiphyte-cloud-tree':'Epiphyte cloud tree',
+  'tree-fern':'Tree fern',
+  'bamboo-clump':'Bamboo clump'
+};
+let disposed=false;
+try{
+  const style=buildHumidMontaneStyle(THREE);
+  const scene=new THREE.Scene();scene.background=new THREE.Color(0x263945);
+  const renderer=new THREE.WebGLRenderer({antialias:true});renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+  const host=document.querySelector('#view');host.append(renderer.domElement);
+  const camera=new THREE.PerspectiveCamera(38,1,.1,100);camera.position.set(2.4,1.8,4.2);camera.lookAt(0,.55,0);
+  scene.add(new THREE.HemisphereLight(0xf5f8ff,0x344b38,2.3));
+  const sun=new THREE.DirectionalLight(0xfff0d4,2.7);sun.position.set(-4,6,5);scene.add(sun);
+  const base=new THREE.Mesh(new THREE.CylinderGeometry(.85,.85,.06,32),new THREE.MeshLambertMaterial({color:0x66796d}));
+  base.position.y=-.035;scene.add(base);
+  let mesh=null,low=false;
+  const model=document.querySelector('#model'),rotation=document.querySelector('#rotation'),zoom=document.querySelector('#zoom'),wire=document.querySelector('#wire'),state=document.querySelector('#state');
+  const fromQuery=new URLSearchParams(location.search).get('model');
+  if(R20_MODELS.includes(fromQuery))model.value=fromQuery;
+  function fit(g){
+    g.computeBoundingBox();const box=g.boundingBox,size=new THREE.Vector3();box.getSize(size);
+    const max=Math.max(size.x,size.y,size.z,1);
+    const z=Number(zoom.value)/100;
+    camera.position.set(max*1.65/z,max*1.15/z,max*2.8/z);camera.lookAt(0,box.min.y+size.y*.48,0);
+    camera.near=.01;camera.far=Math.max(100,max*10);camera.updateProjectionMatrix();
+  }
+  function show(){
+    mesh?.parent?.remove(mesh);
+    const id=model.value,family=R20_MODELS.indexOf(id),a=style.asset(family);
+    mesh=new THREE.Mesh(a.geometry,a.material.clone());mesh.rotation.y=Number(rotation.value)*Math.PI/180;mesh.material.wireframe=wire.checked;scene.add(mesh);fit(a.geometry);
+    const b=a.geometry.boundingBox,sx=b.max.x-b.min.x,sy=b.max.y-b.min.y,sz=b.max.z-b.min.z;
+    state.textContent=
+      `${labels[id]} · ${a.triangles} triangles
+dimensions normalisées: X ${sx.toFixed(3)} · Y ${sy.toFixed(3)} · Z ${sz.toFixed(3)}
+Racine locale: y=0 · aucune translation terrain dans cette galerie.
+Ce viewer affiche la géométrie R20 exacte utilisée par le pilote.`;
+    draw();
+  }
+  function resize(){const w=Math.max(1,host.clientWidth);renderer.setSize(w,Math.round(w*.62));camera.aspect=w/(w*.62);camera.updateProjectionMatrix();draw();}
+  function draw(){if(!disposed)renderer.render(scene,camera);}
+  model.addEventListener('change',show);rotation.addEventListener('input',()=>{if(mesh){mesh.rotation.y=Number(rotation.value)*Math.PI/180;draw();}});
+  zoom.addEventListener('input',()=>{if(mesh){fit(mesh.geometry);draw();}});
+  wire.addEventListener('change',()=>{if(mesh){mesh.material.wireframe=wire.checked;draw();}});
+  document.querySelector('#light').addEventListener('click',()=>{low=!low;sun.position.set(low?4:-4,low?1.0:6,5);draw();});
+  window.addEventListener('resize',resize);resize();show();
+  window.__R20_MODEL_PREVIEW__={ready:true,style,scene,camera,renderer,get mesh(){return mesh},show};
+  window.addEventListener('pagehide',()=>{disposed=true;mesh?.material?.dispose();style.dispose();base.geometry.dispose();base.material.dispose();renderer.dispose();},{once:true});
+}catch(error){
+  document.querySelector('#state').textContent='Échec : '+error.message;
+  window.__R20_MODEL_PREVIEW__={ready:false,error:error.message};
+  throw error;
+}
+</script>
+</body>
+</html>

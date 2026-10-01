@@ -1,98 +1,98 @@
 # World Drive — Block 8 active candidate
 
-Canonical-plan companion. Read the canonical plan from live dev, dev/main HEADs,
-exact Dev Integration and live PR #14 before changes. Live verified evidence
-supersedes historical reports; candidate QA is not integrated runtime.
+Canonical-plan companion. Read this file with the live canonical plan on `dev`,
+the live PR #14 state and exact-head QA. GitHub live state overrides older chat memory.
 
-## Current priority — R18 accepted with deferred fern-visibility caveat
+## Current status — R24 accepted, pending dev integration
 
-R18 roadside understory is now **HUMAN PASS** on candidate
-**c6fe5e563b9b67fc3bf4c292076f757fe4a73dbe**. The user explicitly accepted the
-current result with **« pass on garde ca comme ca »**, while also stating that the
-fern-size iterations still produced no clearly perceived visual difference and that
-this can be revisited later. Treat that caveat as deferred art follow-up, not as
-evidence that fern screening materially improved.
+Branch: `candidate/block8-biome-classifier-r1`  
+PR: #14 (draft/open until integration)  
+Stable main: `ad893a9d078df4a3d24d81b929bb2905a8bc57e1` / `v21.33` — **DO NOT MOVE** without explicit approval.
 
-PR #14 remains draft/open/unmerged. **R16 and R17 still have NO separate HUMAN PASS**;
-R18 acceptance does not retroactively certify them. Preserve the current R18 runtime
-as-is until a future explicit art pass. No merge, dev runtime integration, global
-activation or main movement is authorized by the R18 PASS alone.
+R24 automatic biome activation received **HUMAN PASS** in the normal game after the
+runtime attachment defect was corrected. The accepted behavior is:
 
-## Scope and protected behavior
+- Nordschleife -> R22 Eifel temperate + R18 roadside understory automatically;
+- Manic-2 -> Manic-5 -> R21 boreal diversity automatically;
+- Laguna Seca -> R19 dry / maritime chaparral automatically;
+- Chuspipata -> Yolosa / Yungas -> R20 humid montane automatically, retaining
+  R23 density at 150 candidates/cell on source-proved Yungas chunks;
+- unknown/unreviewed routes -> unchanged generic R4 presentation.
 
-Explicit **understory: edge-r18** requires **mixed-r16 + natural-r17** on the pinned
-R12 Nord source profile. The new launcher is **understory-pilot-launcher-r18.mjs**;
-diagnostics identify **r18-nord-understory**. Old R12–R17 launchers are unchanged.
-A single additional instanced clump layer combines shrubs and fern rosettes at
-EXISTING accepted R4 tree roots in the **36–76 m route-centre roadside band**.
-Stable placement gaps/scale/rotation avoid a uniform hedge. This is not mapping all
-forest/clearing boundaries, current land cover or real species distributions.
+No DevTools launcher is required for those four reviewed presets.
 
-The tree count, positions, matrices, source geometry/material/bounds/transforms,
-R4 first-layer order, density, root exclusions, prefetch and CPU budgets are untouched.
-ALL 1,744 original candidate coordinates must still pass the full source proof for
-**686 / biome 4 / Palearctic**. No new root position or terrain-height query is added.
-Clump root Y follows the R4 height update; partial floating on fine terrain features
-across its small footprint remains a human visual check. Missing source data keeps
-original visible conifers. Foreign and hidden cached route owners remain protected.
+## Accepted runtime / architecture
 
-One additional draw per chunk containing undergrowth; two tree passes remain.
-Summer/winter clumps use 336/576 triangles and one additional 256x256 RGBA atlas /
-shared cutout material. Source instance prefixes control both trees and clumps.
-Stable frames do not rebuild or reupload matrices. Actual accounted tree+clump
-numeric representation has a <48 MiB worst-case bound at 128 x 1,744; this excludes
-original buffers, engine and total GPU memory. Extra rendering work is not free.
-A bounded route spatial index is initialized once; not a per-frame route scan.
-OFF/cache detach/route reset release owned clumps before shared assets, then restore
-the original tree visibility through the existing owner. No new src seam or Worker.
+R4 is **not replaced**. It remains authoritative for:
 
-Winter uses dormant shrubs, flattened brown ferns and small snow deposits. R17
-summer trees and approved winter trees remain unchanged: bare AND snowy temperate,
-snow/needles on conifers. Ground, roads, weather, lights, grip and physics do not
-change. No automatic seasons, real altitude/boundary policy, global activation or
-persistent caching. R18 reuses installed **public/local-data/biomes/pilot-r12/**;
-root SHA-256 **7432f64a462563351b6c400f35ddda50307f1af109376ac8a76911929a644cf8**.
-No new data ZIP, photo pixels, remote texture or package dependency is required.
+- candidate/root placement and deterministic positions;
+- road/water/building exclusions;
+- terrain anchoring;
+- cache, preload and streaming;
+- progressive first layer;
+- normal slice/frame budgets.
 
-## Accepted references and historical evidence
+R24 replaces only the generic visual presentation where a reviewed biome profile is
+known. Forest scene rebuilds notify the R24 route owner so the accepted presentation
+is rebound after world/scenery reconstruction instead of silently falling back to the
+generic R4 look.
 
-R12 Nord **5736150662**, R13 Manic **5737262854**, R14 Laguna **5737712460**, R15
-Yungas **5738296675** retain HUMAN PASS in their four homogeneous scenarios.
-R9 **5729735550**, R10 **5731692833** (telemetry **5731654953**), R11 **5732527872**,
-R11W **5734183717** remain accepted. Do not repeat those tests.
-R16 eight-suite baseline **6cc498e0084a919dd00e154be9433a7736e99c03** is automated-only.
-R17 **a55f75edc9fb0fd46eaa37b2f87025366fca4ac6** has nine exact QA PASS:
-R17 35422725762, R16 35422725734, R15 35422725802, R14 35422725739,
-R13 35422725757, R12 35422725763, R11/W 35422725732, R10 35422725742,
-R1–R9/integration 35422725736; all 97 integration commands exit zero.
-These are historical reference results, NOT an R18 PASS or human acceptance.
+The stable routing root facade `src/route-lifecycle.js` remains the public boundary.
+`src/main.js` explicitly installs the R24 diagnostic/presentation attachment through
+that stable facade; the R7 routing architecture contract remains green.
+
+## Bundled accepted data
+
+The exact finite accepted packages are committed in the candidate:
+
+- `public/local-data/biomes/pilot-r12/`
+- `public/local-data/biomes/pilot-r13/`
+- `public/local-data/biomes/pilot-r14/`
+- `public/local-data/biomes/pilot-r15/`
+
+Pinned directory SHA-256 values:
+
+- R12: `7432f64a462563351b6c400f35ddda50307f1af109376ac8a76911929a644cf8`
+- R13: `a9cd32f9316c767a6554110c1e795fafef0195fe1ac54c8c84097c42fabe075d`
+- R14: `23ece19d72201808d4edb3f904e2dc0ec6dea23f5cdf64f5be341a33ccf73c31`
+- R15: `d40509469325de661a5f060d8e9509819fcc625950fe0d90677b8219977f0f6f`
+
+## Evidence
+
+Human-passed runtime checkpoint:
+`83eb96563f941423e74c5a0eb6f4a51f938bf769`
+
+Architecture-clean checkpoint:
+`60530706196066183050375948c554d34c6665a0`
+
+At `6053070...`:
+- 15/15 Block 8 workflows PASS;
+- 0 failed / 0 active / 0 queued;
+- R1 classifier/integration PASS;
+- R20 Yungas native density PASS with two 150/cell meshes;
+- R22 Eifel native presentation PASS;
+- R17/R18/R19/R21 and historical R12-R16 regressions PASS;
+- R24 default activation/build/R4 preservation PASS.
+
+The human FAIL that exposed the original R24 defect showed
+`WorldDriveDiagnostics.forest.defaultBiomes === undefined` in the normal game.
+The corrected runtime explicitly attaches R24 from `main.js` and preserves the
+stable routing facade. The subsequent human retest was PASS.
+
+## Synchronization with dev
+
+The candidate diverged from `dev` only because `dev` had three later documentation
+checkpoints for R18. Those commits contain no runtime changes. Their history has now
+been merged into the candidate while retaining the newer R24 documentation/runtime.
 
 ## Exact next action
 
-Final accepted R18 candidate is
-**c6fe5e563b9b67fc3bf4c292076f757fe4a73dbe**. All TEN exact-head Block 8 workflows
-are PASS on that SHA:
+1. Run all exact-head Block 8 workflows on the synchronized + documentation checkpoint.
+2. Require all 15 workflows PASS.
+3. If green, integrate PR #14 into `dev` only.
+4. Run exact-head Dev Integration on the new `dev` HEAD.
+5. Update the canonical plan with the final integrated `dev` SHA and run ID.
+6. Keep `main` untouched until the user explicitly authorizes a release.
 
-- R1–R9/integration **35474977891**
-- R10 **35474977921**
-- R11/R11W **35474977965**
-- R12 **35474977923**
-- R13 **35474977964**
-- R14 **35474977960**
-- R15 **35474977932**
-- R16 **35474977928** (PASS on retry)
-- R17 **35474977941**
-- R18 **35474977901** (PASS on retry)
-
-The user then gave R18 HUMAN PASS with the fern-visibility caveat recorded above and
-in PR comment **5746636909**. Do not repeat the R18 visual test now.
-
-The next certified lifecycle step would be candidate runtime integration to `dev`,
-followed by exact-head Dev Integration and canonical-plan certification. However,
-PR #14 must not be merged and its runtime must not be integrated without the user's
-explicit authorization. Until that authorization exists, preserve the candidate and
-stop advancing Block 8 runtime scope. Documentation-only checkpointing on `dev`
-is allowed.
-
-Main remains **ad893a9d078df4a3d24d81b929bb2905a8bc57e1 / v21.33** and must not move
-without explicit approval.
+No further human visual test is required unless synchronization/integration changes
+runtime behavior or a regression appears.

@@ -1,0 +1,7 @@
+RESOLVE Ecoregions 2017; Dinerstein et al. (2017), doi:10.1093/biosci/bix014.
+CC-BY-4.0 https://creativecommons.org/licenses/by/4.0/
+Source SHA-256: be36d6209e443038d02e309f0447c6e7f2a62f5fe60c605ffe90d064952f2a60
+World Drive modification: original local refinement files regrouped into one-degree manifest pages.
+Partial coverage only. No geometry changed; absence is not ocean.
+
+R13: R10 gzip tiles unchanged; revision-bearing pages and opt-in visual launcher repackaged.

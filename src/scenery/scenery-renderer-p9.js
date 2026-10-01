@@ -538,6 +538,7 @@ export function createSceneryRenderer({
     resumeForestRouteCache,
     removeTreesOverWater,
     requestForestRefresh,
+    setForestChunkCandidateLimit:(...args)=>forestStreamer.setChunkCandidateLimit(...args),
     whenInitialForestReady:()=>forestStreamer.whenInitialReady(),
     forestStats:()=>forestStreamer.stats(),
     renderStats:()=>({...lastRenderStats}),

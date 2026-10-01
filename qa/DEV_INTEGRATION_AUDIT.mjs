@@ -1,4 +1,11 @@
+await import('./qa-block8-biome-gzip-headers-r9.mjs');
+await import('./qa-block8-biome-gameplay-r8.mjs');
+await import('./qa-block8-biome-observer-reanchor-r9.mjs');
+await import('./qa-block8-biome-forest-adapter-r7.mjs');
+await import('./qa-block8-biome-forest-parity-r7.mjs');
 await import('./qa-diagnostics-c6-final-inventory.mjs');
+await import('./qa-block8-biome-loading-r4.mjs');
+await import('./qa-block8-biome-batches-r5.mjs');
 // Dev Integration permanent regression inventory.
 // Issues #9, #10 and #13 stay here after certification: future imagery/terrain
 // or vehicle-contact changes must keep their accepted correction contracts green.
@@ -34,4 +41,7 @@ await import('./qa-physics-trail-braking-turn-in-r3.mjs');
 await import('./qa-physics-no-abs-r1.mjs');
 await import('./qa-nordschleife-guard-rail-continuity-r1.mjs');
 await import('./qa-physics-combined-trail-braking-r1.mjs');
+await import('./qa-block8-biome-service-boundary-r3.mjs');
+await import('./qa-block8-biome-service-r3.mjs');
 await import('./DEV_INTEGRATION_AUDIT_BASE.mjs');
+await import('./qa-block8-biome-chunk-context-r6.mjs');

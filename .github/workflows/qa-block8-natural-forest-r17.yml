@@ -1,0 +1,64 @@
+name: Block 8 Natural Mixed Forest R17 QA
+on:
+  push:
+    branches: [candidate/block8-biome-classifier-r1]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  natural-mixed:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      RESOLVE_SHA256: be36d6209e443038d02e309f0447c6e7f2a62f5fe60c605ffe90d064952f2a60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Preserve approved runtime, R4 and original asset buffers
+        run: node qa/qa-block8-rendered-pilot-boundary-r12.mjs
+      - name: Existing locked dependencies and native harness
+        run: |
+          npm ci
+          python -m pip install numpy==2.2.6 rasterio==1.4.3 pyshp==2.3.1 shapely==2.1.2 playwright==1.57.0
+          python -m playwright install --with-deps chromium
+      - name: New natural assets, ownership and retained mixed reference tests
+        run: |
+          mkdir -p "$RUNNER_TEMP/biome-r17"
+          node qa/qa-block8-natural-forest-r17.mjs "$RUNNER_TEMP/biome-r17/assets-qa.json"
+          node qa/qa-block8-natural-controller-r17.mjs "$RUNNER_TEMP/biome-r17/controller-qa.json"
+          node qa/qa-block8-mixed-presentation-r16.mjs
+          node qa/qa-block8-mixed-three-r16.mjs
+          node qa/qa-block8-rendered-pilot-r12.mjs
+          node qa/qa-block8-rendered-manic-r13.mjs
+          node qa/qa-block8-rendered-laguna-r14.mjs
+          node qa/qa-block8-rendered-yungas-r15.mjs
+          node qa/qa-block8-forest-progressive-layer-r4.mjs
+      - name: Rebuild unchanged verified R12 geographic package
+        run: |
+          curl --fail --location --proto '=https' --proto-redir '=https' --retry 2 --connect-timeout 20 --max-time 180 --max-filesize 200000000 https://storage.googleapis.com/teow2016/Ecoregions2017.zip -o "$RUNNER_TEMP/Ecoregions2017.zip"
+          echo "$RESOLVE_SHA256  $RUNNER_TEMP/Ecoregions2017.zip" | sha256sum --check --strict
+          python tools/biomes/build-resolve-atlas.py --input "$RUNNER_TEMP/Ecoregions2017.zip" --output "$RUNNER_TEMP/atlas-r17" --cell-degrees 0.1 --expected-sha256 "$RESOLVE_SHA256"
+          python tools/biomes/build-rendered-pilot-r12.py --source "$RUNNER_TEMP/Ecoregions2017.zip" --atlas "$RUNNER_TEMP/atlas-r17" --output "$RUNNER_TEMP/biome-r17/pilot"
+          echo "7432f64a462563351b6c400f35ddda50307f1af109376ac8a76911929a644cf8  $RUNNER_TEMP/biome-r17/pilot/public/local-data/biomes/pilot-r12/directory.json" | sha256sum --check --strict
+      - name: Native full-game reference versus new foliage, seasons, teleport and cleanup
+        run: python qa/qa-block8-natural-browser-r17.py --pilot "$RUNNER_TEMP/biome-r17/pilot" --output "$RUNNER_TEMP/biome-r17/native"
+      - name: Preserve exact code and actual rendered evidence
+        if: always()
+        run: |
+          mkdir -p "$RUNNER_TEMP/biome-r17"
+          git rev-parse HEAD > "$RUNNER_TEMP/biome-r17/tested-commit.txt"
+          git archive --format=tar.gz HEAD tools/biomes src/scenery/biomes src/app/forest-visual-pilot.js src/app/biome-diagnostics.js src/scenery/scenery-renderer-p933.js src/routing/circuits src/forest-streaming-policy.js src/forest-proxy-assets.js qa/qa-block8-natural-forest-r17.mjs qa/qa-block8-natural-controller-r17.mjs qa/qa-block8-natural-browser-r17.py .github/workflows/qa-block8-natural-forest-r17.yml docs/WORLD_DRIVE_BLOCK8_ACTIVE_CANDIDATE.md docs/WORLD_DRIVE_BLOCK8_NATURAL_FOREST_R17.md > "$RUNNER_TEMP/biome-r17/r17-source.tar.gz"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: biome-r17-natural-${{ github.sha }}
+          path: ${{ runner.temp }}/biome-r17
+          if-no-files-found: error

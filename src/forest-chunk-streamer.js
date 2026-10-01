@@ -269,6 +269,7 @@ export function createForestChunkStreamer(options){
       activeChunks:finite(raw.activeChunks),cachedChunks:finite(raw.cachedChunks),queuedChunks:finite(raw.queuedChunks),
       queueMix:{coverage:finite(raw.queuedCoverageChunks),replacement:finite(raw.queuedReplacementChunks)},
       progressive:{firstLayerCandidatesPerCell:finite(raw.firstLayerCandidatesPerCell),candidateTarget:finite(raw.firstLayerCandidateTarget),coverageFraction:round3(raw.firstLayerCoverageFraction),committed:finite(raw.firstLayerChunksCommitted),visibleCommits:finite(raw.firstLayerVisibleCommits),prefetchCommits:finite(raw.firstLayerPrefetchCommits),densified:finite(raw.densificationChunksCompleted),inProgress:finite(raw.progressiveInProgressChunks)},
+      regionalDensity:{baseCandidatesPerCell:finite(raw.baseCandidatesPerCell),maxCandidatesPerCell:finite(raw.maxCandidatesPerCell),overrides:finite(raw.candidateOverrides)},
       chunksBuilt:finite(raw.chunksBuilt),chunksReplaced:finite(raw.chunksReplaced),matrixUploads:finite(raw.matrixUploads),densityCountUpdates:finite(raw.densityCountUpdates),
       startupDirection:{seeded:seed.startupDirectionSeeded,seedDistanceM:STARTUP_DIRECTION_SEED_M,angle:Number.isFinite(seed.startupSeedAngle)?round3(seed.startupSeedAngle):null,dirX:round3(seed.startupSeedDir.x),dirZ:round3(seed.startupSeedDir.z)},
       aheadPriority:{enabled:raw.aheadPriority===true,nearPriorityDistance:round3(raw.nearPriorityDistance),leadM:round3(raw.priorityLeadM),confidence:round3(raw.travelConfidence),dirX:round3(raw.travelDirX),dirZ:round3(raw.travelDirZ)},
@@ -338,6 +339,7 @@ export function createForestChunkStreamer(options){
     switchRouteCache,
     requestUpdate:(...args)=>activeBase().requestUpdate(...args),
     refreshVisibleHeights:(...args)=>activeBase().refreshVisibleHeights(...args),
+    setChunkCandidateLimit:(...args)=>activeBase().setChunkCandidateLimit(...args),
     clearAll:(...args)=>{
       for(const entry of entries){
         entry.core.setAssets(null);entry.core.clearAll(...args);entry.group.visible=false;resetSeed(entry);entry.key=null;

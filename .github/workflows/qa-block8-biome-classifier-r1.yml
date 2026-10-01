@@ -1,0 +1,188 @@
+name: Block 8 Biome Classifier R1 QA
+
+on:
+  push:
+    branches:
+      - candidate/block8-biome-classifier-r1
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  contract-and-integration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Preserve accepted runtime except exact R12 inert owner seams
+        run: node qa/qa-block8-rendered-pilot-boundary-r12.mjs
+      - name: Classifier contract and bounded-query stress
+        run: |
+          node qa/qa-block8-biome-gzip-headers-r9.mjs
+          node qa/qa-block8-biome-prototype-r1.mjs
+          node qa/qa-block8-biome-rock-ice-r1.mjs
+          node qa/qa-block8-biome-refinement-r2.mjs
+          node qa/qa-block8-biome-service-boundary-r3.mjs
+          node qa/qa-block8-biome-service-r3.mjs
+          node qa/qa-block8-biome-loading-r4.mjs
+          node qa/qa-block8-biome-batches-r5.mjs
+          node qa/qa-block8-biome-chunk-context-r6.mjs
+          node qa/qa-block8-biome-forest-adapter-r7.mjs
+          node qa/qa-block8-biome-forest-parity-r7.mjs
+          node qa/qa-block8-biome-gameplay-r8.mjs
+          node qa/qa-block8-biome-observer-reanchor-r9.mjs
+          python qa/qa-block8-biome-partition-r5.py
+      - name: Install canonical workflow parser (CI only)
+        run: python -m pip install PyYAML==6.0.2
+      - name: Every maintained Dev Integration run step
+        run: python tools/biomes/run-canonical-integration.py
+      - name: Certified R4 progressive layer and geographic parity
+        run: |
+          node qa/qa-block8-forest-geographic-index-r2.mjs
+          node qa/qa-block8-forest-progressive-layer-r4.mjs
+          node qa/qa-block8-forest-lifecycle-diagnostics-r1.mjs
+      - name: Record exact-head integration results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: biome-r1-integration-${{ github.sha }}
+          path: ${{ runner.temp }}/biome-canonical-integration.json
+          if-no-files-found: warn
+
+  real-data-atlas:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      RESOLVE_SHA256: be36d6209e443038d02e309f0447c6e7f2a62f5fe60c605ffe90d064952f2a60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install build-only geospatial dependencies
+        run: python -m pip install numpy==2.2.6 rasterio==1.4.3 pyshp==2.3.1 shapely==2.1.2
+      - name: Synthetic polygon, hole and reproducibility tests
+        run: |
+          python qa/qa-block8-biome-builder-r1.py
+          python qa/qa-block8-biome-source-parity-r1.py --self-test
+          python qa/qa-block8-biome-refinement-parity-r2.py --self-test
+      - name: Retrieve pinned source archive for offline preprocessing only
+        run: |
+          curl --fail --location --proto '=https' --proto-redir '=https' --retry 2 --connect-timeout 20 --max-time 180 --max-filesize 200000000 https://storage.googleapis.com/teow2016/Ecoregions2017.zip -o "$RUNNER_TEMP/Ecoregions2017.zip"
+          echo "$RESOLVE_SHA256  $RUNNER_TEMP/Ecoregions2017.zip" | sha256sum --check --strict
+      - name: Build BOTH global resolutions before geographic assertions
+        run: |
+          for resolution in 0.1 0.05; do
+            OUTPUT="$RUNNER_TEMP/biome-atlases/$resolution"
+            python tools/biomes/build-resolve-atlas.py --input "$RUNNER_TEMP/Ecoregions2017.zip" --output "$OUTPUT" --cell-degrees "$resolution" --expected-sha256 "$RESOLVE_SHA256"
+          done
+      - name: Independent source-polygon parity and coastal precision audit
+        run: python qa/qa-block8-biome-source-parity-r1.py --source "$RUNNER_TEMP/Ecoregions2017.zip" --atlases "$RUNNER_TEMP/biome-atlases" --output "$RUNNER_TEMP/biome-atlases/source-parity.json"
+      - name: Verify real geographic controls at both resolutions
+        run: |
+          FAILED=0
+          for resolution in 0.1 0.05; do
+            node qa/qa-block8-biome-atlas-r1.mjs "$RUNNER_TEMP/biome-atlases/$resolution" || FAILED=1
+          done
+          exit "$FAILED"
+      - name: Bounded local source refinement and original precision gates
+        run: python qa/qa-block8-biome-refinement-parity-r2.py --source "$RUNNER_TEMP/Ecoregions2017.zip" --atlases "$RUNNER_TEMP/biome-atlases" --output "$RUNNER_TEMP/biome-refinement"
+      - name: Maintained service, verified preparation and palette compatibility on real points
+        run: node qa/qa-block8-biome-service-real-r3.mjs "$RUNNER_TEMP/biome-atlases/0.1" "$RUNNER_TEMP/biome-refinement"
+      - name: Actual repository circuit polylines with bounded HTTP/gzip loading
+        run: python qa/qa-block8-biome-route-real-r4.py --source "$RUNNER_TEMP/Ecoregions2017.zip" --atlas "$RUNNER_TEMP/biome-atlases/0.1" --output "$RUNNER_TEMP/biome-route-r4"
+      - name: Install browser test harness (CI only)
+        run: |
+          python -m pip install playwright==1.57.0
+          python -m playwright install --with-deps chromium
+      - name: Native Chromium module worker and successive batch windows
+        run: python qa/qa-block8-biome-browser-r5.py --routes "$RUNNER_TEMP/biome-route-r4" --output "$RUNNER_TEMP/biome-route-r4/browser-r5-qa.json"
+      - name: Native Worker exact-point chunk snapshot bridge
+        run: python qa/qa-block8-biome-chunk-browser-r6.py --routes "$RUNNER_TEMP/biome-route-r4" --output "$RUNNER_TEMP/biome-route-r4/chunk-browser-r6-qa.json"
+      - name: Actual forest candidate parity and native procedural chunk preparation
+        run: python qa/qa-block8-biome-forest-browser-r7.py --source "$RUNNER_TEMP/Ecoregions2017.zip" --atlas "$RUNNER_TEMP/biome-atlases/0.1" --output "$RUNNER_TEMP/biome-r7-forest"
+      - name: Install existing build dependencies for R8 production facade
+        run: npm ci
+      - name: Actual route lifecycle and lazy diagnostic Worker in native and built browser
+        run: python qa/qa-block8-biome-gameplay-browser-r8.py --forest "$RUNNER_TEMP/biome-r7-forest" --output "$RUNNER_TEMP/biome-r8-gameplay"
+      - name: Pinned finite diagnostic pilot packaging and explicit launcher
+        run: python qa/qa-block8-biome-pilot-r9.py --pilot "$RUNNER_TEMP/biome-r8-gameplay/pilot"
+      - name: Full production game diagnostic OFF ON OFF experiment
+        run: python qa/qa-block8-biome-fullgame-r9.py --pilot "$RUNNER_TEMP/biome-r8-gameplay/pilot" --output "$RUNNER_TEMP/biome-r9-fullgame"
+      - name: Real Vite dev Worker and preview raw-gzip compatibility
+        run: python qa/qa-block8-biome-vite-browser-r9.py --pilot "$RUNNER_TEMP/biome-r9-fullgame/package/public/local-data/biomes/pilot-r9" --output "$RUNNER_TEMP/biome-r9-vite"
+      - name: Preserve R9 Vite transport evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: biome-r9-vite-${{ github.sha }}
+          path: ${{ runner.temp }}/biome-r9-vite
+          if-no-files-found: error
+      - name: Preserve R9 full game results and installable pilot
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: biome-r9-fullgame-${{ github.sha }}
+          path: ${{ runner.temp }}/biome-r9-fullgame
+          if-no-files-found: error
+      - name: Preserve R8 observer and diagnostic pilot evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: biome-r8-gameplay-${{ github.sha }}
+          path: ${{ runner.temp }}/biome-r8-gameplay
+          if-no-files-found: error
+      - name: Preserve R7 exact forest coordinate and browser evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: biome-r7-forest-${{ github.sha }}
+          path: ${{ runner.temp }}/biome-r7-forest
+          if-no-files-found: error
+      - name: Preserve real route preparation evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: biome-r4-routes-${{ github.sha }}
+          path: ${{ runner.temp }}/biome-route-r4
+          if-no-files-found: error
+      - name: Preserve bounded refinement and source-agreement measurements
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: biome-r2-refinement-${{ github.sha }}
+          path: ${{ runner.temp }}/biome-refinement
+          if-no-files-found: error
+      - name: Preserve atlas, provenance and geographic measurements
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: biome-r1-atlases-${{ github.sha }}
+          path: ${{ runner.temp }}/biome-atlases
+          if-no-files-found: warn
+      - name: Preserve exact prototype for offline reproduction
+        if: always()
+        run: |
+          mkdir -p "$RUNNER_TEMP/biome-code"
+          git archive --format=tar.gz HEAD vite.config.js qa/qa-block8-biome-gzip-headers-r9.mjs qa/qa-block8-biome-vite-browser-r9.py docs/WORLD_DRIVE_BLOCK8_BIOME_R9_VITE_TRANSPORT.md qa/qa-block8-biome-observer-reanchor-r9.mjs qa/qa-block8-biome-pilot-r9.py qa/qa-block8-biome-fullgame-r9.py docs/WORLD_DRIVE_BLOCK8_BIOME_R9_FULL_GAME_PILOT.md src/route-lifecycle.js src/routing/route-lifecycle.js src/app/biome-diagnostics.js src/app/diagnostics.js qa/qa-block8-biome-gameplay-r8.mjs qa/qa-block8-biome-gameplay-browser-r8.py docs/WORLD_DRIVE_BLOCK8_BIOME_R8_GAMEPLAY_DIAGNOSTICS.md src/main.js src/forest-streaming-policy.js src/forest-chunk-streamer-core.js qa/qa-block8-biome-forest-adapter-r7.mjs qa/qa-block8-biome-forest-parity-r7.mjs qa/qa-block8-biome-forest-browser-r7.py docs/WORLD_DRIVE_BLOCK8_BIOME_R7_FOREST_ADAPTER.md qa/qa-block8-biome-chunk-context-r6.mjs qa/qa-block8-biome-chunk-browser-r6.py docs/WORLD_DRIVE_BLOCK8_BIOME_R6_CHUNK_CONTEXT.md docs/WORLD_DRIVE_BLOCK8_ACTIVE_CANDIDATE.md docs/WORLD_DRIVE_EVOLUTION_AND_CORRECTION_PLAN.md qa/biome-batch-fixtures-r5.mjs qa/qa-block8-biome-batches-r5.mjs qa/qa-block8-biome-partition-r5.py qa/qa-block8-biome-browser-r5.py docs/WORLD_DRIVE_BLOCK8_BIOME_R5_BATCH_WORKER.md src/routing/circuits qa/qa-block8-biome-loading-r4.mjs qa/qa-block8-biome-route-real-r4.mjs qa/qa-block8-biome-route-real-r4.py docs/WORLD_DRIVE_BLOCK8_BIOME_R4_ROUTE_LOADING.md src/scenery/biomes tools/biomes qa/qa-block8-biome-service-r3.mjs qa/qa-block8-biome-service-boundary-r3.mjs qa/qa-block8-biome-service-real-r3.mjs qa/DEV_INTEGRATION_AUDIT.mjs docs/WORLD_DRIVE_BLOCK8_BIOME_R3_SERVICE_PALETTES.md qa/qa-block8-biome-atlas-r1.mjs qa/qa-block8-biome-builder-r1.py qa/qa-block8-biome-prototype-r1.mjs qa/qa-block8-biome-rock-ice-r1.mjs qa/qa-block8-biome-source-parity-r1.py qa/qa-block8-biome-refinement-r2.mjs qa/qa-block8-biome-refinement-parity-r2.py docs/WORLD_DRIVE_BLOCK8_BIOME_R1_AUDIT.md docs/WORLD_DRIVE_BLOCK8_BIOME_R1_REAL_DATA.md docs/WORLD_DRIVE_BLOCK8_BIOME_R2_LOCAL_REFINEMENT.md .github/workflows/qa-block8-biome-classifier-r1.yml > "$RUNNER_TEMP/biome-code/prototype-source.tar.gz"
+      - name: Upload offline reproduction code
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: biome-r1-code-${{ github.sha }}
+          path: ${{ runner.temp }}/biome-code
+          retention-days: 14
+          if-no-files-found: warn

@@ -1,0 +1,66 @@
+name: Block 8 Roadside Understory R18 QA
+on:
+  push:
+    branches: [candidate/block8-biome-classifier-r1]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  roadside-understory:
+    runs-on: ubuntu-latest
+    timeout-minutes: 22
+    env:
+      RESOLVE_SHA256: be36d6209e443038d02e309f0447c6e7f2a62f5fe60c605ffe90d064952f2a60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Preserve approved runtime, R4 and original asset buffers
+        run: node qa/qa-block8-rendered-pilot-boundary-r12.mjs
+      - name: Existing locked dependencies and native harness
+        run: |
+          npm ci
+          python -m pip install numpy==2.2.6 rasterio==1.4.3 pyshp==2.3.1 shapely==2.1.2 playwright==1.57.0
+          python -m playwright install --with-deps chromium
+      - name: New R18 assets, edge policy, ownership and all prior visual regressions
+        run: |
+          mkdir -p "$RUNNER_TEMP/biome-r18"
+          node qa/qa-block8-understory-r18.mjs "$RUNNER_TEMP/biome-r18/assets-qa.json"
+          node qa/qa-block8-understory-controller-r18.mjs "$RUNNER_TEMP/biome-r18/controller-qa.json"
+          node qa/qa-block8-natural-forest-r17.mjs
+          node qa/qa-block8-natural-controller-r17.mjs
+          node qa/qa-block8-mixed-presentation-r16.mjs
+          node qa/qa-block8-mixed-three-r16.mjs
+          node qa/qa-block8-rendered-pilot-r12.mjs
+          node qa/qa-block8-rendered-manic-r13.mjs
+          node qa/qa-block8-rendered-laguna-r14.mjs
+          node qa/qa-block8-rendered-yungas-r15.mjs
+          node qa/qa-block8-forest-progressive-layer-r4.mjs
+      - name: Rebuild unchanged verified R12 geographic package
+        run: |
+          curl --fail --location --proto '=https' --proto-redir '=https' --retry 2 --connect-timeout 20 --max-time 180 --max-filesize 200000000 https://storage.googleapis.com/teow2016/Ecoregions2017.zip -o "$RUNNER_TEMP/Ecoregions2017.zip"
+          echo "$RESOLVE_SHA256  $RUNNER_TEMP/Ecoregions2017.zip" | sha256sum --check --strict
+          python tools/biomes/build-resolve-atlas.py --input "$RUNNER_TEMP/Ecoregions2017.zip" --output "$RUNNER_TEMP/atlas-r18" --cell-degrees 0.1 --expected-sha256 "$RESOLVE_SHA256"
+          python tools/biomes/build-rendered-pilot-r12.py --source "$RUNNER_TEMP/Ecoregions2017.zip" --atlas "$RUNNER_TEMP/atlas-r18" --output "$RUNNER_TEMP/biome-r18/pilot"
+          echo "7432f64a462563351b6c400f35ddda50307f1af109376ac8a76911929a644cf8  $RUNNER_TEMP/biome-r18/pilot/public/local-data/biomes/pilot-r12/directory.json" | sha256sum --check --strict
+      - name: Native full-game R17 versus R18, seasons, summer teleport and cleanup
+        run: python qa/qa-block8-understory-browser-r18.py --pilot "$RUNNER_TEMP/biome-r18/pilot" --output "$RUNNER_TEMP/biome-r18/native"
+      - name: Preserve exact code and actual rendered evidence
+        if: always()
+        run: |
+          mkdir -p "$RUNNER_TEMP/biome-r18"
+          git rev-parse HEAD > "$RUNNER_TEMP/biome-r18/tested-commit.txt"
+          git archive --format=tar.gz HEAD tools/biomes src/scenery/biomes src/app/forest-visual-pilot.js src/app/biome-diagnostics.js src/scenery/scenery-renderer-p933.js src/routing/circuits src/forest-streaming-policy.js src/forest-proxy-assets.js qa/qa-block8-understory-r18.mjs qa/qa-block8-understory-controller-r18.mjs qa/qa-block8-understory-browser-r18.py .github/workflows/qa-block8-understory-r18.yml docs/WORLD_DRIVE_BLOCK8_ACTIVE_CANDIDATE.md docs/WORLD_DRIVE_BLOCK8_UNDERSTORY_R18.md > "$RUNNER_TEMP/biome-r18/r18-source.tar.gz"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: biome-r18-understory-${{ github.sha }}
+          path: ${{ runner.temp }}/biome-r18
+          if-no-files-found: error

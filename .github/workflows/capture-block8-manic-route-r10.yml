@@ -1,0 +1,30 @@
+name: Block 8 Manic R10 Source Capture
+
+on:
+  push:
+    branches:
+      - candidate/block8-biome-classifier-r1
+    paths:
+      - '.github/workflows/capture-block8-manic-route-r10.yml'
+      - 'tools/biomes/capture-manic-route-r10.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  capture:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Capture the real preset road without synthetic fallback
+        run: python tools/biomes/capture-manic-route-r10.py --output "$RUNNER_TEMP/manic-route"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: manic-route-source-${{ github.sha }}
+          path: ${{ runner.temp }}/manic-route
+          if-no-files-found: error
