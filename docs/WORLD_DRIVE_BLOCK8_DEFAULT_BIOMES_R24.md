@@ -1,6 +1,6 @@
 # World Drive — Block 8 R24 default biome activation
 
-Status: **HUMAN PASS + exact-head candidate PASS.** Automatic activation is accepted in the normal game. Candidate is being synchronized/revalidated immediately before integration to `dev`. Main remains untouched.
+Status: **DONE/CERTIFIED on `dev`.** HUMAN PASS, exact-head synchronized candidate PASS, PR #14 merged at `4ed3b059830ec51f66044480816f947a4c74d931`, Dev Integration `36927337644` PASS. Main remains untouched.
 
 ## Goal
 
@@ -63,3 +63,11 @@ R24 must preserve:
 - no automatic movement of dev or main.
 
 Human gate: **PASS.** Normal-game retest confirmed automatic biome presentation without a DevTools launcher after correcting runtime attachment and forest-scene rebind handling. Preserve this behavior during synchronization and `dev` integration.
+
+
+## Integrated checkpoint
+
+Final synchronized candidate: `68d09cc80e0357558b014f20b6322837c7c4b320`  
+Integrated `dev`: `4ed3b059830ec51f66044480816f947a4c74d931`  
+Dev Integration: `36927337644` — PASS  
+Human gate: PASS

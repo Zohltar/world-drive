@@ -3,10 +3,10 @@
 Canonical-plan companion. Read this file with the live canonical plan on `dev`,
 the live PR #14 state and exact-head QA. GitHub live state overrides older chat memory.
 
-## Current status — R24 accepted, pending dev integration
+## Current status — R24 integrated and certified
 
 Branch: `candidate/block8-biome-classifier-r1`  
-PR: #14 (draft/open until integration)  
+PR: #14 — merged/closed  
 Stable main: `ad893a9d078df4a3d24d81b929bb2905a8bc57e1` / `v21.33` — **DO NOT MOVE** without explicit approval.
 
 R24 automatic biome activation received **HUMAN PASS** in the normal game after the
@@ -85,14 +85,12 @@ The candidate diverged from `dev` only because `dev` had three later documentati
 checkpoints for R18. Those commits contain no runtime changes. Their history has now
 been merged into the candidate while retaining the newer R24 documentation/runtime.
 
-## Exact next action
+## Final integration evidence
 
-1. Run all exact-head Block 8 workflows on the synchronized + documentation checkpoint.
-2. Require all 15 workflows PASS.
-3. If green, integrate PR #14 into `dev` only.
-4. Run exact-head Dev Integration on the new `dev` HEAD.
-5. Update the canonical plan with the final integrated `dev` SHA and run ID.
-6. Keep `main` untouched until the user explicitly authorizes a release.
+- Final synchronized candidate: `68d09cc80e0357558b014f20b6322837c7c4b320`.
+- 15/15 Block 8 workflows PASS + Multiplayer M4 PASS on that exact candidate.
+- PR #14 merged to `dev` at `4ed3b059830ec51f66044480816f947a4c74d931`.
+- Exact-head Dev Integration `36927337644`: PASS.
+- Human R24 gate: PASS.
 
-No further human visual test is required unless synchronization/integration changes
-runtime behavior or a regression appears.
+Block 8/R24 is closed. This file is retained as the certified historical ledger. `main` remains untouched until the user explicitly authorizes a release.

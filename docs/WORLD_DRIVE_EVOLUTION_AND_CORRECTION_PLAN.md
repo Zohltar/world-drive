@@ -73,34 +73,36 @@ Before coding, be able to answer:
 **Issue #11:** **DONE/CERTIFIED — HUMAN PASS (2026-09-16); integrated `dev` checkpoint `4ad64194d53849c0c344872b59ffab2c1b3ba2a2`, exact-head Dev Integration `35104245846` PASS**
 **Issue #12:** **DONE/CERTIFIED — HUMAN PASS (2026-09-17) — R4 progressive first-layer forest-readiness correction; runtime/reference `ca1fbb4b7b3448a2f18ae655545046464acba4e3`, post-integration checkpoint `f6e59985a945cc193a7a6eb1066a06dcb120602f`, exact-head Dev Integration `35229697126` PASS**
 **Issue #13:** **DONE/CERTIFIED — HUMAN PASS (2026-09-12) — bounded road-articulation contact correction**  
-**Block 8 — Biome-aware natural scenery:** **R24 CANDIDATE CERTIFIED — HUMAN PASS + 15/15 exact-head workflows PASS on `60530706196066183050375948c554d34c6665a0`; automatic accepted-biome activation validated for Nordschleife, Manic, Laguna Seca and Yungas; generic R4 remains fallback elsewhere. Candidate has been synchronized with current `dev` history and is pending final exact-head revalidation on the synchronized/docs checkpoint before integration to `dev`.**
+**Block 8 — Biome-aware natural scenery:** **DONE/CERTIFIED — R24 HUMAN PASS; synchronized candidate `68d09cc80e0357558b014f20b6322837c7c4b320` passed all 15 Block 8 workflows plus Multiplayer M4; integrated to `dev` at `4ed3b059830ec51f66044480816f947a4c74d931`; exact-head Dev Integration `36927337644` PASS. Automatic accepted-biome activation is certified for Nordschleife, Manic, Laguna Seca and Yungas; generic R4 remains fallback elsewhere.**
 **Block 9 — AI-assisted 3D asset authoring and selective GLB modernization:** **PLANNED / DEFERRED — pilot-first, no wholesale asset replacement**  
 **Block 10 — Mobile browser driving controls:** **ABANDONED / NOT PLANNED (2026-09-13) — experiment stopped by user; no mobile-control candidate runtime was integrated**  
 **Block 11 — Circuit presets / closed-loop authored track routes:** **DONE/CERTIFIED — Laguna Seca HUMAN PASS (2026-09-14); Nordschleife performance HUMAN PASS (2026-09-15); no-ABS runtime and continuous guard rails HUMAN PASS (2026-09-16); integrated `dev` checkpoint `568f557a051832559fa1f3166350cc338a399ee1`, exact-head Dev Integration `35054930198` PASS**
-**Active correction block:** **NONE — Issue #12 R4 remains certified. Block 8 R24 feature work has passed the human gate; current action is final synchronized candidate QA, then integration to `dev` only.**
+**Active correction block:** **NONE — Issue #12 R4 and Block 8 R24 are certified on `dev`. No active correction candidate is open.**
 **Stable `main`:** `ad893a9d078df4a3d24d81b929bb2905a8bc57e1` — tag `v21.33`; must remain untouched without explicit user approval.
 **Previous rollback/reference:** `b74e7377eaaf2b128eb893c547f4c2da3d14bbea` — tag `v21.32`.
 
-## Block 8 active-candidate restart checkpoint
+## Block 8 certified integration checkpoint
 
-**Current candidate ledger:** [WORLD_DRIVE_BLOCK8_ACTIVE_CANDIDATE.md](WORLD_DRIVE_BLOCK8_ACTIVE_CANDIDATE.md).
+Block 8 R24 is **DONE/CERTIFIED**.
 
-- Existing work branch: `candidate/block8-biome-classifier-r1`, PR #14.
-- Human-passed R24 runtime checkpoint: `83eb96563f941423e74c5a0eb6f4a51f938bf769`.
+- Human-passed runtime checkpoint: `83eb96563f941423e74c5a0eb6f4a51f938bf769`.
 - Architecture-clean candidate checkpoint: `60530706196066183050375948c554d34c6665a0`.
-- R24 automatic presentation mapping:
+- Final synchronized/docs candidate: `68d09cc80e0357558b014f20b6322837c7c4b320`.
+- Candidate evidence: all 15 Block 8 workflows PASS plus Multiplayer M4 PASS; 0 failed / 0 active / 0 queued.
+- PR #14 merged to `dev` at `4ed3b059830ec51f66044480816f947a4c74d931`.
+- Exact-head Dev Integration: `36927337644` PASS.
+- R24 certified automatic presentation:
   - Nordschleife -> R22 Eifel temperate + R18 roadside understory;
   - Manic-2 -> Manic-5 -> R21 boreal diversity;
   - Laguna Seca -> R19 dry / maritime chaparral;
   - Chuspipata -> Yolosa / Yungas -> R20 humid montane + R23 dense 150 candidates/cell;
   - unknown/unreviewed routes -> generic R4 fallback.
-- R4 remains authoritative for forest placement, road/water/building exclusions, terrain anchoring, cache/streaming, progressive first layer and normal frame budgets.
-- Accepted R12-R15 finite biome packages are committed under `public/local-data/biomes/pilot-r12..` through `pilot-r15`; pinned directory hashes remain unchanged.
-- Candidate `6053070...` passed all 15 Block 8 workflows and received HUMAN PASS for automatic activation in the normal game without DevTools launchers.
-- The candidate was subsequently merged with current `dev` checkpoint history (docs-only divergence). Final synchronized/docs HEAD must pass the same exact-head gates before any integration.
-- `main` remains `ad893a9d078df4a3d24d81b929bb2905a8bc57e1` / `v21.33` and must not move without explicit user approval.
+- R4 remains authoritative for placement, exclusions, terrain anchoring, cache/streaming, progressive first layer and normal frame budgets.
+- Accepted finite R12-R15 biome packages are committed under `public/local-data/biomes/pilot-r12..` through `pilot-r15` with pinned hashes unchanged.
+- The stable routing facade and R7 routing architecture remain preserved.
+- `main` remains `ad893a9d078df4a3d24d81b929bb2905a8bc57e1` / `v21.33`; do not move it without explicit user approval.
 
-**Exact next action:** finish the synchronized candidate exact-head QA. If green, integrate PR #14 to `dev`, run exact-head Dev Integration on the new `dev` HEAD, then record the integrated checkpoint here. Do not move `main`.
+**Exact next action:** verify the docs-only `dev` checkpoint with exact-head Dev Integration. After that, Block 8 is fully closed and the next feature block may be selected. Do not move `main`.
 
 ## Block 5A certified checkpoint
 
